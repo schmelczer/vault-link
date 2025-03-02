@@ -164,6 +164,12 @@ mod test {
         );
 
         test_merge_both_ways("a", "a b c", "a b c d", "a b c d");
+
+        test_merge_both_ways(
+            "      |7ca2b36d-6ee7-49eb-8eb1-d77e4cc1a001|   ",
+              "      |7ca2b36d-6ee7-49eb-8eb1-d77e4cc1a001|      |cd9195cc-103a-4f13-90c8-4fba0ba421ee|      |d39156cc-cfd6-42a8-b70a-75020896069d|      |fbad794c-9c47-41f2-a343-490284ecb5a0|      |dup|   ",
+             "       |7ca2b36d-6ee7-49eb-8eb1-d77e4cc1a001|      |cd9195cc-103a-4f13-90c8-4fba0ba421ee|      |dup|   ",
+            "      |7ca2b36d-6ee7-49eb-8eb1-d77e4cc1a001|      |cd9195cc-103a-4f13-90c8-4fba0ba421ee|      |d39156cc-cfd6-42a8-b70a-75020896069d|      |fbad794c-9c47-41f2-a343-490284ecb5a0|      |dup|      |dup|   ");
     }
 
     #[test_matrix( [
