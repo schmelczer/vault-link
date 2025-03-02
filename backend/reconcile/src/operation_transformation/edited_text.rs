@@ -65,7 +65,6 @@ where
 
         Self::new(
             original,
-            // Self::cook_operations(diff),
             Self::cook_operations(Self::elongate_operations(diff)).collect(),
         )
     }
@@ -191,7 +190,7 @@ where
     pub fn merge(self, other: Self) -> Self {
         debug_assert_eq!(
             self.text, other.text,
-            "EditedText-s must be derived from the same text to be mergable"
+            "`EditedText`-s must be derived from the same text to be mergable"
         );
 
         let mut left_merge_context = MergeContext::default();
@@ -285,7 +284,7 @@ mod tests {
         let original = "hello world! ...";
         let left = "Hello world! I'm Andras.";
         let right = "Hello world! How are you?";
-        let expected = "Hello world! How are you?I'm Andras.";
+        let expected = "Hello world! I'm Andras. How are you?";
 
         let operations_1 = EditedText::from_strings(original, left);
         let operations_2 = EditedText::from_strings(original, right);

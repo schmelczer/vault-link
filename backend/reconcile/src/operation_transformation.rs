@@ -73,7 +73,8 @@ mod test {
             "original_1 edit_1 original_3",
         );
 
-        // One deleted a large range, the other deleted subranges and inserted as well
+        // One deleted a large range, the other deleted subranges and inserted as
+        // well
         test_merge_both_ways(
             "original_1 original_2 original_3 original_4 original_5",
             "original_1 original_5",
@@ -161,6 +162,8 @@ mod test {
             "hi there my friend ",
             "hi there you my friend ",
         );
+
+        test_merge_both_ways("a", "a b c", "a b c d", "a b c d");
     }
 
     #[test_matrix( [

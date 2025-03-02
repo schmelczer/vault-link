@@ -15,12 +15,7 @@ where
 }
 
 impl From<&str> for Token<String> {
-    fn from(s: &str) -> Self {
-        Token {
-            normalised: s.to_owned(),
-            original: s.to_owned(),
-        }
-    }
+    fn from(s: &str) -> Self { Token::new(s.trim().to_owned(), s.to_owned()) }
 }
 
 impl<T> Token<T>

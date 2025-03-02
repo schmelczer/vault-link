@@ -107,15 +107,8 @@ where
         })
     }
 
-    /// Tries to apply the operation to the given `ropey::Rope` text, returning
-    /// the modified text.
-    ///
-    /// # Errors
-    ///
-    /// Returns a `SyncLibError::OperationApplicationError` if the operation
-    /// cannot be applied.
-    ///
-    /// # Panics
+    /// Applies the operation to the given `StringBuilder`, returning the
+    /// modified `StringBuilder`.
     ///
     /// When compiled in debug mode, panics if a delete operation is attempted
     /// on a range of text that does not match the text to be deleted.
