@@ -2,14 +2,18 @@ use core::{
     fmt::{Debug, Display},
     ops::Range,
 };
+use std::cmp::min;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 use super::merge_context::MergeContext;
 use crate::{
+    utils::{
+        find_longest_prefix_contained_within::find_longest_prefix_contained_within,
+        string_builder::StringBuilder,
+    },
     Token,
-    utils::{find_common_overlap::find_common_overlap, string_builder::StringBuilder},
 };
 
 /// Represents a change that can be applied to a text document.
@@ -19,7 +23,7 @@ use crate::{
 #[derive(Clone, PartialEq)]
 pub enum Operation<T>
 where
-    T: PartialEq + Clone,
+    T: PartialEq + Clone + std::fmt::Debug,
 {
     Insert {
         index: usize,
@@ -37,7 +41,7 @@ where
 
 impl<T> Operation<T>
 where
-    T: PartialEq + Clone,
+    T: PartialEq + Clone + std::fmt::Debug,
 {
     /// Creates an insert operation with the given index and text.
     /// If the text is empty (meaning that the operation would be a no-op),
@@ -212,17 +216,20 @@ where
                     ..
                 }),
             ) => {
-                let offset_in_tokens = find_common_overlap(previous_inserted_text, &text);
-                let trimmed_length_in_tokens = previous_inserted_text.len() - offset_in_tokens;
-                let trimmed_length = previous_inserted_text
+                // In case the current insert's prefix appears in the previously inserted text,
+                // we can trim the current insert to only include the non-overlapping part.
+                // This way, we don't end up duplicating text.
+                let offset_in_tokens =
+                    find_longest_prefix_contained_within(previous_inserted_text, &text);
+                let offset_in_length = text
                     .iter()
-                    .skip(offset_in_tokens)
+                    .take(offset_in_tokens)
                     .map(Token::get_original_length)
                     .sum::<usize>();
                 let trimmed_operation =
-                    Operation::create_insert(index, text[trimmed_length_in_tokens..].to_vec());
+                    Operation::create_insert(index, text[offset_in_tokens..].to_vec());
 
-                affecting_context.shift -= trimmed_length as i64;
+                affecting_context.shift -= offset_in_length as i64;
                 produced_context.shift += trimmed_operation
                     .as_ref()
                     .map(Operation::len)
@@ -297,7 +304,7 @@ where
 
 impl<T> Display for Operation<T>
 where
-    T: PartialEq + Clone,
+    T: PartialEq + Clone + std::fmt::Debug,
 {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
@@ -341,7 +348,7 @@ where
 
 impl<T> Debug for Operation<T>
 where
-    T: PartialEq + Clone,
+    T: PartialEq + Clone + std::fmt::Debug,
 {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result { write!(f, "{self}") }
 }
@@ -355,11 +362,9 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_shifting_error() {
-        insta::assert_debug_snapshot!(
-            Operation::create_insert(1, vec!["hi".into()])
-                .unwrap()
-                .with_shifted_index(-2)
-        );
+        insta::assert_debug_snapshot!(Operation::create_insert(1, vec!["hi".into()])
+            .unwrap()
+            .with_shifted_index(-2));
     }
 
     #[test]

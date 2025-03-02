@@ -37,7 +37,7 @@ pub fn reconcile_with_tokenizer<F, T>(
     tokenizer: &Tokenizer<T>,
 ) -> String
 where
-    T: PartialEq + Clone,
+    T: PartialEq + Clone + std::fmt::Debug,
 {
     let left_operations = EditedText::from_strings_with_tokenizer(original, left, tokenizer);
     let right_operations = EditedText::from_strings_with_tokenizer(original, right, tokenizer);
@@ -120,9 +120,6 @@ mod test {
             "hi, my friend!",
         );
 
-        // test_merge_both_ways("hello world", "world !", "hi hello world", "hi world
-        // !");
-
         test_merge_both_ways(
             "both delete the same word",
             "both the same word",
@@ -147,7 +144,25 @@ mod test {
         );
     }
 
-    #[ignore = "it's too slow"]
+    #[test]
+    fn test_reconcile_idempotent_inserts() {
+        // Both inserted the same prefix; this should get deduped
+        test_merge_both_ways(
+            "hi ",
+            "hi there ",
+            "hi there my friend",
+            "hi there my friend",
+        );
+
+        // The prefix of the 2nd appears on the 1st so it shouldn't get duplicated
+        test_merge_both_ways(
+            "hi ",
+            "hi there you ",
+            "hi there my friend",
+            "hi there you my friend",
+        );
+    }
+
     #[test_matrix( [
         "pride_and_prejudice.txt",
         "romeo_and_juliet.txt",
