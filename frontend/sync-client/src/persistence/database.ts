@@ -6,6 +6,7 @@ export interface DocumentMetadata {
 	parentVersionId: VaultUpdateId;
 	documentId: DocumentId;
 	hash: string;
+	isDeleted: boolean;
 }
 
 import type { Logger } from "src/tracing/logger";
@@ -16,7 +17,10 @@ export interface StoredDatabase {
 }
 
 export class Database {
-	private documents = new Map<RelativePath, DocumentMetadata>();
+	private documents = new Map<
+		RelativePath,
+		DocumentMetadata | Promise<DocumentMetadata | undefined>
+	>();
 
 	private lastSeenUpdateId: VaultUpdateId | undefined;
 
@@ -43,8 +47,15 @@ export class Database {
 		);
 	}
 
-	public getDocuments(): Map<RelativePath, DocumentMetadata> {
-		return this.documents;
+	public get length(): number {
+		return this.documents.size;
+	}
+
+	public get resolvedDocuments(): [RelativePath, DocumentMetadata][] {
+		// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+		return Array.from(this.documents.entries()).filter(
+			([_, metadata]) => !(metadata instanceof Promise)
+		) as [RelativePath, DocumentMetadata][];
 	}
 
 	public getLastSeenUpdateId(): VaultUpdateId | undefined {
@@ -67,8 +78,28 @@ export class Database {
 	public getDocumentByDocumentId(
 		documentId: DocumentId
 	): [RelativePath, DocumentMetadata] | undefined {
-		return [...this.documents.entries()].find(
+		return this.resolvedDocuments.find(
 			([_, metadata]) => metadata.documentId === documentId
+		);
+	}
+
+	public getDocumentByIdentity(
+		document:
+			| DocumentMetadata
+			| Promise<DocumentMetadata | undefined>
+			| undefined
+	):
+		| [
+				RelativePath,
+				DocumentMetadata | Promise<DocumentMetadata | undefined>
+		  ]
+		| undefined {
+		if (document === undefined) {
+			return undefined;
+		}
+
+		return Array.from(this.documents.entries()).find(
+			([_, metadata]) => metadata === document
 		);
 	}
 
@@ -76,49 +107,77 @@ export class Database {
 		documentId,
 		relativePath,
 		parentVersionId,
-		hash
+		hash,
+		isDeleted
 	}: {
 		documentId: DocumentId;
 		relativePath: RelativePath;
 		parentVersionId: VaultUpdateId;
 		hash: string;
+		isDeleted: boolean;
 	}): Promise<void> {
 		this.documents.set(relativePath, {
 			documentId,
 			parentVersionId,
-			hash
+			hash,
+			isDeleted
 		});
 		await this.save();
 	}
 
-	public async removeDocument(relativePath: RelativePath): Promise<void> {
-		this.documents.delete(relativePath);
-		await this.save();
+	public async setDocumentPromise({
+		relativePath,
+		promise
+	}: {
+		relativePath: RelativePath;
+		promise: Promise<DocumentMetadata | undefined>;
+	}): Promise<void> {
+		this.documents.set(relativePath, promise);
+		// No need to save as Promises don't get serialized
+		// and a crash would only result in the document being
+		// creatied again.
+	}
+
+	public getResolvedDocument(
+		relativePath: RelativePath | undefined
+	): DocumentMetadata | undefined {
+		if (relativePath == undefined) {
+			return undefined;
+		}
+
+		const metadata = this.documents.get(relativePath);
+		if (metadata instanceof Promise) {
+			return undefined;
+		}
+
+		return metadata;
 	}
 
 	public getDocument(
-		relativePath: RelativePath
-	): DocumentMetadata | undefined {
+		relativePath: RelativePath | undefined
+	): Promise<DocumentMetadata | undefined> | DocumentMetadata | undefined {
+		if (relativePath == undefined) {
+			return undefined;
+		}
+
 		return this.documents.get(relativePath);
 	}
 
-	public async deleteDocument(relativePath: RelativePath): Promise<void> {
-		this.documents.delete(relativePath);
-		await this.save();
-	}
-
-	public async updatePath(
+	public async move(
 		oldRelativePath: RelativePath,
 		newRelativePath: RelativePath
 	): Promise<void> {
 		const document = this.documents.get(oldRelativePath);
 		if (!document) {
-			throw new Error(
-				`Cannot update physical path for document that does not exist: ${oldRelativePath}`
-			);
+			return;
 		}
 
-		if (this.documents.has(newRelativePath)) {
+		const resolvedDocument = this.getResolvedDocument(oldRelativePath);
+		if (
+			this.documents.has(newRelativePath) &&
+			resolvedDocument != undefined &&
+			resolvedDocument.isDeleted
+		) {
 			throw new Error(
 				`Cannot update physical path to path that is already in use: ${newRelativePath}`
 			);
@@ -133,16 +192,15 @@ export class Database {
 	private async save(): Promise<void> {
 		this.ensureConsistency();
 		await this.saveData({
-			documents: Object.fromEntries(this.documents.entries()),
+			documents: Object.fromEntries(this.resolvedDocuments),
 			lastSeenUpdateId: this.lastSeenUpdateId
 		});
 	}
 
 	private ensureConsistency(): void {
-		const allMetadata = Array.from(this.documents.entries());
-		const idToPath = new Map<string, Array<string>>();
+		const idToPath = new Map<string, string[]>();
 
-		allMetadata.forEach(([name, metadata]) => {
+		this.resolvedDocuments.forEach(([name, metadata]) => {
 			idToPath.set(metadata.documentId, [
 				...(idToPath.get(metadata.documentId) ?? []),
 				name

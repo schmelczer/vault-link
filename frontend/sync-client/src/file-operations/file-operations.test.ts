@@ -1,16 +1,26 @@
 import type { FileSystemOperations } from "sync-client";
-import type { Database, RelativePath } from "../persistence/database";
+import type {
+	Database,
+	DocumentMetadata,
+	RelativePath
+} from "../persistence/database";
 import { FileOperations } from "./file-operations";
 import { Logger } from "../tracing/logger";
 import { assertSetContainsExactly } from "../utils/assert-set-contains-exactly";
 
 describe("File operations", () => {
 	class MockDatabase {
-		public async updatePath(
+		public async move(
 			_oldRelativePath: RelativePath,
 			_newRelativePath: RelativePath
 		): Promise<void> {
 			// this is called but irrelevant for this mock
+		}
+
+		public getResolvedDocument(
+			_relativePath: RelativePath | undefined
+		): DocumentMetadata | undefined {
+			return undefined;
 		}
 	}
 

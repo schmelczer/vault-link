@@ -6,7 +6,10 @@ import type {
 	RelativePath
 } from "src/persistence/database";
 import { isBinary, isFileTypeMergable, mergeText } from "sync_lib";
-import { SafeFileSystemOperations } from "./safe-filesystem-operations";
+import {
+	FileNotFoundError,
+	SafeFileSystemOperations
+} from "./safe-filesystem-operations";
 
 export class FileOperations {
 	private static readonly PARENTHESES_REGEX = / \((\d+)\)$/;
@@ -17,7 +20,7 @@ export class FileOperations {
 		private readonly database: Database,
 		fs: FileSystemOperations
 	) {
-		this.fs = new SafeFileSystemOperations(fs);
+		this.fs = new SafeFileSystemOperations(fs, logger);
 	}
 
 	public async listAllFiles(): Promise<RelativePath[]> {
@@ -58,15 +61,37 @@ export class FileOperations {
 	// All parent directories are created if they don't exist.
 	public async create(
 		path: RelativePath,
-		newContent: Uint8Array
+		newContent: Uint8Array,
+		documentId?: DocumentId
 	): Promise<void> {
+		this.logger.debug(`Creating file: ${path}`);
 		if (await this.fs.exists(path)) {
 			const deconflictedPath = await this.deconflictPath(path);
 			this.logger.debug(
 				`Didn't expect ${path} to exist, deconflicting by moving it to '${deconflictedPath}'`
 			);
-			await this.database.updatePath(path, deconflictedPath);
-			await this.fs.rename(path, deconflictedPath);
+
+			const existingMetadata = this.database.getResolvedDocument(path);
+			this.logger.debug(
+				`Existing metadata for ${path}: ${JSON.stringify(existingMetadata)}`
+			);
+			if (
+				existingMetadata === undefined ||
+				existingMetadata.isDeleted ||
+				existingMetadata.documentId !== documentId ||
+				!documentId
+			) {
+				this.logger.debug(
+					`We need to save what's at ${path} to ${deconflictedPath}`
+				);
+				await this.move(path, deconflictedPath, documentId);
+				await this.database.move(path, deconflictedPath);
+			} else {
+				// This can happen if the document got moved both locally and remotely
+				// to the same file path. In this case, we shouldn't deconflict, however,
+				// we also can't overwrite otherwise we'd lose changes.
+				throw new FileNotFoundError(path);
+			}
 		} else {
 			await this.createParentDirectories(path);
 		}
@@ -126,9 +151,13 @@ export class FileOperations {
 		return new TextEncoder().encode(resultText);
 	}
 
-	public async remove(path: RelativePath): Promise<void> {
-		this.logger.debug(`Deleting file: ${path}`);
-		return this.fs.delete(path);
+	public async delete(path: RelativePath): Promise<void> {
+		if (!(await this.exists(path))) {
+			this.logger.debug(`Deleting file: ${path}`);
+			return this.fs.delete(path);
+		} else {
+			this.logger.debug(`No need to delete '${path}', it doesn't exist`);
+		}
 	}
 
 	public async move(
@@ -145,16 +174,20 @@ export class FileOperations {
 			this.logger.debug(
 				`Conflict when moving '${oldPath}' to '${newPath}', the latter already exists, deconflicting by moving it to '${deconflictedPath}'`
 			);
-
-			const existingMetadata = this.database.getDocument(newPath);
+			const existingMetadata = this.database.getResolvedDocument(newPath);
 			if (
 				existingMetadata === undefined ||
-				existingMetadata.documentId !== documentId
+				existingMetadata.isDeleted ||
+				existingMetadata.documentId !== documentId ||
+				!documentId
 			) {
-				await this.database.updatePath(newPath, deconflictedPath);
-				await this.fs.rename(newPath, deconflictedPath);
+				await this.move(newPath, deconflictedPath, documentId);
+				await this.database.move(oldPath, newPath);
 			} else {
-				await this.database.deleteDocument(newPath);
+				// This can happen if the document got moved both locally and remotely
+				// to the same file path. In this case, we shouldn't deconflict, however,
+				// we also can't overwrite otherwise we'd lose changes.
+				throw new FileNotFoundError(newPath);
 			}
 		} else {
 			await this.createParentDirectories(newPath);

@@ -10,7 +10,7 @@ use serde::Deserialize;
 
 use super::{app_state::AppState, auth::auth, requests::DeleteDocumentVersion};
 use crate::{
-    database::models::{DocumentId, StoredDocumentVersion, VaultId},
+    database::models::{DocumentId, DocumentVersionWithoutContent, StoredDocumentVersion, VaultId},
     errors::{SyncServerError, server_error},
     utils::sanitize_path,
 };
@@ -31,7 +31,7 @@ pub async fn delete_document(
     }): Path<PathParams>,
     State(state): State<AppState>,
     Json(request): Json<DeleteDocumentVersion>,
-) -> Result<(), SyncServerError> {
+) -> Result<Json<DocumentVersionWithoutContent>, SyncServerError> {
     auth(&state, auth_header.token())?;
 
     let mut transaction = state
@@ -69,5 +69,5 @@ pub async fn delete_document(
         .context("Failed to commit successful transaction")
         .map_err(server_error)?;
 
-    Ok(())
+    Ok(Json(new_version.into()))
 }

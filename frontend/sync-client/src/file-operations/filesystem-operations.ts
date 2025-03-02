@@ -13,7 +13,5 @@ export interface FileSystemOperations {
 	exists: (path: RelativePath) => Promise<boolean>;
 	createDirectory: (path: RelativePath) => Promise<void>;
 	delete: (path: RelativePath) => Promise<void>;
-
-	// Must be able to handle renaming to a file that already exists
 	rename: (oldPath: RelativePath, newPath: RelativePath) => Promise<void>;
 }

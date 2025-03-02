@@ -59,7 +59,7 @@ export class SyncService {
 		relativePath: RelativePath;
 		contentBytes: Uint8Array;
 		createdDate: Date;
-	}): Promise<components["schemas"]["DocumentUpdateResponse"]> {
+	}): Promise<components["schemas"]["DocumentVersionWithoutContent"]> {
 		const formData = new FormData();
 		formData.append("relative_path", relativePath);
 		formData.append("created_date", createdDate.toISOString());
@@ -155,7 +155,7 @@ export class SyncService {
 		documentId: DocumentId;
 		relativePath: RelativePath;
 		createdDate: Date;
-	}): Promise<void> {
+	}): Promise<components["schemas"]["DocumentVersionWithoutContent"]> {
 		const response = await this.client.DELETE(
 			"/vaults/{vault_id}/documents/{document_id}",
 			{

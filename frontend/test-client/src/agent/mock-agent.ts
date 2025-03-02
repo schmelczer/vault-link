@@ -46,27 +46,31 @@ export class MockAgent extends MockClient {
 				? "(online) "
 				: "(offline)";
 			const formatted = `[${this.name} ${state}] ${logLine.timestamp.toISOString()} ${logLine.level} ${logLine.message}`;
+
+			// HACK: we have to ensure the file has been synced if we want to change it offline without data loss
+			const historyEntry = /.*History entry: (.*.md).*/.exec(
+				logLine.message
+			);
+
+			if (historyEntry) {
+				this.doNotTouchWhileOffline =
+					this.doNotTouchWhileOffline.filter(
+						(file) => file !== historyEntry[1]
+					);
+			}
 			switch (logLine.level) {
 				case LogLevel.ERROR:
 					console.error(formatted);
+
 					// Let's not ignore errors
-					process.exit(1);
+					// eslint-disable-next-line @typescript-eslint/no-floating-promises
+					sleep(1000).then(() => process.exit(1));
+
 					break;
 				case LogLevel.WARNING:
 					console.warn(formatted);
 					break;
 				case LogLevel.INFO:
-					// HACK: we have to ensure the file has been synced if we want to change it offline without data loss
-					const result = /.*History entry: (.*.md).*/.exec(
-						logLine.message
-					);
-					if (result) {
-						this.doNotTouchWhileOffline =
-							this.doNotTouchWhileOffline.filter(
-								(file) => file !== result[1]
-							);
-					}
-
 					console.info(formatted);
 					break;
 				case LogLevel.DEBUG:
@@ -79,16 +83,17 @@ export class MockAgent extends MockClient {
 	}
 
 	public async act(): Promise<void> {
+		this.assertAllContentIsPresentOnce();
+
 		const options: (() => Promise<unknown>)[] = [
 			this.createFileAction.bind(this),
 			this.changeFetchChangesUpdateIntervalMsAction.bind(this)
 		];
 
-		if (
-			this.client.settings.getSettings().isSyncEnabled &&
-			this.doNotTouchWhileOffline.length === 0
-		) {
-			options.push(this.disableSyncAction.bind(this));
+		if (this.client.settings.getSettings().isSyncEnabled) {
+			if (this.doNotTouchWhileOffline.length === 0) {
+				options.push(this.disableSyncAction.bind(this));
+			}
 		} else {
 			options.push(this.enableSyncAction.bind(this));
 		}

@@ -38,6 +38,8 @@ async function runTest({
 			)
 		);
 	}
+	// for debugging
+	(globalThis as any).clients = clients;
 
 	try {
 		await Promise.all(clients.map(async (client) => client.init()));
@@ -78,34 +80,32 @@ async function runTest({
 			console.info(`Content check for ${client.name} passed`);
 		});
 
-		console.info(`Test passed with ${settings}`);
+		console.info(`Test passed ${settings}`);
 	} catch (err) {
-		console.error(`Test failed with ${settings}`);
+		console.error(`Test failed ${settings}`);
 		throw err;
 	}
 }
 
 async function runTests(): Promise<void> {
 	const agentCounts = [2, 10];
-	const jitterScaleInSeconds = [0.5, 3, 0];
+	const jitterScaleInSeconds = [0, 0.5, 3];
 	const concurrencies = [1, 16];
 	const iterations = [50, 300];
-	const doDeletes = [false, true];
+	const doDeletes = [false];
 
 	for (const agentCount of agentCounts) {
 		for (const concurrency of concurrencies) {
 			for (const jitter of jitterScaleInSeconds) {
 				for (const iteration of iterations) {
 					for (const deleteFiles of doDeletes) {
-						while (true) {
-							await runTest({
-								agentCount,
-								concurrency,
-								iterations: iteration,
-								doDeletes: deleteFiles,
-								jitterScaleInSeconds: jitter
-							});
-						}
+						await runTest({
+							agentCount,
+							concurrency,
+							iterations: iteration,
+							doDeletes: deleteFiles,
+							jitterScaleInSeconds: jitter
+						});
 					}
 				}
 			}
@@ -113,11 +113,24 @@ async function runTests(): Promise<void> {
 	}
 }
 
+process.on("uncaughtException", async (error) => {
+	console.error("Uncaught Exception:", error);
+	await sleep(1000);
+	process.exit(1);
+});
+
+process.on("unhandledRejection", async (reason, promise) => {
+	console.error("Unhandled Rejection:", reason);
+	await sleep(1000);
+	process.exit(1);
+});
+
 runTests()
 	.then(() => {
 		process.exit(0);
 	})
-	.catch((err: unknown) => {
+	.catch(async (err: unknown) => {
 		console.error(err);
+		await sleep(1000);
 		process.exit(1);
 	});

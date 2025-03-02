@@ -42,7 +42,7 @@ export class SyncClient {
 	}
 
 	public get documentCount(): number {
-		return this._database.getDocuments().size;
+		return this._database.length;
 	}
 
 	public set fetchImplementation(fetch: typeof globalThis.fetch) {

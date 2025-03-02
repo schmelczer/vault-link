@@ -138,6 +138,18 @@ async fn internal_update_document(
             Ok,
         )?;
 
+    if latest_version.is_deleted {
+        transaction
+            .rollback()
+            .await
+            .context("Failed to roll back transaction")
+            .map_err(server_error)?;
+
+        return Ok(Json(DocumentUpdateResponse::FastForwardUpdate(
+            latest_version.into(),
+        )));
+    }
+
     let sanitized_relative_path = sanitize_path(&relative_path);
 
     // Return the latest version if the content and path are the same as the latest
@@ -195,7 +207,7 @@ async fn internal_update_document(
         content: merged_content,
         created_date,
         updated_date: chrono::Utc::now(),
-        is_deleted: latest_version.is_deleted,
+        is_deleted: false,
     };
 
     state
