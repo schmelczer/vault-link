@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone)]
 pub struct Token<T>
 where
-    T: PartialEq + Clone,
+    T: PartialEq + Clone + std::fmt::Debug,
 {
     normalised: T,
     original: String,
@@ -25,7 +25,7 @@ impl From<&str> for Token<String> {
 
 impl<T> Token<T>
 where
-    T: PartialEq + Clone,
+    T: PartialEq + Clone + std::fmt::Debug,
 {
     pub fn new(normalised: T, original: String) -> Self {
         Token {
@@ -43,7 +43,7 @@ where
 
 impl<T> PartialEq for Token<T>
 where
-    T: PartialEq + Clone,
+    T: PartialEq + Clone + std::fmt::Debug,
 {
     fn eq(&self, other: &Self) -> bool { self.normalised == other.normalised }
 }
