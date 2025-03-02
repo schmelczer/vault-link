@@ -2,18 +2,18 @@ use core::{
     fmt::{Debug, Display},
     ops::Range,
 };
-use std::cmp::min;
+use std::hash::{DefaultHasher, Hash, Hasher};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 use super::merge_context::MergeContext;
 use crate::{
+    Token,
     utils::{
         find_longest_prefix_contained_within::find_longest_prefix_contained_within,
         string_builder::StringBuilder,
     },
-    Token,
 };
 
 /// Represents a change that can be applied to a text document.
@@ -37,6 +37,28 @@ where
         #[cfg(debug_assertions)]
         deleted_text: Option<String>,
     },
+}
+
+impl<T> Hash for Operation<T>
+where
+    T: PartialEq + Clone + std::fmt::Debug,
+{
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            Operation::Insert { index, text } => {
+                index.hash(state);
+                text.iter().for_each(|token| token.original().hash(state));
+            }
+            Operation::Delete {
+                index,
+                deleted_character_count,
+                ..
+            } => {
+                index.hash(state);
+                deleted_character_count.hash(state);
+            }
+        };
+    }
 }
 
 impl<T> Operation<T>
@@ -300,6 +322,13 @@ where
             }
         }
     }
+
+    /// Gets the hash of the operation based on the indexes and original text.
+    pub fn get_hash(&self) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        self.hash(&mut hasher);
+        hasher.finish()
+    }
 }
 
 impl<T> Display for Operation<T>
@@ -362,9 +391,11 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_shifting_error() {
-        insta::assert_debug_snapshot!(Operation::create_insert(1, vec!["hi".into()])
-            .unwrap()
-            .with_shifted_index(-2));
+        insta::assert_debug_snapshot!(
+            Operation::create_insert(1, vec!["hi".into()])
+                .unwrap()
+                .with_shifted_index(-2)
+        );
     }
 
     #[test]

@@ -25,7 +25,7 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct EditedText<'a, T>
 where
-    T: PartialEq + Clone,
+    T: PartialEq + Clone + std::fmt::Debug,
 {
     text: &'a str,
     operations: Vec<OrderedOperation<T>>,
@@ -46,7 +46,7 @@ impl<'a> EditedText<'a, String> {
 
 impl<'a, T> EditedText<'a, T>
 where
-    T: PartialEq + Clone,
+    T: PartialEq + Clone + std::fmt::Debug,
 {
     /// Create an `EditedText` from the given original (old) and updated (new)
     /// strings. The returned `EditedText` represents the changes from the
@@ -207,9 +207,12 @@ where
                     |(operation, _)| {
                         (
                             operation.order,
-                            // Operations on left and right must come in the same order so that
+                            // Operations on the left and right must come in the same order so that
                             // inserts can be merged with other inserts and deletes with deletes.
                             usize::from(matches!(operation.operation, Operation::Delete { .. })),
+                            // Make sure that the ordering is deterministic regardless which text
+                            // is left or right.
+                            operation.operation.get_hash(),
                         )
                     },
                 )
@@ -282,7 +285,7 @@ mod tests {
         let original = "hello world! ...";
         let left = "Hello world! I'm Andras.";
         let right = "Hello world! How are you?";
-        let expected = "Hello world! I'm Andras.How are you?";
+        let expected = "Hello world! How are you?I'm Andras.";
 
         let operations_1 = EditedText::from_strings(original, left);
         let operations_2 = EditedText::from_strings(original, right);

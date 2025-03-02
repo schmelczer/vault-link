@@ -150,16 +150,16 @@ mod test {
         test_merge_both_ways(
             "hi ",
             "hi there ",
-            "hi there my friend",
-            "hi there my friend",
+            "hi there my friend ",
+            "hi there my friend ",
         );
 
         // The prefix of the 2nd appears on the 1st so it shouldn't get duplicated
         test_merge_both_ways(
             "hi ",
             "hi there you ",
-            "hi there my friend",
-            "hi there you my friend",
+            "hi there my friend ",
+            "hi there you my friend ",
         );
     }
 
