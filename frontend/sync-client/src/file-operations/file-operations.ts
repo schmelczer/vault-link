@@ -71,27 +71,30 @@ export class FileOperations {
 				`Didn't expect ${path} to exist, deconflicting by moving it to '${deconflictedPath}'`
 			);
 
-			const existingMetadata = this.database.getResolvedDocument(path);
+			const document = this.database.getDocumentByRelativePath(path);
 			this.logger.debug(
-				`Existing metadata for ${path}: ${JSON.stringify(existingMetadata)}`
+				`Existing metadata for ${path}: ${JSON.stringify(document?.metadata)}`
 			);
+
+			this.logger.debug(
+				`We need to save what's at ${path} to ${deconflictedPath}`
+			);
+
 			if (
-				existingMetadata === undefined ||
-				existingMetadata.isDeleted ||
-				existingMetadata.documentId !== documentId ||
-				!documentId
+				document?.metadata !== undefined &&
+				document.metadata.documentId === documentId
 			) {
-				this.logger.debug(
-					`We need to save what's at ${path} to ${deconflictedPath}`
-				);
-				await this.move(path, deconflictedPath, documentId);
-				await this.database.move(path, deconflictedPath);
-			} else {
 				// This can happen if the document got moved both locally and remotely
 				// to the same file path. In this case, we shouldn't deconflict, however,
 				// we also can't overwrite otherwise we'd lose changes.
 				throw new FileNotFoundError(path);
 			}
+
+			this.logger.debug(
+				`We need to save what's at ${path} to ${deconflictedPath}`
+			);
+			await this.move(path, deconflictedPath, documentId);
+			// this.database.move(path, deconflictedPath);
 		} else {
 			await this.createParentDirectories(path);
 		}
@@ -135,7 +138,7 @@ export class FileOperations {
 				currentText = currentText.replace(/\r\n/g, "\n");
 				if (currentText !== expectedText) {
 					this.logger.debug(
-						`Performing a 3-way merge for ${path} with the expected content`
+						`Performing a 3-way merge for ${path} with the expected content:\n${expectedText}`
 					);
 
 					return mergeText(expectedText, currentText, newText);
@@ -174,21 +177,21 @@ export class FileOperations {
 			this.logger.debug(
 				`Conflict when moving '${oldPath}' to '${newPath}', the latter already exists, deconflicting by moving it to '${deconflictedPath}'`
 			);
-			const existingMetadata = this.database.getResolvedDocument(newPath);
+
+			const document = this.database.getDocumentByRelativePath(newPath);
+
 			if (
-				existingMetadata === undefined ||
-				existingMetadata.isDeleted ||
-				existingMetadata.documentId !== documentId ||
-				!documentId
+				document?.metadata !== undefined &&
+				document.metadata.documentId === documentId
 			) {
-				await this.move(newPath, deconflictedPath, documentId);
-				await this.database.move(oldPath, newPath);
-			} else {
 				// This can happen if the document got moved both locally and remotely
 				// to the same file path. In this case, we shouldn't deconflict, however,
 				// we also can't overwrite otherwise we'd lose changes.
 				throw new FileNotFoundError(newPath);
 			}
+
+			await this.move(newPath, deconflictedPath, documentId);
+			// this.database.move(oldPath, newPath);
 		} else {
 			await this.createParentDirectories(newPath);
 		}

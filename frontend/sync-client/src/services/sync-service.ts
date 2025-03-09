@@ -109,6 +109,9 @@ export class SyncService {
 		contentBytes: Uint8Array;
 		createdDate: Date;
 	}): Promise<components["schemas"]["DocumentUpdateResponse"]> {
+		this.logger.debug(
+			`Updating document ${documentId} with parent version ${parentVersionId} & ${new TextDecoder().decode(contentBytes)} & ${relativePath}`
+		);
 		const formData = new FormData();
 		formData.append("parent_version_id", parentVersionId.toString());
 		formData.append("created_date", createdDate.toISOString());

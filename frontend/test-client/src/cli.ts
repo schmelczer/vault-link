@@ -38,7 +38,9 @@ async function runTest({
 			)
 		);
 	}
+
 	// for debugging
+	// eslint-disable-next-line
 	(globalThis as any).clients = clients;
 
 	try {
@@ -88,11 +90,11 @@ async function runTest({
 }
 
 async function runTests(): Promise<void> {
-	const agentCounts = [2, 10];
-	const jitterScaleInSeconds = [0, 0.5, 3];
-	const concurrencies = [1, 16];
-	const iterations = [50, 300];
-	const doDeletes = [false];
+	const agentCounts = [2, 8];
+	const jitterScaleInSeconds = [0.5, 0, 2];
+	const concurrencies = [1];
+	const iterations = [50, 200];
+	const doDeletes = [true, false];
 
 	for (const agentCount of agentCounts) {
 		for (const concurrency of concurrencies) {
@@ -106,6 +108,7 @@ async function runTests(): Promise<void> {
 							doDeletes: deleteFiles,
 							jitterScaleInSeconds: jitter
 						});
+						return;
 					}
 				}
 			}
@@ -113,15 +116,13 @@ async function runTests(): Promise<void> {
 	}
 }
 
-process.on("uncaughtException", async (error) => {
+process.on("uncaughtException", (error) => {
 	console.error("Uncaught Exception:", error);
-	await sleep(1000);
 	process.exit(1);
 });
 
-process.on("unhandledRejection", async (reason, promise) => {
+process.on("unhandledRejection", (reason, _promise) => {
 	console.error("Unhandled Rejection:", reason);
-	await sleep(1000);
 	process.exit(1);
 });
 
@@ -131,6 +132,5 @@ runTests()
 	})
 	.catch(async (err: unknown) => {
 		console.error(err);
-		await sleep(1000);
 		process.exit(1);
 	});

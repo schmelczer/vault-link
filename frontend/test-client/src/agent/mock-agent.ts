@@ -64,7 +64,7 @@ export class MockAgent extends MockClient {
 
 					// Let's not ignore errors
 					// eslint-disable-next-line @typescript-eslint/no-floating-promises
-					sleep(1000).then(() => process.exit(1));
+					sleep(100).then(() => process.exit(1));
 
 					break;
 				case LogLevel.WARNING:

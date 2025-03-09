@@ -1,3 +1,5 @@
+import type { Logger } from "../tracing/logger";
+
 export type VaultUpdateId = number;
 export type DocumentId = string;
 export type RelativePath = string;
@@ -8,20 +10,28 @@ export interface DocumentMetadata {
 	hash: string;
 	isDeleted: boolean;
 }
-
-import type { Logger } from "src/tracing/logger";
+export interface StoredDocumentMetadata {
+	relativePath: RelativePath;
+	parentVersionId: VaultUpdateId;
+	documentId: DocumentId;
+	hash: string;
+	isDeleted: boolean;
+}
 
 export interface StoredDatabase {
-	documents: Record<RelativePath, DocumentMetadata>;
+	documents: StoredDocumentMetadata[];
 	lastSeenUpdateId: VaultUpdateId | undefined;
 }
 
-export class Database {
-	private documents = new Map<
-		RelativePath,
-		DocumentMetadata | Promise<DocumentMetadata | undefined>
-	>();
+export interface DocumentRecord {
+	identity: symbol;
+	relativePath: RelativePath;
+	metadata: DocumentMetadata | undefined;
+	updates: Promise<void>[];
+}
 
+export class Database {
+	private documents: DocumentRecord[];
 	private lastSeenUpdateId: VaultUpdateId | undefined;
 
 	public constructor(
@@ -30,16 +40,17 @@ export class Database {
 		private readonly saveData: (data: StoredDatabase) => Promise<void>
 	) {
 		initialState ??= {};
-		if (initialState.documents) {
-			for (const [relativePath, metadata] of Object.entries(
-				initialState.documents
-			)) {
-				this.documents.set(relativePath, metadata);
-			}
-		}
-		this.ensureConsistency();
 
-		this.logger.debug(`Loaded ${this.documents.size} documents`);
+		this.documents =
+			initialState.documents?.map(({ relativePath, ...metadata }) => ({
+				relativePath,
+				identity: Symbol(),
+				metadata,
+				updates: []
+			})) ?? [];
+
+		this.ensureConsistency();
+		this.logger.debug(`Loaded ${this.documents.length} documents`);
 
 		this.lastSeenUpdateId = initialState.lastSeenUpdateId;
 		this.logger.debug(
@@ -48,62 +59,29 @@ export class Database {
 	}
 
 	public get length(): number {
-		return this.documents.size;
+		return this.documents.length;
 	}
 
-	public get resolvedDocuments(): [RelativePath, DocumentMetadata][] {
-		// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-		return Array.from(this.documents.entries()).filter(
-			([_, metadata]) => !(metadata instanceof Promise)
-		) as [RelativePath, DocumentMetadata][];
+	public get resolvedDocuments(): DocumentRecord[] {
+		return this.documents.filter(({ metadata }) => metadata !== undefined);
 	}
 
 	public getLastSeenUpdateId(): VaultUpdateId | undefined {
 		return this.lastSeenUpdateId;
 	}
 
-	public async setLastSeenUpdateId(
-		value: VaultUpdateId | undefined
-	): Promise<void> {
+	public setLastSeenUpdateId(value: VaultUpdateId | undefined): void {
 		this.lastSeenUpdateId = value;
-		await this.save();
+		this.save();
 	}
 
-	public async resetSyncState(): Promise<void> {
-		this.documents = new Map();
+	public resetSyncState(): void {
+		this.documents = [];
 		this.lastSeenUpdateId = 0;
-		await this.save();
+		this.save();
 	}
 
-	public getDocumentByDocumentId(
-		documentId: DocumentId
-	): [RelativePath, DocumentMetadata] | undefined {
-		return this.resolvedDocuments.find(
-			([_, metadata]) => metadata.documentId === documentId
-		);
-	}
-
-	public getDocumentByIdentity(
-		document:
-			| DocumentMetadata
-			| Promise<DocumentMetadata | undefined>
-			| undefined
-	):
-		| [
-				RelativePath,
-				DocumentMetadata | Promise<DocumentMetadata | undefined>
-		  ]
-		| undefined {
-		if (document === undefined) {
-			return undefined;
-		}
-
-		return Array.from(this.documents.entries()).find(
-			([_, metadata]) => metadata === document
-		);
-	}
-
-	public async setDocument({
+	public setDocument({
 		documentId,
 		relativePath,
 		parentVersionId,
@@ -115,84 +93,142 @@ export class Database {
 		parentVersionId: VaultUpdateId;
 		hash: string;
 		isDeleted: boolean;
-	}): Promise<void> {
-		this.documents.set(relativePath, {
-			documentId,
-			parentVersionId,
-			hash,
-			isDeleted
-		});
-		await this.save();
-	}
+	}): void {
+		const entry = this.getDocumentByRelativePath(relativePath);
 
-	public async setDocumentPromise({
-		relativePath,
-		promise
-	}: {
-		relativePath: RelativePath;
-		promise: Promise<DocumentMetadata | undefined>;
-	}): Promise<void> {
-		this.documents.set(relativePath, promise);
-		// No need to save as Promises don't get serialized
-		// and a crash would only result in the document being
-		// creatied again.
-	}
-
-	public getResolvedDocument(
-		relativePath: RelativePath | undefined
-	): DocumentMetadata | undefined {
-		if (relativePath == undefined) {
-			return undefined;
-		}
-
-		const metadata = this.documents.get(relativePath);
-		if (metadata instanceof Promise) {
-			return undefined;
-		}
-
-		return metadata;
-	}
-
-	public getDocument(
-		relativePath: RelativePath | undefined
-	): Promise<DocumentMetadata | undefined> | DocumentMetadata | undefined {
-		if (relativePath == undefined) {
-			return undefined;
-		}
-
-		return this.documents.get(relativePath);
-	}
-
-	public async move(
-		oldRelativePath: RelativePath,
-		newRelativePath: RelativePath
-	): Promise<void> {
-		const document = this.documents.get(oldRelativePath);
-		if (!document) {
-			return;
-		}
-
-		const resolvedDocument = this.getResolvedDocument(oldRelativePath);
-		if (
-			this.documents.has(newRelativePath) &&
-			resolvedDocument != undefined &&
-			resolvedDocument.isDeleted
-		) {
-			throw new Error(
-				`Cannot update physical path to path that is already in use: ${newRelativePath}`
+		if (entry !== undefined) {
+			this.documents = this.documents.filter(
+				({ identity }) => identity !== entry.identity
 			);
 		}
 
-		this.documents.delete(oldRelativePath);
-		this.documents.set(newRelativePath, document);
+		this.documents.push({
+			// `entry` might be undefined if the document is new
+			identity: entry?.identity ?? Symbol(),
+			relativePath,
+			metadata: {
+				documentId,
+				parentVersionId,
+				hash,
+				isDeleted
+			},
+			updates: entry?.updates ?? []
+		});
 
-		await this.save();
+		this.save();
 	}
 
-	private async save(): Promise<void> {
+	public removeDocumentPromise(promise: Promise<void>): void {
+		const entry = this.getDocumentByUpdatePromise(promise);
+		entry.updates = entry.updates.filter((update) => update !== promise);
+		// No need to save as Promises don't get serialized
+	}
+
+	public getDocumentByRelativePath(
+		find: RelativePath
+	): DocumentRecord | undefined {
+		return this.documents.find(({ relativePath }) => relativePath === find);
+	}
+
+	public async getResolvedDocumentByRelativePath(
+		relativePath: RelativePath,
+		promise: Promise<void>
+	): Promise<DocumentRecord> {
+		let entry = this.getDocumentByRelativePath(relativePath);
+
+		if (entry === undefined) {
+			entry = {
+				relativePath,
+				identity: Symbol(),
+				metadata: undefined,
+				updates: []
+			};
+
+			this.documents.push(entry);
+		}
+
+		const currentPromises = entry.updates;
+		entry.updates = [...currentPromises, promise];
+		await Promise.all(currentPromises);
+
+		// Refetch the document as it might have been updated
+		return this.getDocumentByIdentity(entry.identity);
+	}
+
+	public getDocumentByUpdatePromise(promise: Promise<void>): DocumentRecord {
+		const result = this.documents.find(({ updates }) =>
+			updates.includes(promise)
+		);
+
+		if (result === undefined) {
+			throw new Error("Document not found by update promise");
+		}
+
+		return result;
+	}
+
+	public getDocumentByDocumentId(
+		documentId: DocumentId
+	): DocumentRecord | undefined {
+		return this.documents.find(
+			({ metadata }) => metadata?.documentId === documentId
+		);
+	}
+
+	public getDocumentByIdentity(find: symbol): DocumentRecord {
+		const result = this.documents.find(({ identity }) => identity === find);
+
+		if (result === undefined) {
+			throw new Error("Document not found by identity symbol");
+		}
+
+		return result;
+	}
+
+	public move(
+		oldRelativePath: RelativePath,
+		newRelativePath: RelativePath
+	): void {
+		const oldDocument = this.getDocumentByRelativePath(oldRelativePath);
+		if (oldDocument === undefined) {
+			throw new Error(
+				`Document to be moved not found: ${oldRelativePath}`
+			);
+		}
+
+		const newDocument = this.getDocumentByRelativePath(newRelativePath);
+		if (
+			newDocument !== undefined &&
+			newDocument.metadata?.isDeleted === false
+		) {
+			throw new Error(
+				`Cannot move document to existing path: ${newRelativePath}`
+			);
+		}
+
+		this.documents = this.documents.filter(
+			({ identity }) =>
+				identity !== oldDocument.identity &&
+				identity !== newDocument?.identity
+		);
+
+		this.documents.push({
+			...oldDocument,
+			relativePath: newRelativePath
+		});
+
+		this.save();
+	}
+
+	private save(): void {
 		this.ensureConsistency();
-		await this.saveData({
-			documents: Object.fromEntries(this.resolvedDocuments),
+		void this.saveData({
+			documents: this.resolvedDocuments.map(
+				({ relativePath, metadata }) => ({
+					relativePath,
+					...metadata
+				})
+			) as StoredDocumentMetadata[],
 			lastSeenUpdateId: this.lastSeenUpdateId
 		});
 	}
@@ -200,12 +236,16 @@ export class Database {
 	private ensureConsistency(): void {
 		const idToPath = new Map<string, string[]>();
 
-		this.resolvedDocuments.forEach(([name, metadata]) => {
-			idToPath.set(metadata.documentId, [
-				...(idToPath.get(metadata.documentId) ?? []),
-				name
-			]);
-		});
+		this.resolvedDocuments
+			.filter(({ metadata }) => metadata !== undefined)
+			.forEach(({ metadata, relativePath }) => {
+				// eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+				idToPath.set(metadata!.documentId, [
+					// eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+					...(idToPath.get(metadata!.documentId) ?? []),
+					relativePath
+				]);
+			});
 
 		const duplicates = Array.from(idToPath.entries())
 			.filter(([_, paths]) => paths.length > 1)

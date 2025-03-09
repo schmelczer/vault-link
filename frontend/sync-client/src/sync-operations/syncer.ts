@@ -12,9 +12,10 @@ import { hash } from "src/utils/hash";
 import type { components } from "src/services/types";
 import type { Settings } from "src/persistence/settings";
 import type { FileOperations } from "src/file-operations/file-operations";
-import { findMatchingFileBasedOnHash } from "src/utils/find-matching-file-based-on-hash";
+import { findMatchingFile } from "src/utils/find-matching-file";
 import { UnrestrictedSyncer } from "./unrestricted-syncer";
 import { FileNotFoundError } from "src/file-operations/safe-filesystem-operations";
+import { createPromise } from "src/utils/create-promise";
 
 export class Syncer {
 	private readonly remainingOperationsListeners: ((
@@ -74,9 +75,10 @@ export class Syncer {
 				logger.debug(
 					`File has been deleted or moved before we had a chance to inspect it, skipping`
 				);
-			} else {
-				throw e;
+				return undefined;
 			}
+
+			throw e;
 		}
 	}
 
@@ -88,77 +90,95 @@ export class Syncer {
 
 	public async syncLocallyCreatedFile(
 		relativePath: RelativePath,
-		updateTime: Date
+		updateTime?: Date
 	): Promise<void> {
-		let resolve:
-			| undefined
-			| ((metadata: DocumentMetadata | undefined) => void) = undefined;
+		const [promise, resolve, reject] = createPromise();
 
-		const creationPromise = new Promise<DocumentMetadata | undefined>(
-			(r) => (resolve = r)
+		// Most likely, we're waiting for the previous delete to finish on the file at this path
+		const document = await this.database.getResolvedDocumentByRelativePath(
+			relativePath,
+			promise
 		);
 
-		await this.database.setDocumentPromise({
-			relativePath,
-			promise: creationPromise
-		});
-
-		await this.syncQueue.add(async () => {
-			// eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-			resolve!(
-				await this.internalSyncer.unrestrictedSyncLocallyCreatedFile(
-					relativePath,
+		try {
+			await this.syncQueue.add(async () =>
+				this.internalSyncer.unrestrictedSyncLocallyCreatedFile(
+					() =>
+						this.database.getDocumentByIdentity(document.identity),
 					updateTime
 				)
 			);
-		});
+
+			resolve();
+		} catch (e) {
+			reject(e);
+		} finally {
+			this.database.removeDocumentPromise(promise);
+		}
 	}
 
 	public async syncLocallyDeletedFile(
 		relativePath: RelativePath
 	): Promise<void> {
-		let metadata = this.database.getDocument(relativePath);
-		if (metadata !== undefined && !(metadata instanceof Promise)) {
-			metadata = Promise.resolve(metadata);
-		}
+		const [promise, resolve, reject] = createPromise();
 
-		await this.syncQueue.add(async () =>
-			this.internalSyncer.unrestrictedSyncLocallyDeletedFile(
-				relativePath,
-				metadata
-			)
+		const document = await this.database.getResolvedDocumentByRelativePath(
+			relativePath,
+			promise
 		);
+
+		try {
+			await this.syncQueue.add(async () =>
+				this.internalSyncer.unrestrictedSyncLocallyDeletedFile(() =>
+					this.database.getDocumentByIdentity(document.identity)
+				)
+			);
+
+			resolve();
+		} catch (e) {
+			reject(e);
+		} finally {
+			this.database.removeDocumentPromise(promise);
+		}
 	}
 
 	public async syncLocallyUpdatedFile(args: {
 		oldPath?: RelativePath;
 		relativePath: RelativePath;
-		updateTime: Date;
+		updateTime?: Date;
 	}): Promise<void> {
-		if (args.oldPath === args.relativePath) {
-			throw new Error(
-				`Old path and new path are the same: ${args.oldPath}`
-			);
-		}
-
 		if (args.oldPath !== undefined) {
-			await this.database.move(args.oldPath, args.relativePath);
+			if (args.oldPath === args.relativePath) {
+				throw new Error(
+					`Old path and new path are the same: ${args.oldPath}`
+				);
+			}
+
+			this.database.move(args.oldPath, args.relativePath);
 		}
 
-		let metadata = this.database.getDocument(args.relativePath);
-		if (metadata !== undefined && !(metadata instanceof Promise)) {
-			metadata = Promise.resolve(metadata);
-		}
-		await this.syncQueue.add(async () =>
-			this.internalSyncer.unrestrictedSyncLocallyUpdatedFile({
-				...args,
-				metadata
-			})
+		const [promise, resolve, reject] = createPromise();
+
+		const metadata = await this.database.getResolvedDocumentByRelativePath(
+			args.relativePath,
+			promise
 		);
-	}
 
-	public async waitForSyncQueue(): Promise<void> {
-		return this.syncQueue.onEmpty();
+		try {
+			await this.syncQueue.add(async () =>
+				this.internalSyncer.unrestrictedSyncLocallyUpdatedFile({
+					...args,
+					getLatestDocument: () =>
+						this.database.getDocumentByIdentity(metadata.identity)
+				})
+			);
+
+			resolve();
+		} catch (e) {
+			reject(e);
+		} finally {
+			this.database.removeDocumentPromise(promise);
+		}
 	}
 
 	public async scheduleSyncForOfflineChanges(): Promise<void> {
@@ -217,6 +237,10 @@ export class Syncer {
 		}
 	}
 
+	public async waitForSyncQueue(): Promise<void> {
+		return this.syncQueue.onEmpty();
+	}
+
 	public async reset(): Promise<void> {
 		this.syncQueue.clear();
 		await this.syncQueue.onEmpty();
@@ -229,53 +253,67 @@ export class Syncer {
 	private async syncRemotelyUpdatedFile(
 		remoteVersion: components["schemas"]["DocumentVersionWithoutContent"]
 	): Promise<void> {
-		await this.syncQueue.add(async () =>
-			this.internalSyncer.unrestrictedSyncRemotelyUpdatedFile(
-				remoteVersion
-			)
+		let document = this.database.getDocumentByDocumentId(
+			remoteVersion.documentId
 		);
+
+		if (document === undefined) {
+			await this.syncQueue.add(async () =>
+				this.internalSyncer.unrestrictedSyncRemotelyUpdatedFile(
+					remoteVersion
+				)
+			);
+
+			return;
+		}
+
+		const [promise, resolve, reject] = createPromise();
+
+		document = await this.database.getResolvedDocumentByRelativePath(
+			document.relativePath,
+			promise
+		);
+
+		try {
+			await this.syncQueue.add(async () =>
+				this.internalSyncer.unrestrictedSyncRemotelyUpdatedFile(
+					remoteVersion,
+					() => this.database.getDocumentByIdentity(document.identity)
+				)
+			);
+
+			resolve();
+		} catch (e) {
+			reject(e);
+		} finally {
+			this.database.removeDocumentPromise(promise);
+		}
 	}
 
 	private async internalScheduleSyncForOfflineChanges(): Promise<void> {
 		const allLocalFiles = await this.operations.listAllFiles();
 
-		// This includes renamed files for now
 		let locallyPossiblyDeletedFiles = [
 			...this.database.resolvedDocuments
-		].filter(([path, _]) => !allLocalFiles.includes(path));
+		].filter(({ relativePath }) => !allLocalFiles.includes(relativePath));
 
 		const updates = Promise.all(
-			allLocalFiles.map(async (relativePath) =>
-				this.syncQueue.add(async () => {
-					const metadata =
-						this.database.getResolvedDocument(relativePath);
+			allLocalFiles.map(async (relativePath) => {
+				if (
+					this.database.getDocumentByRelativePath(relativePath)
+						?.metadata !== undefined
+				) {
+					this.logger.debug(
+						`Document ${relativePath} might have been updated locally, scheduling sync to validate and update it`
+					);
 
-					if (metadata) {
-						this.logger.debug(
-							`Document ${relativePath} might have been updated locally, scheduling sync to validate and update it`
-						);
-						const updateTime =
-							await Syncer.forgivingFileNotFoundWrapper(
-								async () =>
-									this.operations.getModificationTime(
-										relativePath
-									),
-								this.logger
-							);
-						if (updateTime === undefined) {
-							return;
-						}
+					return this.syncLocallyUpdatedFile({
+						relativePath
+					});
+				}
 
-						return this.internalSyncer.unrestrictedSyncLocallyUpdatedFile(
-							{
-								relativePath,
-								updateTime,
-								metadata: Promise.resolve(metadata)
-							}
-						);
-					}
-
-					// Perhaps the file has been moved. Let's check by looking at the deleted files
+				// Perhaps the file has been moved; let's check by looking at the deleted files
+				const contentHash = await this.syncQueue.add(async () => {
 					const contentBytes =
 						await Syncer.forgivingFileNotFoundWrapper(
 							async () => this.operations.read(relativePath),
@@ -284,89 +322,50 @@ export class Syncer {
 					if (contentBytes === undefined) {
 						return;
 					}
+					return hash(contentBytes);
+				});
 
-					const contentHash = hash(contentBytes);
+				if (contentHash == undefined) {
+					// The file was deleted before we had a chance to read it, no need to sync it here
+					return;
+				}
 
-					// todo: make this smarter so that offline files can be renamed & edited at the same time
-					const originalFile = findMatchingFileBasedOnHash(
-						contentHash,
-						locallyPossiblyDeletedFiles
-					);
-					if (originalFile !== undefined) {
-						// `originalFile` hasn't been deleted but it got moved instead
-						locallyPossiblyDeletedFiles =
-							locallyPossiblyDeletedFiles.filter(
-								(item) => item[0] !== originalFile[0]
-							);
-
-						this.logger.debug(
-							`Document '${originalFile[0]}' was not found under its current path in the database but was found under a different path (${relativePath}), scheduling sync to move it`
+				const originalFile = findMatchingFile(
+					contentHash,
+					locallyPossiblyDeletedFiles
+				);
+				if (originalFile !== undefined) {
+					// `originalFile` hasn't been deleted but it got moved instead
+					locallyPossiblyDeletedFiles =
+						locallyPossiblyDeletedFiles.filter(
+							(item) =>
+								item.relativePath !== originalFile.relativePath
 						);
-
-						const updateTime =
-							await Syncer.forgivingFileNotFoundWrapper(
-								async () =>
-									this.operations.getModificationTime(
-										relativePath
-									),
-								this.logger
-							);
-						if (updateTime === undefined) {
-							return;
-						}
-
-						return this.internalSyncer.unrestrictedSyncLocallyUpdatedFile(
-							{
-								oldPath: originalFile[0],
-								relativePath,
-								updateTime,
-								metadata: Promise.resolve(
-									this.database.getResolvedDocument(
-										relativePath
-									)
-								),
-								optimisations: {
-									contentBytes,
-									contentHash
-								}
-							}
-						);
-					}
 
 					this.logger.debug(
-						`Document ${relativePath} not found in database, scheduling sync to create it`
+						`Document '${originalFile.relativePath}' was not found under its current path in the database but was found under a different path (${relativePath}), scheduling sync to move it`
 					);
-					const updateTime =
-						await Syncer.forgivingFileNotFoundWrapper(
-							async () =>
-								this.operations.getModificationTime(
-									relativePath
-								),
-							this.logger
-						);
-					if (updateTime === undefined) {
-						return;
-					}
-					return this.internalSyncer.unrestrictedSyncLocallyCreatedFile(
-						relativePath,
-						updateTime
-					);
-				})
-			)
+
+					// We're outside of the pqueue, so we need to call the public wrapper
+					return this.syncLocallyUpdatedFile({
+						oldPath: originalFile.relativePath,
+						relativePath
+					});
+				}
+
+				this.logger.debug(
+					`Document ${relativePath} not found in database, scheduling sync to create it`
+				);
+				// We're outside of the pqueue, so we need to call the public wrapper
+				return this.syncLocallyCreatedFile(relativePath);
+			})
 		);
 
 		const deletes = Promise.all(
-			locallyPossiblyDeletedFiles.map(async ([relativePath, _]) => {
+			locallyPossiblyDeletedFiles.map(async ({ relativePath }) => {
 				this.logger.debug(
 					`Document ${relativePath} has been deleted locally, scheduling sync to delete it`
 				);
-
-				if (await this.operations.exists(relativePath)) {
-					this.logger.debug(
-						`Document ${relativePath} actually exists locally, skipping`
-					);
-					return Promise.resolve();
-				}
 
 				// We're outside of the pqueue, so we need to call the public wrapper
 				return this.syncLocallyDeletedFile(relativePath);
@@ -389,15 +388,7 @@ export class Syncer {
 		this.logger.info("Applying remote changes locally");
 
 		await Promise.all(
-			remote.latestDocuments
-				.filter(
-					(remoteDocument) =>
-						remoteDocument.vaultUpdateId >
-						(this.database.getDocumentByDocumentId(
-							remoteDocument.documentId
-						)?.[1].parentVersionId ?? -1)
-				)
-				.map(this.syncRemotelyUpdatedFile.bind(this))
+			remote.latestDocuments.map(this.syncRemotelyUpdatedFile.bind(this))
 		);
 
 		const lastSeenUpdateId = this.database.getLastSeenUpdateId();
@@ -405,7 +396,7 @@ export class Syncer {
 			lastSeenUpdateId === undefined ||
 			remote.lastUpdateId > lastSeenUpdateId
 		) {
-			await this.database.setLastSeenUpdateId(remote.lastUpdateId);
+			this.database.setLastSeenUpdateId(remote.lastUpdateId);
 		}
 	}
 

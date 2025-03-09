@@ -148,7 +148,7 @@ export class SyncClient {
 		this.stop();
 		await this._syncer.reset();
 		this._history.reset();
-		await this._database.resetSyncState();
+		this._database.resetSyncState();
 		this.logger.reset();
 	}
 
