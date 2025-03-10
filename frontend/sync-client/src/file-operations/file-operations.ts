@@ -71,13 +71,10 @@ export class FileOperations {
 				`Didn't expect ${path} to exist, deconflicting by moving it to '${deconflictedPath}'`
 			);
 
-			const document = this.database.getDocumentByRelativePath(path);
+			const document =
+				this.database.getLatestDocumentByRelativePath(path);
 			this.logger.debug(
 				`Existing metadata for ${path}: ${JSON.stringify(document?.metadata)}`
-			);
-
-			this.logger.debug(
-				`We need to save what's at ${path} to ${deconflictedPath}`
 			);
 
 			if (
@@ -94,7 +91,6 @@ export class FileOperations {
 				`We need to save what's at ${path} to ${deconflictedPath}`
 			);
 			await this.move(path, deconflictedPath, documentId);
-			// this.database.move(path, deconflictedPath);
 		} else {
 			await this.createParentDirectories(path);
 		}
@@ -178,7 +174,8 @@ export class FileOperations {
 				`Conflict when moving '${oldPath}' to '${newPath}', the latter already exists, deconflicting by moving it to '${deconflictedPath}'`
 			);
 
-			const document = this.database.getDocumentByRelativePath(newPath);
+			const document =
+				this.database.getLatestDocumentByRelativePath(newPath);
 
 			if (
 				document?.metadata !== undefined &&

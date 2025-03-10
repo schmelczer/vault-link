@@ -1,6 +1,5 @@
 import type {
 	Database,
-	DocumentMetadata,
 	DocumentRecord,
 	RelativePath
 } from "../persistence/database";
@@ -61,7 +60,7 @@ export class UnrestrictedSyncer {
 					createdDate: updateTime
 				});
 
-				const { relativePath: currentRelativePath } =
+				const { relativePath: currentRelativePath, identity } =
 					getLatestDocument();
 
 				this.history.addHistoryEntry({
@@ -80,7 +79,7 @@ export class UnrestrictedSyncer {
 					isDeleted: false
 				};
 
-				this.database.setDocument(newMetadata);
+				this.database.setDocument(newMetadata, identity);
 
 				this.tryIncrementVaultUpdateId(response.vaultUpdateId);
 			}
@@ -101,7 +100,7 @@ export class UnrestrictedSyncer {
 					document.metadata.isDeleted
 				) {
 					this.logger.debug(
-						`Document ${document.relativePath} has been already deleted, no need to delete it again`
+						`Document '${document.relativePath}' has been already deleted, no need to delete it again`
 					);
 					return;
 				}
@@ -124,13 +123,16 @@ export class UnrestrictedSyncer {
 
 				// We have to have a record of the delete in case there's an in-flight update for the same
 				// document which finishes after the delete has succeeded and would introduce a phantom metadata record.
-				this.database.setDocument({
-					relativePath: document.relativePath,
-					documentId: response.documentId,
-					parentVersionId: response.vaultUpdateId,
-					hash: EMPTY_HASH,
-					isDeleted: true
-				});
+				this.database.setDocument(
+					{
+						relativePath: document.relativePath,
+						documentId: response.documentId,
+						parentVersionId: response.vaultUpdateId,
+						hash: EMPTY_HASH,
+						isDeleted: true
+					},
+					document.identity
+				);
 			}
 		);
 	}
@@ -222,13 +224,16 @@ export class UnrestrictedSyncer {
 						type: SyncType.DELETE
 					});
 
-					this.database.setDocument({
-						documentId: response.documentId,
-						relativePath: document.relativePath,
-						parentVersionId: response.vaultUpdateId,
-						hash: EMPTY_HASH,
-						isDeleted: true
-					});
+					this.database.setDocument(
+						{
+							documentId: response.documentId,
+							relativePath: document.relativePath,
+							parentVersionId: response.vaultUpdateId,
+							hash: EMPTY_HASH,
+							isDeleted: true
+						},
+						document.identity
+					);
 
 					this.tryIncrementVaultUpdateId(response.vaultUpdateId);
 
@@ -262,16 +267,19 @@ export class UnrestrictedSyncer {
 					});
 				}
 
-				this.database.setDocument({
-					documentId: response.documentId,
-					relativePath:
-						response.relativePath != document.relativePath
-							? response.relativePath
-							: document.relativePath,
-					parentVersionId: response.vaultUpdateId,
-					hash: contentHash,
-					isDeleted: response.isDeleted
-				});
+				this.database.setDocument(
+					{
+						documentId: response.documentId,
+						relativePath:
+							response.relativePath != document.relativePath
+								? response.relativePath
+								: document.relativePath,
+						parentVersionId: response.vaultUpdateId,
+						hash: contentHash,
+						isDeleted: response.isDeleted
+					},
+					document.identity
+				);
 
 				this.tryIncrementVaultUpdateId(response.vaultUpdateId);
 			}
@@ -293,10 +301,7 @@ export class UnrestrictedSyncer {
 						remoteVersion.documentId
 					);
 
-				if (
-					localMetadata?.metadata !== undefined &&
-					!localMetadata.metadata.isDeleted
-				) {
+				if (localMetadata?.metadata !== undefined) {
 					// If the file exists locally, let's pretend the user has updated it
 					// and deal with remote update/deletion within `unrestrictedSyncLocallyUpdatedFile`
 					if (
@@ -315,6 +320,11 @@ export class UnrestrictedSyncer {
 								localMetadata.identity
 							)
 					});
+				} else if (remoteVersion.isDeleted) {
+					this.logger.debug(
+						`Document ${remoteVersion.relativePath} has been deleted remotely, no need to sync`
+					);
+					return;
 				}
 
 				const content = (
@@ -330,13 +340,22 @@ export class UnrestrictedSyncer {
 					remoteVersion.documentId
 				);
 
-				this.database.setDocument({
-					documentId: remoteVersion.documentId,
-					relativePath: remoteVersion.relativePath,
-					parentVersionId: remoteVersion.vaultUpdateId,
-					hash: hash(contentBytes),
-					isDeleted: remoteVersion.isDeleted
-				});
+				this.database.setDocument(
+					{
+						documentId: remoteVersion.documentId,
+						relativePath: remoteVersion.relativePath,
+						parentVersionId: remoteVersion.vaultUpdateId,
+						hash: hash(contentBytes),
+						isDeleted: remoteVersion.isDeleted
+					},
+					getLatestDocument?.()?.identity ??
+						this.database.getDocumentByDocumentId(
+							remoteVersion.documentId
+						)?.identity ??
+						this.database.getLatestDocumentByRelativePath(
+							remoteVersion.relativePath
+						)?.identity
+				);
 
 				this.history.addHistoryEntry({
 					status: SyncStatus.SUCCESS,
@@ -359,7 +378,7 @@ export class UnrestrictedSyncer {
 
 		if (!this.settings.getSettings().isSyncEnabled) {
 			this.logger.info(
-				`Syncing is disabled, not syncing ${relativePath}`
+				`Syncing is disabled, not syncing '${relativePath}'`
 			);
 			return;
 		}

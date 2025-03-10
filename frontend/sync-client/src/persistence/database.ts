@@ -10,6 +10,7 @@ export interface DocumentMetadata {
 	hash: string;
 	isDeleted: boolean;
 }
+
 export interface StoredDocumentMetadata {
 	relativePath: RelativePath;
 	parentVersionId: VaultUpdateId;
@@ -25,6 +26,7 @@ export interface StoredDatabase {
 
 export interface DocumentRecord {
 	identity: symbol;
+	parallelVersion: number;
 	relativePath: RelativePath;
 	metadata: DocumentMetadata | undefined;
 	updates: Promise<void>[];
@@ -46,7 +48,8 @@ export class Database {
 				relativePath,
 				identity: Symbol(),
 				metadata,
-				updates: []
+				updates: [],
+				parallelVersion: 0
 			})) ?? [];
 
 		this.ensureConsistency();
@@ -63,7 +66,38 @@ export class Database {
 	}
 
 	public get resolvedDocuments(): DocumentRecord[] {
-		return this.documents.filter(({ metadata }) => metadata !== undefined);
+		const paths = new Map<string, DocumentRecord[]>();
+		this.documents
+			.filter(
+				({ metadata }) => metadata !== undefined && !metadata.isDeleted
+			)
+			.forEach((record) =>
+				paths.set(record.relativePath, [
+					record,
+					...(paths.get(record.relativePath) ?? [])
+				])
+			);
+
+		return Array.from(paths.values()).map((records) => {
+			records.sort(
+				(a, b) => b.parallelVersion - a.parallelVersion // descending
+			);
+
+			if (
+				records.length > 1 &&
+				records.some((current, i) =>
+					i === 0
+						? false
+						: records[i - 1].parallelVersion ===
+							current.parallelVersion
+				)
+			) {
+				throw new Error(
+					`Multiple documents with the same parallel version and path at ${records[0].relativePath}`
+				);
+			}
+			return records[0];
+		});
 	}
 
 	public getLastSeenUpdateId(): VaultUpdateId | undefined {
@@ -81,25 +115,53 @@ export class Database {
 		this.save();
 	}
 
-	public setDocument({
-		documentId,
-		relativePath,
-		parentVersionId,
-		hash,
-		isDeleted
-	}: {
-		documentId: DocumentId;
-		relativePath: RelativePath;
-		parentVersionId: VaultUpdateId;
-		hash: string;
-		isDeleted: boolean;
-	}): void {
-		const entry = this.getDocumentByRelativePath(relativePath);
+	public setDocument(
+		{
+			documentId,
+			relativePath,
+			parentVersionId,
+			hash,
+			isDeleted
+		}: {
+			documentId: DocumentId;
+			relativePath: RelativePath;
+			parentVersionId: VaultUpdateId;
+			hash: string;
+			isDeleted: boolean;
+		},
+		identity?: symbol
+	): void {
+		let entry: DocumentRecord | undefined;
+		if (identity !== undefined) {
+			entry = this.getDocumentByIdentity(identity);
 
-		if (entry !== undefined) {
-			this.documents = this.documents.filter(
-				({ identity }) => identity !== entry.identity
-			);
+			if (entry !== undefined) {
+				this.documents = this.documents.filter(
+					({ identity }) => identity !== entry!.identity
+				);
+			}
+		} else {
+			entry = this.getLatestDocumentByRelativePath(relativePath);
+			if (
+				entry?.metadata?.documentId !== undefined &&
+				entry.metadata.documentId !== documentId
+			) {
+				this.documents.push({
+					// `entry` might be undefined if the document is new
+					identity: Symbol(),
+					relativePath,
+					metadata: {
+						documentId,
+						parentVersionId,
+						hash,
+						isDeleted
+					},
+					updates: [],
+					parallelVersion: entry?.parallelVersion + 1
+				});
+			}
+			this.save();
+			return;
 		}
 
 		this.documents.push({
@@ -112,7 +174,8 @@ export class Database {
 				hash,
 				isDeleted
 			},
-			updates: entry?.updates ?? []
+			updates: entry?.updates ?? [],
+			parallelVersion: entry?.parallelVersion ?? 0
 		});
 
 		this.save();
@@ -124,24 +187,29 @@ export class Database {
 		// No need to save as Promises don't get serialized
 	}
 
-	public getDocumentByRelativePath(
+	public getLatestDocumentByRelativePath(
 		find: RelativePath
 	): DocumentRecord | undefined {
-		return this.documents.find(({ relativePath }) => relativePath === find);
+		const candidates = this.documents.filter(
+			({ relativePath }) => relativePath === find
+		);
+		candidates.sort((a, b) => b.parallelVersion - a.parallelVersion); // descending
+		return candidates[0];
 	}
 
 	public async getResolvedDocumentByRelativePath(
 		relativePath: RelativePath,
 		promise: Promise<void>
-	): Promise<DocumentRecord> {
-		let entry = this.getDocumentByRelativePath(relativePath);
+	): Promise<void> {
+		let entry = this.getLatestDocumentByRelativePath(relativePath);
 
 		if (entry === undefined) {
 			entry = {
 				relativePath,
 				identity: Symbol(),
 				metadata: undefined,
-				updates: []
+				updates: [],
+				parallelVersion: 0
 			};
 
 			this.documents.push(entry);
@@ -150,9 +218,6 @@ export class Database {
 		const currentPromises = entry.updates;
 		entry.updates = [...currentPromises, promise];
 		await Promise.all(currentPromises);
-
-		// Refetch the document as it might have been updated
-		return this.getDocumentByIdentity(entry.identity);
 	}
 
 	public getDocumentByUpdatePromise(promise: Promise<void>): DocumentRecord {
@@ -189,38 +254,40 @@ export class Database {
 		oldRelativePath: RelativePath,
 		newRelativePath: RelativePath
 	): void {
-		const oldDocument = this.getDocumentByRelativePath(oldRelativePath);
+		const oldDocument =
+			this.getLatestDocumentByRelativePath(oldRelativePath);
 		if (oldDocument === undefined) {
+			return;
 			throw new Error(
 				`Document to be moved not found: ${oldRelativePath}`
 			);
 		}
 
-		const newDocument = this.getDocumentByRelativePath(newRelativePath);
-		if (
-			newDocument !== undefined &&
-			newDocument.metadata?.isDeleted === false
-		) {
-			throw new Error(
-				`Cannot move document to existing path: ${newRelativePath}`
-			);
-		}
-
 		this.documents = this.documents.filter(
-			({ identity }) =>
-				identity !== oldDocument.identity &&
-				identity !== newDocument?.identity
+			({ identity }) => identity !== oldDocument.identity
 		);
 
+		let newDocument = this.getLatestDocumentByRelativePath(newRelativePath);
+
+		// It's either an invalid state of newDocument is pending deletion and we have to wait for it to complete
 		this.documents.push({
-			...oldDocument,
-			relativePath: newRelativePath
+			identity: oldDocument.identity,
+			metadata: oldDocument.metadata,
+			relativePath: newRelativePath,
+			updates: oldDocument.updates,
+			// We're in a strange state where the target of the move has just got deleted,
+			// however, its metadata might already have a bunch of updates queued up for
+			// the document at the new location. We need to keep these updates.
+			parallelVersion:
+				newDocument !== undefined ? newDocument.parallelVersion + 1 : 0
 		});
 
 		this.save();
 	}
 
 	private save(): void {
+		this.logger.debug(JSON.stringify(this.documents, null, 2));
+
 		this.ensureConsistency();
 		void this.saveData({
 			documents: this.resolvedDocuments.map(

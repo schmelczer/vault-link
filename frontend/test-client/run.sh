@@ -16,7 +16,7 @@ npm run build
 
 pids=()
 for i in $(seq 1 $process_count); do
-    node dist/cli.js 2>&1 | tee "log_${i}.log" &
+    node dist/cli.js 2>&1 > "log_${i}.log" &
     pids+=($!)
 done
 

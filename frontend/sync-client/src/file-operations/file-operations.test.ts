@@ -1,7 +1,6 @@
 import type { FileSystemOperations } from "sync-client";
 import type {
 	Database,
-	DocumentMetadata,
 	DocumentRecord,
 	RelativePath
 } from "../persistence/database";
@@ -11,14 +10,7 @@ import { assertSetContainsExactly } from "../utils/assert-set-contains-exactly";
 
 describe("File operations", () => {
 	class MockDatabase {
-		public move(
-			_oldRelativePath: RelativePath,
-			_newRelativePath: RelativePath
-		): void {
-			// this is called but irrelevant for this mock
-		}
-
-		public getDocumentByRelativePath(
+		public getLatestDocumentByRelativePath(
 			_find: RelativePath
 		): DocumentRecord | undefined {
 			return undefined;

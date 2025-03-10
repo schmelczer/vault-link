@@ -1,9 +1,4 @@
-import type {
-	Database,
-	DocumentMetadata,
-	RelativePath
-} from "../persistence/database";
-
+import type { Database, RelativePath } from "../persistence/database";
 import type { SyncService } from "src/services/sync-service";
 import type { Logger } from "src/tracing/logger";
 import type { SyncHistory } from "src/tracing/sync-history";
@@ -24,10 +19,8 @@ export class Syncer {
 
 	private readonly syncQueue: PQueue;
 
-	private runningScheduleSyncForOfflineChanges: Promise<void> | undefined =
-		undefined;
-	private runningApplyRemoteChangesLocally: Promise<void> | undefined =
-		undefined;
+	private runningScheduleSyncForOfflineChanges: Promise<void> | undefined;
+	private runningApplyRemoteChangesLocally: Promise<void> | undefined;
 
 	private readonly internalSyncer: UnrestrictedSyncer;
 
@@ -92,10 +85,17 @@ export class Syncer {
 		relativePath: RelativePath,
 		updateTime?: Date
 	): Promise<void> {
+		if (!this.settings.getSettings().isSyncEnabled) {
+			this.logger.info(
+				`Syncing is disabled, not syncing '${relativePath}'`
+			);
+			return;
+		}
+
 		const [promise, resolve, reject] = createPromise();
 
 		// Most likely, we're waiting for the previous delete to finish on the file at this path
-		const document = await this.database.getResolvedDocumentByRelativePath(
+		await this.database.getResolvedDocumentByRelativePath(
 			relativePath,
 			promise
 		);
@@ -103,8 +103,7 @@ export class Syncer {
 		try {
 			await this.syncQueue.add(async () =>
 				this.internalSyncer.unrestrictedSyncLocallyCreatedFile(
-					() =>
-						this.database.getDocumentByIdentity(document.identity),
+					() => this.database.getDocumentByUpdatePromise(promise),
 					updateTime
 				)
 			);
@@ -120,18 +119,29 @@ export class Syncer {
 	public async syncLocallyDeletedFile(
 		relativePath: RelativePath
 	): Promise<void> {
+		if (!this.settings.getSettings().isSyncEnabled) {
+			this.logger.info(
+				`Syncing is disabled, not syncing '${relativePath}'`
+			);
+			return;
+		}
+
 		const [promise, resolve, reject] = createPromise();
 
-		const document = await this.database.getResolvedDocumentByRelativePath(
+		await this.database.getResolvedDocumentByRelativePath(
 			relativePath,
 			promise
 		);
 
 		try {
 			await this.syncQueue.add(async () =>
-				this.internalSyncer.unrestrictedSyncLocallyDeletedFile(() =>
-					this.database.getDocumentByIdentity(document.identity)
-				)
+				this.internalSyncer.unrestrictedSyncLocallyDeletedFile(() => {
+					this.logger.debug(
+						`aaaahg ${relativePath} has been deleted locally, syncing to delete it`
+					);
+
+					return this.database.getDocumentByUpdatePromise(promise);
+				})
 			);
 
 			resolve();
@@ -142,34 +152,46 @@ export class Syncer {
 		}
 	}
 
-	public async syncLocallyUpdatedFile(args: {
+	public async syncLocallyUpdatedFile({
+		oldPath,
+		relativePath,
+		updateTime
+	}: {
 		oldPath?: RelativePath;
 		relativePath: RelativePath;
 		updateTime?: Date;
 	}): Promise<void> {
-		if (args.oldPath !== undefined) {
-			if (args.oldPath === args.relativePath) {
-				throw new Error(
-					`Old path and new path are the same: ${args.oldPath}`
-				);
-			}
-
-			this.database.move(args.oldPath, args.relativePath);
+		if (!this.settings.getSettings().isSyncEnabled) {
+			this.logger.info(
+				`Syncing is disabled, not syncing '${relativePath}'`
+			);
+			return;
 		}
 
 		const [promise, resolve, reject] = createPromise();
 
-		const metadata = await this.database.getResolvedDocumentByRelativePath(
-			args.relativePath,
+		if (oldPath !== undefined) {
+			if (oldPath === relativePath) {
+				throw new Error(
+					`Old path and new path are the same: ${oldPath}`
+				);
+			}
+
+			this.database.move(oldPath, relativePath);
+		}
+
+		await this.database.getResolvedDocumentByRelativePath(
+			relativePath,
 			promise
 		);
 
 		try {
 			await this.syncQueue.add(async () =>
 				this.internalSyncer.unrestrictedSyncLocallyUpdatedFile({
-					...args,
+					oldPath,
+					updateTime,
 					getLatestDocument: () =>
-						this.database.getDocumentByIdentity(metadata.identity)
+						this.database.getDocumentByUpdatePromise(promise)
 				})
 			);
 
@@ -189,7 +211,7 @@ export class Syncer {
 			return;
 		}
 
-		if (this.runningScheduleSyncForOfflineChanges != null) {
+		if (this.runningScheduleSyncForOfflineChanges !== undefined) {
 			this.logger.debug("Uploading local changes is already in progress");
 			return this.runningScheduleSyncForOfflineChanges;
 		}
@@ -244,9 +266,7 @@ export class Syncer {
 	public async reset(): Promise<void> {
 		this.syncQueue.clear();
 		await this.syncQueue.onEmpty();
-		this.remainingOperationsListeners.forEach((listener) => {
-			listener(0);
-		});
+		this.remainingOperationsListeners.forEach((listener) => listener(0));
 		this.internalSyncer.reset();
 	}
 
@@ -256,6 +276,15 @@ export class Syncer {
 		let document = this.database.getDocumentByDocumentId(
 			remoteVersion.documentId
 		);
+
+		if (document === undefined) {
+			const candidate = this.database.getLatestDocumentByRelativePath(
+				remoteVersion.relativePath
+			);
+			if (candidate !== undefined && candidate.metadata === undefined) {
+				document = candidate;
+			}
+		}
 
 		if (document === undefined) {
 			await this.syncQueue.add(async () =>
@@ -269,7 +298,7 @@ export class Syncer {
 
 		const [promise, resolve, reject] = createPromise();
 
-		document = await this.database.getResolvedDocumentByRelativePath(
+		await this.database.getResolvedDocumentByRelativePath(
 			document.relativePath,
 			promise
 		);
@@ -278,7 +307,7 @@ export class Syncer {
 			await this.syncQueue.add(async () =>
 				this.internalSyncer.unrestrictedSyncRemotelyUpdatedFile(
 					remoteVersion,
-					() => this.database.getDocumentByIdentity(document.identity)
+					() => this.database.getDocumentByUpdatePromise(promise)
 				)
 			);
 
@@ -300,7 +329,7 @@ export class Syncer {
 		const updates = Promise.all(
 			allLocalFiles.map(async (relativePath) => {
 				if (
-					this.database.getDocumentByRelativePath(relativePath)
+					this.database.getLatestDocumentByRelativePath(relativePath)
 						?.metadata !== undefined
 				) {
 					this.logger.debug(
