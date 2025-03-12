@@ -126,6 +126,8 @@ export class Syncer {
 			return;
 		}
 
+		this.database.delete(relativePath);
+
 		const [promise, resolve, reject] = createPromise();
 
 		await this.database.getResolvedDocumentByRelativePath(

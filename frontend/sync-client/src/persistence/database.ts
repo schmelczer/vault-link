@@ -8,7 +8,6 @@ export interface DocumentMetadata {
 	parentVersionId: VaultUpdateId;
 	documentId: DocumentId;
 	hash: string;
-	isDeleted: boolean;
 }
 
 export interface StoredDocumentMetadata {
@@ -16,7 +15,6 @@ export interface StoredDocumentMetadata {
 	parentVersionId: VaultUpdateId;
 	documentId: DocumentId;
 	hash: string;
-	isDeleted: boolean;
 }
 
 export interface StoredDatabase {
@@ -26,10 +24,11 @@ export interface StoredDatabase {
 
 export interface DocumentRecord {
 	identity: symbol;
-	parallelVersion: number;
 	relativePath: RelativePath;
 	metadata: DocumentMetadata | undefined;
+	isDeleted: boolean;
 	updates: Promise<void>[];
+	parallelVersion: number;
 }
 
 export class Database {
@@ -48,6 +47,7 @@ export class Database {
 				relativePath,
 				identity: Symbol(),
 				metadata,
+				isDeleted: false,
 				updates: [],
 				parallelVersion: 0
 			})) ?? [];
@@ -68,9 +68,7 @@ export class Database {
 	public get resolvedDocuments(): DocumentRecord[] {
 		const paths = new Map<string, DocumentRecord[]>();
 		this.documents
-			.filter(
-				({ metadata }) => metadata !== undefined && !metadata.isDeleted
-			)
+			.filter(({ metadata }) => metadata !== undefined)
 			.forEach((record) =>
 				paths.set(record.relativePath, [
 					record,
@@ -120,62 +118,70 @@ export class Database {
 			documentId,
 			relativePath,
 			parentVersionId,
-			hash,
-			isDeleted
+			hash
 		}: {
 			documentId: DocumentId;
 			relativePath: RelativePath;
 			parentVersionId: VaultUpdateId;
 			hash: string;
-			isDeleted: boolean;
 		},
 		identity?: symbol
 	): void {
 		let entry: DocumentRecord | undefined;
 		if (identity !== undefined) {
-			entry = this.getDocumentByIdentity(identity);
+			const entry = this.getDocumentByIdentity(identity);
 
-			if (entry !== undefined) {
-				this.documents = this.documents.filter(
-					({ identity }) => identity !== entry!.identity
-				);
-			}
-		} else {
-			entry = this.getLatestDocumentByRelativePath(relativePath);
-			if (
-				entry?.metadata?.documentId !== undefined &&
-				entry.metadata.documentId !== documentId
-			) {
-				this.documents.push({
-					// `entry` might be undefined if the document is new
-					identity: Symbol(),
-					relativePath,
-					metadata: {
-						documentId,
-						parentVersionId,
-						hash,
-						isDeleted
-					},
-					updates: [],
-					parallelVersion: entry?.parallelVersion + 1
-				});
-			}
+			this.documents = this.documents.filter(
+				({ identity }) => identity !== entry.identity
+			);
+
+			this.documents.push({
+				...entry,
+				relativePath,
+				metadata: {
+					documentId,
+					parentVersionId,
+					hash
+				}
+			});
+
+			this.save();
+			return;
+		}
+
+		// We find a match based on relative path and we find one with a different document id
+		// meaning that two documents occupy the same path in terms of in-flight requests so we
+		// need to create a new parallel version.
+		entry = this.getLatestDocumentByRelativePath(relativePath);
+		if (entry && entry.metadata?.documentId !== documentId) {
+			this.documents.push({
+				// `entry` might be undefined if the document is new
+				identity: Symbol(),
+				relativePath,
+				metadata: {
+					documentId,
+					parentVersionId,
+					hash
+				},
+				isDeleted: false,
+				updates: [],
+				parallelVersion: entry.parallelVersion + 1
+			});
 			this.save();
 			return;
 		}
 
 		this.documents.push({
-			// `entry` might be undefined if the document is new
-			identity: entry?.identity ?? Symbol(),
+			identity: Symbol(),
 			relativePath,
 			metadata: {
 				documentId,
 				parentVersionId,
-				hash,
-				isDeleted
+				hash
 			},
-			updates: entry?.updates ?? [],
-			parallelVersion: entry?.parallelVersion ?? 0
+			isDeleted: false,
+			updates: [],
+			parallelVersion: 0
 		});
 
 		this.save();
@@ -208,6 +214,7 @@ export class Database {
 				relativePath,
 				identity: Symbol(),
 				metadata: undefined,
+				isDeleted: false,
 				updates: [],
 				parallelVersion: 0
 			};
@@ -257,10 +264,9 @@ export class Database {
 		const oldDocument =
 			this.getLatestDocumentByRelativePath(oldRelativePath);
 		if (oldDocument === undefined) {
+			// We can try moving a non-existent document if it hasn't yet got created becasue it's
+			// the result of an offline event while this move happens online before.
 			return;
-			throw new Error(
-				`Document to be moved not found: ${oldRelativePath}`
-			);
 		}
 
 		this.documents = this.documents.filter(
@@ -274,6 +280,7 @@ export class Database {
 			identity: oldDocument.identity,
 			metadata: oldDocument.metadata,
 			relativePath: newRelativePath,
+			isDeleted: oldDocument.isDeleted,
 			updates: oldDocument.updates,
 			// We're in a strange state where the target of the move has just got deleted,
 			// however, its metadata might already have a bunch of updates queued up for
@@ -283,6 +290,15 @@ export class Database {
 		});
 
 		this.save();
+	}
+
+	public delete(relativePath: RelativePath): void {
+		const candidate = this.getLatestDocumentByRelativePath(relativePath);
+		if (candidate === undefined) {
+			// it's fine because the document to be deleted might not have been created yet
+			return;
+		}
+		candidate.isDeleted = true;
 	}
 
 	private save(): void {

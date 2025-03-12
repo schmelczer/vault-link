@@ -41,6 +41,8 @@ print_failed_log() {
     return 1
 }
 
+echo "Monitoring $process_count processes"
+
 # Monitor processes
 while true; do
     if print_failed_log; then

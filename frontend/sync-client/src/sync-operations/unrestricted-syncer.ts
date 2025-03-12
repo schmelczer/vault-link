@@ -34,52 +34,57 @@ export class UnrestrictedSyncer {
 		getLatestDocument: () => DocumentRecord,
 		updateTime?: Date
 	): Promise<void> {
-		const { relativePath, metadata } = getLatestDocument();
+		let latestDocument = getLatestDocument();
 
 		return this.executeSync(
-			[relativePath],
+			[latestDocument.relativePath],
 			SyncType.CREATE,
 			SyncSource.PUSH,
 			async () => {
-				if (metadata !== undefined && !metadata.isDeleted) {
+				if (
+					latestDocument.metadata !== undefined &&
+					!latestDocument.isDeleted
+				) {
 					this.logger.debug(
-						`Document ${relativePath} already exists in the database, no need to create it again`
+						`Document ${latestDocument.relativePath} already exists in the database, no need to create it again`
 					);
 					return;
 				}
 
-				const contentBytes = await this.operations.read(relativePath); // this can throw FileNotFoundError
+				const contentBytes = await this.operations.read(
+					latestDocument.relativePath
+				); // this can throw FileNotFoundError
 				const contentHash = hash(contentBytes);
 
-				updateTime ??=
-					await this.operations.getModificationTime(relativePath); // this can throw FileNotFoundError
+				updateTime ??= await this.operations.getModificationTime(
+					latestDocument.relativePath
+				); // this can throw FileNotFoundError
 
 				const response = await this.syncService.create({
-					relativePath,
+					relativePath: latestDocument.relativePath,
 					contentBytes,
 					createdDate: updateTime
 				});
 
-				const { relativePath: currentRelativePath, identity } =
-					getLatestDocument();
+				latestDocument = getLatestDocument();
 
 				this.history.addHistoryEntry({
 					status: SyncStatus.SUCCESS,
 					source: SyncSource.PUSH,
-					relativePath,
+					relativePath: latestDocument.relativePath,
 					message: `Successfully uploaded locally created file`,
 					type: SyncType.CREATE
 				});
 
 				const newMetadata = {
-					relativePath: currentRelativePath,
+					relativePath: latestDocument.relativePath,
 					documentId: response.documentId,
 					parentVersionId: response.vaultUpdateId,
 					hash: contentHash,
 					isDeleted: false
 				};
 
-				this.database.setDocument(newMetadata, identity);
+				this.database.setDocument(newMetadata, latestDocument.identity);
 
 				this.tryIncrementVaultUpdateId(response.vaultUpdateId);
 			}
@@ -95,12 +100,9 @@ export class UnrestrictedSyncer {
 			SyncType.DELETE,
 			SyncSource.PUSH,
 			async () => {
-				if (
-					document.metadata === undefined ||
-					document.metadata.isDeleted
-				) {
+				if (document.metadata === undefined) {
 					this.logger.debug(
-						`Document '${document.relativePath}' has been already deleted, no need to delete it again`
+						`Document '${document.relativePath}' has been created yet so deleting it remotely can be skipped`
 					);
 					return;
 				}
@@ -128,8 +130,7 @@ export class UnrestrictedSyncer {
 						relativePath: document.relativePath,
 						documentId: response.documentId,
 						parentVersionId: response.vaultUpdateId,
-						hash: EMPTY_HASH,
-						isDeleted: true
+						hash: EMPTY_HASH
 					},
 					document.identity
 				);
@@ -155,12 +156,9 @@ export class UnrestrictedSyncer {
 			SyncType.UPDATE,
 			SyncSource.PUSH,
 			async () => {
-				if (
-					document.metadata === undefined ||
-					document.metadata.isDeleted
-				) {
+				if (document.metadata === undefined || document.isDeleted) {
 					this.logger.debug(
-						`Document ${document.relativePath} has been already deleted, no need to update it, ${JSON.stringify(document)}, ${document.metadata?.isDeleted}`
+						`Document ${document.relativePath} has been already deleted, no need to update it`
 					);
 					return;
 				}
@@ -192,6 +190,22 @@ export class UnrestrictedSyncer {
 					createdDate: updateTime
 				});
 
+				// Update relativePath which is the only property that can change while this is running (due to a move)
+				document = getLatestDocument();
+
+				if (document.isDeleted) {
+					this.logger.info(
+						`Document ${document.relativePath} has been deleted before we could finish updating it`
+					);
+					return;
+				}
+
+				if (!document.metadata) {
+					throw new Error(
+						`Document ${document.relativePath} no longer has metadata after updating it`
+					);
+				}
+
 				if (
 					document.metadata.parentVersionId >= response.vaultUpdateId
 				) {
@@ -209,9 +223,6 @@ export class UnrestrictedSyncer {
 					type: SyncType.UPDATE
 				});
 
-				// Update relativePath which is the only property that can change while this is running (due to a move)
-				document = getLatestDocument();
-
 				if (response.isDeleted) {
 					await this.operations.delete(document.relativePath);
 
@@ -224,13 +235,13 @@ export class UnrestrictedSyncer {
 						type: SyncType.DELETE
 					});
 
+					this.database.delete(document.relativePath);
 					this.database.setDocument(
 						{
 							documentId: response.documentId,
 							relativePath: document.relativePath,
 							parentVersionId: response.vaultUpdateId,
-							hash: EMPTY_HASH,
-							isDeleted: true
+							hash: EMPTY_HASH
 						},
 						document.identity
 					);
@@ -267,6 +278,8 @@ export class UnrestrictedSyncer {
 					});
 				}
 
+				document = getLatestDocument();
+
 				this.database.setDocument(
 					{
 						documentId: response.documentId,
@@ -275,8 +288,7 @@ export class UnrestrictedSyncer {
 								? response.relativePath
 								: document.relativePath,
 						parentVersionId: response.vaultUpdateId,
-						hash: contentHash,
-						isDeleted: response.isDeleted
+						hash: contentHash
 					},
 					document.identity
 				);
@@ -321,6 +333,8 @@ export class UnrestrictedSyncer {
 							)
 					});
 				} else if (remoteVersion.isDeleted) {
+					// Either the doc hasn't made it to us before and therefore we don't need to delete it,
+					// or we already have it, in which case the preceeding if will deal with it
 					this.logger.debug(
 						`Document ${remoteVersion.relativePath} has been deleted remotely, no need to sync`
 					);
@@ -332,6 +346,20 @@ export class UnrestrictedSyncer {
 						documentId: remoteVersion.documentId
 					})
 				).contentBase64;
+
+				const latestDocument =
+					getLatestDocument?.() ??
+					this.database.getDocumentByDocumentId(
+						remoteVersion.documentId
+					);
+
+				if (latestDocument?.isDeleted) {
+					this.logger.info(
+						`Document ${remoteVersion.relativePath} has been deleted locally before we could finish updating it`
+					);
+					return;
+				}
+
 				const contentBytes = deserialize(content);
 
 				await this.operations.create(
@@ -345,16 +373,9 @@ export class UnrestrictedSyncer {
 						documentId: remoteVersion.documentId,
 						relativePath: remoteVersion.relativePath,
 						parentVersionId: remoteVersion.vaultUpdateId,
-						hash: hash(contentBytes),
-						isDeleted: remoteVersion.isDeleted
+						hash: hash(contentBytes)
 					},
-					getLatestDocument?.()?.identity ??
-						this.database.getDocumentByDocumentId(
-							remoteVersion.documentId
-						)?.identity ??
-						this.database.getLatestDocumentByRelativePath(
-							remoteVersion.relativePath
-						)?.identity
+					latestDocument?.identity
 				);
 
 				this.history.addHistoryEntry({

@@ -96,19 +96,20 @@ async function runTests(): Promise<void> {
 	const iterations = [50, 200];
 	const doDeletes = [true, false];
 
-	for (const agentCount of agentCounts) {
-		for (const concurrency of concurrencies) {
-			for (const jitter of jitterScaleInSeconds) {
-				for (const iteration of iterations) {
-					for (const deleteFiles of doDeletes) {
-						await runTest({
-							agentCount,
-							concurrency,
-							iterations: iteration,
-							doDeletes: deleteFiles,
-							jitterScaleInSeconds: jitter
-						});
-						return;
+	for (let i = 0; i < 10; i++) {
+		for (const agentCount of agentCounts) {
+			for (const concurrency of concurrencies) {
+				for (const jitter of jitterScaleInSeconds) {
+					for (const iteration of iterations) {
+						for (const deleteFiles of doDeletes) {
+							await runTest({
+								agentCount,
+								concurrency,
+								iterations: iteration,
+								doDeletes: deleteFiles,
+								jitterScaleInSeconds: jitter
+							});
+						}
 					}
 				}
 			}
