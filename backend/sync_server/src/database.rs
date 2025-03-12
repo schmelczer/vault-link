@@ -84,7 +84,6 @@ impl Database {
                 vault_update_id,
                 document_id as "document_id: uuid::Uuid", 
                 relative_path,
-                created_date as "created_date: chrono::DateTime<Utc>",
                 updated_date as "updated_date: chrono::DateTime<Utc>",
                 is_deleted
             from latest_document_versions
@@ -118,7 +117,6 @@ impl Database {
                 vault_update_id,
                 document_id as "document_id: uuid::Uuid",
                 relative_path,
-                created_date as "created_date: chrono::DateTime<Utc>",
                 updated_date as "updated_date: chrono::DateTime<Utc>",
                 is_deleted
             from latest_document_versions
@@ -176,7 +174,6 @@ impl Database {
                 vault_update_id,
                 document_id as "document_id: uuid::Uuid", 
                 relative_path,
-                created_date as "created_date: chrono::DateTime<Utc>",
                 updated_date as "updated_date: chrono::DateTime<Utc>",
                 content,
                 is_deleted
@@ -213,7 +210,6 @@ impl Database {
                 vault_update_id,
                 document_id as "document_id: uuid::Uuid", 
                 relative_path,
-                created_date as "created_date: chrono::DateTime<Utc>",
                 updated_date as "updated_date: chrono::DateTime<Utc>",
                 content,
                 is_deleted
@@ -246,7 +242,6 @@ impl Database {
                 vault_update_id,
                 document_id as "document_id: uuid::Uuid", 
                 relative_path,
-                created_date as "created_date: chrono::DateTime<Utc>",
                 updated_date as "updated_date: chrono::DateTime<Utc>",
                 content,
                 is_deleted
@@ -276,18 +271,16 @@ impl Database {
                 vault_update_id,
                 document_id, 
                 relative_path,
-                created_date,
                 updated_date,
                 content,
                 is_deleted
             )
-            values (?, ?, ?, ?, ?, ?, ?, ?)
+            values (?, ?, ?, ?, ?, ?, ?)
             "#,
             version.vault_id,
             version.vault_update_id,
             version.document_id,
             version.relative_path,
-            version.created_date,
             version.updated_date,
             version.content,
             version.is_deleted

@@ -6,7 +6,6 @@ use axum_extra::{
     headers::{Authorization, authorization::Bearer},
 };
 use axum_jsonschema::Json;
-use chrono::{DateTime, Utc};
 use log::info;
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -50,7 +49,6 @@ pub async fn update_document_multipart(
         document_id,
         request.parent_version_id,
         request.relative_path,
-        request.created_date,
         request.content.contents.to_vec(),
     )
     .await
@@ -77,7 +75,6 @@ pub async fn update_document_json(
         document_id,
         request.parent_version_id,
         request.relative_path,
-        request.created_date,
         content_bytes,
     )
     .await
@@ -91,7 +88,6 @@ async fn internal_update_document(
     document_id: DocumentId,
     parent_version_id: VaultUpdateId,
     relative_path: String,
-    created_date: DateTime<Utc>,
     content: Vec<u8>,
 ) -> Result<Json<DocumentUpdateResponse>, SyncServerError> {
     auth(&state, auth_header.token())?;
@@ -205,7 +201,6 @@ async fn internal_update_document(
         vault_update_id: last_update_id + 1,
         relative_path: new_relative_path,
         content: merged_content,
-        created_date,
         updated_date: chrono::Utc::now(),
         is_deleted: false,
     };

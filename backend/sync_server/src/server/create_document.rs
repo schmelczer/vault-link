@@ -6,7 +6,6 @@ use axum_extra::{
     headers::{Authorization, authorization::Bearer},
 };
 use axum_jsonschema::Json;
-use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use sync_lib::base64_to_bytes;
@@ -45,7 +44,6 @@ pub async fn create_document_multipart(
         state,
         vault_id,
         request.relative_path,
-        request.created_date,
         request.content.contents.to_vec(),
     )
     .await
@@ -70,7 +68,6 @@ pub async fn create_document_json(
         state,
         vault_id,
         request.relative_path,
-        request.created_date,
         content_bytes,
     )
     .await
@@ -81,7 +78,6 @@ async fn internal_create_document(
     state: AppState,
     vault_id: VaultId,
     relative_path: String,
-    created_date: DateTime<Utc>,
     content: Vec<u8>,
 ) -> Result<Json<DocumentVersionWithoutContent>, SyncServerError> {
     auth(&state, auth_header.token())?;
@@ -106,7 +102,6 @@ async fn internal_create_document(
         document_id: uuid::Uuid::new_v4(),
         relative_path: sanitized_relative_path,
         content,
-        created_date,
         updated_date: chrono::Utc::now(),
         is_deleted: false,
     };

@@ -52,7 +52,6 @@ pub async fn delete_document(
         document_id,
         relative_path: sanitize_path(&request.relative_path),
         content: vec![],
-        created_date: request.created_date,
         updated_date: chrono::Utc::now(),
         is_deleted: true,
     };
