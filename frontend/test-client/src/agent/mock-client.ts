@@ -46,13 +46,6 @@ export class MockClient implements FileSystemOperations {
 		return (await this.read(path)).length;
 	}
 
-	public async getModificationTime(path: RelativePath): Promise<Date> {
-		if (!this.localFiles.has(path)) {
-			throw new Error(`File ${path} does not exist`);
-		}
-		return new Date();
-	}
-
 	public async exists(path: RelativePath): Promise<boolean> {
 		return this.localFiles.has(path);
 	}
@@ -68,7 +61,7 @@ export class MockClient implements FileSystemOperations {
 			`Creating file ${path} with content ${new TextDecoder().decode(newContent)}`
 		);
 		this.localFiles.set(path, newContent);
-		void this.client.syncer.syncLocallyCreatedFile(path, new Date());
+		void this.client.syncer.syncLocallyCreatedFile(path);
 	}
 
 	public async createDirectory(_path: RelativePath): Promise<void> {
@@ -93,8 +86,7 @@ export class MockClient implements FileSystemOperations {
 		);
 
 		void this.client.syncer.syncLocallyUpdatedFile({
-			relativePath: path,
-			updateTime: new Date()
+			relativePath: path
 		});
 
 		return newContent;
@@ -108,8 +100,7 @@ export class MockClient implements FileSystemOperations {
 		);
 
 		void this.client.syncer.syncLocallyUpdatedFile({
-			relativePath: path,
-			updateTime: new Date()
+			relativePath: path
 		});
 	}
 
@@ -140,8 +131,7 @@ export class MockClient implements FileSystemOperations {
 
 		void this.client.syncer.syncLocallyUpdatedFile({
 			oldPath,
-			relativePath: newPath,
-			updateTime: new Date()
+			relativePath: newPath
 		});
 	}
 }

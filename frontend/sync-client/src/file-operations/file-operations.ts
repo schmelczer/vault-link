@@ -49,10 +49,6 @@ export class FileOperations {
 		return this.fs.getFileSize(path);
 	}
 
-	public async getModificationTime(path: RelativePath): Promise<Date> {
-		return this.fs.getModificationTime(path);
-	}
-
 	public async exists(path: RelativePath): Promise<boolean> {
 		return this.fs.exists(path);
 	}

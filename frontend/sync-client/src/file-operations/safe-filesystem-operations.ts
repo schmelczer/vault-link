@@ -69,17 +69,6 @@ export class SafeFileSystemOperations implements FileSystemOperations {
 		);
 	}
 
-	public async getModificationTime(path: RelativePath): Promise<Date> {
-		this.logger.debug(`Getting modification time: ${path}`);
-		return this.safeOperation(
-			path,
-			this.decorateToHoldLock(path, async () =>
-				this.fs.getModificationTime(path)
-			),
-			"getModificationTime"
-		);
-	}
-
 	public async exists(path: RelativePath): Promise<boolean> {
 		this.logger.debug(`Checking if file exists: ${path}`);
 		return this.decorateToHoldLock(path, async () =>

@@ -9,7 +9,6 @@ export interface FileSystemOperations {
 		updater: (currentContent: string) => string
 	) => Promise<string>;
 	getFileSize: (path: RelativePath) => Promise<number>;
-	getModificationTime: (path: RelativePath) => Promise<Date>;
 	exists: (path: RelativePath) => Promise<boolean>;
 	createDirectory: (path: RelativePath) => Promise<void>;
 	delete: (path: RelativePath) => Promise<void>;

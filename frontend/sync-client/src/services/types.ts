@@ -452,25 +452,17 @@ export interface components {
         Array_of_uint8: number[];
         CreateDocumentVersion: {
             contentBase64: string;
-            /** Format: date-time */
-            createdDate: string;
             relativePath: string;
         };
         CreateDocumentVersionMultipart: {
             content: components["schemas"]["Array_of_uint8"];
-            /** Format: date-time */
-            created_date: string;
             relative_path: string;
         };
         DeleteDocumentVersion: {
-            /** Format: date-time */
-            createdDate: string;
             relativePath: string;
         };
         /** @description Response to an update document request. */
         DocumentUpdateResponse: {
-            /** Format: date-time */
-            createdDate: string;
             /** Format: uuid */
             documentId: string;
             isDeleted: boolean;
@@ -484,8 +476,6 @@ export interface components {
             vaultUpdateId: number;
         } | {
             contentBase64: string;
-            /** Format: date-time */
-            createdDate: string;
             /** Format: uuid */
             documentId: string;
             isDeleted: boolean;
@@ -500,8 +490,6 @@ export interface components {
         };
         DocumentVersion: {
             contentBase64: string;
-            /** Format: date-time */
-            createdDate: string;
             /** Format: uuid */
             documentId: string;
             isDeleted: boolean;
@@ -513,8 +501,6 @@ export interface components {
             vaultUpdateId: number;
         };
         DocumentVersionWithoutContent: {
-            /** Format: date-time */
-            createdDate: string;
             /** Format: uuid */
             documentId: string;
             isDeleted: boolean;
@@ -586,16 +572,12 @@ export interface components {
         };
         UpdateDocumentVersion: {
             contentBase64: string;
-            /** Format: date-time */
-            createdDate: string;
             /** Format: int64 */
             parentVersionId: number;
             relativePath: string;
         };
         UpdateDocumentVersionMultipart: {
             content: components["schemas"]["Array_of_uint8"];
-            /** Format: date-time */
-            createdDate: string;
             /** Format: int64 */
             parentVersionId: number;
             relativePath: string;
