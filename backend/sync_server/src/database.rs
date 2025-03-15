@@ -7,6 +7,7 @@ use models::{
 use sqlx::{sqlite::SqliteConnectOptions, types::chrono::Utc};
 pub mod models;
 use sqlx::{Pool, Sqlite, sqlite::SqlitePoolOptions};
+use uuid::fmt::Hyphenated;
 
 use crate::config::database_config::DatabaseConfig;
 
@@ -82,7 +83,7 @@ impl Database {
             select 
                 vault_id,
                 vault_update_id,
-                document_id as "document_id: uuid::Uuid", 
+                document_id as "document_id: Hyphenated", 
                 relative_path,
                 updated_date as "updated_date: chrono::DateTime<Utc>",
                 is_deleted
@@ -115,7 +116,7 @@ impl Database {
             select
                 vault_id,
                 vault_update_id,
-                document_id as "document_id: uuid::Uuid",
+                document_id as "document_id: Hyphenated",
                 relative_path,
                 updated_date as "updated_date: chrono::DateTime<Utc>",
                 is_deleted
@@ -172,7 +173,7 @@ impl Database {
             select 
                 vault_id,
                 vault_update_id,
-                document_id as "document_id: uuid::Uuid", 
+                document_id as "document_id: Hyphenated", 
                 relative_path,
                 updated_date as "updated_date: chrono::DateTime<Utc>",
                 content,
@@ -202,13 +203,14 @@ impl Database {
         document_id: &DocumentId,
         transaction: Option<&mut Transaction<'_>>,
     ) -> Result<Option<StoredDocumentVersion>> {
+        let document_id = document_id.as_hyphenated();
         let query = sqlx::query_as!(
             StoredDocumentVersion,
             r#"
             select 
                 vault_id,
                 vault_update_id,
-                document_id as "document_id: uuid::Uuid", 
+                document_id as "document_id: Hyphenated", 
                 relative_path,
                 updated_date as "updated_date: chrono::DateTime<Utc>",
                 content,
@@ -240,7 +242,7 @@ impl Database {
             select 
                 vault_id,
                 vault_update_id,
-                document_id as "document_id: uuid::Uuid", 
+                document_id as "document_id: Hyphenated", 
                 relative_path,
                 updated_date as "updated_date: chrono::DateTime<Utc>",
                 content,
@@ -264,6 +266,7 @@ impl Database {
         version: &StoredDocumentVersion,
         transaction: Option<&mut Transaction<'_>>,
     ) -> Result<()> {
+        let document_id = version.document_id.as_hyphenated();
         let query = sqlx::query!(
             r#"
             insert into documents (
@@ -279,7 +282,7 @@ impl Database {
             "#,
             version.vault_id,
             version.vault_update_id,
-            version.document_id,
+            document_id,
             version.relative_path,
             version.updated_date,
             version.content,
