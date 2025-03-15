@@ -83,8 +83,6 @@ export class MockAgent extends MockClient {
 	}
 
 	public async act(): Promise<void> {
-		this.assertAllContentIsPresentOnce();
-
 		const options: (() => Promise<unknown>)[] = [
 			this.createFileAction.bind(this),
 			this.changeFetchChangesUpdateIntervalMsAction.bind(this)

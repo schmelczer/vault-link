@@ -1,3 +1,4 @@
+import { assert } from "../utils/assert";
 import type {
 	RelativePath,
 	FileSystemOperations,
@@ -80,6 +81,18 @@ export class MockClient implements FileSystemOperations {
 		const newContent = updater(currentContent);
 		const newContentUint8Array = new TextEncoder().encode(newContent);
 		this.localFiles.set(path, newContentUint8Array);
+
+		const existingPats = currentContent
+			.split(" ")
+			.map((part) => part.trim());
+		const newParts = newContent.split(" ").map((part) => part.trim());
+		existingPats.forEach((part) =>
+			// all changes should be additive
+			assert(
+				newParts.includes(part),
+				`Part ${part} not found in new content`
+			)
+		);
 
 		this.client.logger.info(
 			`Updated file ${path} with:\n  current content: ${currentContent}\n  new content: ${newContent}`

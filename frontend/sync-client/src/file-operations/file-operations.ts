@@ -38,7 +38,7 @@ export class FileOperations {
 
 		const decoder = new TextDecoder("utf-8");
 
-		// Normalize line endings to LF on Windows
+		// Normalize line-endings to LF on Windows
 		let text = decoder.decode(content);
 		text = text.replace(/\r\n/g, "\n");
 
@@ -53,7 +53,7 @@ export class FileOperations {
 		return this.fs.exists(path);
 	}
 
-	// Create and write the file if it doesn't exist. Otherwise, it has the same behavior as write.
+	// Create and write the file if it doesn't exist.Otherwise, it has the same behavior as write.
 	// All parent directories are created if they don't exist.
 	public async create(
 		path: RelativePath,
@@ -73,20 +73,15 @@ export class FileOperations {
 				`Existing metadata for ${path}: ${JSON.stringify(document?.metadata)}`
 			);
 
-			if (
-				document?.metadata !== undefined &&
-				document.metadata.documentId === documentId
-			) {
+			if (document !== undefined && document.documentId === documentId) {
 				// This can happen if the document got moved both locally and remotely
 				// to the same file path. In this case, we shouldn't deconflict, however,
 				// we also can't overwrite otherwise we'd lose changes.
 				throw new FileNotFoundError(path);
 			}
 
-			this.logger.debug(
-				`We need to save what's at ${path} to ${deconflictedPath}`
-			);
-			await this.move(path, deconflictedPath, documentId);
+			this.database.move(path, deconflictedPath);
+			await this.fs.rename(path, deconflictedPath);
 		} else {
 			await this.createParentDirectories(path);
 		}
@@ -147,7 +142,7 @@ export class FileOperations {
 	}
 
 	public async delete(path: RelativePath): Promise<void> {
-		if (!(await this.exists(path))) {
+		if (await this.exists(path)) {
 			this.logger.debug(`Deleting file: ${path}`);
 			return this.fs.delete(path);
 		} else {
@@ -175,7 +170,7 @@ export class FileOperations {
 
 			if (
 				document?.metadata !== undefined &&
-				document.metadata.documentId === documentId
+				document.documentId === documentId
 			) {
 				// This can happen if the document got moved both locally and remotely
 				// to the same file path. In this case, we shouldn't deconflict, however,
@@ -183,12 +178,13 @@ export class FileOperations {
 				throw new FileNotFoundError(newPath);
 			}
 
-			await this.move(newPath, deconflictedPath, documentId);
-			// this.database.move(oldPath, newPath);
+			this.database.move(newPath, deconflictedPath);
+			await this.fs.rename(newPath, deconflictedPath);
 		} else {
 			await this.createParentDirectories(newPath);
 		}
 
+		this.database.move(oldPath, newPath);
 		await this.fs.rename(oldPath, newPath);
 	}
 

@@ -3,6 +3,7 @@ import type { SyncService } from "src/services/sync-service";
 import type { Logger } from "src/tracing/logger";
 import type { SyncHistory } from "src/tracing/sync-history";
 import PQueue from "p-queue";
+import { v4 as uuidv4 } from "uuid";
 import { hash } from "src/utils/hash";
 import type { components } from "src/services/types";
 import type { Settings } from "src/persistence/settings";
@@ -27,7 +28,7 @@ export class Syncer {
 	public constructor(
 		private readonly logger: Logger,
 		private readonly database: Database,
-		private readonly settings: Settings,
+		settings: Settings,
 		private readonly syncService: SyncService,
 		private readonly operations: FileOperations,
 		history: SyncHistory
@@ -43,9 +44,11 @@ export class Syncer {
 			this.syncQueue.concurrency = newSettings.syncConcurrency;
 		});
 
-		this.syncQueue.on("active", () => {
-			this.emitRemainingOperationsChange(this.syncQueue.size);
-		});
+		this.syncQueue.on("active", () =>
+			this.remainingOperationsListeners.forEach((listener) =>
+				listener(this.syncQueue.size)
+			)
+		);
 
 		this.internalSyncer = new UnrestrictedSyncer(
 			logger,
@@ -82,29 +85,32 @@ export class Syncer {
 	}
 
 	public async syncLocallyCreatedFile(
-		relativePath: RelativePath,
-		updateTime?: Date
+		relativePath: RelativePath
 	): Promise<void> {
-		if (!this.settings.getSettings().isSyncEnabled) {
-			this.logger.info(
-				`Syncing is disabled, not syncing '${relativePath}'`
+		if (
+			this.database.getLatestDocumentByRelativePath(relativePath)
+				?.isDeleted === false
+		) {
+			this.logger.debug(
+				`Document ${relativePath} already exists in the database, skipping`
 			);
 			return;
 		}
 
 		const [promise, resolve, reject] = createPromise();
+		const proposedDocumentId = uuidv4();
 
-		// Most likely, we're waiting for the previous delete to finish on the file at this path
-		await this.database.getResolvedDocumentByRelativePath(
+		this.database.getNewResolvedDocumentByRelativePath(
+			proposedDocumentId,
 			relativePath,
 			promise
 		);
 
 		try {
-			await this.syncQueue.add(async () =>
+			await this.syncQueue.add(() =>
 				this.internalSyncer.unrestrictedSyncLocallyCreatedFile(
-					() => this.database.getDocumentByUpdatePromise(promise),
-					updateTime
+					proposedDocumentId,
+					() => this.database.getDocumentByUpdatePromise(promise)
 				)
 			);
 
@@ -119,13 +125,8 @@ export class Syncer {
 	public async syncLocallyDeletedFile(
 		relativePath: RelativePath
 	): Promise<void> {
-		if (!this.settings.getSettings().isSyncEnabled) {
-			this.logger.info(
-				`Syncing is disabled, not syncing '${relativePath}'`
-			);
-			return;
-		}
-
+		// We have to have a record of the delete in case there's an in-flight update for the same
+		// document which finishes after the delete has succeeded and would introduce a phantom metadata record.
 		this.database.delete(relativePath);
 
 		const [promise, resolve, reject] = createPromise();
@@ -137,13 +138,9 @@ export class Syncer {
 
 		try {
 			await this.syncQueue.add(async () =>
-				this.internalSyncer.unrestrictedSyncLocallyDeletedFile(() => {
-					this.logger.debug(
-						`aaaahg ${relativePath} has been deleted locally, syncing to delete it`
-					);
-
-					return this.database.getDocumentByUpdatePromise(promise);
-				})
+				this.internalSyncer.unrestrictedSyncLocallyDeletedFile(() =>
+					this.database.getDocumentByUpdatePromise(promise)
+				)
 			);
 
 			resolve();
@@ -156,23 +153,22 @@ export class Syncer {
 
 	public async syncLocallyUpdatedFile({
 		oldPath,
-		relativePath,
-		updateTime
+		relativePath
 	}: {
 		oldPath?: RelativePath;
 		relativePath: RelativePath;
-		updateTime?: Date;
 	}): Promise<void> {
-		if (!this.settings.getSettings().isSyncEnabled) {
-			this.logger.info(
-				`Syncing is disabled, not syncing '${relativePath}'`
-			);
-			return;
-		}
-
-		const [promise, resolve, reject] = createPromise();
-
 		if (oldPath !== undefined) {
+			if (
+				this.database.getLatestDocumentByRelativePath(oldPath)
+					?.isDeleted === true
+			) {
+				this.logger.debug(
+					`Document ${oldPath} has been deleted locally, skipping`
+				);
+				return;
+			}
+
 			if (oldPath === relativePath) {
 				throw new Error(
 					`Old path and new path are the same: ${oldPath}`
@@ -181,6 +177,18 @@ export class Syncer {
 
 			this.database.move(oldPath, relativePath);
 		}
+
+		if (
+			this.database.getLatestDocumentByRelativePath(relativePath)
+				?.isDeleted === true
+		) {
+			this.logger.debug(
+				`Document ${relativePath} has been deleted locally, skipping`
+			);
+			return;
+		}
+
+		const [promise, resolve, reject] = createPromise();
 
 		await this.database.getResolvedDocumentByRelativePath(
 			relativePath,
@@ -191,7 +199,6 @@ export class Syncer {
 			await this.syncQueue.add(async () =>
 				this.internalSyncer.unrestrictedSyncLocallyUpdatedFile({
 					oldPath,
-					updateTime,
 					getLatestDocument: () =>
 						this.database.getDocumentByUpdatePromise(promise)
 				})
@@ -206,13 +213,6 @@ export class Syncer {
 	}
 
 	public async scheduleSyncForOfflineChanges(): Promise<void> {
-		if (!this.settings.getSettings().isSyncEnabled) {
-			this.logger.debug(
-				`Syncing is disabled, not uploading local changes`
-			);
-			return;
-		}
-
 		if (this.runningScheduleSyncForOfflineChanges !== undefined) {
 			this.logger.debug("Uploading local changes is already in progress");
 			return this.runningScheduleSyncForOfflineChanges;
@@ -234,13 +234,6 @@ export class Syncer {
 	}
 
 	public async applyRemoteChangesLocally(): Promise<void> {
-		if (!this.settings.getSettings().isSyncEnabled) {
-			this.logger.debug(
-				`Syncing is disabled, not fetching remote changes`
-			);
-			return;
-		}
-
 		if (this.runningApplyRemoteChangesLocally != null) {
 			this.logger.debug(
 				"Applying remote changes locally is already in progress"
@@ -272,6 +265,35 @@ export class Syncer {
 		this.internalSyncer.reset();
 	}
 
+	private async internalApplyRemoteChangesLocally(): Promise<void> {
+		const remote = await this.syncQueue.add(async () =>
+			this.syncService.getAll(this.database.getLastSeenUpdateId())
+		);
+
+		if (!remote) {
+			throw new Error("Failed to fetch remote changes");
+		}
+
+		if (remote.latestDocuments.length === 0) {
+			this.logger.debug("No remote changes to apply");
+			return;
+		}
+
+		this.logger.info("Applying remote changes locally");
+
+		await Promise.all(
+			remote.latestDocuments.map(this.syncRemotelyUpdatedFile.bind(this))
+		);
+
+		const lastSeenUpdateId = this.database.getLastSeenUpdateId();
+		if (
+			lastSeenUpdateId === undefined ||
+			remote.lastUpdateId > lastSeenUpdateId
+		) {
+			this.database.setLastSeenUpdateId(remote.lastUpdateId);
+		}
+	}
+
 	private async syncRemotelyUpdatedFile(
 		remoteVersion: components["schemas"]["DocumentVersionWithoutContent"]
 	): Promise<void> {
@@ -279,45 +301,38 @@ export class Syncer {
 			remoteVersion.documentId
 		);
 
-		if (document === undefined) {
-			const candidate = this.database.getLatestDocumentByRelativePath(
-				remoteVersion.relativePath
-			);
-			if (candidate !== undefined && candidate.metadata === undefined) {
-				document = candidate;
-			}
-		}
-
-		if (document === undefined) {
-			await this.syncQueue.add(async () =>
-				this.internalSyncer.unrestrictedSyncRemotelyUpdatedFile(
-					remoteVersion
-				)
-			);
-
-			return;
-		}
-
 		const [promise, resolve, reject] = createPromise();
 
-		await this.database.getResolvedDocumentByRelativePath(
-			document.relativePath,
-			promise
-		);
-
-		try {
+		if (document === undefined) {
 			await this.syncQueue.add(async () =>
 				this.internalSyncer.unrestrictedSyncRemotelyUpdatedFile(
 					remoteVersion,
-					() => this.database.getDocumentByUpdatePromise(promise)
+					() =>
+						this.database.getDocumentByDocumentId(
+							remoteVersion.documentId
+						)
 				)
 			);
+		} else {
+			await this.database.getResolvedDocumentByRelativePath(
+				document.relativePath,
+				promise
+			);
 
-			resolve();
-		} catch (e) {
-			reject(e);
-		} finally {
-			this.database.removeDocumentPromise(promise);
+			try {
+				await this.syncQueue.add(async () =>
+					this.internalSyncer.unrestrictedSyncRemotelyUpdatedFile(
+						remoteVersion,
+						() => this.database.getDocumentByUpdatePromise(promise)
+					)
+				);
+
+				resolve();
+			} catch (e) {
+				reject(e);
+			} finally {
+				this.database.removeDocumentPromise(promise);
+			}
 		}
 	}
 
@@ -404,36 +419,5 @@ export class Syncer {
 		);
 
 		await Promise.all([updates, deletes]);
-	}
-
-	private async internalApplyRemoteChangesLocally(): Promise<void> {
-		const remote = await this.syncService.getAll(
-			this.database.getLastSeenUpdateId()
-		);
-
-		if (remote.latestDocuments.length === 0) {
-			this.logger.debug("No remote changes to apply");
-			return;
-		}
-
-		this.logger.info("Applying remote changes locally");
-
-		await Promise.all(
-			remote.latestDocuments.map(this.syncRemotelyUpdatedFile.bind(this))
-		);
-
-		const lastSeenUpdateId = this.database.getLastSeenUpdateId();
-		if (
-			lastSeenUpdateId === undefined ||
-			remote.lastUpdateId > lastSeenUpdateId
-		) {
-			this.database.setLastSeenUpdateId(remote.lastUpdateId);
-		}
-	}
-
-	private emitRemainingOperationsChange(remainingOperations: number): void {
-		this.remainingOperationsListeners.forEach((listener) => {
-			listener(remainingOperations);
-		});
 	}
 }

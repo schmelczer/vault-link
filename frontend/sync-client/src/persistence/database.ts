@@ -6,14 +6,13 @@ export type RelativePath = string;
 
 export interface DocumentMetadata {
 	parentVersionId: VaultUpdateId;
-	documentId: DocumentId;
 	hash: string;
 }
 
 export interface StoredDocumentMetadata {
 	relativePath: RelativePath;
-	parentVersionId: VaultUpdateId;
 	documentId: DocumentId;
+	parentVersionId: VaultUpdateId;
 	hash: string;
 }
 
@@ -25,6 +24,7 @@ export interface StoredDatabase {
 export interface DocumentRecord {
 	identity: symbol;
 	relativePath: RelativePath;
+	documentId: DocumentId;
 	metadata: DocumentMetadata | undefined;
 	isDeleted: boolean;
 	updates: Promise<void>[];
@@ -43,14 +43,17 @@ export class Database {
 		initialState ??= {};
 
 		this.documents =
-			initialState.documents?.map(({ relativePath, ...metadata }) => ({
-				relativePath,
-				identity: Symbol(),
-				metadata,
-				isDeleted: false,
-				updates: [],
-				parallelVersion: 0
-			})) ?? [];
+			initialState.documents?.map(
+				({ relativePath, documentId, ...metadata }) => ({
+					relativePath,
+					documentId,
+					identity: Symbol(),
+					metadata,
+					isDeleted: false,
+					updates: [],
+					parallelVersion: 0
+				})
+			) ?? [];
 
 		this.ensureConsistency();
 		this.logger.debug(`Loaded ${this.documents.length} documents`);
@@ -135,11 +138,17 @@ export class Database {
 				({ identity }) => identity !== entry.identity
 			);
 
+			if (entry.relativePath !== relativePath) {
+				throw new Error(
+					"Document identity does not match the relative path"
+				);
+			}
+
 			this.documents.push({
 				...entry,
 				relativePath,
+				documentId,
 				metadata: {
-					documentId,
 					parentVersionId,
 					hash
 				}
@@ -153,13 +162,13 @@ export class Database {
 		// meaning that two documents occupy the same path in terms of in-flight requests so we
 		// need to create a new parallel version.
 		entry = this.getLatestDocumentByRelativePath(relativePath);
-		if (entry && entry.metadata?.documentId !== documentId) {
+		if (entry && entry.documentId !== documentId) {
 			this.documents.push({
 				// `entry` might be undefined if the document is new
 				identity: Symbol(),
 				relativePath,
+				documentId,
 				metadata: {
-					documentId,
 					parentVersionId,
 					hash
 				},
@@ -174,8 +183,8 @@ export class Database {
 		this.documents.push({
 			identity: Symbol(),
 			relativePath,
+			documentId,
 			metadata: {
-				documentId,
 				parentVersionId,
 				hash
 			},
@@ -210,21 +219,42 @@ export class Database {
 		let entry = this.getLatestDocumentByRelativePath(relativePath);
 
 		if (entry === undefined) {
-			entry = {
-				relativePath,
-				identity: Symbol(),
-				metadata: undefined,
-				isDeleted: false,
-				updates: [],
-				parallelVersion: 0
-			};
-
-			this.documents.push(entry);
+			throw new Error(
+				`Document not found by relative path: ${relativePath}, ${JSON.stringify(
+					this.documents,
+					null,
+					2
+				)}`
+			);
 		}
 
 		const currentPromises = entry.updates;
 		entry.updates = [...currentPromises, promise];
 		await Promise.all(currentPromises);
+	}
+
+	public getNewResolvedDocumentByRelativePath(
+		documentId: DocumentId,
+		relativePath: RelativePath,
+		promise: Promise<void>
+	): void {
+		let previousEntry = this.getLatestDocumentByRelativePath(relativePath);
+
+		const entry = {
+			relativePath,
+			documentId,
+			identity: Symbol(),
+			metadata: undefined,
+			isDeleted: false,
+			updates: [promise],
+			parallelVersion:
+				previousEntry?.parallelVersion === undefined
+					? 0
+					: previousEntry.parallelVersion + 1
+		};
+
+		this.documents.push(entry);
+		this.save();
 	}
 
 	public getDocumentByUpdatePromise(promise: Promise<void>): DocumentRecord {
@@ -240,11 +270,9 @@ export class Database {
 	}
 
 	public getDocumentByDocumentId(
-		documentId: DocumentId
+		find: DocumentId
 	): DocumentRecord | undefined {
-		return this.documents.find(
-			({ metadata }) => metadata?.documentId === documentId
-		);
+		return this.documents.find(({ documentId }) => documentId === find);
 	}
 
 	public getDocumentByIdentity(find: symbol): DocumentRecord {
@@ -263,9 +291,8 @@ export class Database {
 	): void {
 		const oldDocument =
 			this.getLatestDocumentByRelativePath(oldRelativePath);
+
 		if (oldDocument === undefined) {
-			// We can try moving a non-existent document if it hasn't yet got created becasue it's
-			// the result of an offline event while this move happens online before.
 			return;
 		}
 
@@ -275,13 +302,11 @@ export class Database {
 
 		let newDocument = this.getLatestDocumentByRelativePath(newRelativePath);
 
-		// It's either an invalid state of newDocument is pending deletion and we have to wait for it to complete
+		// It's either an invalid state of newDocument is pending deletion and we have
+		// to wait for it to complete.
 		this.documents.push({
-			identity: oldDocument.identity,
-			metadata: oldDocument.metadata,
+			...oldDocument,
 			relativePath: newRelativePath,
-			isDeleted: oldDocument.isDeleted,
-			updates: oldDocument.updates,
 			// We're in a strange state where the target of the move has just got deleted,
 			// however, its metadata might already have a bunch of updates queued up for
 			// the document at the new location. We need to keep these updates.
@@ -295,8 +320,9 @@ export class Database {
 	public delete(relativePath: RelativePath): void {
 		const candidate = this.getLatestDocumentByRelativePath(relativePath);
 		if (candidate === undefined) {
-			// it's fine because the document to be deleted might not have been created yet
-			return;
+			throw new Error(
+				`Document not found by relative path: ${relativePath}`
+			);
 		}
 		candidate.isDeleted = true;
 	}
@@ -319,16 +345,12 @@ export class Database {
 	private ensureConsistency(): void {
 		const idToPath = new Map<string, string[]>();
 
-		this.resolvedDocuments
-			.filter(({ metadata }) => metadata !== undefined)
-			.forEach(({ metadata, relativePath }) => {
-				// eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-				idToPath.set(metadata!.documentId, [
-					// eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-					...(idToPath.get(metadata!.documentId) ?? []),
-					relativePath
-				]);
-			});
+		this.resolvedDocuments.forEach(({ relativePath, documentId }) => {
+			idToPath.set(documentId, [
+				...(idToPath.get(documentId) ?? []),
+				relativePath
+			]);
+		});
 
 		const duplicates = Array.from(idToPath.entries())
 			.filter(([_, paths]) => paths.length > 1)
