@@ -16,7 +16,7 @@ use super::{
     requests::{CreateDocumentVersion, CreateDocumentVersionMultipart},
 };
 use crate::{
-    database::models::{DocumentVersionWithoutContent, StoredDocumentVersion, VaultId},
+    database::models::{DocumentId, DocumentVersionWithoutContent, StoredDocumentVersion, VaultId},
     errors::{SyncServerError, client_error, server_error},
     utils::sanitize_path,
 };
@@ -43,6 +43,7 @@ pub async fn create_document_multipart(
         auth_header,
         state,
         vault_id,
+        request.document_id,
         request.relative_path,
         request.content.contents.to_vec(),
     )
@@ -67,6 +68,7 @@ pub async fn create_document_json(
         auth_header,
         state,
         vault_id,
+        request.document_id,
         request.relative_path,
         content_bytes,
     )
@@ -77,6 +79,7 @@ async fn internal_create_document(
     auth_header: Authorization<Bearer>,
     state: AppState,
     vault_id: VaultId,
+    document_id: Option<DocumentId>,
     relative_path: String,
     content: Vec<u8>,
 ) -> Result<Json<DocumentVersionWithoutContent>, SyncServerError> {
@@ -87,6 +90,25 @@ async fn internal_create_document(
         .create_write_transaction()
         .await
         .map_err(server_error)?;
+
+    let document_id = match document_id {
+        Some(document_id) => {
+            let existing_version = state
+                .database
+                .get_latest_document(&vault_id, &document_id, Some(&mut transaction))
+                .await
+                .map_err(server_error)?;
+
+            if existing_version.is_some() {
+                return Err(client_error(anyhow::anyhow!(
+                    "Document with the same ID already exists"
+                )));
+            }
+
+            document_id
+        }
+        None => uuid::Uuid::new_v4(),
+    };
 
     let last_update_id = state
         .database
@@ -99,7 +121,7 @@ async fn internal_create_document(
     let new_version = StoredDocumentVersion {
         vault_id,
         vault_update_id: last_update_id + 1,
-        document_id: uuid::Uuid::new_v4(),
+        document_id,
         relative_path: sanitized_relative_path,
         content,
         updated_date: chrono::Utc::now(),

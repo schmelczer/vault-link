@@ -452,10 +452,14 @@ export interface components {
         Array_of_uint8: number[];
         CreateDocumentVersion: {
             contentBase64: string;
+            /** Format: uuid */
+            documentId?: string | null;
             relativePath: string;
         };
         CreateDocumentVersionMultipart: {
             content: components["schemas"]["Array_of_uint8"];
+            /** Format: uuid */
+            document_id?: string | null;
             relative_path: string;
         };
         DeleteDocumentVersion: {

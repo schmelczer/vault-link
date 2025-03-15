@@ -4,17 +4,23 @@ use axum_typed_multipart::TryFromMultipart;
 use schemars::JsonSchema;
 use serde::{self, Deserialize};
 
-use crate::database::models::VaultUpdateId;
+use crate::database::models::{DocumentId, VaultUpdateId};
 
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateDocumentVersion {
+    /// The client can decide the document id (if it wishes to) in order
+    /// to help with syncing. If the client does not provide a document id,
+    /// the server will generate one. If the client provides a document id
+    /// it must not already exist in the database.
+    pub document_id: Option<DocumentId>,
     pub relative_path: String,
     pub content_base64: String,
 }
 
 #[derive(Debug, TryFromMultipart, JsonSchema)]
 pub struct CreateDocumentVersionMultipart {
+    pub document_id: Option<DocumentId>,
     pub relative_path: String,
     #[form_data(limit = "unlimited")]
     pub content: FieldData<Bytes>,
