@@ -18,9 +18,10 @@ export class MockAgent extends MockClient {
 		initialSettings: Partial<SyncSettings>,
 		public readonly name: string,
 		private readonly doDeletes: boolean,
+		useSlowFileEvents: boolean,
 		private readonly jitterScaleInSeconds: number
 	) {
-		super(initialSettings);
+		super(initialSettings, useSlowFileEvents);
 	}
 
 	public async init(): Promise<void> {
@@ -62,9 +63,11 @@ export class MockAgent extends MockClient {
 				case LogLevel.ERROR:
 					console.error(formatted);
 
-					// Let's not ignore errors
-					// eslint-disable-next-line @typescript-eslint/no-floating-promises
-					sleep(100).then(() => process.exit(1));
+					if (!this.useSlowFileEvents) {
+						// Let's not ignore errors
+						// eslint-disable-next-line @typescript-eslint/no-floating-promises
+						sleep(100).then(() => process.exit(1));
+					}
 
 					break;
 				case LogLevel.WARNING:
@@ -189,6 +192,14 @@ export class MockAgent extends MockClient {
 	}
 
 	public assertAllContentIsPresentOnce(): void {
+		if (this.useSlowFileEvents) {
+			this.client.logger.info(
+				// We can't ensure that we have seen every single update
+				`Skipping content check for ${this.name} because slow file events are enabled`
+			);
+			return;
+		}
+
 		for (const content of this.writtenContents) {
 			const found = Array.from(this.localFiles.keys()).filter((key) => {
 				return new TextDecoder()

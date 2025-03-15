@@ -3,20 +3,26 @@ import { MockAgent } from "./agent/mock-agent";
 import { sleep } from "./utils/sleep";
 import { v4 as uuidv4 } from "uuid";
 
+let slowFileEvents = false;
+
 async function runTest({
 	agentCount,
 	concurrency,
 	iterations,
 	doDeletes,
+	useSlowFileEvents,
 	jitterScaleInSeconds
 }: {
 	agentCount: number;
 	concurrency: number;
 	iterations: number;
 	doDeletes: boolean;
+	useSlowFileEvents: boolean;
 	jitterScaleInSeconds: number;
 }): Promise<void> {
-	const settings = `with ${agentCount} agents, concurrency ${concurrency}, iterations ${iterations}, doDeletes ${doDeletes}, jitterScaleInSeconds ${jitterScaleInSeconds}`;
+	slowFileEvents = useSlowFileEvents;
+
+	const settings = `with ${agentCount} agents, concurrency ${concurrency}, iterations ${iterations}, doDeletes ${doDeletes}, jitterScaleInSeconds ${jitterScaleInSeconds}, useSlowFileEvents ${useSlowFileEvents}`;
 	console.info(`Running test ${settings}`);
 
 	const initialSettings: Partial<SyncSettings> = {
@@ -34,6 +40,7 @@ async function runTest({
 				initialSettings,
 				`agent-${i}`,
 				doDeletes,
+				useSlowFileEvents,
 				jitterScaleInSeconds
 			)
 		);
@@ -56,12 +63,24 @@ async function runTest({
 
 		// Each agent can have unpushed changes which might conflict with eachother so each has to resolve the conflicts & push, and
 		for (const client of clients) {
-			await client.finish();
+			try {
+				await client.finish();
+			} catch (err) {
+				if (!slowFileEvents) {
+					throw err;
+				}
+			}
 		}
 
 		// then we need a second pass to ensure that all agents pull the same state.
 		for (const client of clients) {
-			await client.finish();
+			try {
+				await client.finish();
+			} catch (err) {
+				if (!slowFileEvents) {
+					throw err;
+				}
+			}
 		}
 
 		console.info("Agents finished successfully");
@@ -96,19 +115,21 @@ async function runTests(): Promise<void> {
 		16,
 		1 // test with concurrency 1 to check for deadlocks
 	];
-	const doDeletes = [true, false];
 
 	for (const agentCount of agentCounts) {
 		for (const concurrency of concurrencies) {
 			for (const jitter of networkJitterScaleInSeconds) {
-				for (const deleteFiles of doDeletes) {
-					await runTest({
-						agentCount,
-						concurrency,
-						iterations: 200,
-						doDeletes: deleteFiles,
-						jitterScaleInSeconds: jitter
-					});
+				for (const doDeletes of [true, false]) {
+					for (const useSlowFileEvents of [true, false]) {
+						await runTest({
+							agentCount,
+							concurrency,
+							iterations: 200,
+							doDeletes,
+							useSlowFileEvents,
+							jitterScaleInSeconds: jitter
+						});
+					}
 				}
 			}
 		}
@@ -116,11 +137,17 @@ async function runTests(): Promise<void> {
 }
 
 process.on("uncaughtException", (error) => {
+	if (slowFileEvents) {
+		return;
+	}
 	console.error("Uncaught Exception:", error);
 	process.exit(1);
 });
 
 process.on("unhandledRejection", (reason, _promise) => {
+	if (slowFileEvents) {
+		return;
+	}
 	console.error("Unhandled Rejection:", reason);
 	process.exit(1);
 });

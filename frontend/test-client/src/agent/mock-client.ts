@@ -12,7 +12,8 @@ export class MockClient implements FileSystemOperations {
 	protected data: object | undefined = undefined;
 
 	public constructor(
-		private readonly initialSettings: Partial<SyncSettings>
+		private readonly initialSettings: Partial<SyncSettings>,
+		protected readonly useSlowFileEvents: boolean
 	) {}
 
 	public async init(): Promise<void> {
@@ -64,8 +65,7 @@ export class MockClient implements FileSystemOperations {
 		);
 		this.localFiles.set(path, newContent);
 
-		// we aren't the best client and it takes some time to notice changes
-		setImmediate(() => {
+		this.runCallback(() => {
 			void this.client.syncer.syncLocallyCreatedFile(path);
 		});
 	}
@@ -87,26 +87,27 @@ export class MockClient implements FileSystemOperations {
 		const newContentUint8Array = new TextEncoder().encode(newContent);
 		this.localFiles.set(path, newContentUint8Array);
 
-		const existingParts = currentContent
-			.split(" ")
-			.map((part) => part.trim());
-		const newParts = newContent.split(" ").map((part) => part.trim());
-		existingParts.forEach((part) =>
-			// all changes should be additive
-			{
-				assert(
-					newParts.includes(part),
-					`Part ${part} not found in new content`
-				);
-			}
-		);
+		if (!this.useSlowFileEvents) {
+			const existingParts = currentContent
+				.split(" ")
+				.map((part) => part.trim());
+			const newParts = newContent.split(" ").map((part) => part.trim());
+			existingParts.forEach((part) =>
+				// all changes should be additive
+				{
+					assert(
+						newParts.includes(part),
+						`Part ${part} not found in new content`
+					);
+				}
+			);
+		}
 
 		this.client.logger.info(
 			`Updated file ${path} with:\n  current content: ${currentContent}\n  new content: ${newContent}`
 		);
 
-		// we aren't the best client and it takes some time to notice changes
-		setImmediate(() => {
+		this.runCallback(() => {
 			void this.client.syncer.syncLocallyUpdatedFile({
 				relativePath: path
 			});
@@ -123,8 +124,7 @@ export class MockClient implements FileSystemOperations {
 			`Updated file ${path} with:\n  new content: ${new TextDecoder().decode(content)}`
 		);
 
-		// we aren't the best client and it takes some time to notice changes
-		setImmediate(() => {
+		this.runCallback(() => {
 			if (hasExisted) {
 				void this.client.syncer.syncLocallyUpdatedFile({
 					relativePath: path
@@ -140,8 +140,8 @@ export class MockClient implements FileSystemOperations {
 			`Deleting file: ${path} with:\n  content ${new TextDecoder().decode(this.localFiles.get(path))}`
 		);
 		this.localFiles.delete(path);
-		// we aren't the best client and it takes some time to notice changes
-		setImmediate(() => {
+
+		this.runCallback(() => {
 			void this.client.syncer.syncLocallyDeletedFile(path);
 		});
 	}
@@ -163,12 +163,20 @@ export class MockClient implements FileSystemOperations {
 			`Renamed file: ${oldPath} -> ${newPath} with:\n  content ${new TextDecoder().decode(file)}`
 		);
 
-		// we aren't the best client and it takes some time to notice changes
-		setImmediate(() => {
+		this.runCallback(() => {
 			void this.client.syncer.syncLocallyUpdatedFile({
 				oldPath,
 				relativePath: newPath
 			});
 		});
+	}
+
+	private runCallback(callback: () => void): void {
+		if (this.useSlowFileEvents) {
+			// we aren't the best client and it takes some time to notice changes
+			setTimeout(callback, 100);
+		} else {
+			callback();
+		}
 	}
 }

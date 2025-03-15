@@ -158,7 +158,7 @@ export class UnrestrictedSyncer {
 				// eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
 				if (document.metadata === undefined) {
 					throw new Error(
-						`Document ${document.relativePath} no longer has metadata after updating it`
+						`Document ${document.relativePath} no longer has metadata after updating it, this cannot happen`
 					);
 				}
 
