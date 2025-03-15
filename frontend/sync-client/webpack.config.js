@@ -2,24 +2,11 @@ const path = require("path");
 
 module.exports = (_env, _argv) => ({
 	entry: "./src/index.ts",
-	devtool: "source-map",
-	target: "node",
 	module: {
 		rules: [
 			{
 				test: /\.ts$/,
-				use: [
-					{
-						loader: "ts-loader",
-						options: {
-							compilerOptions: {
-								declaration: true,
-								declarationDir: "./dist/types"
-							},
-							transpileOnly: false
-						}
-					}
-				]
+				use: ["ts-loader"]
 			},
 			{
 				test: /\.wasm$/,
@@ -28,18 +15,23 @@ module.exports = (_env, _argv) => ({
 		]
 	},
 	optimization: {
+		// the consuming project should take care of minification
 		minimize: false
 	},
 	resolve: {
-		extensions: [".ts", ".js"],
+		extensions: [".ts"],
 		alias: {
 			root: __dirname,
 			src: path.resolve(__dirname, "src")
 		}
 	},
+	performance: {
+		hints: false // it's a library, no need to warn about its size
+	},
 	output: {
 		clean: true,
 		filename: "index.js",
+		globalObject: "this",
 		library: {
 			name: "SyncClient",
 			type: "umd"
