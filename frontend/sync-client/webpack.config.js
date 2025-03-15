@@ -1,6 +1,7 @@
 const path = require("path");
+const { merge } = require("webpack-merge");
 
-module.exports = (_env, _argv) => ({
+const common = {
 	entry: "./src/index.ts",
 	module: {
 		rules: [
@@ -27,15 +28,29 @@ module.exports = (_env, _argv) => ({
 	},
 	performance: {
 		hints: false // it's a library, no need to warn about its size
-	},
-	output: {
-		clean: true,
-		filename: "index.js",
-		globalObject: "this",
-		library: {
-			name: "SyncClient",
-			type: "umd"
-		},
-		path: path.resolve(__dirname, "dist")
 	}
-});
+};
+
+module.exports = [
+	merge(common, {
+		target: "web",
+		output: {
+			path: path.resolve(__dirname, "dist"),
+			filename: "sync-client.web.js",
+			library: {
+				name: "SyncClient",
+				type: "umd",
+				export: "default"
+			},
+			globalObject: "this"
+		}
+	}),
+	merge(common, {
+		target: "node",
+		output: {
+			path: path.resolve(__dirname, "dist"),
+			filename: "sync-client.node.js",
+			libraryTarget: "commonjs2"
+		}
+	})
+];
