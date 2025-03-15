@@ -1,4 +1,3 @@
-import { Syncer } from "../sync-operations/syncer";
 import { Settings } from "../persistence/settings";
 import { Logger } from "../tracing/logger";
 import { createPromise } from "../utils/create-promise";

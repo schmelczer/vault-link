@@ -301,6 +301,11 @@ export class Database {
 		);
 
 		let newDocument = this.getLatestDocumentByRelativePath(newRelativePath);
+		if (newDocument !== undefined && !newDocument.isDeleted) {
+			throw new Error(
+				`Document already exists at new location: ${newRelativePath}`
+			);
+		}
 
 		// It's either an invalid state of newDocument is pending deletion and we have
 		// to wait for it to complete.
