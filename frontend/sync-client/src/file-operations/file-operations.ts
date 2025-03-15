@@ -2,10 +2,7 @@ import type { Logger } from "../tracing/logger";
 import type { FileSystemOperations } from "./filesystem-operations";
 import type { Database, RelativePath } from "../persistence/database";
 import { isBinary, isFileTypeMergable, mergeText } from "sync_lib";
-import {
-	FileNotFoundError,
-	SafeFileSystemOperations
-} from "./safe-filesystem-operations";
+import { SafeFileSystemOperations } from "./safe-filesystem-operations";
 
 export class FileOperations {
 	private static readonly PARENTHESES_REGEX = / \((\d+)\)$/;
@@ -67,7 +64,7 @@ export class FileOperations {
 				`Didn't expect ${path} to exist, deconflicting by moving it to '${deconflictedPath}'`
 			);
 
-			// this.database.move(path, deconflictedPath);
+			this.database.move(path, deconflictedPath);
 			await this.fs.rename(path, deconflictedPath);
 		} else {
 			await this.createParentDirectories(path);
@@ -142,9 +139,9 @@ export class FileOperations {
 		if (oldPath === newPath) {
 			return;
 		}
-
 		await this.ensureClearPath(newPath);
 
+		this.database.move(oldPath, newPath);
 		await this.fs.rename(oldPath, newPath);
 	}
 

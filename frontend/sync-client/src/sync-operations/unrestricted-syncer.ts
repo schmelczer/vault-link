@@ -1,6 +1,5 @@
 import type {
 	Database,
-	DocumentId,
 	DocumentRecord,
 	RelativePath
 } from "../persistence/database";
@@ -33,30 +32,23 @@ export class UnrestrictedSyncer {
 	}
 
 	public async unrestrictedSyncLocallyCreatedFile(
-		proposedDocumentId: DocumentId,
-		getLatestDocument: () => DocumentRecord
+		document: DocumentRecord
 	): Promise<void> {
-		let document = getLatestDocument();
-
 		return this.executeSync(
-			[document.relativePath],
+			document.relativePath,
 			SyncType.CREATE,
 			SyncSource.PUSH,
 			async () => {
-				document = getLatestDocument();
-
 				const contentBytes = await this.operations.read(
 					document.relativePath
 				); // this can throw FileNotFoundError
 				const contentHash = hash(contentBytes);
 
 				const response = await this.syncService.create({
-					documentId: proposedDocumentId,
+					documentId: document.documentId,
 					relativePath: document.relativePath,
 					contentBytes
 				});
-
-				document = getLatestDocument();
 
 				this.history.addHistoryEntry({
 					status: SyncStatus.SUCCESS,
@@ -68,12 +60,10 @@ export class UnrestrictedSyncer {
 
 				this.database.setDocument(
 					{
-						relativePath: document.relativePath,
-						documentId: response.documentId,
 						parentVersionId: response.vaultUpdateId,
 						hash: contentHash
 					},
-					document.identity
+					document
 				);
 
 				this.tryIncrementVaultUpdateId(response.vaultUpdateId);
@@ -82,16 +72,13 @@ export class UnrestrictedSyncer {
 	}
 
 	public async unrestrictedSyncLocallyDeletedFile(
-		getLatestDocument: () => DocumentRecord
+		document: DocumentRecord
 	): Promise<void> {
-		let document = getLatestDocument();
 		await this.executeSync(
-			[document.relativePath],
+			document.relativePath,
 			SyncType.DELETE,
 			SyncSource.PUSH,
 			async () => {
-				document = getLatestDocument();
-
 				const response = await this.syncService.delete({
 					documentId: document.documentId,
 					relativePath: document.relativePath
@@ -105,16 +92,12 @@ export class UnrestrictedSyncer {
 					type: SyncType.DELETE
 				});
 
-				document = getLatestDocument();
-
 				this.database.setDocument(
 					{
-						relativePath: document.relativePath,
-						documentId: response.documentId,
 						parentVersionId: response.vaultUpdateId,
 						hash: EMPTY_HASH
 					},
-					document.identity
+					document
 				);
 			}
 		);
@@ -122,21 +105,16 @@ export class UnrestrictedSyncer {
 
 	public async unrestrictedSyncLocallyUpdatedFile({
 		oldPath,
-		getLatestDocument
+		document
 	}: {
 		oldPath?: RelativePath;
-		getLatestDocument: () => DocumentRecord;
+		document: DocumentRecord;
 	}): Promise<void> {
-		let document = getLatestDocument();
-
 		await this.executeSync(
-			[oldPath, document.relativePath].filter(
-				(path) => path !== undefined
-			),
+			document.relativePath,
 			SyncType.UPDATE,
 			SyncSource.PUSH,
 			async () => {
-				document = getLatestDocument();
 				const originalRelativePath = document.relativePath;
 
 				if (document.metadata === undefined || document.isDeleted) {
@@ -168,8 +146,8 @@ export class UnrestrictedSyncer {
 					contentBytes
 				});
 
-				document = getLatestDocument();
-
+				// `document` is mutable and reflects the latest state in the local database
+				// eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
 				if (document.isDeleted) {
 					this.logger.info(
 						`Document ${document.relativePath} has been deleted before we could finish updating it`
@@ -177,7 +155,8 @@ export class UnrestrictedSyncer {
 					return;
 				}
 
-				if (!document.metadata) {
+				// eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+				if (document.metadata === undefined) {
 					throw new Error(
 						`Document ${document.relativePath} no longer has metadata after updating it`
 					);
@@ -213,12 +192,10 @@ export class UnrestrictedSyncer {
 					this.database.delete(document.relativePath);
 					this.database.setDocument(
 						{
-							documentId: response.documentId,
-							relativePath: document.relativePath,
 							parentVersionId: response.vaultUpdateId,
 							hash: EMPTY_HASH
 						},
-						document.identity
+						document
 					);
 
 					await this.operations.delete(document.relativePath);
@@ -231,17 +208,20 @@ export class UnrestrictedSyncer {
 				let actualPath = document.relativePath;
 
 				if (response.relativePath != originalRelativePath) {
-					// this.database.getNewResolvedDocumentByRelativePath(
-					// 	response.relativePath,
-					// 	promise
-					// );
-
 					actualPath = response.relativePath;
 					await this.operations.move(
 						document.relativePath,
 						response.relativePath
 					); // this can throw FileNotFoundError
 				}
+
+				this.database.setDocument(
+					{
+						parentVersionId: response.vaultUpdateId,
+						hash: contentHash
+					},
+					document
+				);
 
 				if (response.type === "MergingUpdate") {
 					const responseBytes = deserialize(response.contentBase64);
@@ -262,16 +242,6 @@ export class UnrestrictedSyncer {
 					});
 				}
 
-				this.database.setDocument(
-					{
-						documentId: response.documentId,
-						relativePath: actualPath,
-						parentVersionId: response.vaultUpdateId,
-						hash: contentHash
-					},
-					document.identity
-				);
-
 				this.tryIncrementVaultUpdateId(response.vaultUpdateId);
 			}
 		);
@@ -279,20 +249,18 @@ export class UnrestrictedSyncer {
 
 	public async unrestrictedSyncRemotelyUpdatedFile(
 		remoteVersion: components["schemas"]["DocumentVersionWithoutContent"],
-		getLatestDocument: () => DocumentRecord | undefined
+		document?: DocumentRecord
 	): Promise<void> {
 		await this.executeSync(
-			[remoteVersion.relativePath],
+			remoteVersion.relativePath,
 			SyncType.UPDATE,
 			SyncSource.PULL,
 			async () => {
-				let localMetadata = getLatestDocument();
-
-				if (localMetadata?.metadata !== undefined) {
+				if (document?.metadata !== undefined) {
 					// If the file exists locally, let's pretend the user has updated it
 					// and deal with remote update/deletion within `unrestrictedSyncLocallyUpdatedFile`
 					if (
-						localMetadata.metadata.parentVersionId >=
+						document.metadata.parentVersionId >=
 						remoteVersion.vaultUpdateId
 					) {
 						this.logger.debug(
@@ -302,11 +270,7 @@ export class UnrestrictedSyncer {
 					}
 
 					return this.unrestrictedSyncLocallyUpdatedFile({
-						getLatestDocument: () =>
-							this.database.getDocumentByIdentity(
-								// eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-								localMetadata!.identity
-							)
+						document
 					});
 				} else if (remoteVersion.isDeleted) {
 					// Either the doc hasn't made it to us before and therefore we don't need to delete it,
@@ -323,9 +287,11 @@ export class UnrestrictedSyncer {
 					})
 				).contentBase64;
 
-				localMetadata = getLatestDocument();
+				document = this.database.getDocumentByDocumentId(
+					remoteVersion.documentId
+				);
 
-				if (localMetadata?.isDeleted === true) {
+				if (document?.isDeleted === true) {
 					this.logger.info(
 						`Document ${remoteVersion.relativePath} has been deleted locally before we could finish updating it`
 					);
@@ -333,7 +299,7 @@ export class UnrestrictedSyncer {
 				}
 
 				if (
-					(localMetadata?.metadata?.parentVersionId ?? -1) >=
+					(document?.metadata?.parentVersionId ?? -1) >=
 					remoteVersion.vaultUpdateId
 				) {
 					this.logger.debug(
@@ -344,16 +310,21 @@ export class UnrestrictedSyncer {
 
 				const contentBytes = deserialize(content);
 
-				const [promise, resolve] = createPromise();
-
 				await this.operations.ensureClearPath(
 					remoteVersion.relativePath
 				);
 
-				this.database.getNewResolvedDocumentByRelativePath(
-					remoteVersion.documentId,
-					remoteVersion.relativePath,
-					promise
+				const [promise, resolve] = createPromise();
+				this.database.setDocument(
+					{
+						parentVersionId: remoteVersion.vaultUpdateId,
+						hash: hash(contentBytes)
+					},
+					this.database.createNewPendingDocument(
+						remoteVersion.documentId,
+						remoteVersion.relativePath,
+						promise
+					)
 				);
 
 				await this.operations.create(
@@ -361,17 +332,6 @@ export class UnrestrictedSyncer {
 					contentBytes
 				);
 
-				const document =
-					this.database.getDocumentByUpdatePromise(promise);
-				this.database.setDocument(
-					{
-						documentId: remoteVersion.documentId,
-						relativePath: remoteVersion.relativePath,
-						parentVersionId: remoteVersion.vaultUpdateId,
-						hash: hash(contentBytes)
-					},
-					document.identity
-				);
 				resolve();
 				this.database.removeDocumentPromise(promise);
 
@@ -387,13 +347,11 @@ export class UnrestrictedSyncer {
 	}
 
 	public async executeSync<T>(
-		paths: RelativePath[],
+		relativePath: RelativePath,
 		syncType: SyncType,
 		syncSource: SyncSource,
 		fn: () => Promise<T>
 	): Promise<T | undefined> {
-		const relativePath = paths[paths.length - 1];
-
 		if (!this.operations.isFileEligibleForSync(relativePath)) {
 			this.history.addHistoryEntry({
 				status: SyncStatus.ERROR,

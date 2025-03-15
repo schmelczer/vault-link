@@ -17,10 +17,6 @@
 
 - Install [`rustup`](https://rustup.rs): `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
 - `sudo apt install llvm -y`
-- `rustup self update`
-- `rustup update`
-- `rustup install nightly`
-- `rustup default nightly`
 - `rustup component add llvm-tools-preview`
 - `cargo install cargo-generate cargo-fuzz cargo-insta rustfilt cargo-binutils`
 - Install [`wasm-pack`](https://rustwasm.github.io/wasm-pack/installer): `curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh`

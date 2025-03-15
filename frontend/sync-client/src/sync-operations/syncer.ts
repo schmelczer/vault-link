@@ -3,8 +3,8 @@ import type { SyncService } from "../services/sync-service";
 import type { Logger } from "../tracing/logger";
 import type { SyncHistory } from "../tracing/sync-history";
 import PQueue from "p-queue";
-import { v4 as uuidv4 } from "uuid";
 import { hash } from "../utils/hash";
+import { v4 as uuidv4 } from "uuid";
 import type { components } from "../services/types";
 import type { Settings } from "../persistence/settings";
 import type { FileOperations } from "../file-operations/file-operations";
@@ -98,20 +98,16 @@ export class Syncer {
 		}
 
 		const [promise, resolve, reject] = createPromise();
-		const proposedDocumentId = uuidv4();
 
-		this.database.getNewResolvedDocumentByRelativePath(
-			proposedDocumentId,
+		const document = this.database.createNewPendingDocument(
+			uuidv4(),
 			relativePath,
 			promise
 		);
 
 		try {
 			await this.syncQueue.add(async () =>
-				this.internalSyncer.unrestrictedSyncLocallyCreatedFile(
-					proposedDocumentId,
-					() => this.database.getDocumentByUpdatePromise(promise)
-				)
+				this.internalSyncer.unrestrictedSyncLocallyCreatedFile(document)
 			);
 
 			resolve();
@@ -131,16 +127,14 @@ export class Syncer {
 
 		const [promise, resolve, reject] = createPromise();
 
-		await this.database.getResolvedDocumentByRelativePath(
+		const document = await this.database.getResolvedDocumentByRelativePath(
 			relativePath,
 			promise
 		);
 
 		try {
 			await this.syncQueue.add(async () =>
-				this.internalSyncer.unrestrictedSyncLocallyDeletedFile(() =>
-					this.database.getDocumentByUpdatePromise(promise)
-				)
+				this.internalSyncer.unrestrictedSyncLocallyDeletedFile(document)
 			);
 
 			resolve();
@@ -158,17 +152,13 @@ export class Syncer {
 		oldPath?: RelativePath;
 		relativePath: RelativePath;
 	}): Promise<void> {
-		if (oldPath !== undefined) {
-			if (
-				this.database.getLatestDocumentByRelativePath(oldPath)
-					?.isDeleted === true
-			) {
-				this.logger.debug(
-					`Document ${oldPath} has been deleted locally, skipping`
-				);
-				return;
-			}
-
+		if (
+			oldPath !== undefined &&
+			(this.database.getLatestDocumentByRelativePath(relativePath) ===
+				undefined ||
+				this.database.getLatestDocumentByRelativePath(relativePath)
+					?.isDeleted === true)
+		) {
 			if (oldPath === relativePath) {
 				throw new Error(
 					`Old path and new path are the same: ${oldPath}`
@@ -178,10 +168,17 @@ export class Syncer {
 			this.database.move(oldPath, relativePath);
 		}
 
-		if (
-			this.database.getLatestDocumentByRelativePath(relativePath)
-				?.isDeleted === true
-		) {
+		let document =
+			this.database.getLatestDocumentByRelativePath(relativePath);
+
+		if (document === undefined) {
+			this.logger.debug(
+				`Cannot find document ${relativePath} in the database, skipping`
+			);
+			return;
+		}
+
+		if (document.isDeleted) {
 			this.logger.debug(
 				`Document ${relativePath} has been deleted locally, skipping`
 			);
@@ -190,7 +187,7 @@ export class Syncer {
 
 		const [promise, resolve, reject] = createPromise();
 
-		await this.database.getResolvedDocumentByRelativePath(
+		document = await this.database.getResolvedDocumentByRelativePath(
 			relativePath,
 			promise
 		);
@@ -199,8 +196,7 @@ export class Syncer {
 			await this.syncQueue.add(async () =>
 				this.internalSyncer.unrestrictedSyncLocallyUpdatedFile({
 					oldPath,
-					getLatestDocument: () =>
-						this.database.getDocumentByUpdatePromise(promise)
+					document
 				})
 			);
 
@@ -299,7 +295,7 @@ export class Syncer {
 	private async syncRemotelyUpdatedFile(
 		remoteVersion: components["schemas"]["DocumentVersionWithoutContent"]
 	): Promise<void> {
-		const document = this.database.getDocumentByDocumentId(
+		let document = this.database.getDocumentByDocumentId(
 			remoteVersion.documentId
 		);
 
@@ -308,15 +304,11 @@ export class Syncer {
 		if (document === undefined) {
 			await this.syncQueue.add(async () =>
 				this.internalSyncer.unrestrictedSyncRemotelyUpdatedFile(
-					remoteVersion,
-					() =>
-						this.database.getDocumentByDocumentId(
-							remoteVersion.documentId
-						)
+					remoteVersion
 				)
 			);
 		} else {
-			await this.database.getResolvedDocumentByRelativePath(
+			document = await this.database.getResolvedDocumentByRelativePath(
 				document.relativePath,
 				promise
 			);
@@ -325,7 +317,7 @@ export class Syncer {
 				await this.syncQueue.add(async () =>
 					this.internalSyncer.unrestrictedSyncRemotelyUpdatedFile(
 						remoteVersion,
-						() => this.database.getDocumentByUpdatePromise(promise)
+						document
 					)
 				);
 

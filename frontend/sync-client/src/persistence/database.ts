@@ -22,7 +22,6 @@ export interface StoredDatabase {
 }
 
 export interface DocumentRecord {
-	identity: symbol;
 	relativePath: RelativePath;
 	documentId: DocumentId;
 	metadata: DocumentMetadata | undefined;
@@ -47,7 +46,6 @@ export class Database {
 				({ relativePath, documentId, ...metadata }) => ({
 					relativePath,
 					documentId,
-					identity: Symbol(),
 					metadata,
 					isDeleted: false,
 					updates: [],
@@ -118,85 +116,33 @@ export class Database {
 
 	public setDocument(
 		{
-			documentId,
-			relativePath,
 			parentVersionId,
 			hash
 		}: {
-			documentId: DocumentId;
-			relativePath: RelativePath;
 			parentVersionId: VaultUpdateId;
 			hash: string;
 		},
-		identity?: symbol
+		toUpdate: DocumentRecord
 	): void {
-		if (identity !== undefined) {
-			const entry = this.getDocumentByIdentity(identity);
-
-			this.documents = this.documents.filter(
-				(doc) => doc.identity !== entry.identity
-			);
-
-			if (entry.relativePath !== relativePath) {
-				throw new Error(
-					"Document identity does not match the relative path"
-				);
-			}
-
-			this.documents.push({
-				...entry,
-				relativePath,
-				documentId,
-				metadata: {
-					parentVersionId,
-					hash
-				}
-			});
-
-			this.save();
-			return;
+		if (!this.documents.includes(toUpdate)) {
+			throw new Error("Document not found in database");
 		}
 
-		// We find a match based on relative path and we find one with a different document id
-		// meaning that two documents occupy the same path in terms of in-flight requests so we
-		// need to create a new parallel version.
-		const entry = this.getLatestDocumentByRelativePath(relativePath);
-		if (entry && entry.documentId !== documentId) {
-			this.documents.push({
-				// `entry` might be undefined if the document is new
-				identity: Symbol(),
-				relativePath,
-				documentId,
-				metadata: {
-					parentVersionId,
-					hash
-				},
-				isDeleted: false,
-				updates: [],
-				parallelVersion: entry.parallelVersion + 1
-			});
-			this.save();
-			return;
-		}
-
-		this.documents.push({
-			identity: Symbol(),
-			relativePath,
-			documentId,
-			metadata: {
-				parentVersionId,
-				hash
-			},
-			isDeleted: false,
-			updates: [],
-			parallelVersion: 0
-		});
+		toUpdate.metadata = { parentVersionId, hash };
 
 		this.save();
+		return;
 	}
 
 	public removeDocumentPromise(promise: Promise<void>): void {
-		const entry = this.getDocumentByUpdatePromise(promise);
+		const entry = this.documents.find(({ updates }) =>
+			updates.includes(promise)
+		);
+
+		if (entry === undefined) {
+			throw new Error("Document not found by update promise");
+		}
+
 		entry.updates = entry.updates.filter((update) => update !== promise);
 		// No need to save as Promises don't get serialized
 	}
@@ -214,7 +160,7 @@ export class Database {
 	public async getResolvedDocumentByRelativePath(
 		relativePath: RelativePath,
 		promise: Promise<void>
-	): Promise<void> {
+	): Promise<DocumentRecord> {
 		const entry = this.getLatestDocumentByRelativePath(relativePath);
 
 		if (entry === undefined) {
@@ -230,20 +176,21 @@ export class Database {
 		const currentPromises = entry.updates;
 		entry.updates = [...currentPromises, promise];
 		await Promise.all(currentPromises);
+
+		return entry;
 	}
 
-	public getNewResolvedDocumentByRelativePath(
+	public createNewPendingDocument(
 		documentId: DocumentId,
 		relativePath: RelativePath,
 		promise: Promise<void>
-	): void {
+	): DocumentRecord {
 		const previousEntry =
 			this.getLatestDocumentByRelativePath(relativePath);
 
 		const entry = {
 			relativePath,
 			documentId,
-			identity: Symbol(),
 			metadata: undefined,
 			isDeleted: false,
 			updates: [promise],
@@ -255,34 +202,14 @@ export class Database {
 
 		this.documents.push(entry);
 		this.save();
-	}
 
-	public getDocumentByUpdatePromise(promise: Promise<void>): DocumentRecord {
-		const result = this.documents.find(({ updates }) =>
-			updates.includes(promise)
-		);
-
-		if (result === undefined) {
-			throw new Error("Document not found by update promise");
-		}
-
-		return result;
+		return entry;
 	}
 
 	public getDocumentByDocumentId(
 		find: DocumentId
 	): DocumentRecord | undefined {
 		return this.documents.find(({ documentId }) => documentId === find);
-	}
-
-	public getDocumentByIdentity(find: symbol): DocumentRecord {
-		const result = this.documents.find(({ identity }) => identity === find);
-
-		if (result === undefined) {
-			throw new Error("Document not found by identity symbol");
-		}
-
-		return result;
 	}
 
 	public move(
@@ -296,10 +223,6 @@ export class Database {
 			return;
 		}
 
-		this.documents = this.documents.filter(
-			({ identity }) => identity !== oldDocument.identity
-		);
-
 		const newDocument =
 			this.getLatestDocumentByRelativePath(newRelativePath);
 		if (newDocument !== undefined && !newDocument.isDeleted) {
@@ -308,17 +231,12 @@ export class Database {
 			);
 		}
 
-		// It's either an invalid state of newDocument is pending deletion and we have
-		// to wait for it to complete.
-		this.documents.push({
-			...oldDocument,
-			relativePath: newRelativePath,
-			// We're in a strange state where the target of the move has just got deleted,
-			// however, its metadata might already have a bunch of updates queued up for
-			// the document at the new location. We need to keep these updates.
-			parallelVersion:
-				newDocument !== undefined ? newDocument.parallelVersion + 1 : 0
-		});
+		oldDocument.relativePath = newRelativePath;
+		// We're in a strange state where the target of the move has just got deleted,
+		// however, its metadata might already have a bunch of updates queued up for
+		// the document at the new location. We need to keep these updates.
+		oldDocument.parallelVersion =
+			newDocument !== undefined ? newDocument.parallelVersion + 1 : 0;
 
 		this.save();
 	}

@@ -63,7 +63,11 @@ export class MockClient implements FileSystemOperations {
 			`Creating file ${path} with content ${new TextDecoder().decode(newContent)}`
 		);
 		this.localFiles.set(path, newContent);
-		void this.client.syncer.syncLocallyCreatedFile(path);
+
+		// we aren't the best client and it takes some time to notice changes
+		setImmediate(() => {
+			void this.client.syncer.syncLocallyCreatedFile(path);
+		});
 	}
 
 	public async createDirectory(_path: RelativePath): Promise<void> {
@@ -101,8 +105,11 @@ export class MockClient implements FileSystemOperations {
 			`Updated file ${path} with:\n  current content: ${currentContent}\n  new content: ${newContent}`
 		);
 
-		void this.client.syncer.syncLocallyUpdatedFile({
-			relativePath: path
+		// we aren't the best client and it takes some time to notice changes
+		setImmediate(() => {
+			void this.client.syncer.syncLocallyUpdatedFile({
+				relativePath: path
+			});
 		});
 
 		return newContent;
@@ -116,13 +123,16 @@ export class MockClient implements FileSystemOperations {
 			`Updated file ${path} with:\n  new content: ${new TextDecoder().decode(content)}`
 		);
 
-		if (hasExisted) {
-			void this.client.syncer.syncLocallyUpdatedFile({
-				relativePath: path
-			});
-		} else {
-			void this.client.syncer.syncLocallyCreatedFile(path);
-		}
+		// we aren't the best client and it takes some time to notice changes
+		setImmediate(() => {
+			if (hasExisted) {
+				void this.client.syncer.syncLocallyUpdatedFile({
+					relativePath: path
+				});
+			} else {
+				void this.client.syncer.syncLocallyCreatedFile(path);
+			}
+		});
 	}
 
 	public async delete(path: RelativePath): Promise<void> {
@@ -130,7 +140,10 @@ export class MockClient implements FileSystemOperations {
 			`Deleting file: ${path} with:\n  content ${new TextDecoder().decode(this.localFiles.get(path))}`
 		);
 		this.localFiles.delete(path);
-		void this.client.syncer.syncLocallyDeletedFile(path);
+		// we aren't the best client and it takes some time to notice changes
+		setImmediate(() => {
+			void this.client.syncer.syncLocallyDeletedFile(path);
+		});
 	}
 
 	public async rename(
@@ -150,9 +163,12 @@ export class MockClient implements FileSystemOperations {
 			`Renamed file: ${oldPath} -> ${newPath} with:\n  content ${new TextDecoder().decode(file)}`
 		);
 
-		void this.client.syncer.syncLocallyUpdatedFile({
-			oldPath,
-			relativePath: newPath
+		// we aren't the best client and it takes some time to notice changes
+		setImmediate(() => {
+			void this.client.syncer.syncLocallyUpdatedFile({
+				oldPath,
+				relativePath: newPath
+			});
 		});
 	}
 }
