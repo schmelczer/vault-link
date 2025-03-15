@@ -36,42 +36,44 @@ export class UnrestrictedSyncer {
 		proposedDocumentId: DocumentId,
 		getLatestDocument: () => DocumentRecord
 	): Promise<void> {
-		let latestDocument = getLatestDocument();
+		let document = getLatestDocument();
 
 		return this.executeSync(
-			[latestDocument.relativePath],
+			[document.relativePath],
 			SyncType.CREATE,
 			SyncSource.PUSH,
 			async () => {
+				document = getLatestDocument();
+
 				const contentBytes = await this.operations.read(
-					latestDocument.relativePath
+					document.relativePath
 				); // this can throw FileNotFoundError
 				const contentHash = hash(contentBytes);
 
 				const response = await this.syncService.create({
 					documentId: proposedDocumentId,
-					relativePath: latestDocument.relativePath,
+					relativePath: document.relativePath,
 					contentBytes
 				});
 
-				latestDocument = getLatestDocument();
+				document = getLatestDocument();
 
 				this.history.addHistoryEntry({
 					status: SyncStatus.SUCCESS,
 					source: SyncSource.PUSH,
-					relativePath: latestDocument.relativePath,
+					relativePath: document.relativePath,
 					message: `Successfully uploaded locally created file`,
 					type: SyncType.CREATE
 				});
 
 				this.database.setDocument(
 					{
-						relativePath: latestDocument.relativePath,
+						relativePath: document.relativePath,
 						documentId: response.documentId,
 						parentVersionId: response.vaultUpdateId,
 						hash: contentHash
 					},
-					latestDocument.identity
+					document.identity
 				);
 
 				this.tryIncrementVaultUpdateId(response.vaultUpdateId);
@@ -88,6 +90,8 @@ export class UnrestrictedSyncer {
 			SyncType.DELETE,
 			SyncSource.PUSH,
 			async () => {
+				document = getLatestDocument();
+
 				const response = await this.syncService.delete({
 					documentId: document.documentId,
 					relativePath: document.relativePath
@@ -132,6 +136,9 @@ export class UnrestrictedSyncer {
 			SyncType.UPDATE,
 			SyncSource.PUSH,
 			async () => {
+				document = getLatestDocument();
+				const originalRelativePath = document.relativePath;
+
 				if (document.metadata === undefined || document.isDeleted) {
 					this.logger.debug(
 						`Document ${document.relativePath} has been already deleted, no need to update it`
@@ -194,8 +201,6 @@ export class UnrestrictedSyncer {
 				});
 
 				if (response.isDeleted) {
-					await this.operations.delete(document.relativePath);
-
 					this.history.addHistoryEntry({
 						status: SyncStatus.SUCCESS,
 						source: SyncSource.PULL,
@@ -216,21 +221,25 @@ export class UnrestrictedSyncer {
 						document.identity
 					);
 
+					await this.operations.delete(document.relativePath);
+
 					this.tryIncrementVaultUpdateId(response.vaultUpdateId);
 
 					return;
 				}
 
-				if (response.relativePath != document.relativePath) {
+				let actualPath = document.relativePath;
+
+				if (response.relativePath != originalRelativePath) {
 					// this.database.getNewResolvedDocumentByRelativePath(
 					// 	response.relativePath,
 					// 	promise
 					// );
 
+					actualPath = response.relativePath;
 					await this.operations.move(
 						document.relativePath,
-						response.relativePath,
-						response.documentId
+						response.relativePath
 					); // this can throw FileNotFoundError
 				}
 
@@ -239,7 +248,7 @@ export class UnrestrictedSyncer {
 					contentHash = hash(responseBytes);
 
 					await this.operations.write(
-						response.relativePath,
+						actualPath,
 						contentBytes,
 						responseBytes
 					);
@@ -253,12 +262,10 @@ export class UnrestrictedSyncer {
 					});
 				}
 
-				document = getLatestDocument();
-
 				this.database.setDocument(
 					{
 						documentId: response.documentId,
-						relativePath: document.relativePath,
+						relativePath: actualPath,
 						parentVersionId: response.vaultUpdateId,
 						hash: contentHash
 					},
@@ -326,6 +333,7 @@ export class UnrestrictedSyncer {
 					);
 					return;
 				}
+
 				if (
 					localMetadata?.metadata?.parentVersionId ??
 					-1 >= remoteVersion.vaultUpdateId
@@ -338,6 +346,21 @@ export class UnrestrictedSyncer {
 
 				const contentBytes = deserialize(content);
 
+				const [promise, resolve] = createPromise();
+
+				await this.operations.create(
+					remoteVersion.relativePath,
+					contentBytes,
+					() =>
+						this.database.getNewResolvedDocumentByRelativePath(
+							remoteVersion.documentId,
+							remoteVersion.relativePath,
+							promise
+						)
+				);
+
+				const document =
+					this.database.getDocumentByUpdatePromise(promise);
 				this.database.setDocument(
 					{
 						documentId: remoteVersion.documentId,
@@ -345,14 +368,10 @@ export class UnrestrictedSyncer {
 						parentVersionId: remoteVersion.vaultUpdateId,
 						hash: hash(contentBytes)
 					},
-					localMetadata?.identity
+					document.identity
 				);
-
-				await this.operations.create(
-					remoteVersion.relativePath,
-					contentBytes,
-					remoteVersion.documentId
-				);
+				resolve();
+				this.database.removeDocumentPromise(promise);
 
 				this.history.addHistoryEntry({
 					status: SyncStatus.SUCCESS,

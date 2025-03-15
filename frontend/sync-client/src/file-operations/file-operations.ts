@@ -1,10 +1,6 @@
 import type { Logger } from "src/tracing/logger";
 import type { FileSystemOperations } from "./filesystem-operations";
-import type {
-	Database,
-	DocumentId,
-	RelativePath
-} from "src/persistence/database";
+import type { Database, RelativePath } from "src/persistence/database";
 import { isBinary, isFileTypeMergable, mergeText } from "sync_lib";
 import {
 	FileNotFoundError,
@@ -53,12 +49,12 @@ export class FileOperations {
 		return this.fs.exists(path);
 	}
 
-	// Create and write the file if it doesn't exist.Otherwise, it has the same behavior as write.
+	// Create and write the file if it doesn't exist. Otherwise, it has the same behavior as write.
 	// All parent directories are created if they don't exist.
 	public async create(
 		path: RelativePath,
 		newContent: Uint8Array,
-		documentId?: DocumentId
+		whatevs?: any
 	): Promise<void> {
 		this.logger.debug(`Creating file: ${path}`);
 		if (await this.fs.exists(path)) {
@@ -67,24 +63,13 @@ export class FileOperations {
 				`Didn't expect ${path} to exist, deconflicting by moving it to '${deconflictedPath}'`
 			);
 
-			const document =
-				this.database.getLatestDocumentByRelativePath(path);
-			this.logger.debug(
-				`Existing metadata for ${path}: ${JSON.stringify(document?.metadata)}`
-			);
-
-			if (document !== undefined && document.documentId === documentId) {
-				// This can happen if the document got moved both locally and remotely
-				// to the same file path. In this case, we shouldn't deconflict, however,
-				// we also can't overwrite otherwise we'd lose changes.
-				throw new FileNotFoundError(path);
-			}
-
-			this.database.move(path, deconflictedPath);
+			// this.database.move(path, deconflictedPath);
 			await this.fs.rename(path, deconflictedPath);
 		} else {
 			await this.createParentDirectories(path);
 		}
+
+		whatevs?.();
 
 		await this.fs.write(path, newContent);
 	}
@@ -152,8 +137,7 @@ export class FileOperations {
 
 	public async move(
 		oldPath: RelativePath,
-		newPath: RelativePath,
-		documentId?: DocumentId
+		newPath: RelativePath
 	): Promise<void> {
 		if (oldPath === newPath) {
 			return;
@@ -165,26 +149,14 @@ export class FileOperations {
 				`Conflict when moving '${oldPath}' to '${newPath}', the latter already exists, deconflicting by moving it to '${deconflictedPath}'`
 			);
 
-			const document =
-				this.database.getLatestDocumentByRelativePath(newPath);
-
-			if (
-				document?.metadata !== undefined &&
-				document.documentId === documentId
-			) {
-				// This can happen if the document got moved both locally and remotely
-				// to the same file path. In this case, we shouldn't deconflict, however,
-				// we also can't overwrite otherwise we'd lose changes.
-				throw new FileNotFoundError(newPath);
-			}
-
-			this.database.move(newPath, deconflictedPath);
+			// this.database.move(newPath, deconflictedPath);
+			// this.database.move(oldPath, newPath);
 			await this.fs.rename(newPath, deconflictedPath);
 		} else {
+			// this.database.move(oldPath, newPath);
 			await this.createParentDirectories(newPath);
 		}
 
-		this.database.move(oldPath, newPath);
 		await this.fs.rename(oldPath, newPath);
 	}
 
@@ -226,17 +198,12 @@ export class FileOperations {
 		);
 		stem = stem.replace(FileOperations.PARENTHESES_REGEX, "");
 
-		// eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-		while (true) {
-			const newName =
-				currentCount === 0
-					? `${directory}${stem}${extension}`
-					: `${directory}${stem} (${currentCount})${extension}`;
-			if (await this.fs.exists(newName)) {
-				currentCount++;
-			} else {
-				return newName;
-			}
-		}
+		let newName;
+		do {
+			currentCount++;
+			newName = `${directory}${stem} (${currentCount})${extension}`;
+		} while (await this.fs.exists(newName));
+
+		return newName;
 	}
 }

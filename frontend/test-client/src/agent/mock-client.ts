@@ -82,11 +82,11 @@ export class MockClient implements FileSystemOperations {
 		const newContentUint8Array = new TextEncoder().encode(newContent);
 		this.localFiles.set(path, newContentUint8Array);
 
-		const existingPats = currentContent
+		const existingParts = currentContent
 			.split(" ")
 			.map((part) => part.trim());
 		const newParts = newContent.split(" ").map((part) => part.trim());
-		existingPats.forEach((part) =>
+		existingParts.forEach((part) =>
 			// all changes should be additive
 			assert(
 				newParts.includes(part),
@@ -106,15 +106,20 @@ export class MockClient implements FileSystemOperations {
 	}
 
 	public async write(path: RelativePath, content: Uint8Array): Promise<void> {
+		const hasExisted = this.localFiles.has(path);
 		this.localFiles.set(path, content);
 
 		this.client.logger.info(
 			`Updated file ${path} with:\n  new content: ${new TextDecoder().decode(content)}`
 		);
 
-		void this.client.syncer.syncLocallyUpdatedFile({
-			relativePath: path
-		});
+		if (hasExisted) {
+			void this.client.syncer.syncLocallyUpdatedFile({
+				relativePath: path
+			});
+		} else {
+			void this.client.syncer.syncLocallyCreatedFile(path);
+		}
 	}
 
 	public async delete(path: RelativePath): Promise<void> {
