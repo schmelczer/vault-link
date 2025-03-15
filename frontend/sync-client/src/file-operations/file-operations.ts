@@ -53,10 +53,14 @@ export class FileOperations {
 	// All parent directories are created if they don't exist.
 	public async create(
 		path: RelativePath,
-		newContent: Uint8Array,
-		whatevs?: any
+		newContent: Uint8Array
 	): Promise<void> {
 		this.logger.debug(`Creating file: ${path}`);
+
+		await this.fs.write(path, newContent);
+	}
+
+	public async ensureClearPath(path: RelativePath): Promise<void> {
 		if (await this.fs.exists(path)) {
 			const deconflictedPath = await this.deconflictPath(path);
 			this.logger.debug(
@@ -68,10 +72,6 @@ export class FileOperations {
 		} else {
 			await this.createParentDirectories(path);
 		}
-
-		whatevs?.();
-
-		await this.fs.write(path, newContent);
 	}
 
 	// Update the file at the given path.
@@ -143,19 +143,7 @@ export class FileOperations {
 			return;
 		}
 
-		if (await this.fs.exists(newPath)) {
-			const deconflictedPath = await this.deconflictPath(newPath);
-			this.logger.debug(
-				`Conflict when moving '${oldPath}' to '${newPath}', the latter already exists, deconflicting by moving it to '${deconflictedPath}'`
-			);
-
-			// this.database.move(newPath, deconflictedPath);
-			// this.database.move(oldPath, newPath);
-			await this.fs.rename(newPath, deconflictedPath);
-		} else {
-			// this.database.move(oldPath, newPath);
-			await this.createParentDirectories(newPath);
-		}
+		await this.ensureClearPath(newPath);
 
 		await this.fs.rename(oldPath, newPath);
 	}
@@ -198,7 +186,7 @@ export class FileOperations {
 		);
 		stem = stem.replace(FileOperations.PARENTHESES_REGEX, "");
 
-		let newName;
+		let newName = path;
 		do {
 			currentCount++;
 			newName = `${directory}${stem} (${currentCount})${extension}`;

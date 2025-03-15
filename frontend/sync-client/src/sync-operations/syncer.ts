@@ -44,11 +44,11 @@ export class Syncer {
 			this.syncQueue.concurrency = newSettings.syncConcurrency;
 		});
 
-		this.syncQueue.on("active", () =>
-			{ this.remainingOperationsListeners.forEach((listener) =>
-				{ listener(this.syncQueue.size); }
-			); }
-		);
+		this.syncQueue.on("active", () => {
+			this.remainingOperationsListeners.forEach((listener) => {
+				listener(this.syncQueue.size);
+			});
+		});
 
 		this.internalSyncer = new UnrestrictedSyncer(
 			logger,
@@ -261,7 +261,9 @@ export class Syncer {
 	public async reset(): Promise<void> {
 		this.syncQueue.clear();
 		await this.syncQueue.onEmpty();
-		this.remainingOperationsListeners.forEach((listener) => { listener(0); });
+		this.remainingOperationsListeners.forEach((listener) => {
+			listener(0);
+		});
 		this.internalSyncer.reset();
 	}
 

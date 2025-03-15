@@ -23,16 +23,6 @@ export class ConnectedState {
 		});
 	}
 
-	private handleComingOnline() {
-		this.logger.debug("Sync is enabled");
-		this.resolveIsSyncEnabled?.();
-	}
-
-	private handleGoingOffline() {
-		this.logger.debug("Sync is disabled");
-		[this.syncIsEnabled, this.resolveIsSyncEnabled] = createPromise();
-	}
-
 	public getFetchImplementation(
 		fetch: typeof globalThis.fetch,
 		{ doRetries = true }: { doRetries: boolean } = { doRetries: true }
@@ -47,5 +37,15 @@ export class ConnectedState {
 			}
 			return retriedFetch(input);
 		};
+	}
+
+	private handleComingOnline(): void {
+		this.logger.debug("Sync is enabled");
+		this.resolveIsSyncEnabled?.();
+	}
+
+	private handleGoingOffline(): void {
+		this.logger.debug("Sync is disabled");
+		[this.syncIsEnabled, this.resolveIsSyncEnabled] = createPromise();
 	}
 }

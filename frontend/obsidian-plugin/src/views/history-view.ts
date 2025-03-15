@@ -60,7 +60,6 @@ export class HistoryView extends ItemView {
 		}
 
 		element.createEl("span", {
-			 
 			text: entry.relativePath
 		});
 

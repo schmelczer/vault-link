@@ -23,9 +23,10 @@ export class MockClient implements FileSystemOperations {
 
 		await Promise.all(
 			Object.keys(this.initialSettings).map(async (key) => {
+				const settingKey = key as keyof SyncSettings; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
 				return this.client.settings.setSetting(
-					key as keyof SyncSettings,
-					this.initialSettings[key as keyof SyncSettings]!
+					settingKey,
+					this.initialSettings[settingKey]! // eslint-disable-line @typescript-eslint/no-non-null-assertion
 				);
 			})
 		);
@@ -88,10 +89,12 @@ export class MockClient implements FileSystemOperations {
 		const newParts = newContent.split(" ").map((part) => part.trim());
 		existingParts.forEach((part) =>
 			// all changes should be additive
-			{ assert(
-				newParts.includes(part),
-				`Part ${part} not found in new content`
-			); }
+			{
+				assert(
+					newParts.includes(part),
+					`Part ${part} not found in new content`
+				);
+			}
 		);
 
 		this.client.logger.info(

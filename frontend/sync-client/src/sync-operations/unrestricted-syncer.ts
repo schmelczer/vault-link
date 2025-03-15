@@ -288,9 +288,7 @@ export class UnrestrictedSyncer {
 			async () => {
 				let localMetadata = getLatestDocument();
 
-				if (
-					localMetadata?.metadata !== undefined
-				) {
+				if (localMetadata?.metadata !== undefined) {
 					// If the file exists locally, let's pretend the user has updated it
 					// and deal with remote update/deletion within `unrestrictedSyncLocallyUpdatedFile`
 					if (
@@ -306,6 +304,7 @@ export class UnrestrictedSyncer {
 					return this.unrestrictedSyncLocallyUpdatedFile({
 						getLatestDocument: () =>
 							this.database.getDocumentByIdentity(
+								// eslint-disable-next-line @typescript-eslint/no-non-null-assertion
 								localMetadata!.identity
 							)
 					});
@@ -334,8 +333,8 @@ export class UnrestrictedSyncer {
 				}
 
 				if (
-					localMetadata?.metadata?.parentVersionId ??
-					-1 >= remoteVersion.vaultUpdateId
+					(localMetadata?.metadata?.parentVersionId ?? -1) >=
+					remoteVersion.vaultUpdateId
 				) {
 					this.logger.debug(
 						`Document ${remoteVersion.relativePath} is already more up to date than the fetched version`
@@ -347,15 +346,19 @@ export class UnrestrictedSyncer {
 
 				const [promise, resolve] = createPromise();
 
+				await this.operations.ensureClearPath(
+					remoteVersion.relativePath
+				);
+
+				this.database.getNewResolvedDocumentByRelativePath(
+					remoteVersion.documentId,
+					remoteVersion.relativePath,
+					promise
+				);
+
 				await this.operations.create(
 					remoteVersion.relativePath,
-					contentBytes,
-					() =>
-						{ this.database.getNewResolvedDocumentByRelativePath(
-							remoteVersion.documentId,
-							remoteVersion.relativePath,
-							promise
-						); }
+					contentBytes
 				);
 
 				const document =

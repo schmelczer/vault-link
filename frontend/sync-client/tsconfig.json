@@ -6,12 +6,10 @@
 		"allowSyntheticDefaultImports": true,
 		"moduleResolution": "bundler",
 		"lib": [
-			"DOM", // to get "fetch"
+			"DOM" // to get "fetch"
 		],
 		"declaration": true,
 		"declarationDir": "./dist/types"
 	},
-	"exclude": [
-		"./dist"
-	]
+	"exclude": ["./dist"]
 }

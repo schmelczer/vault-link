@@ -130,12 +130,11 @@ export class Database {
 		},
 		identity?: symbol
 	): void {
-		let entry: DocumentRecord | undefined;
 		if (identity !== undefined) {
 			const entry = this.getDocumentByIdentity(identity);
 
 			this.documents = this.documents.filter(
-				({ identity }) => identity !== entry.identity
+				(doc) => doc.identity !== entry.identity
 			);
 
 			if (entry.relativePath !== relativePath) {
@@ -161,7 +160,7 @@ export class Database {
 		// We find a match based on relative path and we find one with a different document id
 		// meaning that two documents occupy the same path in terms of in-flight requests so we
 		// need to create a new parallel version.
-		entry = this.getLatestDocumentByRelativePath(relativePath);
+		const entry = this.getLatestDocumentByRelativePath(relativePath);
 		if (entry && entry.documentId !== documentId) {
 			this.documents.push({
 				// `entry` might be undefined if the document is new
@@ -238,7 +237,8 @@ export class Database {
 		relativePath: RelativePath,
 		promise: Promise<void>
 	): void {
-		const previousEntry = this.getLatestDocumentByRelativePath(relativePath);
+		const previousEntry =
+			this.getLatestDocumentByRelativePath(relativePath);
 
 		const entry = {
 			relativePath,
@@ -300,7 +300,8 @@ export class Database {
 			({ identity }) => identity !== oldDocument.identity
 		);
 
-		const newDocument = this.getLatestDocumentByRelativePath(newRelativePath);
+		const newDocument =
+			this.getLatestDocumentByRelativePath(newRelativePath);
 		if (newDocument !== undefined && !newDocument.isDeleted) {
 			throw new Error(
 				`Document already exists at new location: ${newRelativePath}`
@@ -338,11 +339,13 @@ export class Database {
 		this.ensureConsistency();
 		void this.saveData({
 			documents: this.resolvedDocuments.map(
-				({ relativePath, metadata }) => ({
+				({ relativePath, documentId, metadata }) => ({
+					documentId,
 					relativePath,
-					...metadata
+					// eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+					...metadata! // resolvedDocuments only returns docs with metadata set
 				})
-			) as StoredDocumentMetadata[],
+			),
 			lastSeenUpdateId: this.lastSeenUpdateId
 		});
 	}
