@@ -19,9 +19,6 @@ jobs:
 
       - name: Setup
         run: |
-          rustup install nightly
-          rustup default nightly
-          rustup component add clippy rustfmt
           cargo install sqlx-cli
           cd backend
           sqlx database create --database-url sqlite://db.sqlite3
@@ -44,7 +41,7 @@ jobs:
           cd backend
           cargo test --verbose
           cd sync_lib
-          # wasm-pack test --node # todo: fix this in CI
+          wasm-pack test --node
 
       - name: Lint frontend
         run: |
@@ -62,3 +59,12 @@ jobs:
         run: |
           cd frontend
           npm run test
+
+      - name: E2E tests
+        run: |
+          cd ../backend
+          UST_BACKTRACE=1 cargo run -p sync_server &
+          cd -
+
+          npm run build
+          test-client/run.sh 32
