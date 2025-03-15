@@ -31,7 +31,6 @@ export function retriedFetchFactory(
 				}
 				return false;
 			},
-			retries: 6,
 			retryDelay: (attempt) => Math.pow(1.5, attempt) * 500,
 			...init
 		});

@@ -12,6 +12,7 @@
 	"devDependencies": {
 		"tslib": "2.8.1",
 		"typescript": "5.7.3",
+		"uuid": "^11.1.0",
 		"sync_lib": "file:../../backend/sync_lib/pkg",
 		"@types/jest": "^29.5.14",
 		"@types/node": "^22.13.5",
