@@ -66,7 +66,7 @@ pub fn merge_text(parent: &str, left: &str, right: &str) -> String {
 pub fn is_binary(data: &[u8]) -> bool {
     set_panic_hook();
 
-    if data.iter().any(|&b| b == 0) {
+    if data.contains(&0) {
         // Even though the NUL character is valid in UTF-8, it's highly suspicious in
         // human-readable text.
         return true;
