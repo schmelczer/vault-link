@@ -1,4 +1,4 @@
-import type { RelativePath } from "src/persistence/database";
+import type { RelativePath } from "../persistence/database";
 
 export interface FileSystemOperations {
 	listAllFiles: () => Promise<RelativePath[]>;

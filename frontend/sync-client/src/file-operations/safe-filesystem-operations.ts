@@ -12,7 +12,8 @@ export class FileNotFoundError extends Error {
 
 // Decorate FileSystemOperations replacing errors with FileNotFoundError
 // if the accessed file doesn't exist. It also ensures that there's only
-// ever a single request in-flight for any one file.
+// ever a single request in-flight for any one file through the use of
+// DocumentLocks.
 export class SafeFileSystemOperations implements FileSystemOperations {
 	private readonly locks: DocumentLocks;
 
@@ -24,7 +25,6 @@ export class SafeFileSystemOperations implements FileSystemOperations {
 	}
 
 	public async listAllFiles(): Promise<RelativePath[]> {
-		this.logger.debug("Listing all files");
 		return this.fs.listAllFiles();
 	}
 

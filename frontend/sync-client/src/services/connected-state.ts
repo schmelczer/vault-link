@@ -1,5 +1,5 @@
-import { Settings } from "../persistence/settings";
-import { Logger } from "../tracing/logger";
+import type { Settings } from "../persistence/settings";
+import type { Logger } from "../tracing/logger";
 import { createPromise } from "../utils/create-promise";
 import { retriedFetchFactory } from "../utils/retried-fetch";
 

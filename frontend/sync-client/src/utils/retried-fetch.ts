@@ -1,6 +1,6 @@
 import * as fetchRetryFactory from "fetch-retry";
 import type { RequestInitRetryParams } from "fetch-retry";
-import type { Logger } from "src/tracing/logger";
+import type { Logger } from "../tracing/logger";
 
 function getUrlFromInput(input: RequestInfo | URL): string {
 	if (input instanceof URL) {

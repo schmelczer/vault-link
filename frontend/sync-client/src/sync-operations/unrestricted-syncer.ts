@@ -5,18 +5,18 @@ import type {
 	RelativePath
 } from "../persistence/database";
 
-import type { SyncService } from "src/services/sync-service";
-import { Logger } from "src/tracing/logger";
-import type { SyncHistory } from "src/tracing/sync-history";
-import { SyncSource, SyncStatus, SyncType } from "src/tracing/sync-history";
-import { EMPTY_HASH, hash } from "src/utils/hash";
-import type { components } from "src/services/types";
-import { deserialize } from "src/utils/deserialize";
-import type { Settings } from "src/persistence/settings";
-import type { FileOperations } from "src/file-operations/file-operations";
-import { FileNotFoundError } from "src/file-operations/safe-filesystem-operations";
+import type { SyncService } from "../services/sync-service";
+import type { Logger } from "../tracing/logger";
+import type { SyncHistory } from "../tracing/sync-history";
+import { SyncSource, SyncStatus, SyncType } from "../tracing/sync-history";
+import { EMPTY_HASH, hash } from "../utils/hash";
+import type { components } from "../services/types";
+import { deserialize } from "../utils/deserialize";
+import type { Settings } from "../persistence/settings";
+import type { FileOperations } from "../file-operations/file-operations";
+import { FileNotFoundError } from "../file-operations/safe-filesystem-operations";
 import { DocumentLocks } from "../file-operations/document-locks";
-import { createPromise } from "src/utils/create-promise";
+import { createPromise } from "../utils/create-promise";
 
 export class UnrestrictedSyncer {
 	private readonly locks: DocumentLocks;
@@ -289,7 +289,6 @@ export class UnrestrictedSyncer {
 				let localMetadata = getLatestDocument();
 
 				if (
-					localMetadata !== undefined &&
 					localMetadata?.metadata !== undefined
 				) {
 					// If the file exists locally, let's pretend the user has updated it
@@ -352,11 +351,11 @@ export class UnrestrictedSyncer {
 					remoteVersion.relativePath,
 					contentBytes,
 					() =>
-						this.database.getNewResolvedDocumentByRelativePath(
+						{ this.database.getNewResolvedDocumentByRelativePath(
 							remoteVersion.documentId,
 							remoteVersion.relativePath,
 							promise
-						)
+						); }
 				);
 
 				const document =

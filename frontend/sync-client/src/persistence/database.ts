@@ -216,7 +216,7 @@ export class Database {
 		relativePath: RelativePath,
 		promise: Promise<void>
 	): Promise<void> {
-		let entry = this.getLatestDocumentByRelativePath(relativePath);
+		const entry = this.getLatestDocumentByRelativePath(relativePath);
 
 		if (entry === undefined) {
 			throw new Error(
@@ -238,7 +238,7 @@ export class Database {
 		relativePath: RelativePath,
 		promise: Promise<void>
 	): void {
-		let previousEntry = this.getLatestDocumentByRelativePath(relativePath);
+		const previousEntry = this.getLatestDocumentByRelativePath(relativePath);
 
 		const entry = {
 			relativePath,
@@ -300,7 +300,7 @@ export class Database {
 			({ identity }) => identity !== oldDocument.identity
 		);
 
-		let newDocument = this.getLatestDocumentByRelativePath(newRelativePath);
+		const newDocument = this.getLatestDocumentByRelativePath(newRelativePath);
 		if (newDocument !== undefined && !newDocument.isDeleted) {
 			throw new Error(
 				`Document already exists at new location: ${newRelativePath}`

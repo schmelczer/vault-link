@@ -1,17 +1,17 @@
 import type { Database, RelativePath } from "../persistence/database";
-import type { SyncService } from "src/services/sync-service";
-import type { Logger } from "src/tracing/logger";
-import type { SyncHistory } from "src/tracing/sync-history";
+import type { SyncService } from "../services/sync-service";
+import type { Logger } from "../tracing/logger";
+import type { SyncHistory } from "../tracing/sync-history";
 import PQueue from "p-queue";
 import { v4 as uuidv4 } from "uuid";
-import { hash } from "src/utils/hash";
-import type { components } from "src/services/types";
-import type { Settings } from "src/persistence/settings";
-import type { FileOperations } from "src/file-operations/file-operations";
-import { findMatchingFile } from "src/utils/find-matching-file";
+import { hash } from "../utils/hash";
+import type { components } from "../services/types";
+import type { Settings } from "../persistence/settings";
+import type { FileOperations } from "../file-operations/file-operations";
+import { findMatchingFile } from "../utils/find-matching-file";
 import { UnrestrictedSyncer } from "./unrestricted-syncer";
-import { FileNotFoundError } from "src/file-operations/safe-filesystem-operations";
-import { createPromise } from "src/utils/create-promise";
+import { FileNotFoundError } from "../file-operations/safe-filesystem-operations";
+import { createPromise } from "../utils/create-promise";
 
 export class Syncer {
 	private readonly remainingOperationsListeners: ((
@@ -45,9 +45,9 @@ export class Syncer {
 		});
 
 		this.syncQueue.on("active", () =>
-			this.remainingOperationsListeners.forEach((listener) =>
-				listener(this.syncQueue.size)
-			)
+			{ this.remainingOperationsListeners.forEach((listener) =>
+				{ listener(this.syncQueue.size); }
+			); }
 		);
 
 		this.internalSyncer = new UnrestrictedSyncer(
@@ -107,7 +107,7 @@ export class Syncer {
 		);
 
 		try {
-			await this.syncQueue.add(() =>
+			await this.syncQueue.add(async () =>
 				this.internalSyncer.unrestrictedSyncLocallyCreatedFile(
 					proposedDocumentId,
 					() => this.database.getDocumentByUpdatePromise(promise)
@@ -261,7 +261,7 @@ export class Syncer {
 	public async reset(): Promise<void> {
 		this.syncQueue.clear();
 		await this.syncQueue.onEmpty();
-		this.remainingOperationsListeners.forEach((listener) => listener(0));
+		this.remainingOperationsListeners.forEach((listener) => { listener(0); });
 		this.internalSyncer.reset();
 	}
 
@@ -297,7 +297,7 @@ export class Syncer {
 	private async syncRemotelyUpdatedFile(
 		remoteVersion: components["schemas"]["DocumentVersionWithoutContent"]
 	): Promise<void> {
-		let document = this.database.getDocumentByDocumentId(
+		const document = this.database.getDocumentByDocumentId(
 			remoteVersion.documentId
 		);
 

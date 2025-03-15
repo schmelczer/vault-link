@@ -1,6 +1,6 @@
-import type { Logger } from "src/tracing/logger";
+import type { Logger } from "../tracing/logger";
 import type { FileSystemOperations } from "./filesystem-operations";
-import type { Database, RelativePath } from "src/persistence/database";
+import type { Database, RelativePath } from "../persistence/database";
 import { isBinary, isFileTypeMergable, mergeText } from "sync_lib";
 import {
 	FileNotFoundError,

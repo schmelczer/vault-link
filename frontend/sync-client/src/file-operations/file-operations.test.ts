@@ -1,4 +1,3 @@
-import type { FileSystemOperations } from "sync-client";
 import type {
 	Database,
 	DocumentRecord,
@@ -7,6 +6,7 @@ import type {
 import { FileOperations } from "./file-operations";
 import { Logger } from "../tracing/logger";
 import { assertSetContainsExactly } from "../utils/assert-set-contains-exactly";
+import type { FileSystemOperations } from "./filesystem-operations";
 
 describe("File operations", () => {
 	class MockDatabase {

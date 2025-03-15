@@ -1,10 +1,10 @@
 import { assert } from "../utils/assert";
-import type {
-	RelativePath,
-	FileSystemOperations,
-	SyncSettings
+import {
+	type RelativePath,
+	type FileSystemOperations,
+	type SyncSettings,
+	SyncClient
 } from "sync-client";
-import { SyncClient } from "sync-client";
 
 export class MockClient implements FileSystemOperations {
 	protected readonly localFiles = new Map<string, Uint8Array>();
@@ -24,8 +24,8 @@ export class MockClient implements FileSystemOperations {
 		await Promise.all(
 			Object.keys(this.initialSettings).map(async (key) => {
 				return this.client.settings.setSetting(
-					key as keyof SyncSettings, // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
-					this.initialSettings[key as keyof SyncSettings] // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+					key as keyof SyncSettings,
+					this.initialSettings[key as keyof SyncSettings]!
 				);
 			})
 		);
@@ -88,10 +88,10 @@ export class MockClient implements FileSystemOperations {
 		const newParts = newContent.split(" ").map((part) => part.trim());
 		existingParts.forEach((part) =>
 			// all changes should be additive
-			assert(
+			{ assert(
 				newParts.includes(part),
 				`Part ${part} not found in new content`
-			)
+			); }
 		);
 
 		this.client.logger.info(

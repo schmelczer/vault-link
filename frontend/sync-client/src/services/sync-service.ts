@@ -8,7 +8,7 @@ import type {
 } from "../persistence/database";
 import type { Logger } from "../tracing/logger";
 import type { Settings } from "../persistence/settings";
-import { ConnectedState } from "./connected-state";
+import type { ConnectedState } from "./connected-state";
 
 export interface CheckConnectionResult {
 	isSuccessful: boolean;
