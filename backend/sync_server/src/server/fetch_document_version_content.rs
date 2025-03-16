@@ -32,7 +32,7 @@ pub async fn fetch_document_version_content(
         document_id,
         vault_update_id,
     }): Path<PathParams>,
-    State(state): State<AppState>,
+    State(mut state): State<AppState>,
 ) -> Result<Bytes, SyncServerError> {
     auth(&state, auth_header.token())?;
 

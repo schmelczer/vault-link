@@ -77,7 +77,7 @@ pub async fn create_document_json(
 
 async fn internal_create_document(
     auth_header: Authorization<Bearer>,
-    state: AppState,
+    mut state: AppState,
     vault_id: VaultId,
     document_id: Option<DocumentId>,
     relative_path: String,
@@ -87,7 +87,7 @@ async fn internal_create_document(
 
     let mut transaction = state
         .database
-        .create_write_transaction()
+        .create_write_transaction(&vault_id)
         .await
         .map_err(server_error)?;
 
@@ -119,7 +119,6 @@ async fn internal_create_document(
     let sanitized_relative_path = sanitize_path(&relative_path);
 
     let new_version = StoredDocumentVersion {
-        vault_id,
         vault_update_id: last_update_id + 1,
         document_id,
         relative_path: sanitized_relative_path,
@@ -130,7 +129,7 @@ async fn internal_create_document(
 
     state
         .database
-        .insert_document_version(&new_version, Some(&mut transaction))
+        .insert_document_version(&vault_id, &new_version, Some(&mut transaction))
         .await
         .map_err(server_error)?;
 

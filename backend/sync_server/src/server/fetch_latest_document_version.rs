@@ -28,7 +28,7 @@ pub async fn fetch_latest_document_version(
         vault_id,
         document_id,
     }): Path<PathParams>,
-    State(state): State<AppState>,
+    State(mut state): State<AppState>,
 ) -> Result<Json<DocumentVersion>, SyncServerError> {
     auth(&state, auth_header.token())?;
 

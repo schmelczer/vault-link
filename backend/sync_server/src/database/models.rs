@@ -9,7 +9,6 @@ pub type DocumentId = uuid::Uuid;
 
 #[derive(Debug, Clone)]
 pub struct StoredDocumentVersion {
-    pub vault_id: VaultId,
     pub vault_update_id: VaultUpdateId,
     pub document_id: DocumentId,
     pub relative_path: String,
@@ -19,15 +18,12 @@ pub struct StoredDocumentVersion {
 }
 
 impl PartialEq<Self> for StoredDocumentVersion {
-    fn eq(&self, other: &Self) -> bool {
-        self.vault_id == other.vault_id && self.vault_update_id == other.vault_update_id
-    }
+    fn eq(&self, other: &Self) -> bool { self.vault_update_id == other.vault_update_id }
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentVersionWithoutContent {
-    pub vault_id: VaultId,
     pub vault_update_id: VaultUpdateId,
     pub document_id: DocumentId,
     pub relative_path: String,
@@ -38,7 +34,6 @@ pub struct DocumentVersionWithoutContent {
 impl From<StoredDocumentVersion> for DocumentVersionWithoutContent {
     fn from(value: StoredDocumentVersion) -> Self {
         Self {
-            vault_id: value.vault_id,
             vault_update_id: value.vault_update_id,
             document_id: value.document_id,
             relative_path: value.relative_path,
@@ -51,7 +46,6 @@ impl From<StoredDocumentVersion> for DocumentVersionWithoutContent {
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentVersion {
-    pub vault_id: VaultId,
     pub vault_update_id: VaultUpdateId,
     pub document_id: DocumentId,
     pub relative_path: String,
@@ -63,7 +57,6 @@ pub struct DocumentVersion {
 impl From<StoredDocumentVersion> for DocumentVersion {
     fn from(value: StoredDocumentVersion) -> Self {
         Self {
-            vault_id: value.vault_id,
             vault_update_id: value.vault_update_id,
             document_id: value.document_id,
             relative_path: value.relative_path,

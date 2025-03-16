@@ -21,7 +21,7 @@ RUN apk add --no-cache curl
 
 COPY --from=builder /usr/src/backend/target/x86_64-unknown-linux-musl/release/sync_server /app/sync_server
 
-VOLUME /data
+VOLUME /data/databases
 EXPOSE 3000/tcp
 
 WORKDIR /data

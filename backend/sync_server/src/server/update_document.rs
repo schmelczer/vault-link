@@ -83,7 +83,7 @@ pub async fn update_document_json(
 #[allow(clippy::too_many_arguments)]
 async fn internal_update_document(
     auth_header: Authorization<Bearer>,
-    state: AppState,
+    mut state: AppState,
     vault_id: VaultId,
     document_id: DocumentId,
     parent_version_id: VaultUpdateId,
@@ -110,7 +110,7 @@ async fn internal_update_document(
 
     let mut transaction = state
         .database
-        .create_write_transaction()
+        .create_write_transaction(&vault_id)
         .await
         .map_err(server_error)?;
 
@@ -196,7 +196,6 @@ async fn internal_update_document(
     };
 
     let new_version = StoredDocumentVersion {
-        vault_id,
         document_id,
         vault_update_id: last_update_id + 1,
         relative_path: new_relative_path,
@@ -207,7 +206,7 @@ async fn internal_update_document(
 
     state
         .database
-        .insert_document_version(&new_version, Some(&mut transaction))
+        .insert_document_version(&vault_id, &new_version, Some(&mut transaction))
         .await
         .map_err(server_error)?;
 
