@@ -17,6 +17,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v4.2.0
+        with:
+          node-version: "22.x"
+          check-latest: true
+
       - name: Setup
         run: |
           cargo install sqlx-cli
@@ -35,12 +41,6 @@ jobs:
           cd backend
           cargo clippy --all-targets --all-features
           cargo fmt --all -- --check
-
-      - name: Setup Node.js environment
-        uses: actions/setup-node@v4.2.0
-        with:
-          node-version: "22.x"
-          check-latest: true
 
       - name: Test backend
         run: |

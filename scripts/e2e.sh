@@ -12,14 +12,14 @@ fi
 # Get the number of processes from the first argument
 process_count=$1
 
+mkdir -p logs
+
 cd frontend
 npm run build
 
-mkdir -p logs
-
 pids=()
 for i in $(seq 1 $process_count); do
-    node test-client/dist/cli.js > "logs/log_${i}.log" 2>&1 &
+    node test-client/dist/cli.js > "../logs/log_${i}.log" 2>&1 &
     pids+=($!)
 done
 
