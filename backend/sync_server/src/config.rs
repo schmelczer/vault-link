@@ -44,7 +44,7 @@ impl Config {
     pub async fn load_from_file(path: &Path) -> Result<Self> {
         let contents = fs::read_to_string(path).await.with_context(|| {
             format!(
-                "Cannot load configuration from disk from ({})",
+                "Cannot load configuration from disk from {}",
                 path.display()
             )
         })?;

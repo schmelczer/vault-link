@@ -254,8 +254,6 @@ export class Database {
 	}
 
 	private save(): void {
-		this.logger.debug(JSON.stringify(this.documents, null, 2));
-
 		this.ensureConsistency();
 		void this.saveData({
 			documents: this.resolvedDocuments.map(
