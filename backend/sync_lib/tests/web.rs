@@ -25,9 +25,9 @@ fn test_base64_to_bytes_error() {
 #[wasm_bindgen_test(unsupported = test)]
 fn merge_text() {
     let left = b"hello ";
-    let right = b"world ";
+    let right = b"world";
     let result = merge(b"", left, right);
-    assert!(result == b"hello world ".to_vec() || result == b"world hello ".to_vec());
+    assert_eq!(result, b"hello world");
 }
 
 #[wasm_bindgen_test(unsupported = test)]

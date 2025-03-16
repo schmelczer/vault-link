@@ -160,7 +160,7 @@ mod test {
             "hi ",
             "hi there you ",
             "hi there my friend ",
-            "hi there you my friend ",
+            "hi there my friend you ",
         );
 
         test_merge_both_ways("a", "a b c", "a b c d", "a b c d");

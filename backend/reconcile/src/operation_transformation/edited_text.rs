@@ -211,7 +211,16 @@ where
                             usize::from(matches!(operation.operation, Operation::Delete { .. })),
                             // Make sure that the ordering is deterministic regardless which text
                             // is left or right.
-                            operation.operation.get_hash(),
+                            match &operation.operation {
+                                Operation::Insert { text, .. } => text
+                                    .iter()
+                                    .map(super::super::tokenizer::token::Token::original)
+                                    .collect::<String>(),
+                                Operation::Delete {
+                                    deleted_character_count,
+                                    ..
+                                } => deleted_character_count.to_string(),
+                            },
                         )
                     },
                 )
@@ -285,7 +294,7 @@ mod tests {
         let original = "hello world! ...";
         let left = "Hello world! I'm Andras.";
         let right = "Hello world! How are you?";
-        let expected = "Hello world! I'm Andras. How are you?";
+        let expected = "Hello world! How are you? I'm Andras.";
 
         let operations_1 = EditedText::from_strings(original, left);
         let operations_2 = EditedText::from_strings(original, right);

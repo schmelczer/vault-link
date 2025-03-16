@@ -1,8 +1,5 @@
 use core::fmt::{Debug, Display};
-use std::{
-    hash::{DefaultHasher, Hash, Hasher},
-    ops::Range,
-};
+use std::ops::Range;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -37,28 +34,6 @@ where
         #[cfg(debug_assertions)]
         deleted_text: Option<String>,
     },
-}
-
-impl<T> Hash for Operation<T>
-where
-    T: PartialEq + Clone + std::fmt::Debug,
-{
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        match self {
-            Operation::Insert { index, text } => {
-                index.hash(state);
-                text.iter().for_each(|token| token.original().hash(state));
-            }
-            Operation::Delete {
-                index,
-                deleted_character_count,
-                ..
-            } => {
-                index.hash(state);
-                deleted_character_count.hash(state);
-            }
-        }
-    }
 }
 
 impl<T> Operation<T>
@@ -314,13 +289,6 @@ where
                 updated_delete
             }
         }
-    }
-
-    /// Gets the hash of the operation based on the indexes and original text.
-    pub fn get_hash(&self) -> u64 {
-        let mut hasher = DefaultHasher::new();
-        self.hash(&mut hasher);
-        hasher.finish()
     }
 }
 
