@@ -60,24 +60,6 @@ export class Syncer {
 		);
 	}
 
-	private static async forgivingFileNotFoundWrapper<T>(
-		fn: () => Promise<T>,
-		logger: Logger
-	): Promise<T | undefined> {
-		try {
-			return await fn();
-		} catch (e) {
-			if (e instanceof FileNotFoundError) {
-				logger.debug(
-					`File has been deleted or moved before we had a chance to inspect it, skipping`
-				);
-				return undefined;
-			}
-
-			throw e;
-		}
-	}
-
 	public addRemainingOperationsListener(
 		listener: (remainingOperations: number) => void
 	): void {
@@ -355,13 +337,7 @@ export class Syncer {
 				// Perhaps the file has been moved; let's check by looking at the deleted files
 				const contentHash = await this.syncQueue.add(async () => {
 					const contentBytes =
-						await Syncer.forgivingFileNotFoundWrapper(
-							async () => this.operations.read(relativePath),
-							this.logger
-						);
-					if (contentBytes === undefined) {
-						return;
-					}
+						await this.operations.read(relativePath); // this can throw FileNotFoundError
 					return hash(contentBytes);
 				});
 

@@ -23,7 +23,6 @@ pub type Transaction<'a> = sqlx::Transaction<'a, Sqlite>;
 
 impl Database {
     pub async fn try_new(config: &DatabaseConfig) -> Result<Self> {
-        // Create the databases directory if it doesn't exist
         tokio::fs::create_dir_all(&config.databases_directory_path)
             .await
             .with_context(|| {
@@ -67,7 +66,6 @@ impl Database {
             .databases_directory_path
             .join(format!("{vault}.sqlite"));
 
-        // Continue with database connection setup
         let connection_options = SqliteConnectOptions::new()
             .filename(file_name.clone())
             .create_if_missing(true)

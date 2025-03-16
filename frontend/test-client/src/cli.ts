@@ -46,10 +46,6 @@ async function runTest({
 		);
 	}
 
-	// for debugging
-	// eslint-disable-next-line
-	(globalThis as any).clients = clients;
-
 	try {
 		await Promise.all(clients.map(async (client) => client.init()));
 
@@ -109,20 +105,22 @@ async function runTest({
 }
 
 async function runTests(): Promise<void> {
-	for (const concurrency of [
-		16,
-		1 // test with concurrency 1 to check for deadlocks
-	]) {
-		for (const doDeletes of [true, false]) {
-			for (const useSlowFileEvents of [true, false]) {
-				await runTest({
-					agentCount: 4,
-					concurrency,
-					iterations: 200,
-					doDeletes,
-					useSlowFileEvents,
-					jitterScaleInSeconds: 0.75
-				});
+	for (const useSlowFileEvents of [false, true]) {
+		for (const concurrency of [
+			16,
+			1 // test with concurrency 1 to check for deadlocks
+		]) {
+			for (const doDeletes of [true, false]) {
+				for (let i = 0; i < 4; i++) {
+					await runTest({
+						agentCount: 2,
+						concurrency,
+						iterations: 200,
+						doDeletes,
+						useSlowFileEvents,
+						jitterScaleInSeconds: 0.75
+					});
+				}
 			}
 		}
 	}
@@ -148,7 +146,7 @@ runTests()
 	.then(() => {
 		process.exit(0);
 	})
-	.catch(async (err: unknown) => {
+	.catch((err: unknown) => {
 		console.error(err);
 		process.exit(1);
 	});

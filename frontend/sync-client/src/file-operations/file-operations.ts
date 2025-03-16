@@ -107,7 +107,7 @@ export class FileOperations {
 				currentText = currentText.replace(/\r\n/g, "\n");
 				if (currentText !== expectedText) {
 					this.logger.debug(
-						`Performing a 3-way merge for ${path} with the expected content:\n${expectedText}`
+						`Performing a 3-way merge for ${path} with the expected content`
 					);
 
 					return mergeText(expectedText, currentText, newText);

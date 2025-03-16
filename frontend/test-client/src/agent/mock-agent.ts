@@ -251,10 +251,7 @@ export class MockAgent extends MockClient {
 			`Decided to create file ${file} with content ${content}`
 		);
 
-		return this.create(
-			file,
-			new TextEncoder().encode(`   |${content}|   `)
-		);
+		return this.create(file, new TextEncoder().encode(` ${content} `));
 	}
 
 	private async changeFetchChangesUpdateIntervalMsAction(): Promise<void> {
@@ -328,7 +325,7 @@ export class MockAgent extends MockClient {
 			`Decided to update file ${file} with ${content}`
 		);
 		this.doNotTouchWhileOffline.push(file);
-		await this.atomicUpdateText(file, (old) => old + `   |${content}|   `);
+		await this.atomicUpdateText(file, (old) => old + ` ${content} `);
 	}
 
 	private async deleteFileAction(files: RelativePath[]): Promise<void> {

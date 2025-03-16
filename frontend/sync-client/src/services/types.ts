@@ -452,7 +452,10 @@ export interface components {
 		Array_of_uint8: number[];
 		CreateDocumentVersion: {
 			contentBase64: string;
-			/** Format: uuid */
+			/**
+			 * Format: uuid
+			 * @description The client can decide the document id (if it wishes to) in order to help with syncing. If the client does not provide a document id, the server will generate one. If the client provides a document id it must not already exist in the database.
+			 */
 			documentId?: string | null;
 			relativePath: string;
 		};
@@ -476,7 +479,6 @@ export interface components {
 					type: "FastForwardUpdate";
 					/** Format: date-time */
 					updatedDate: string;
-					vaultId: string;
 					/** Format: int64 */
 					vaultUpdateId: number;
 			  }
@@ -490,7 +492,6 @@ export interface components {
 					type: "MergingUpdate";
 					/** Format: date-time */
 					updatedDate: string;
-					vaultId: string;
 					/** Format: int64 */
 					vaultUpdateId: number;
 			  };
@@ -502,7 +503,6 @@ export interface components {
 			relativePath: string;
 			/** Format: date-time */
 			updatedDate: string;
-			vaultId: string;
 			/** Format: int64 */
 			vaultUpdateId: number;
 		};
@@ -513,7 +513,6 @@ export interface components {
 			relativePath: string;
 			/** Format: date-time */
 			updatedDate: string;
-			vaultId: string;
 			/** Format: int64 */
 			vaultUpdateId: number;
 		};
