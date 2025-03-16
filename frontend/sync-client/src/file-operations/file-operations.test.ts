@@ -9,11 +9,19 @@ import { assertSetContainsExactly } from "../utils/assert-set-contains-exactly";
 import type { FileSystemOperations } from "./filesystem-operations";
 
 describe("File operations", () => {
-	class MockDatabase {
+	class MockDatabase implements Partial<Database> {
 		public getLatestDocumentByRelativePath(
 			_find: RelativePath
 		): DocumentRecord | undefined {
+			// no-op
 			return undefined;
+		}
+
+		public move(
+			_oldRelativePath: RelativePath,
+			_newRelativePath: RelativePath
+		): void {
+			// no-op
 		}
 	}
 
