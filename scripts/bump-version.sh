@@ -41,12 +41,12 @@ cd ..
 cp plugin/manifest.json manifest.json  # for BRAT, otherwise it wouldn't update
 
 # Commit and tag
-git add .
-TAG=$(node -p "require('./plugin/package.json').version")
-git commit -m "Bump versions to $TAG"
+# git add .
+# TAG=$(node -p "require('./plugin/package.json').version")
+# git commit -m "Bump versions to $TAG"
 
-git push
-echo "Tagging $TAG"
-git tag -a $TAG -m "Release $TAG"
-git push origin $TAG
+# git push
+# echo "Tagging $TAG"
+# git tag -a $TAG -m "Release $TAG"
+# git push origin $TAG
 echo "Done"
