@@ -2,14 +2,13 @@ name: Publish Obsidian plugin
 
 on:
   push:
-    tags:
-      - "*"
+    tags: ["*"]
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build-plugin:
+  publish-plugin:
     runs-on: self-hosted
 
     steps:
