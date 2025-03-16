@@ -33,6 +33,7 @@ jobs:
         run: |
           cd backend
           RUST_BACKTRACE=1 cargo run -p sync_server &
-          cd ..
+          cd ../frontend
           npm ci
+          cd ..
           scripts/e2e.sh 32
