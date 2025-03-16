@@ -26,7 +26,6 @@ jobs:
 
       - name: Build wasm
         run: |
-          cd backend
           cargo install wasm-pack
           wasm-pack build --target web sync_lib
 

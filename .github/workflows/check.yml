@@ -36,6 +36,12 @@ jobs:
           cargo clippy --all-targets --all-features
           cargo fmt --all -- --check
 
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v4.2.0
+        with:
+          node-version: "22.x"
+          check-latest: true
+
       - name: Test backend
         run: |
           cd backend
