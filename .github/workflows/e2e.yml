@@ -31,6 +31,7 @@ jobs:
 
       - name: E2E tests
         run: |
-          UST_BACKTRACE=1 cargo run -p sync_server &
+          pwd
+          RUST_BACKTRACE=1 cargo run -p sync_server &
           cd ..
           scripts/e2e.sh 32
