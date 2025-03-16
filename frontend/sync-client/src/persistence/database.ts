@@ -21,6 +21,12 @@ export interface StoredDatabase {
 	lastSeenUpdateId: VaultUpdateId | undefined;
 }
 
+/**
+ * Represents a document in the database.
+ *
+ * It is mutable and its content should always represent the latest
+ * state of the document on disk based on the update events we have seen.
+ */
 export interface DocumentRecord {
 	relativePath: RelativePath;
 	documentId: DocumentId;
@@ -114,11 +120,8 @@ export class Database {
 		this.save();
 	}
 
-	public setDocument(
-		{
-			parentVersionId,
-			hash
-		}: {
+	public updateDocumentMetadata(
+		metadata: {
 			parentVersionId: VaultUpdateId;
 			hash: string;
 		},
@@ -128,10 +131,9 @@ export class Database {
 			throw new Error("Document not found in database");
 		}
 
-		toUpdate.metadata = { parentVersionId, hash };
+		toUpdate.metadata = metadata;
 
 		this.save();
-		return;
 	}
 
 	public removeDocumentPromise(promise: Promise<void>): void {
@@ -225,7 +227,7 @@ export class Database {
 
 		const newDocument =
 			this.getLatestDocumentByRelativePath(newRelativePath);
-		if (newDocument !== undefined && !newDocument.isDeleted) {
+		if (newDocument?.isDeleted === false) {
 			throw new Error(
 				`Document already exists at new location: ${newRelativePath}`
 			);

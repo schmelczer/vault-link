@@ -58,7 +58,7 @@ export class UnrestrictedSyncer {
 					type: SyncType.CREATE
 				});
 
-				this.database.setDocument(
+				this.database.updateDocumentMetadata(
 					{
 						parentVersionId: response.vaultUpdateId,
 						hash: contentHash
@@ -92,7 +92,7 @@ export class UnrestrictedSyncer {
 					type: SyncType.DELETE
 				});
 
-				this.database.setDocument(
+				this.database.updateDocumentMetadata(
 					{
 						parentVersionId: response.vaultUpdateId,
 						hash: EMPTY_HASH
@@ -190,7 +190,7 @@ export class UnrestrictedSyncer {
 					});
 
 					this.database.delete(document.relativePath);
-					this.database.setDocument(
+					this.database.updateDocumentMetadata(
 						{
 							parentVersionId: response.vaultUpdateId,
 							hash: EMPTY_HASH
@@ -215,7 +215,7 @@ export class UnrestrictedSyncer {
 					); // this can throw FileNotFoundError
 				}
 
-				this.database.setDocument(
+				this.database.updateDocumentMetadata(
 					{
 						parentVersionId: response.vaultUpdateId,
 						hash: contentHash
@@ -315,7 +315,7 @@ export class UnrestrictedSyncer {
 				);
 
 				const [promise, resolve] = createPromise();
-				this.database.setDocument(
+				this.database.updateDocumentMetadata(
 					{
 						parentVersionId: remoteVersion.vaultUpdateId,
 						hash: hash(contentBytes)
