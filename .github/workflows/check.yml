@@ -47,8 +47,6 @@ jobs:
           cd backend
           cargo test --verbose
           cd sync_lib
-          nvm install 22
-          nvm use 22
           wasm-pack test --node
 
       - name: Lint frontend

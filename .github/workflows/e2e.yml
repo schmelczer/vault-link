@@ -26,7 +26,7 @@ jobs:
       - name: Build wasm
         run: |
           cargo install wasm-pack
-          cd sync_lib
+          cd backend/sync_lib
           wasm-pack build --target web sync_lib
 
       - name: E2E tests
