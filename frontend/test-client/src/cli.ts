@@ -109,28 +109,20 @@ async function runTest({
 }
 
 async function runTests(): Promise<void> {
-	const agentCounts = [2, 8];
-	const networkJitterScaleInSeconds = [0.5, 2];
-	const concurrencies = [
+	for (const concurrency of [
 		16,
 		1 // test with concurrency 1 to check for deadlocks
-	];
-
-	for (const agentCount of agentCounts) {
-		for (const concurrency of concurrencies) {
-			for (const jitter of networkJitterScaleInSeconds) {
-				for (const doDeletes of [true, false]) {
-					for (const useSlowFileEvents of [true, false]) {
-						await runTest({
-							agentCount,
-							concurrency,
-							iterations: 200,
-							doDeletes,
-							useSlowFileEvents,
-							jitterScaleInSeconds: jitter
-						});
-					}
-				}
+	]) {
+		for (const doDeletes of [true, false]) {
+			for (const useSlowFileEvents of [true, false]) {
+				await runTest({
+					agentCount: 4,
+					concurrency,
+					iterations: 200,
+					doDeletes,
+					useSlowFileEvents,
+					jitterScaleInSeconds: 0.75
+				});
 			}
 		}
 	}

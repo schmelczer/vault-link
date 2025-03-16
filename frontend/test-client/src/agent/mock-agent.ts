@@ -229,7 +229,7 @@ export class MockAgent extends MockClient {
 				);
 				assert(
 					fileContent.split(content).length == 2,
-					`Content ${content} (of ${this.name}) found more than once in file ${file}. File content:\n${fileContent}`
+					`Content ${content} (of ${this.name}) found more than once in '${file}'. File content:\n${fileContent}`
 				);
 			}
 		}
