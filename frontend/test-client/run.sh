@@ -18,7 +18,7 @@ mkdir -p logs
 
 pids=()
 for i in $(seq 1 $process_count); do
-    node dist/cli.js 2>&1 > "logs/log_${i}.log" &
+    node dist/cli.js > "logs/log_${i}.log" 2>&1 &
     pids+=($!)
 done
 
