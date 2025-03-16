@@ -23,7 +23,7 @@ jobs:
           node-version: "22.x"
           check-latest: true
 
-      - name: Setup
+      - name: Setup rust
         run: |
           cargo install sqlx-cli
           cd backend

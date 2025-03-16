@@ -32,6 +32,7 @@ jobs:
 
       - name: Build wasm
         run: |
+          cd backend
           wasm-pack build --target web sync_lib
 
       - name: E2E tests
