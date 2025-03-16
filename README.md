@@ -16,9 +16,6 @@
 ## Set up Rust
 
 - Install [`rustup`](https://rustup.rs): `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
-- `sudo apt install llvm -y`
-- `rustup component add llvm-tools-preview`
-- `cargo install cargo-generate cargo-fuzz cargo-insta rustfilt cargo-binutils`
 - Install [`wasm-pack`](https://rustwasm.github.io/wasm-pack/installer): `curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh`
 - `cargo install cargo-insta sqlx-cli cargo-edit`
 
@@ -33,8 +30,7 @@
 ## Update HTTP API TS bindings
 
 ```sh 
-npm install -g openapi-typescript
-openapi-typescript http://localhost:3030/api.json --output frontend/sync-client/src/services/types.ts
+./update-api-types.sh
 ```
 
 ```

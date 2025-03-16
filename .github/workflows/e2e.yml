@@ -32,7 +32,5 @@ jobs:
       - name: E2E tests
         run: |
           UST_BACKTRACE=1 cargo run -p sync_server &
-          cd ../frontend
-
-          npm run build
-          test-client/run.sh 32
+          cd ..
+          scripts/e2e.sh 32
