@@ -41,12 +41,14 @@ pub async fn fetch_document_version_content(
         .get_document_version(&vault_id, vault_update_id, None)
         .await
         .map_err(server_error)?
-        .map(Ok)
-        .unwrap_or_else(|| {
-            Err(not_found_error(anyhow!(
-                "Document with vault update id `{vault_update_id}` not found",
-            )))
-        })?;
+        .map_or_else(
+            || {
+                Err(not_found_error(anyhow!(
+                    "Document with vault update id `{vault_update_id}` not found",
+                )))
+            },
+            Ok,
+        )?;
 
     if result.document_id != document_id {
         return Err(not_found_error(anyhow!(

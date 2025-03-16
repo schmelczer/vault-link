@@ -99,7 +99,6 @@ impl IndexMut<isize> for V {
     }
 }
 
-#[inline(always)]
 fn split_at(range: Range<usize>, at: usize) -> (Range<usize>, Range<usize>) {
     (range.start..at, at..range.end)
 }

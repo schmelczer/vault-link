@@ -80,7 +80,7 @@ pub async fn update_document_json(
     .await
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 async fn internal_update_document(
     auth_header: Authorization<Bearer>,
     mut state: AppState,
@@ -176,7 +176,7 @@ async fn internal_update_document(
     let new_relative_path = if parent_document.relative_path == latest_version.relative_path
         && latest_version.relative_path != sanitized_relative_path
     {
-        let mut new_relative_path = Default::default();
+        let mut new_relative_path = String::default();
         for candidate in deduped_file_paths(&sanitized_relative_path) {
             if state
                 .database

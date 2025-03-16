@@ -1,8 +1,8 @@
-use core::{
-    fmt::{Debug, Display},
+use core::fmt::{Debug, Display};
+use std::{
+    hash::{DefaultHasher, Hash, Hasher},
     ops::Range,
 };
-use std::hash::{DefaultHasher, Hash, Hasher};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -57,7 +57,7 @@ where
                 index.hash(state);
                 deleted_character_count.hash(state);
             }
-        };
+        }
     }
 }
 
@@ -133,7 +133,7 @@ where
 
                 builder.delete(self.range());
             }
-        };
+        }
 
         builder
     }
@@ -141,8 +141,7 @@ where
     /// Returns the index of the first character that the operation affects.
     pub fn start_index(&self) -> usize {
         match self {
-            Operation::Insert { index, .. } => *index,
-            Operation::Delete { index, .. } => *index,
+            Operation::Insert { index, .. } | Operation::Delete { index, .. } => *index,
         }
     }
 
@@ -156,6 +155,7 @@ where
     }
 
     /// Returns the range of indices of characters that the operation affects.
+    #[allow(clippy::range_plus_one)]
     pub fn range(&self) -> Range<usize> { self.start_index()..self.end_index() + 1 }
 
     /// Returns the number of affected characters. It is always greater than 0
@@ -382,7 +382,7 @@ mod tests {
     use super::*;
 
     #[test]
-    #[should_panic]
+    #[should_panic(expected = "Shifted index must be non-negative")]
     fn test_shifting_error() {
         insta::assert_debug_snapshot!(
             Operation::create_insert(1, vec!["hi".into()])

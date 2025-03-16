@@ -16,9 +16,9 @@ where
 {
     pub fn tokens(&self) -> &Vec<Token<T>> {
         match self {
-            RawOperation::Insert(tokens) => tokens,
-            RawOperation::Delete(tokens) => tokens,
-            RawOperation::Equal(tokens) => tokens,
+            RawOperation::Insert(tokens)
+            | RawOperation::Delete(tokens)
+            | RawOperation::Equal(tokens) => tokens,
         }
     }
 

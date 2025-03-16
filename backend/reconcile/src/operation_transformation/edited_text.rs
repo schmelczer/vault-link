@@ -234,6 +234,7 @@ where
     }
 
     /// Apply the operations to the text and return the resulting text.
+    #[must_use]
     pub fn apply(&self) -> String {
         let mut builder: StringBuilder<'_> = StringBuilder::new(self.text);
 

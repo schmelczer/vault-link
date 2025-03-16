@@ -79,7 +79,7 @@ impl Database {
             .test_before_acquire(true)
             .connect_with(connection_options)
             .await
-            .with_context(|| format!("Cannot open database at '{file_name:?}'"))?;
+            .with_context(|| format!("Cannot open database at '{}'", file_name.display()))?;
 
         Self::run_migrations(&pool).await?;
 
