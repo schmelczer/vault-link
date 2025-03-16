@@ -105,9 +105,11 @@ export class UnrestrictedSyncer {
 
 	public async unrestrictedSyncLocallyUpdatedFile({
 		oldPath,
-		document
+		document,
+		force = false
 	}: {
 		oldPath?: RelativePath;
+		force?: boolean;
 		document: DocumentRecord;
 	}): Promise<void> {
 		await this.executeSync(
@@ -131,7 +133,8 @@ export class UnrestrictedSyncer {
 
 				if (
 					document.metadata.hash === contentHash &&
-					oldPath === undefined
+					oldPath === undefined &&
+					!force
 				) {
 					this.logger.debug(
 						`File hash of ${document.relativePath} matches with last synced version and the path hasn't changed; no need to sync`
@@ -270,7 +273,8 @@ export class UnrestrictedSyncer {
 					}
 
 					return this.unrestrictedSyncLocallyUpdatedFile({
-						document
+						document,
+						force: true
 					});
 				} else if (remoteVersion.isDeleted) {
 					// Either the doc hasn't made it to us before and therefore we don't need to delete it,

@@ -39,8 +39,7 @@ module.exports = [
 			filename: "sync-client.web.js",
 			library: {
 				name: "SyncClient",
-				type: "umd",
-				export: "default"
+				type: "umd"
 			},
 			globalObject: "this"
 		}

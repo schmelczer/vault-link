@@ -112,7 +112,7 @@ export class SyncService {
 		contentBytes: Uint8Array;
 	}): Promise<components["schemas"]["DocumentUpdateResponse"]> {
 		this.logger.debug(
-			`Updating document ${documentId} with parent version ${parentVersionId} & ${new TextDecoder().decode(contentBytes)} & ${relativePath}`
+			`Updating document ${documentId} with parent version ${parentVersionId} and relative path ${relativePath}`
 		);
 		const formData = new FormData();
 		formData.append("parent_version_id", parentVersionId.toString());
