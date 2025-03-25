@@ -72,5 +72,10 @@ pub async fn delete_document(
         .context("Failed to commit successful transaction")
         .map_err(server_error)?;
 
+    state
+        .broadcasts
+        .send(vault_id, new_version.clone().into())
+        .await?;
+
     Ok(Json(new_version.into()))
 }
