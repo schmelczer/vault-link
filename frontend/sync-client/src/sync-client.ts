@@ -152,7 +152,12 @@ export class SyncClient {
 		await this.syncer.scheduleSyncForOfflineChanges();
 	}
 
+	public stop(): void {
+		this.syncer.stop();
+	}
+
 	public async waitAndStop(): Promise<void> {
+		this.stop();
 		await this.syncer.waitUntilFinished();
 	}
 
@@ -160,6 +165,7 @@ export class SyncClient {
 	/// and the local database but retain the settings.
 	/// The SyncClient can be used again after calling this method.
 	public async reset(): Promise<void> {
+		this.stop();
 		this.connectionStatus.startReset();
 		await this.syncer.reset();
 		this.history.reset();
