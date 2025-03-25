@@ -1,7 +1,7 @@
+mod app_state;
 mod cli;
 mod config;
 mod consts;
-mod database;
 mod errors;
 mod server;
 mod utils;
@@ -20,13 +20,8 @@ async fn main() -> Result<(), SyncServerError> {
 
     tracing_subscriber::registry()
         .with(
-            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-                format!(
-                    "{}=debug,tower_http=debug,axum::rejection=trace",
-                    env!("CARGO_CRATE_NAME")
-                )
-                .into()
-            }),
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| format!("{}=debug", env!("CARGO_CRATE_NAME")).into()),
         )
         .with(tracing_subscriber::fmt::layer())
         .try_init()
