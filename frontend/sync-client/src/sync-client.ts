@@ -17,8 +17,6 @@ import { ConnectionStatus } from "./services/connection-status";
 import { UnrestrictedSyncer } from "./sync-operations/unrestricted-syncer";
 
 export class SyncClient {
-	private remoteListenerIntervalId: NodeJS.Timeout | null = null;
-
 	// eslint-disable-next-line @typescript-eslint/max-params
 	private constructor(
 		private readonly history: SyncHistory,
@@ -31,15 +29,6 @@ export class SyncClient {
 	) {
 		this.settings.addOnSettingsChangeListener(
 			(newSettings, oldSettings) => {
-				if (
-					newSettings.fetchChangesUpdateIntervalMs !==
-					oldSettings.fetchChangesUpdateIntervalMs
-				) {
-					this.setRemoteEventListener(
-						newSettings.fetchChangesUpdateIntervalMs
-					);
-				}
-
 				if (newSettings.vaultName !== oldSettings.vaultName) {
 					void this.reset();
 				}
@@ -161,27 +150,16 @@ export class SyncClient {
 
 	public async start(): Promise<void> {
 		await this.syncer.scheduleSyncForOfflineChanges();
-
-		this.setRemoteEventListener(
-			this.settings.getSettings().fetchChangesUpdateIntervalMs
-		);
-	}
-
-	/// Clear all global state that has been touched by SyncClient.
-	public stop(): void {
-		this.unsetRemoteEventListener();
 	}
 
 	public async waitAndStop(): Promise<void> {
 		await this.syncer.waitUntilFinished();
-		this.stop();
 	}
 
 	/// Wait for the in-flight operations to finish, reset all tracking,
 	/// and the local database but retain the settings.
 	/// The SyncClient can be used again after calling this method.
 	public async reset(): Promise<void> {
-		this.stop();
 		this.connectionStatus.startReset();
 		await this.syncer.reset();
 		this.history.reset();
@@ -241,22 +219,5 @@ export class SyncClient {
 			oldPath,
 			relativePath
 		});
-	}
-
-	private setRemoteEventListener(intervalMs: number): void {
-		if (this.remoteListenerIntervalId !== null) {
-			clearInterval(this.remoteListenerIntervalId);
-		}
-
-		this.remoteListenerIntervalId = setInterval(
-			() => void this.syncer.applyRemoteChangesLocally(),
-			intervalMs
-		);
-	}
-
-	private unsetRemoteEventListener(): void {
-		if (this.remoteListenerIntervalId !== null) {
-			clearInterval(this.remoteListenerIntervalId);
-		}
 	}
 }

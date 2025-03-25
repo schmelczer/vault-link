@@ -247,29 +247,6 @@ export class SyncSettingsTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName("Remote fetching frequency (seconds)")
-			.setDesc(
-				"Set how often should the plugin check for changes on the server. Lower values will increase the frequency of the checks making it easier to collaborate with others."
-			)
-			.setTooltip("todo, links to docs")
-			.addSlider((text) =>
-				text
-					.setLimits(0.5, 60, 0.5)
-					.setDynamicTooltip()
-					.setInstant(false)
-					.setValue(
-						this.syncClient.getSettings()
-							.fetchChangesUpdateIntervalMs / 1000
-					)
-					.onChange(async (value) =>
-						this.syncClient.setSetting(
-							"fetchChangesUpdateIntervalMs",
-							value * 1000
-						)
-					)
-			);
-
-		new Setting(containerEl)
 			.setName("Sync concurrency")
 			.setDesc(
 				"How many concurrent sync operations to run. Setting this value higher may increase the overall performance, however, it will require more memory as well. If you notice frequent crashes, especially on mobile, set this to 1."
