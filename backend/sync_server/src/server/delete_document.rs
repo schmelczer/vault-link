@@ -8,9 +8,14 @@ use axum_jsonschema::Json;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use super::{app_state::AppState, auth::auth, requests::DeleteDocumentVersion};
+use super::{auth::auth, requests::DeleteDocumentVersion};
 use crate::{
-    database::models::{DocumentId, DocumentVersionWithoutContent, StoredDocumentVersion, VaultId},
+    app_state::{
+        AppState,
+        database::models::{
+            DocumentId, DocumentVersionWithoutContent, StoredDocumentVersion, VaultId,
+        },
+    },
     errors::{SyncServerError, server_error},
     utils::sanitize_path,
 };
@@ -29,7 +34,7 @@ pub async fn delete_document(
         vault_id,
         document_id,
     }): Path<DeleteDocumentPathParams>,
-    State(mut state): State<AppState>,
+    State(state): State<AppState>,
     Json(request): Json<DeleteDocumentVersion>,
 ) -> Result<Json<DocumentVersionWithoutContent>, SyncServerError> {
     auth(&state, auth_header.token())?;
