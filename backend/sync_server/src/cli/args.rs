@@ -2,7 +2,7 @@ use std::ffi::OsString;
 
 use clap::{Parser, ValueEnum};
 
-/// Server for backing the VaultLink plugin
+/// Server for backing the `VaultLink` plugin
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 pub struct Args {
