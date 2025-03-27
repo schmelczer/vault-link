@@ -1,6 +1,9 @@
-use std::ffi::OsString;
+use std::{ffi::OsString, io::IsTerminal};
 
 use clap::{Parser, ValueEnum};
+use clap_verbosity_flag::{InfoLevel, Verbosity};
+
+use crate::cli::color_when::ColorWhen;
 
 /// Server for backing the `VaultLink` plugin
 #[derive(Parser, Debug)]
@@ -8,6 +11,9 @@ use clap::{Parser, ValueEnum};
 pub struct Args {
     #[arg(index = 1)]
     pub config_path: Option<OsString>,
+
+    #[command(flatten)]
+    pub verbose: Verbosity<InfoLevel>,
 
     #[arg(
             long,
@@ -19,20 +25,4 @@ pub struct Args {
             value_enum
         )]
     pub color: ColorWhen,
-}
-
-#[derive(ValueEnum, Copy, Clone, Debug, PartialEq, Eq)]
-pub enum ColorWhen {
-    Always,
-    Auto,
-    Never,
-}
-
-impl std::fmt::Display for ColorWhen {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.to_possible_value()
-            .expect("no values are skipped")
-            .get_name()
-            .fmt(f)
-    }
 }
