@@ -86,7 +86,9 @@ export class LogsView extends ItemView {
 					dropdown.value = this.minLogLevel;
 
 					dropdown.addEventListener("change", () => {
+						// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
 						this.minLogLevel = dropdown.value as LogLevel;
+
 						this.logsContainer?.empty();
 						this.logLineToElement.clear();
 						this.updateView();

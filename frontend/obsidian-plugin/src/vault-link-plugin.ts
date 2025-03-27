@@ -128,7 +128,7 @@ export default class VaultLinkPlugin extends Plugin {
 		}
 	}
 
-	private registerEditorEvents() {
+	private registerEditorEvents(): void {
 		[
 			this.app.workspace.on(
 				"editor-change",
@@ -136,7 +136,7 @@ export default class VaultLinkPlugin extends Plugin {
 					_editor: Editor,
 					info: MarkdownView | MarkdownFileInfo
 				) => {
-					const file = info.file;
+					const { file } = info;
 					if (file) {
 						await this.client.syncLocallyUpdatedFile({
 							relativePath: file.path
