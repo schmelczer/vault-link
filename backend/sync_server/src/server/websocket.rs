@@ -108,13 +108,10 @@ async fn websocket(
         Ok::<(), SyncServerError>(())
     });
 
-    let mut recv_task = tokio::spawn(async move {
-        while let Some(Ok(Message::Text(text))) = receiver.next().await {
-            info!("Received message: {}", text);
-            // Add username before message.
-            // let _ = tx.send(format!("{name}: {text}"));
-        }
-    });
+    let mut recv_task =
+        tokio::spawn(
+            async move { while let Some(Ok(Message::Text(_text))) = receiver.next().await {} },
+        );
 
     tokio::select! {
         _ = &mut send_task => recv_task.abort(),
