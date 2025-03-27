@@ -6,16 +6,15 @@ import type {
 	WorkspaceLeaf
 } from "obsidian";
 import { Platform, Plugin, TFile } from "obsidian";
-import "./styles.scss";
 import "../manifest.json";
-import { SyncSettingsTab } from "./views/settings-tab";
-import { HistoryView } from "./views/history-view";
-import { StatusBar } from "./views/status-bar";
-import { LogsView } from "./views/logs-view";
-import { StatusDescription } from "./views/status-description";
+import { HistoryView } from "./views/history/history-view";
+import { StatusBar } from "./views/status-bar/status-bar";
+import { LogsView } from "./views/logs/logs-view";
+import { StatusDescription } from "./views/status-description/status-description";
 import type { LogLine } from "sync-client";
 import { SyncClient, LogLevel } from "sync-client";
 import { ObsidianFileSystemOperations } from "./obsidian-file-system";
+import { SyncSettingsTab } from "./views/settings/settings-tab";
 
 export default class VaultLinkPlugin extends Plugin {
 	private settingsTab: SyncSettingsTab | undefined;
