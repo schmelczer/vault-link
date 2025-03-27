@@ -14,7 +14,7 @@ use cli::args::Args;
 use errors::{SyncServerError, init_error};
 use log::info;
 use server::create_server;
-use tracing_subscriber::{EnvFilter, fmt::format, layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{EnvFilter, fmt::format, util::SubscriberInitExt};
 
 #[tokio::main]
 async fn main() -> ExitCode {
@@ -27,9 +27,9 @@ async fn main() -> ExitCode {
     }
 
     match result {
-        Ok(_) => ExitCode::SUCCESS,
+        Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("Failed to set up logging: {}", e);
+            eprintln!("Failed to set up logging: {e}");
             ExitCode::FAILURE
         }
     }
@@ -38,9 +38,7 @@ async fn main() -> ExitCode {
 fn set_up_logging(args: &Args) -> Result<(), SyncServerError> {
     let level_filter = match args.verbose.log_level_filter() {
         // We don't want to allow disabling all logging
-        log::LevelFilter::Off => tracing::Level::ERROR,
-
-        log::LevelFilter::Error => tracing::Level::ERROR,
+        log::LevelFilter::Off | log::LevelFilter::Error => tracing::Level::ERROR,
         log::LevelFilter::Warn => tracing::Level::WARN,
         log::LevelFilter::Info => tracing::Level::INFO,
         log::LevelFilter::Debug => tracing::Level::DEBUG,

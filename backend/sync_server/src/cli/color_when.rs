@@ -1,6 +1,6 @@
-use std::{ffi::OsString, io::IsTerminal};
+use std::io::IsTerminal;
 
-use clap::{Parser, ValueEnum};
+use clap::ValueEnum;
 
 #[derive(ValueEnum, Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ColorWhen {
@@ -10,7 +10,7 @@ pub enum ColorWhen {
 }
 
 impl ColorWhen {
-    pub fn use_colors(&self) -> bool {
+    pub fn use_colors(self) -> bool {
         match self {
             ColorWhen::Always => true,
             ColorWhen::Auto => {

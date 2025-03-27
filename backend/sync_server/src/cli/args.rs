@@ -1,6 +1,6 @@
-use std::{ffi::OsString, io::IsTerminal};
+use std::ffi::OsString;
 
-use clap::{Parser, ValueEnum};
+use clap::Parser;
 use clap_verbosity_flag::{InfoLevel, Verbosity};
 
 use crate::cli::color_when::ColorWhen;
