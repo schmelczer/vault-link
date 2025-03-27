@@ -1,10 +1,15 @@
-import type { WorkspaceLeaf } from "obsidian";
-import { Platform, Plugin } from "obsidian";
+import type {
+	Editor,
+	MarkdownFileInfo,
+	MarkdownView,
+	TAbstractFile,
+	WorkspaceLeaf
+} from "obsidian";
+import { Platform, Plugin, TFile } from "obsidian";
 import "./styles.scss";
 import "../manifest.json";
 import { SyncSettingsTab } from "./views/settings-tab";
 import { HistoryView } from "./views/history-view";
-import { ObsidianFileEventHandler } from "./obisidan-event-handler";
 import { StatusBar } from "./views/status-bar";
 import { LogsView } from "./views/logs-view";
 import { StatusDescription } from "./views/status-description";
@@ -15,6 +20,7 @@ import { ObsidianFileSystemOperations } from "./obsidian-file-system";
 export default class VaultLinkPlugin extends Plugin {
 	private settingsTab: SyncSettingsTab | undefined;
 	private client!: SyncClient;
+
 	private static registerConsoleForLogging(client: SyncClient): void {
 		client.logger.addOnMessageListener((logLine: LogLine) => {
 			const formatted = `${logLine.timestamp.toISOString()} ${logLine.level} ${logLine.message}`;
@@ -38,7 +44,10 @@ export default class VaultLinkPlugin extends Plugin {
 
 	public async onload(): Promise<void> {
 		this.client = await SyncClient.create({
-			fs: new ObsidianFileSystemOperations(this.app.vault),
+			fs: new ObsidianFileSystemOperations(
+				this.app.vault,
+				this.app.workspace
+			),
 			persistence: {
 				load: this.loadData.bind(this),
 				save: this.saveData.bind(this)
@@ -80,35 +89,9 @@ export default class VaultLinkPlugin extends Plugin {
 			async (_: MouseEvent) => this.activateView(LogsView.TYPE)
 		);
 
-		const eventHandler = new ObsidianFileEventHandler(this.client);
-
 		this.app.workspace.onLayoutReady(async () => {
-			this.client.logger.info("Initialising sync handlers");
-
-			[
-				this.app.vault.on(
-					"create",
-					eventHandler.onCreate.bind(eventHandler)
-				),
-				this.app.vault.on(
-					"modify",
-					eventHandler.onModify.bind(eventHandler)
-				),
-				this.app.vault.on(
-					"delete",
-					eventHandler.onDelete.bind(eventHandler)
-				),
-				this.app.vault.on(
-					"rename",
-					eventHandler.onRename.bind(eventHandler)
-				)
-			].forEach((event) => {
-				this.registerEvent(event);
-			});
-
+			this.registerEditorEvents();
 			void this.client.start();
-
-			this.client.logger.info("Sync handlers initialised");
 		});
 	}
 
@@ -144,5 +127,52 @@ export default class VaultLinkPlugin extends Plugin {
 		if (leaf) {
 			await workspace.revealLeaf(leaf);
 		}
+	}
+
+	private registerEditorEvents() {
+		[
+			this.app.workspace.on(
+				"editor-change",
+				async (
+					_editor: Editor,
+					info: MarkdownView | MarkdownFileInfo
+				) => {
+					const file = info.file;
+					if (file) {
+						await this.client.syncLocallyUpdatedFile({
+							relativePath: file.path
+						});
+					}
+				}
+			),
+			this.app.vault.on("create", async (file: TAbstractFile) => {
+				if (file instanceof TFile) {
+					await this.client.syncLocallyCreatedFile(file.path);
+				}
+			}),
+			this.app.vault.on("modify", async (file: TAbstractFile) => {
+				if (file instanceof TFile) {
+					await this.client.syncLocallyUpdatedFile({
+						relativePath: file.path
+					});
+				}
+			}),
+			this.app.vault.on("delete", async (file: TAbstractFile) => {
+				await this.client.syncLocallyDeletedFile(file.path);
+			}),
+			this.app.vault.on(
+				"rename",
+				async (file: TAbstractFile, oldPath: string) => {
+					if (file instanceof TFile) {
+						await this.client.syncLocallyUpdatedFile({
+							oldPath,
+							relativePath: file.path
+						});
+					}
+				}
+			)
+		].forEach((event) => {
+			this.registerEvent(event);
+		});
 	}
 }

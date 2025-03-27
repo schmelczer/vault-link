@@ -1,15 +1,23 @@
-import type { Stat, Vault } from "obsidian";
-import { normalizePath } from "obsidian";
+import type { Stat, Vault, Workspace } from "obsidian";
+import { MarkdownView, normalizePath } from "obsidian";
 import type { FileSystemOperations, RelativePath } from "sync-client";
 
 export class ObsidianFileSystemOperations implements FileSystemOperations {
-	public constructor(private readonly vault: Vault) {}
+	public constructor(
+		private readonly vault: Vault,
+		private readonly workspace: Workspace
+	) {}
 
 	public async listAllFiles(): Promise<RelativePath[]> {
 		return this.vault.getFiles().map((file) => file.path);
 	}
 
 	public async read(path: RelativePath): Promise<Uint8Array> {
+		const view = this.workspace.getActiveViewOfType(MarkdownView);
+		if (view?.file?.path === path) {
+			return new TextEncoder().encode(view.editor.getValue());
+		}
+
 		return new Uint8Array(
 			await this.vault.adapter.readBinary(normalizePath(path))
 		);

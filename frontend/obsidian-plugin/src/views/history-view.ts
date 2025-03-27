@@ -1,6 +1,5 @@
 import type { IconName, WorkspaceLeaf } from "obsidian";
 import { ItemView, setIcon } from "obsidian";
-
 import { intlFormatDistance } from "date-fns";
 import type { HistoryEntry, SyncClient } from "sync-client";
 import { SyncType } from "sync-client";
