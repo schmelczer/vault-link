@@ -1,3 +1,5 @@
+import "./status-description.scss";
+
 import type {
 	HistoryStats,
 	CheckConnectionResult,

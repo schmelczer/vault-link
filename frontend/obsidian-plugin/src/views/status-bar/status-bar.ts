@@ -1,4 +1,4 @@
-import "./sync-status.scss";
+import "./status-bar.scss";
 
 import type { HistoryStats, SyncClient } from "sync-client";
 import type VaultLinkPlugin from "../../vault-link-plugin";
