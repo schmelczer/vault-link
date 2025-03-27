@@ -1,10 +1,12 @@
+import "./settings-tab.scss";
+
 import type { App } from "obsidian";
 import { Notice, PluginSettingTab, Setting } from "obsidian";
-import type VaultLinkPlugin from "../vault-link-plugin";
-import type { StatusDescription } from "./status-description";
-import { LogsView } from "./logs-view";
-import { HistoryView } from "./history-view";
+import VaultLinkPlugin from "src/vault-link-plugin";
 import type { SyncClient, SyncSettings } from "sync-client";
+import { HistoryView } from "../history/history-view";
+import { LogsView } from "../logs/logs-view";
+import { StatusDescription } from "../status-description/status-description";
 
 export class SyncSettingsTab extends PluginSettingTab {
 	private editedServerUri: string;

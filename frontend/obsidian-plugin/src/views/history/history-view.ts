@@ -1,3 +1,5 @@
+import "./history-view.scss";
+
 import type { IconName, WorkspaceLeaf } from "obsidian";
 import { ItemView, setIcon } from "obsidian";
 import { intlFormatDistance } from "date-fns";
