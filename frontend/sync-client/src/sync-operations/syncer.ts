@@ -249,6 +249,15 @@ export class Syncer {
 		const wsUri = new URL(settings.remoteUri);
 		wsUri.protocol = wsUri.protocol === "https" ? "wss" : "ws";
 		wsUri.pathname = `/vaults/${settings.vaultName}/ws`;
+
+		if (
+			typeof globalThis !== "undefined" &&
+			typeof globalThis.WebSocket === "undefined"
+		) {
+			// polyfill for WebSocket in Node.js
+			globalThis.WebSocket = require("ws");
+		}
+
 		this.applyRemoteChangesWebSocket = new WebSocket(wsUri);
 
 		this.applyRemoteChangesWebSocket.onmessage = (event): void =>
