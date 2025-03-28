@@ -75,7 +75,7 @@ pub async fn delete_document(
     state
         .broadcasts
         .send(vault_id, new_version.clone().into())
-        .await?;
+        .await;
 
     Ok(Json(new_version.into()))
 }

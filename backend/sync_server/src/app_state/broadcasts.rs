@@ -4,10 +4,7 @@ use anyhow::Context;
 use tokio::sync::{Mutex, broadcast};
 
 use super::database::models::{DocumentVersionWithoutContent, VaultId};
-use crate::{
-    config::server_config::ServerConfig,
-    errors::{SyncServerError, server_error},
-};
+use crate::{config::server_config::ServerConfig, errors::server_error};
 
 #[derive(Debug, Clone)]
 pub struct Broadcasts {
@@ -32,18 +29,17 @@ impl Broadcasts {
         tx.subscribe()
     }
 
-    pub async fn send(
-        &self,
-        vault: VaultId,
-        document: DocumentVersionWithoutContent,
-    ) -> Result<(), SyncServerError> {
+    pub async fn send(&self, vault: VaultId, document: DocumentVersionWithoutContent) {
         let tx = self.get_or_create(vault).await;
 
-        tx.send(document)
+        let result = tx
+            .send(document)
             .context("Cannot broadcast update message to websocket listeners")
-            .map_err(server_error)?;
+            .map_err(server_error);
 
-        Ok(())
+        if result.is_err() {
+            log::debug!("Failed to send message: {result:?}");
+        }
     }
 
     async fn get_or_create(

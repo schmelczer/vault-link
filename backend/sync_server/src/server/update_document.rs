@@ -221,7 +221,7 @@ async fn internal_update_document(
     state
         .broadcasts
         .send(vault_id, new_version.clone().into())
-        .await?;
+        .await;
 
     Ok(Json(if is_different_from_request_content {
         DocumentUpdateResponse::MergingUpdate(new_version.into())

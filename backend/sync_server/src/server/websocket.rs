@@ -123,6 +123,11 @@ async fn websocket(
         .context("Websocket send task failed")
         .map_err(server_error)??;
 
+    recv_task
+        .await
+        .context("Websocket receive task failed")
+        .map_err(server_error)?;
+
     Ok(())
 }
 
