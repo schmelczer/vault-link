@@ -29,6 +29,8 @@ impl Broadcasts {
         tx.subscribe()
     }
 
+    /// Sent a document update to all clients subscribed to the vault.
+    /// We ignore & log failures.
     pub async fn send(&self, vault: VaultId, document: DocumentVersionWithoutContent) {
         let tx = self.get_or_create(vault).await;
 
