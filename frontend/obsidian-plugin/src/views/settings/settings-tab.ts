@@ -222,7 +222,7 @@ export class SyncSettingsTab extends PluginSettingTab {
 			.addButton((button) =>
 				button.setButtonText("Test connection").onClick(async () => {
 					new Notice(
-						(await this.syncClient.checkConnection()).message
+						(await this.syncClient.checkConnection()).serverMessage
 					);
 					await this.statusDescription.updateConnectionState();
 				})

@@ -22,6 +22,7 @@ export class Syncer {
 	private readonly remainingOperationsListeners: ((
 		remainingOperations: number
 	) => void)[] = [];
+	private readonly webSocketStatusChangeListeners: (() => void)[] = [];
 	private readonly syncQueue: PQueue;
 
 	private runningScheduleSyncForOfflineChanges: Promise<void> | undefined;
@@ -70,21 +71,18 @@ export class Syncer {
 		this.setWebSocketRefreshInterval();
 	}
 
-	public async reset(): Promise<void> {
-		await this.waitUntilFinished();
-		this.setWebSocketRefreshInterval();
-		this.updateWebSocket(this.settings.getSettings());
-	}
-
-	public stop(): void {
-		clearInterval(this.refreshApplyRemoteChangesWebSocketInterval);
-		this.applyRemoteChangesWebSocket?.close();
+	public get isWebSocketConnected(): boolean {
+		return this.applyRemoteChangesWebSocket?.readyState === WebSocket.OPEN;
 	}
 
 	public addRemainingOperationsListener(
 		listener: (remainingOperations: number) => void
 	): void {
 		this.remainingOperationsListeners.push(listener);
+	}
+
+	public addWebSocketStatusChangeListener(listener: () => void): void {
+		this.webSocketStatusChangeListeners.push(listener);
 	}
 
 	public async syncLocallyCreatedFile(
@@ -245,6 +243,17 @@ export class Syncer {
 		return this.syncQueue.onEmpty();
 	}
 
+	public async reset(): Promise<void> {
+		await this.waitUntilFinished();
+		this.setWebSocketRefreshInterval();
+		this.updateWebSocket(this.settings.getSettings());
+	}
+
+	public stop(): void {
+		clearInterval(this.refreshApplyRemoteChangesWebSocketInterval);
+		this.applyRemoteChangesWebSocket?.close();
+	}
+
 	private updateWebSocket(settings: SyncSettings): void {
 		this.applyRemoteChangesWebSocket?.close();
 
@@ -277,14 +286,22 @@ export class Syncer {
 				}
 			);
 
-		this.applyRemoteChangesWebSocket.onerror = (event): void => {
-			console.error(event);
-			this.logger.error(`WebSocket error`);
+		// The JS WebSocket API doesn't support setting headers, so we have to send the token as a message
+		this.applyRemoteChangesWebSocket.onopen = (): void => {
+			this.applyRemoteChangesWebSocket?.send(settings.token);
+			this.webSocketStatusChangeListeners.forEach((listener) => {
+				listener();
+			});
 		};
 
-		// The JS WebSocket API doesn't support setting headers, so we have to send the token as a message
-		this.applyRemoteChangesWebSocket.onopen = (): void =>
-			this.applyRemoteChangesWebSocket?.send(settings.token);
+		this.applyRemoteChangesWebSocket.onclose = (event): void => {
+			this.logger.error(
+				`WebSocket closed with code ${event.code}: ${event.reason}`
+			);
+			this.webSocketStatusChangeListeners.forEach((listener) => {
+				listener();
+			});
+		};
 	}
 
 	private setWebSocketRefreshInterval(): void {

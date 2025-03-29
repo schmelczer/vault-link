@@ -307,13 +307,13 @@ export class SyncService {
 			if (result.isAuthenticated) {
 				return {
 					isSuccessful: true,
-					message: `Successfully connected to server (version: ${result.serverVersion}) and authenticated.`
+					message: `Successfully connected to server (version: ${result.serverVersion}) and authenticated`
 				};
 			}
 
 			return {
 				isSuccessful: false,
-				message: `Successfully connected to server (version: ${result.serverVersion}) but failed to authenticate.`
+				message: `Successfully connected to server (version: ${result.serverVersion}) but failed to authenticate`
 			};
 		} catch (e) {
 			return {
