@@ -52,6 +52,7 @@ fn set_up_logging(args: &Args) -> Result<(), SyncServerError> {
         .map_err(init_error)?;
 
     let use_colors = args.color.use_colors();
+
     let is_debug_mode = args.verbose.log_level_filter() >= log::LevelFilter::Debug;
 
     tracing_subscriber::fmt()

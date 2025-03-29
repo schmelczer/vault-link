@@ -17,9 +17,7 @@ pub struct Args {
 
     #[arg(
             long,
-            require_equals = true,
             value_name = "WHEN",
-            num_args = 0..=1,
             default_value_t = ColorWhen::Auto,
             default_missing_value = "always",
             value_enum

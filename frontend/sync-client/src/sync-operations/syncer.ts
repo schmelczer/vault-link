@@ -295,7 +295,7 @@ export class Syncer {
 		};
 
 		this.applyRemoteChangesWebSocket.onclose = (event): void => {
-			this.logger.error(
+			this.logger.warn(
 				`WebSocket closed with code ${event.code}: ${event.reason}`
 			);
 			this.webSocketStatusChangeListeners.forEach((listener) => {
