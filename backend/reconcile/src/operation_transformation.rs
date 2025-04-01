@@ -292,7 +292,7 @@ mod test {
                     },
                     CursorPosition {
                         id: 1,
-                        char_index: 0
+                        char_index: 1
                     }
                 ]
             )
@@ -337,17 +337,17 @@ mod test {
                 "that was really complex sample for testing cursor movements",
                 vec![
                     CursorPosition {
+                        id: 2,
+                        char_index: 5
+                    }, // unchanged
+                    CursorPosition {
                         id: 0,
                         char_index: 9
                     }, // before "really"
                     CursorPosition {
                         id: 1,
-                        char_index: 25
+                        char_index: 23
                     }, // inside of "s|ample" because "text" got replaced by "sample"
-                    CursorPosition {
-                        id: 2,
-                        char_index: 5
-                    }, // unchanged
                     CursorPosition {
                         id: 3,
                         char_index: 31
