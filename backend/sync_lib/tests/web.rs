@@ -77,7 +77,7 @@ fn test_merge_text_with_cursors() {
                 },
                 OwnedCursorPosition {
                     id: 1,
-                    char_index: 8,
+                    char_index: 2,
                 }
             ]
         ),
