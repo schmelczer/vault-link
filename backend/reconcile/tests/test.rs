@@ -36,7 +36,7 @@ fn test_with_examples() {
                 &doc.right().text,
             ));
 
-            doc.assert_eq(reconcile_with_cursors(
+            doc.assert_eq(&reconcile_with_cursors(
                 &doc.parent(),
                 doc.left(),
                 doc.right(),
