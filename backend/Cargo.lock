@@ -1881,6 +1881,7 @@ dependencies = [
  "insta",
  "pretty_assertions",
  "serde",
+ "serde_yaml",
  "test-case",
 ]
 
