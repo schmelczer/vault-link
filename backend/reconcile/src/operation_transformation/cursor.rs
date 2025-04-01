@@ -3,6 +3,9 @@ use std::borrow::Cow;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+use super::merge_context::MergeContext;
+use crate::operation_transformation::Operation;
+
 // CursorPosition is a wrapper around usize to represent the position of an
 // identifiable cursor in a text document based on the character index.
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -10,6 +13,23 @@ use serde::{Deserialize, Serialize};
 pub struct CursorPosition {
     pub id: usize,
     pub char_index: usize,
+}
+
+impl CursorPosition {
+    pub fn apply_merge_context<T>(&self, context: &MergeContext<T>) -> Self
+    where
+        T: PartialEq + Clone + std::fmt::Debug,
+    {
+        let char_index = match context.last_operation() {
+            Some(Operation::Delete { index, .. }) => (*index) as i64,
+            _ => self.char_index as i64 + context.shift,
+        };
+
+        CursorPosition {
+            id: self.id,
+            char_index: char_index.max(0) as usize,
+        }
+    }
 }
 
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
