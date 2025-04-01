@@ -479,7 +479,10 @@ export class Syncer {
 				.filter(
 					(remoteDocument) =>
 						allLocalFiles.includes(remoteDocument.relativePath) &&
-						!remoteDocument.isDeleted
+						!remoteDocument.isDeleted &&
+						this.database.getDocumentByDocumentId(
+							remoteDocument.documentId
+						) === undefined
 				)
 				.forEach((remoteDocument) => {
 					this.database.createNewEmptyDocument(
