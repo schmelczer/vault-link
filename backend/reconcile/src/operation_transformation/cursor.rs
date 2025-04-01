@@ -16,6 +16,7 @@ pub struct CursorPosition {
 }
 
 impl CursorPosition {
+    #[must_use]
     pub fn apply_merge_context<T>(&self, context: &MergeContext<T>) -> Self
     where
         T: PartialEq + Clone + std::fmt::Debug,
@@ -40,6 +41,7 @@ pub struct TextWithCursors<'a> {
 }
 
 impl<'a> TextWithCursors<'a> {
+    #[must_use]
     pub fn new(text: &'a str, cursors: Vec<CursorPosition>) -> Self {
         Self {
             text: text.into(),
@@ -47,6 +49,7 @@ impl<'a> TextWithCursors<'a> {
         }
     }
 
+    #[must_use]
     pub fn new_owned(text: String, cursors: Vec<CursorPosition>) -> Self {
         Self {
             text: text.into(),

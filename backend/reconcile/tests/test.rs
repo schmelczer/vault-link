@@ -2,8 +2,7 @@ mod example_document;
 use std::{fs, path::Path};
 
 use example_document::ExampleDocument;
-use reconcile::{CursorPosition, TextWithCursors, reconcile, reconcile_with_cursors};
-use serde::Deserialize;
+use reconcile::{reconcile, reconcile_with_cursors};
 
 #[test]
 fn test_with_examples() {
@@ -19,7 +18,7 @@ fn test_with_examples() {
             .path();
         path.file_name()
             .and_then(|name| name.to_str())
-            .and_then(|name| name.split(".").next().unwrap().parse::<i32>().ok())
+            .and_then(|name| name.split('.').next().unwrap().parse::<i32>().ok())
             .unwrap_or_default()
     });
 

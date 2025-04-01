@@ -25,7 +25,7 @@ impl From<OwnedTextWithCursors> for TextWithCursors<'_> {
             owned
                 .cursors
                 .into_iter()
-                .map(|cursor| cursor.into())
+                .map(std::convert::Into::into)
                 .collect(),
         )
     }
@@ -38,7 +38,7 @@ impl From<TextWithCursors<'_>> for OwnedTextWithCursors {
             cursors: text_with_cursors
                 .cursors
                 .into_iter()
-                .map(|cursor| cursor.into())
+                .map(std::convert::Into::into)
                 .collect(),
         }
     }
