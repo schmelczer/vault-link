@@ -106,7 +106,7 @@ pub fn merge_text(parent: &str, left: &str, right: &str) -> String {
 }
 
 /// WASM wrapper around `reconcile::reconcile_with_cursors` for merging text.
-#[wasm_bindgen(js_name = mergeText)]
+#[wasm_bindgen(js_name = mergeTextWithCursors)]
 #[must_use]
 pub fn merge_text_with_cursors(
     parent: &str,
