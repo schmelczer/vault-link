@@ -1,6 +1,6 @@
 use insta::assert_debug_snapshot;
 use sync_lib::{
-    cursor::{OwnedCursorPosition, OwnedTextWithCursors},
+    cursor::{CursorPosition, TextWithCursors},
     *,
 };
 use wasm_bindgen_test::*;
@@ -50,36 +50,18 @@ fn test_merge_text() {
 fn test_merge_text_with_cursors() {
     let result = merge_text_with_cursors(
         "hi",
-        OwnedTextWithCursors::new("hi world", vec![]),
-        OwnedTextWithCursors::new(
-            "hi",
-            vec![
-                OwnedCursorPosition {
-                    id: 0,
-                    char_index: 1,
-                },
-                OwnedCursorPosition {
-                    id: 1,
-                    char_index: 2,
-                },
-            ],
+        TextWithCursors::new("hi world".to_owned(), vec![]),
+        TextWithCursors::new(
+            "hi".to_owned(),
+            vec![CursorPosition::new(0, 1), CursorPosition::new(1, 2)],
         ),
     );
 
     assert_eq!(
         result,
-        OwnedTextWithCursors::new(
-            "hi world",
-            vec![
-                OwnedCursorPosition {
-                    id: 0,
-                    char_index: 1,
-                },
-                OwnedCursorPosition {
-                    id: 1,
-                    char_index: 2,
-                }
-            ]
+        TextWithCursors::new(
+            "hi world".to_owned(),
+            vec![CursorPosition::new(0, 1), CursorPosition::new(1, 2)]
         ),
     );
 }

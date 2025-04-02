@@ -12,7 +12,7 @@
 use core::str;
 
 use base64::{Engine as _, engine::general_purpose::STANDARD};
-use cursor::OwnedTextWithCursors;
+use cursor::TextWithCursors;
 use errors::SyncLibError;
 use wasm_bindgen::prelude::*;
 
@@ -110,9 +110,9 @@ pub fn merge_text(parent: &str, left: &str, right: &str) -> String {
 #[must_use]
 pub fn merge_text_with_cursors(
     parent: &str,
-    left: OwnedTextWithCursors,
-    right: OwnedTextWithCursors,
-) -> OwnedTextWithCursors {
+    left: TextWithCursors,
+    right: TextWithCursors,
+) -> TextWithCursors {
     set_panic_hook();
 
     reconcile::reconcile_with_cursors(parent, left.into(), right.into()).into()
