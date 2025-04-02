@@ -29,7 +29,7 @@ chrono = { version = "0.4.40", features = ["serde"] }
 aide = { version = "0.13.4", features = ["axum", "axum-ws", "scalar", "axum-headers"] }
 schemars = { version = "0.8.21", features = ["chrono", "uuid1", "bytes"] }
 tracing = "0.1.41"
-rand = "0.8.5"
+rand = "0.9.0"
 sanitize-filename = "0.6.0"
 axum-jsonschema = { version = "0.8.0", features = ["aide"] }
 regex = "1.11.1"
