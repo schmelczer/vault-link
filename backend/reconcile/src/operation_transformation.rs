@@ -385,7 +385,7 @@ mod test {
         let files = [file_name_1, file_name_2, file_name_3];
         let permutations = [range_1, range_2, range_3];
 
-        let root = Path::new("test/resources/");
+        let root = Path::new("tests/resources/");
 
         let contents = files
             .iter()

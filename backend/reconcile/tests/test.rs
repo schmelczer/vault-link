@@ -6,7 +6,7 @@ use reconcile::{reconcile, reconcile_with_cursors};
 
 #[test]
 fn test_with_examples() {
-    let examples_dir = Path::new("test/examples");
+    let examples_dir = Path::new("tests/examples");
     let mut entries = fs::read_dir(examples_dir)
         .expect("Failed to read examples directory")
         .collect::<Vec<_>>();
