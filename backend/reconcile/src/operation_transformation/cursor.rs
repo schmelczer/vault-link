@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 use super::merge_context::MergeContext;
 use crate::operation_transformation::Operation;
 
-// CursorPosition is a wrapper around usize to represent the position of an
-// identifiable cursor in a text document based on the character index.
+// CursorPosition represents the position of an identifiable cursor in a text
+// document based on its (UTF-8) character index.
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct CursorPosition {
