@@ -18,7 +18,7 @@ import { registerConsoleForLogging } from "./utils/register-console-for-logging"
 import { updateEditorStatusDisplay } from "./views/editor-sync-line/editor-sync-line";
 
 export default class VaultLinkPlugin extends Plugin {
-	private readonly disposables: (() => void)[] = [];
+	private readonly disposables: (() => unknown)[] = [];
 	private settingsTab: SyncSettingsTab | undefined;
 	private client!: SyncClient;
 	private readonly rateLimitedUpdatesPerFile = new Map<
