@@ -16,7 +16,10 @@ import { ObsidianFileSystemOperations } from "./obsidian-file-system";
 import { SyncSettingsTab } from "./views/settings/settings-tab";
 import { registerConsoleForLogging } from "./utils/register-console-for-logging";
 import { updateEditorStatusDisplay } from "./views/editor-sync-line/editor-sync-line";
+import { remoteCursorsTheme } from "./views/remote-cursors/remote-cursor-theme";
+import { remoteCursorsPlugin } from "./views/remote-cursors/remote-cursors-plugin";
 
+const MIN_WAIT_BETWEEN_UPDATES_IN_MS = 250;
 export default class VaultLinkPlugin extends Plugin {
 	private readonly disposables: (() => unknown)[] = [];
 	private settingsTab: SyncSettingsTab | undefined;
@@ -61,18 +64,23 @@ export default class VaultLinkPlugin extends Plugin {
 
 		this.registerView(
 			HistoryView.TYPE,
-			(leaf) => new HistoryView(leaf, this.client)
+			(leaf) => new HistoryView(this.client, leaf)
 		);
+
 		this.registerView(
 			LogsView.TYPE,
 			(leaf) => new LogsView(this.client, leaf)
 		);
+
+		this.registerEditorExtension([remoteCursorsTheme, remoteCursorsPlugin]);
+		this.app.workspace.updateOptions();
 
 		this.addRibbonIcon(
 			HistoryView.ICON,
 			"Open VaultLink events",
 			async (_: MouseEvent) => this.activateView(HistoryView.TYPE)
 		);
+
 		this.addRibbonIcon(
 			LogsView.ICON,
 			"Open VaultLink logs",
@@ -181,7 +189,7 @@ export default class VaultLinkPlugin extends Plugin {
 						this.client.syncLocallyUpdatedFile({
 							relativePath: path
 						}),
-					250
+					MIN_WAIT_BETWEEN_UPDATES_IN_MS
 				)
 			);
 		}
