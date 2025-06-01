@@ -15,9 +15,10 @@ import { FileOperations } from "./file-operations/file-operations";
 import { ConnectionStatus } from "./services/connection-status";
 import { UnrestrictedSyncer } from "./sync-operations/unrestricted-syncer";
 import { rateLimit } from "./utils/rate-limit";
-import { v4 as uuidv4 } from "uuid";
 import type { NetworkConnectionStatus } from "./types/network-connection-status";
 import { DocumentUpdateStatus } from "./types/document-update-status";
+import { WebSocketManager } from "./services/websocket-manager";
+import { createClientId } from "./utils/create-client-id";
 
 export class SyncClient {
 	private static readonly MINIMUM_SAVE_INTERVAL_MS = 1000;
@@ -29,6 +30,7 @@ export class SyncClient {
 		private readonly database: Database,
 		private readonly syncer: Syncer,
 		private readonly syncService: SyncService,
+		private readonly webSocketManager: WebSocketManager,
 		private readonly _logger: Logger,
 		private readonly connectionStatus: ConnectionStatus
 	) {
@@ -68,7 +70,10 @@ export class SyncClient {
 		nativeLineEndings?: string;
 	}): Promise<SyncClient> {
 		const logger = new Logger();
-		logger.info("Initialising SyncClient");
+
+		const deviceId = createClientId();
+
+		logger.info(`Initialising SyncClient with client id ${deviceId}`);
 
 		const history = new SyncHistory(logger);
 
@@ -104,7 +109,6 @@ export class SyncClient {
 				await rateLimitedSave(state);
 			}
 		);
-		const deviceId = uuidv4();
 
 		const connectionStatus = new ConnectionStatus(settings, logger);
 		const syncService = new SyncService(
@@ -121,6 +125,7 @@ export class SyncClient {
 			fs,
 			nativeLineEndings
 		);
+
 		const unrestrictedSyncer = new UnrestrictedSyncer(
 			logger,
 			database,
@@ -129,6 +134,7 @@ export class SyncClient {
 			fileOperations,
 			history
 		);
+
 		const syncer = new Syncer(
 			deviceId,
 			logger,
@@ -136,7 +142,15 @@ export class SyncClient {
 			settings,
 			syncService,
 			fileOperations,
-			unrestrictedSyncer,
+			unrestrictedSyncer
+		);
+
+		const webSocketManager = new WebSocketManager(
+			deviceId,
+			logger,
+			database,
+			settings,
+			syncer,
 			webSocket
 		);
 
@@ -146,6 +160,7 @@ export class SyncClient {
 			database,
 			syncer,
 			syncService,
+			webSocketManager,
 			logger,
 			connectionStatus
 		);
@@ -160,7 +175,7 @@ export class SyncClient {
 		return {
 			isSuccessful: server.isSuccessful,
 			serverMessage: server.message,
-			isWebSocketConnected: this.syncer.isWebSocketConnected
+			isWebSocketConnected: this.webSocketManager.isWebSocketConnected
 		};
 	}
 
@@ -179,7 +194,7 @@ export class SyncClient {
 	}
 
 	public stop(): void {
-		this.syncer.stop();
+		this.webSocketManager.stop();
 	}
 
 	public async waitAndStop(): Promise<void> {
@@ -194,6 +209,7 @@ export class SyncClient {
 		this.stop();
 		this.connectionStatus.startReset();
 		await this.syncer.reset();
+		await this.webSocketManager.reset();
 		this.history.reset();
 		this.database.reset();
 		this._logger.reset();
@@ -229,7 +245,7 @@ export class SyncClient {
 	}
 
 	public addWebSocketStatusChangeListener(listener: () => void): void {
-		this.syncer.addWebSocketStatusChangeListener(listener);
+		this.webSocketManager.addWebSocketStatusChangeListener(listener);
 	}
 
 	public async syncLocallyCreatedFile(
