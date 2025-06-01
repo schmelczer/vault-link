@@ -1,0 +1,124 @@
+use core::time::Duration;
+use std::{collections::HashMap, sync::Arc};
+
+use chrono::TimeDelta;
+use sqlx::types::chrono::Utc;
+use tokio::sync::Mutex;
+
+use super::{
+    database::models::{DeviceId, VaultId},
+    websocket::{
+        broadcasts::Broadcasts,
+        models::{
+            ClientCursors, CursorPositionFromServer, WebSocketServerMessage,
+            WebSocketServerMessageWithOrigin,
+        },
+    },
+};
+use crate::config::database_config::DatabaseConfig;
+
+const BACKGROUND_TASK_INTERVAL: Duration = Duration::from_secs(1);
+
+#[derive(Clone, Debug)]
+pub struct Cursors {
+    config: DatabaseConfig,
+    broadcasts: Broadcasts,
+    vault_to_cursors: Arc<Mutex<HashMap<VaultId, Vec<ClientCursorsWithTimeToLive>>>>,
+}
+
+impl Cursors {
+    pub fn new(config: &DatabaseConfig, broadcasts: &Broadcasts) -> Self {
+        Self {
+            config: config.clone(),
+            broadcasts: broadcasts.clone(),
+            vault_to_cursors: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    pub async fn update_cursors(
+        &self,
+        vault_id: VaultId,
+        device_id: &DeviceId,
+        document_to_cursors: HashMap<String, Vec<usize>>,
+    ) {
+        let mut vault_to_cursors = self.vault_to_cursors.lock().await;
+
+        let all_device_cursors = vault_to_cursors.entry(vault_id).or_insert_with(Vec::new);
+
+        all_device_cursors.retain(|c| &c.client_cursors.device_id != device_id);
+        all_device_cursors.push(ClientCursorsWithTimeToLive::new(ClientCursors {
+            device_id: device_id.to_string(),
+            cursors: document_to_cursors,
+        }));
+    }
+
+    pub async fn get_cursors(&self, vault_id: &VaultId) -> Vec<ClientCursors> {
+        let vault_to_cursors = self.vault_to_cursors.lock().await;
+        vault_to_cursors
+            .get(vault_id)
+            .map(|cursors| {
+                cursors
+                    .iter()
+                    .cloned()
+                    .map(|with_ttl| with_ttl.client_cursors)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn start_background_task(self) {
+        tokio::spawn(async move {
+            self.run_backround_task().await;
+        });
+    }
+
+    async fn run_backround_task(&self) {
+        loop {
+            self.remove_expired_cursors().await;
+            self.broadcast_cursors().await;
+            tokio::time::sleep(BACKGROUND_TASK_INTERVAL).await;
+        }
+    }
+
+    async fn remove_expired_cursors(&self) {
+        let mut vault_to_cursors = self.vault_to_cursors.lock().await;
+
+        for (_vault_id, cursors) in vault_to_cursors.iter_mut() {
+            cursors.retain(|cursor| !cursor.is_expired(self.config.cursor_timeout));
+        }
+    }
+
+    async fn broadcast_cursors(&self) {
+        let vault_to_cursors = self.vault_to_cursors.lock().await;
+
+        for (vault_id, cursors) in vault_to_cursors.iter() {
+            self.broadcasts
+                .send_document_update(
+                    vault_id.clone(),
+                    WebSocketServerMessageWithOrigin::new(WebSocketServerMessage::CursorPositions(
+                        CursorPositionFromServer {
+                            clients: cursors.iter().map(|c| c.client_cursors.clone()).collect(),
+                        },
+                    )),
+                )
+                .await;
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct ClientCursorsWithTimeToLive {
+    client_cursors: ClientCursors,
+    last_updated: chrono::DateTime<Utc>,
+}
+
+impl ClientCursorsWithTimeToLive {
+    fn new(client_cursors: ClientCursors) -> Self {
+        Self {
+            client_cursors,
+            last_updated: Utc::now(),
+        }
+    }
+
+    pub fn is_expired(&self, ttl: TimeDelta) -> bool { Utc::now() - self.last_updated > ttl }
+}

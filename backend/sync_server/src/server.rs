@@ -1,4 +1,4 @@
-mod auth;
+pub mod auth;
 mod create_document;
 mod delete_document;
 mod device_id_header;

@@ -19,8 +19,7 @@ use super::{
 use crate::{
     app_state::{
         AppState,
-        broadcasts::VaultUpdate,
-        database::models::{DeviceId, DocumentId, StoredDocumentVersion, VaultId, VaultUpdateId},
+        database::models::{DocumentId, StoredDocumentVersion, VaultId, VaultUpdateId},
     },
     config::user_config::User,
     errors::{SyncServerError, client_error, not_found_error, server_error},
@@ -43,7 +42,7 @@ pub async fn update_document_multipart(
         document_id,
     }): Path<UpdateDocumentPathParams>,
     Extension(user): Extension<User>,
-    TypedHeader(user_agent): TypedHeader<DeviceIdHeader>,
+    TypedHeader(device_id): TypedHeader<DeviceIdHeader>,
     State(state): State<AppState>,
     TypedMultipart(axum_typed_multipart::TypedMultipart(request)): TypedMultipart<
         UpdateDocumentVersionMultipart,
@@ -51,13 +50,12 @@ pub async fn update_document_multipart(
 ) -> Result<Json<DocumentUpdateResponse>, SyncServerError> {
     internal_update_document(
         user,
-        user_agent,
+        device_id,
         state,
         vault_id,
         document_id,
         request.parent_version_id,
         request.relative_path,
-        request.device_id,
         request.content.contents.to_vec(),
     )
     .await
@@ -70,7 +68,7 @@ pub async fn update_document_json(
         document_id,
     }): Path<UpdateDocumentPathParams>,
     Extension(user): Extension<User>,
-    TypedHeader(user_agent): TypedHeader<DeviceIdHeader>,
+    TypedHeader(device_id): TypedHeader<DeviceIdHeader>,
     State(state): State<AppState>,
     Json(request): Json<UpdateDocumentVersion>,
 ) -> Result<Json<DocumentUpdateResponse>, SyncServerError> {
@@ -80,13 +78,12 @@ pub async fn update_document_json(
 
     internal_update_document(
         user,
-        user_agent,
+        device_id,
         state,
         vault_id,
         document_id,
         request.parent_version_id,
         request.relative_path,
-        request.device_id,
         content_bytes,
     )
     .await
@@ -95,13 +92,12 @@ pub async fn update_document_json(
 #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 async fn internal_update_document(
     user: User,
-    user_agent: DeviceIdHeader,
+    device_id: DeviceIdHeader,
     state: AppState,
     vault_id: VaultId,
     document_id: DocumentId,
     parent_version_id: VaultUpdateId,
     relative_path: String,
-    device_id: Option<DeviceId>,
     content: Vec<u8>,
 ) -> Result<Json<DocumentUpdateResponse>, SyncServerError> {
     // No need for a transaction as document versions are immutable
@@ -215,7 +211,7 @@ async fn internal_update_document(
         updated_date: chrono::Utc::now(),
         is_deleted: false,
         user_id: user.name,
-        device_id: user_agent.0,
+        device_id: device_id.0,
     };
 
     state
@@ -229,17 +225,6 @@ async fn internal_update_document(
         .await
         .context("Failed to commit successful transaction")
         .map_err(server_error)?;
-
-    state
-        .broadcasts
-        .send(
-            vault_id,
-            VaultUpdate {
-                origin_device_id: device_id,
-                document: new_version.clone().into(),
-            },
-        )
-        .await;
 
     Ok(Json(if is_different_from_request_content {
         DocumentUpdateResponse::MergingUpdate(new_version.into())

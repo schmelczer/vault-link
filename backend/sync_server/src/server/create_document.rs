@@ -17,9 +17,8 @@ use super::{
 use crate::{
     app_state::{
         AppState,
-        broadcasts::VaultUpdate,
         database::models::{
-            DeviceId, DocumentId, DocumentVersionWithoutContent, StoredDocumentVersion, VaultId,
+            DocumentId, DocumentVersionWithoutContent, StoredDocumentVersion, VaultId,
         },
     },
     config::user_config::User,
@@ -41,7 +40,7 @@ pub struct CreateDocumentPathParams {
 pub async fn create_document_multipart(
     Path(CreateDocumentPathParams { vault_id }): Path<CreateDocumentPathParams>,
     Extension(user): Extension<User>,
-    TypedHeader(user_agent): TypedHeader<DeviceIdHeader>,
+    TypedHeader(device_id): TypedHeader<DeviceIdHeader>,
     State(state): State<AppState>,
     TypedMultipart(axum_typed_multipart::TypedMultipart(request)): TypedMultipart<
         CreateDocumentVersionMultipart,
@@ -49,12 +48,11 @@ pub async fn create_document_multipart(
 ) -> Result<Json<DocumentVersionWithoutContent>, SyncServerError> {
     internal_create_document(
         user,
-        user_agent,
+        device_id,
         state,
         vault_id,
         request.document_id,
         request.relative_path,
-        request.device_id,
         request.content.contents.to_vec(),
     )
     .await
@@ -67,7 +65,7 @@ pub async fn create_document_multipart(
 pub async fn create_document_json(
     Path(CreateDocumentPathParams { vault_id }): Path<CreateDocumentPathParams>,
     Extension(user): Extension<User>,
-    TypedHeader(user_agent): TypedHeader<DeviceIdHeader>,
+    TypedHeader(device_id): TypedHeader<DeviceIdHeader>,
     State(state): State<AppState>,
     Json(request): Json<CreateDocumentVersion>,
 ) -> Result<Json<DocumentVersionWithoutContent>, SyncServerError> {
@@ -77,12 +75,11 @@ pub async fn create_document_json(
 
     internal_create_document(
         user,
-        user_agent,
+        device_id,
         state,
         vault_id,
         request.document_id,
         request.relative_path,
-        request.device_id,
         content_bytes,
     )
     .await
@@ -91,12 +88,11 @@ pub async fn create_document_json(
 #[allow(clippy::too_many_arguments)]
 async fn internal_create_document(
     user: User,
-    user_agent: DeviceIdHeader,
+    device_id: DeviceIdHeader,
     state: AppState,
     vault_id: VaultId,
     document_id: Option<DocumentId>,
     relative_path: String,
-    device_id: Option<DeviceId>,
     content: Vec<u8>,
 ) -> Result<Json<DocumentVersionWithoutContent>, SyncServerError> {
     let mut transaction = state
@@ -140,7 +136,7 @@ async fn internal_create_document(
         updated_date: chrono::Utc::now(),
         is_deleted: false,
         user_id: user.name,
-        device_id: user_agent.0,
+        device_id: device_id.0,
     };
 
     state
@@ -154,17 +150,6 @@ async fn internal_create_document(
         .await
         .context("Failed to commit successful transaction")
         .map_err(server_error)?;
-
-    state
-        .broadcasts
-        .send(
-            vault_id,
-            VaultUpdate {
-                origin_device_id: device_id,
-                document: new_version.clone().into(),
-            },
-        )
-        .await;
 
     Ok(Json(new_version.into()))
 }
