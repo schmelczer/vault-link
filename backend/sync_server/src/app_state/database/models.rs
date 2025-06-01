@@ -30,13 +30,17 @@ impl PartialEq<Self> for StoredDocumentVersion {
 #[derive(TS, Debug, Clone, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentVersionWithoutContent {
+    #[ts(as = "i32")]
     pub vault_update_id: VaultUpdateId,
+
     pub document_id: DocumentId,
     pub relative_path: String,
     pub updated_date: DateTime<Utc>,
     pub is_deleted: bool,
     pub user_id: UserId,
     pub device_id: DeviceId,
+
+    #[ts(as = "i32")]
     pub content_size: u64,
 }
 
