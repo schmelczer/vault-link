@@ -17,7 +17,7 @@ import type {
 } from "../tracing/sync-history";
 import { SyncStatus, SyncType } from "../tracing/sync-history";
 import { EMPTY_HASH, hash } from "../utils/hash";
-import type { components } from "../services/types";
+import type { components } from "../services/types/http-api";
 import { deserialize } from "../utils/deserialize";
 import type { Settings } from "../persistence/settings";
 import type { FileOperations } from "../file-operations/file-operations";
