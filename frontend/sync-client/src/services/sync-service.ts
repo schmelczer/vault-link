@@ -9,13 +9,13 @@ import type { Settings } from "../persistence/settings";
 import type { ConnectionStatus } from "./connection-status";
 import { sleep } from "../utils/sleep";
 import { SyncResetError } from "./sync-reset-error";
-import { SerializedError } from "./types/SerializedError";
-import { DocumentVersionWithoutContent } from "./types/DocumentVersionWithoutContent";
-import { DocumentUpdateResponse } from "./types/DocumentUpdateResponse";
-import { DocumentVersion } from "./types/DocumentVersion";
-import { FetchLatestDocumentsResponse } from "./types/FetchLatestDocumentsResponse";
-import { PingResponse } from "./types/PingResponse";
-import { DeleteDocumentVersion } from "./types/DeleteDocumentVersion";
+import type { SerializedError } from "./types/SerializedError";
+import type { DocumentVersionWithoutContent } from "./types/DocumentVersionWithoutContent";
+import type { DocumentUpdateResponse } from "./types/DocumentUpdateResponse";
+import type { DocumentVersion } from "./types/DocumentVersion";
+import type { FetchLatestDocumentsResponse } from "./types/FetchLatestDocumentsResponse";
+import type { PingResponse } from "./types/PingResponse";
+import type { DeleteDocumentVersion } from "./types/DeleteDocumentVersion";
 
 export interface CheckConnectionResult {
 	isSuccessful: boolean;
@@ -24,8 +24,8 @@ export interface CheckConnectionResult {
 
 export class SyncService {
 	private static readonly NETWORK_RETRY_INTERVAL_MS = 1000;
-	private client: typeof globalThis.fetch;
-	private pingClient: typeof globalThis.fetch;
+	private readonly client: typeof globalThis.fetch;
+	private readonly pingClient: typeof globalThis.fetch;
 
 	public constructor(
 		private readonly deviceId: string,
@@ -35,7 +35,7 @@ export class SyncService {
 		fetchImplementation: typeof globalThis.fetch = globalThis.fetch
 	) {
 		// ensure that if it's called a method, `this` won't be bound to the instance
-		const unboundFetch: typeof globalThis.fetch = (...args) =>
+		const unboundFetch: typeof globalThis.fetch = async (...args) =>
 			fetchImplementation(...args);
 
 		this.client = this.connectionStatus.getFetchImplementation(
@@ -43,12 +43,6 @@ export class SyncService {
 			unboundFetch
 		);
 		this.pingClient = unboundFetch;
-	}
-
-	private getUrl(path: string): string {
-		let { vaultName, remoteUri } = this.settings.getSettings();
-		remoteUri = remoteUri.replace(/\/+$/, "");
-		return `${remoteUri}/vaults/${vaultName}${path}`;
 	}
 
 	private static formatError(error: SerializedError): string {
@@ -85,7 +79,9 @@ export class SyncService {
 			});
 
 			const result: SerializedError | DocumentVersionWithoutContent =
-				await response.json();
+				(await response.json()) as  // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+					| SerializedError
+					| DocumentVersionWithoutContent;
 
 			if ("errorType" in result) {
 				throw new Error(
@@ -133,7 +129,9 @@ export class SyncService {
 			);
 
 			const result: SerializedError | DocumentUpdateResponse =
-				await response.json();
+				(await response.json()) as  // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+					| SerializedError
+					| DocumentUpdateResponse;
 
 			if ("errorType" in result) {
 				throw new Error(
@@ -175,7 +173,9 @@ export class SyncService {
 			);
 
 			const result: SerializedError | DocumentVersionWithoutContent =
-				await response.json();
+				(await response.json()) as  // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+					| SerializedError
+					| DocumentVersionWithoutContent;
 
 			if ("errorType" in result) {
 				throw new Error(
@@ -205,7 +205,7 @@ export class SyncService {
 			);
 
 			const result: SerializedError | DocumentVersion =
-				await response.json();
+				(await response.json()) as SerializedError | DocumentVersion; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
 
 			if ("errorType" in result) {
 				throw new Error(
@@ -234,7 +234,9 @@ export class SyncService {
 			});
 
 			const result: SerializedError | FetchLatestDocumentsResponse =
-				await response.json();
+				(await response.json()) as  // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+					| SerializedError
+					| FetchLatestDocumentsResponse;
 
 			if ("errorType" in result) {
 				throw new Error(
@@ -256,7 +258,7 @@ export class SyncService {
 				headers: this.getDefaultHeaders()
 			});
 			const result: PingResponse | SerializedError =
-				await response.json();
+				(await response.json()) as PingResponse | SerializedError; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
 
 			if ("errorType" in result) {
 				throw new Error(
@@ -281,6 +283,12 @@ export class SyncService {
 				message: `Failed to connect to server: ${e}`
 			};
 		}
+	}
+
+	private getUrl(path: string): string {
+		const { vaultName, remoteUri } = this.settings.getSettings();
+		const safeRemoteUri = remoteUri.replace(/\/+$/, "");
+		return `${safeRemoteUri}/vaults/${vaultName}${path}`;
 	}
 
 	private getDefaultHeaders(): Record<string, string> {

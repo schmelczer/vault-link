@@ -16,7 +16,7 @@ import type { UnrestrictedSyncer } from "./unrestricted-syncer";
 import { createPromise } from "../utils/create-promise";
 import { SyncResetError } from "../services/sync-reset-error";
 import { Locks } from "../utils/locks";
-import { DocumentVersionWithoutContent } from "../services/types/DocumentVersionWithoutContent";
+import type { DocumentVersionWithoutContent } from "../services/types/DocumentVersionWithoutContent";
 
 export class Syncer {
 	private readonly remoteDocumentsLock: Locks<DocumentId>;

@@ -24,9 +24,9 @@ import { createPromise } from "../utils/create-promise";
 import { FileNotFoundError } from "../file-operations/file-not-found-error";
 import { SyncResetError } from "../services/sync-reset-error";
 import { globsToRegexes } from "../utils/globs-to-regexes";
-import { DocumentVersion } from "../services/types/DocumentVersion";
-import { DocumentUpdateResponse } from "../services/types/DocumentUpdateResponse";
-import { DocumentVersionWithoutContent } from "../services/types/DocumentVersionWithoutContent";
+import type { DocumentVersion } from "../services/types/DocumentVersion";
+import type { DocumentUpdateResponse } from "../services/types/DocumentUpdateResponse";
+import type { DocumentVersionWithoutContent } from "../services/types/DocumentVersionWithoutContent";
 
 export class UnrestrictedSyncer {
 	private ignorePatterns: RegExp[];

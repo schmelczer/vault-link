@@ -3,7 +3,7 @@
 /**
  * Response to a ping request.
  */
-export type PingResponse = { 
+export interface PingResponse { 
 /**
  * Semantic version of the server.
  */
@@ -12,4 +12,4 @@ serverVersion: string,
  * Whether the client is authenticated based on the sent Authorization
  * header.
  */
-isAuthenticated: boolean, };
+isAuthenticated: boolean, }

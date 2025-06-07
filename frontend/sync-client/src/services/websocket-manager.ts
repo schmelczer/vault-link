@@ -1,11 +1,11 @@
 import type { Database } from "../persistence/database";
 import type { Logger } from "../tracing/logger";
 import type { Settings, SyncSettings } from "../persistence/settings";
-import { WebSocketServerMessage } from "./types/WebSocketServerMessage";
-import { Syncer } from "../sync-operations/syncer";
-import { WebSocketClientMessage } from "./types/WebSocketClientMessage";
-import { CursorPositionFromClient } from "./types/CursorPositionFromClient";
-import { ClientCursors } from "./types/ClientCursors";
+import type { WebSocketServerMessage } from "./types/WebSocketServerMessage";
+import type { Syncer } from "../sync-operations/syncer";
+import type { WebSocketClientMessage } from "./types/WebSocketClientMessage";
+import type { CursorPositionFromClient } from "./types/CursorPositionFromClient";
+import type { ClientCursors } from "./types/ClientCursors";
 
 export class WebSocketManager {
 	private readonly webSocketStatusChangeListeners: (() => unknown)[] = [];
@@ -19,7 +19,6 @@ export class WebSocketManager {
 
 	private readonly webSocketFactoryImplementation: typeof globalThis.WebSocket;
 
-	// eslint-disable-next-line @typescript-eslint/max-params
 	public constructor(
 		private readonly deviceId: string,
 		private readonly logger: Logger,
@@ -90,6 +89,23 @@ export class WebSocketManager {
 		}
 	}
 
+	public updateLocalCursors(cursorPositions: CursorPositionFromClient): void {
+		if (!this.isWebSocketConnected) {
+			this.logger.warn(
+				"WebSocket is not connected, cannot send cursor positions"
+			);
+			return;
+		}
+		const message: WebSocketClientMessage = {
+			type: "cursorPositions",
+			...cursorPositions
+		};
+		this.webSocket?.send(JSON.stringify(message));
+		this.logger.info(
+			`Sent cursor positions: ${JSON.stringify(cursorPositions)}`
+		);
+	}
+
 	private updateWebSocket(settings: SyncSettings): void {
 		try {
 			this.webSocket?.close();
@@ -134,6 +150,7 @@ export class WebSocketManager {
 						`Failed to sync remotely updated file: ${e}`
 					);
 				}
+				// eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
 			} else if (message.type === "cursorPositions") {
 				this.logger.info(
 					`Received cursor positions for ${JSON.stringify(message.clients)}`
@@ -159,7 +176,7 @@ export class WebSocketManager {
 				listener();
 			});
 
-			let message: WebSocketClientMessage = {
+			const message: WebSocketClientMessage = {
 				type: "handshake",
 				deviceId: this.deviceId,
 				token: settings.token,
@@ -176,23 +193,6 @@ export class WebSocketManager {
 				listener();
 			});
 		};
-	}
-
-	public updateLocalCursors(cursorPositions: CursorPositionFromClient): void {
-		if (!this.isWebSocketConnected) {
-			this.logger.warn(
-				"WebSocket is not connected, cannot send cursor positions"
-			);
-			return;
-		}
-		let message: WebSocketClientMessage = {
-			type: "cursorPositions",
-			...cursorPositions
-		};
-		this.webSocket?.send(JSON.stringify(message));
-		this.logger.info(
-			`Sent cursor positions: ${JSON.stringify(cursorPositions)}`
-		);
 	}
 
 	private setWebSocketRefreshInterval(): void {
