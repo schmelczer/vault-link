@@ -100,6 +100,14 @@ impl Cursors {
                 .await;
         }
     }
+
+    pub async fn remove_cursors_of_device(&self, vault_id: &str, device_id: &str) {
+        let mut vault_to_cursors = self.vault_to_cursors.lock().await;
+
+        if let Some(cursors) = vault_to_cursors.get_mut(vault_id) {
+            cursors.retain(|c| c.client_cursors.device_id != device_id);
+        }
+    }
 }
 
 #[derive(Clone, Debug)]

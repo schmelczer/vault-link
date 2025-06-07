@@ -12,12 +12,12 @@ use crate::{
     server::auth::auth,
 };
 
-pub fn get_handshake(
+pub fn get_authenticated_handshake(
     state: &AppState,
     vault_id: &VaultId,
-    message: Message,
+    message: Option<Message>,
 ) -> Result<WebSocketHandshake, SyncServerError> {
-    if let Message::Text(message) = message {
+    if let Some(Message::Text(message)) = message {
         let message: WebSocketClientMessage = serde_json::from_str(&message)
             .context("Failed to parse message")
             .map_err(server_error)?;
