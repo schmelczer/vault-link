@@ -5,10 +5,13 @@ import { WebSocketServerMessage } from "./types/WebSocketServerMessage";
 import { Syncer } from "../sync-operations/syncer";
 import { WebSocketClientMessage } from "./types/WebSocketClientMessage";
 import { CursorPositionFromClient } from "./types/CursorPositionFromClient";
+import { ClientCursors } from "./types/ClientCursors";
 
 export class WebSocketManager {
 	private readonly webSocketStatusChangeListeners: (() => unknown)[] = [];
-	// private readonly cur: (() => unknown)[] = [];
+	private readonly remoteCursorsUpdateListeners: ((
+		cursors: ClientCursors[]
+	) => unknown)[] = [];
 
 	private refreshWebSocketInterval: NodeJS.Timeout | undefined;
 
@@ -64,6 +67,12 @@ export class WebSocketManager {
 
 	public addWebSocketStatusChangeListener(listener: () => void): void {
 		this.webSocketStatusChangeListeners.push(listener);
+	}
+
+	public addRemoteCursorsUpdateListener(
+		listener: (cursors: ClientCursors[]) => void
+	): void {
+		this.remoteCursorsUpdateListeners.push(listener);
 	}
 
 	public async reset(): Promise<void> {
@@ -129,7 +138,13 @@ export class WebSocketManager {
 				this.logger.info(
 					`Received cursor positions for ${JSON.stringify(message.clients)}`
 				);
-				// Handle cursor positions if needed
+				this.remoteCursorsUpdateListeners.forEach((listener) => {
+					listener(
+						message.clients.filter(
+							(client) => client.deviceId !== this.deviceId
+						)
+					);
+				});
 			} else {
 				this.logger.warn(
 					`Received unknown message type: ${JSON.stringify(message)}`
@@ -163,9 +178,7 @@ export class WebSocketManager {
 		};
 	}
 
-	public sendCursorPositions(
-		cursorPositions: CursorPositionFromClient
-	): void {
+	public updateLocalCursors(cursorPositions: CursorPositionFromClient): void {
 		if (!this.isWebSocketConnected) {
 			this.logger.warn(
 				"WebSocket is not connected, cannot send cursor positions"

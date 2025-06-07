@@ -19,6 +19,8 @@ import type { NetworkConnectionStatus } from "./types/network-connection-status"
 import { DocumentUpdateStatus } from "./types/document-update-status";
 import { WebSocketManager } from "./services/websocket-manager";
 import { createClientId } from "./utils/create-client-id";
+import { CursorSpan } from "./services/types/CursorSpan";
+import { ClientCursors } from "./services/types/ClientCursors";
 
 export class SyncClient {
 	private static readonly MINIMUM_SAVE_INTERVAL_MS = 1000;
@@ -271,6 +273,18 @@ export class SyncClient {
 			oldPath,
 			relativePath
 		});
+	}
+
+	public async updateLocalCursors(documentToCursors: {
+		[path: RelativePath]: CursorSpan[];
+	}): Promise<void> {
+		return this.webSocketManager.updateLocalCursors({ documentToCursors });
+	}
+
+	public addRemoteCursorsUpdateListener(
+		listener: (cursors: ClientCursors[]) => void
+	): void {
+		this.webSocketManager.addRemoteCursorsUpdateListener(listener);
 	}
 
 	public getDocumentSyncingStatus(
