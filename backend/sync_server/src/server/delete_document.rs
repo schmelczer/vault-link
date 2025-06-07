@@ -1,11 +1,9 @@
 use anyhow::Context as _;
 use axum::{
-    Extension,
+    Extension, Json,
     extract::{Path, State},
 };
 use axum_extra::TypedHeader;
-use axum_jsonschema::Json;
-use schemars::JsonSchema;
 use serde::Deserialize;
 
 use super::{device_id_header::DeviceIdHeader, requests::DeleteDocumentVersion};
@@ -21,8 +19,7 @@ use crate::{
     utils::{normalize::normalize, sanitize_path::sanitize_path},
 };
 
-// This is required for aide to infer the path parameter types and names
-#[derive(Deserialize, JsonSchema)]
+#[derive(Deserialize)]
 pub struct DeleteDocumentPathParams {
     #[serde(deserialize_with = "normalize")]
     vault_id: VaultId,
