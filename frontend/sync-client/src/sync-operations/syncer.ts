@@ -9,7 +9,6 @@ import type { Logger } from "../tracing/logger";
 import PQueue from "p-queue";
 import { hash } from "../utils/hash";
 import { v4 as uuidv4 } from "uuid";
-import type { components } from "../services/types/http-api";
 import type { Settings, SyncSettings } from "../persistence/settings";
 import type { FileOperations } from "../file-operations/file-operations";
 import { findMatchingFile } from "../utils/find-matching-file";
@@ -17,6 +16,7 @@ import type { UnrestrictedSyncer } from "./unrestricted-syncer";
 import { createPromise } from "../utils/create-promise";
 import { SyncResetError } from "../services/sync-reset-error";
 import { Locks } from "../utils/locks";
+import { DocumentVersionWithoutContent } from "../services/types/DocumentVersionWithoutContent";
 
 export class Syncer {
 	private readonly remoteDocumentsLock: Locks<DocumentId>;
@@ -255,7 +255,7 @@ export class Syncer {
 	}
 
 	public async syncRemotelyUpdatedFile(
-		remoteVersion: components["schemas"]["DocumentVersionWithoutContent"]
+		remoteVersion: DocumentVersionWithoutContent
 	): Promise<void> {
 		let document = this.database.getDocumentByDocumentId(
 			remoteVersion.documentId

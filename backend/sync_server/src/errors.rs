@@ -8,6 +8,7 @@ use axum::{
 use log::{debug, error};
 use serde::Serialize;
 use thiserror::Error;
+use ts_rs::TS;
 
 #[derive(Error, Debug)]
 pub enum SyncServerError {
@@ -43,8 +44,11 @@ impl SyncServerError {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(TS, Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
 pub struct SerializedError {
+    pub error_type: &'static str,
     pub message: String,
     pub causes: Vec<String>,
 }
@@ -88,6 +92,17 @@ impl From<&anyhow::Error> for SerializedError {
         }
 
         SerializedError {
+            error_type: error.downcast_ref::<SyncServerError>().map_or(
+                "UnknownError",
+                |e| match e {
+                    SyncServerError::InitError(_) => "InitError",
+                    SyncServerError::ClientError(_) => "ClientError",
+                    SyncServerError::ServerError(_) => "ServerError",
+                    SyncServerError::NotFound(_) => "NotFound",
+                    SyncServerError::Unauthenticated(_) => "Unauthenticated",
+                    SyncServerError::PermissionDeniedError(_) => "PermissionDeniedError",
+                },
+            ),
             message: error.to_string(),
             causes,
         }
