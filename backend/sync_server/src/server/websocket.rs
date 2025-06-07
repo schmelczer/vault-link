@@ -7,8 +7,7 @@ use axum::{
     response::Response,
 };
 use futures::stream::StreamExt;
-use log::{error, info, warn};
-use schemars::JsonSchema;
+use log::{debug, info};
 use serde::Deserialize;
 
 use crate::{
@@ -29,8 +28,7 @@ use crate::{
     utils::normalize::normalize,
 };
 
-// This is required for aide to infer the path parameter types and names
-#[derive(Deserialize, JsonSchema)]
+#[derive(Deserialize)]
 pub struct WebSocketPathParams {
     #[serde(deserialize_with = "normalize")]
     vault_id: VaultId,
@@ -50,10 +48,8 @@ async fn websocket_wrapped(state: AppState, stream: WebSocket, vault_id: VaultId
     let result = websocket(state, stream, vault_id.clone()).await;
 
     if let Err(err) = result {
-        error!("WebSocket connection error on vault '{vault_id}': {err}");
+        debug!("WebSocket connection error on vault '{vault_id}': {err}");
     }
-
-    warn!("WebSocket connection closed on vault '{vault_id}'");
 }
 
 async fn websocket(
@@ -72,6 +68,11 @@ async fn websocket(
             .transpose()
             .unwrap_or_default(),
     )?;
+
+    info!(
+        "WebSocket handshake successful for vault '{vault_id}' for '{}'",
+        handshake.device_id
+    );
 
     let mut broadcast_receiver = state.broadcasts.get_receiver(vault_id.clone()).await;
 
@@ -141,26 +142,34 @@ async fn websocket(
         _ = &mut receive_task => send_task.abort(),
     };
 
-    let result = {
+    let result: Result<(), SyncServerError> = (async {
         send_task
             .await
             .context("WebSocket send task failed")
-            .map_err(server_error)
-            .and_then(|x| x)?;
+            .map_err(client_error)
+            .and_then(|err| err)?;
 
         receive_task
             .await
             .context("WebSocket receive task failed")
-            .map_err(server_error)
-            .and_then(|x| x)?;
+            .map_err(client_error)
+            .and_then(|err| err)?;
 
         Ok(())
-    };
+    })
+    .await;
 
     state
         .cursors
         .remove_cursors_of_device(&vault_id, &handshake.device_id)
         .await;
+
+    if result.is_err() {
+        info!(
+            "WebSocket disconnected on vault '{vault_id}' for '{}'",
+            handshake.device_id
+        );
+    }
 
     result
 }
