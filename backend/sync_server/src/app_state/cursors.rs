@@ -1,8 +1,6 @@
 use core::time::Duration;
 use std::{collections::HashMap, sync::Arc};
 
-use chrono::TimeDelta;
-use sqlx::types::chrono::Utc;
 use tokio::sync::Mutex;
 
 use super::{
@@ -10,14 +8,12 @@ use super::{
     websocket::{
         broadcasts::Broadcasts,
         models::{
-            ClientCursors, CursorPositionFromServer, WebSocketServerMessage,
+            ClientCursors, CursorPositionFromServer, CursorSpan, WebSocketServerMessage,
             WebSocketServerMessageWithOrigin,
         },
     },
 };
 use crate::config::database_config::DatabaseConfig;
-
-const BACKGROUND_TASK_INTERVAL: Duration = Duration::from_secs(1);
 
 #[derive(Clone, Debug)]
 pub struct Cursors {
@@ -39,7 +35,7 @@ impl Cursors {
         &self,
         vault_id: VaultId,
         device_id: &DeviceId,
-        document_to_cursors: HashMap<String, Vec<usize>>,
+        document_to_cursors: HashMap<String, Vec<CursorSpan>>,
     ) {
         let mut vault_to_cursors = self.vault_to_cursors.lock().await;
 
@@ -76,7 +72,7 @@ impl Cursors {
         loop {
             self.remove_expired_cursors().await;
             self.broadcast_cursors().await;
-            tokio::time::sleep(BACKGROUND_TASK_INTERVAL).await;
+            tokio::time::sleep(self.config.cursor_broadcast_interval).await;
         }
     }
 
@@ -109,16 +105,16 @@ impl Cursors {
 #[derive(Clone, Debug)]
 struct ClientCursorsWithTimeToLive {
     client_cursors: ClientCursors,
-    last_updated: chrono::DateTime<Utc>,
+    last_updated: std::time::Instant,
 }
 
 impl ClientCursorsWithTimeToLive {
     fn new(client_cursors: ClientCursors) -> Self {
         Self {
             client_cursors,
-            last_updated: Utc::now(),
+            last_updated: std::time::Instant::now(),
         }
     }
 
-    pub fn is_expired(&self, ttl: TimeDelta) -> bool { Utc::now() - self.last_updated > ttl }
+    pub fn is_expired(&self, ttl: Duration) -> bool { self.last_updated.elapsed() > ttl }
 }
