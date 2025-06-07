@@ -8,15 +8,21 @@ use crate::{
         AppState,
         database::models::{DocumentVersionWithoutContent, VaultId, VaultUpdateId},
     },
+    config::user_config::User,
     errors::{SyncServerError, server_error, unauthenticated_error},
     server::auth::auth,
 };
+
+pub struct AuthenticatedWebSocketHandshake {
+    pub handshake: WebSocketHandshake,
+    pub user: User,
+}
 
 pub fn get_authenticated_handshake(
     state: &AppState,
     vault_id: &VaultId,
     message: Option<Message>,
-) -> Result<WebSocketHandshake, SyncServerError> {
+) -> Result<AuthenticatedWebSocketHandshake, SyncServerError> {
     if let Some(Message::Text(message)) = message {
         let message: WebSocketClientMessage = serde_json::from_str(&message)
             .context("Failed to parse message")
@@ -24,8 +30,8 @@ pub fn get_authenticated_handshake(
 
         match message {
             WebSocketClientMessage::Handshake(handshake) => {
-                auth(state, handshake.token.trim(), vault_id)?;
-                Ok(handshake)
+                let user = auth(state, handshake.token.trim(), vault_id)?;
+                Ok(AuthenticatedWebSocketHandshake { handshake, user })
             }
             WebSocketClientMessage::CursorPositions(_) => Err(unauthenticated_error(
                 anyhow::anyhow!("Expected a handshake message"),

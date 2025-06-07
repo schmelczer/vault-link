@@ -52,6 +52,7 @@ async fn websocket_wrapped(state: AppState, stream: WebSocket, vault_id: VaultId
     }
 }
 
+#[allow(clippy::too_many_lines)]
 async fn websocket(
     state: AppState,
     stream: WebSocket,
@@ -59,7 +60,7 @@ async fn websocket(
 ) -> Result<(), SyncServerError> {
     let (mut sender, mut websocket_receiver) = stream.split();
 
-    let handshake = get_authenticated_handshake(
+    let authed_handshake = get_authenticated_handshake(
         &state,
         &vault_id,
         websocket_receiver
@@ -71,15 +72,19 @@ async fn websocket(
 
     info!(
         "WebSocket handshake successful for vault '{vault_id}' for '{}'",
-        handshake.device_id
+        authed_handshake.handshake.device_id
     );
 
     let mut broadcast_receiver = state.broadcasts.get_receiver(vault_id.clone()).await;
 
     send_update_over_websocket(
         &WebSocketServerMessage::VaultUpdate(WebSocketVaultUpdate {
-            documents: get_unseen_documents(&state, &vault_id, handshake.last_seen_vault_update_id)
-                .await?,
+            documents: get_unseen_documents(
+                &state,
+                &vault_id,
+                authed_handshake.handshake.last_seen_vault_update_id,
+            )
+            .await?,
             is_initial_sync: true,
         }),
         &mut sender,
@@ -94,7 +99,7 @@ async fn websocket(
     )
     .await?;
 
-    let device_id = handshake.device_id.clone();
+    let device_id = authed_handshake.handshake.device_id.clone();
     let mut send_task = tokio::spawn(async move {
         while let Ok(update) = broadcast_receiver.recv().await {
             if Some(&device_id) == update.origin_device_id.as_ref() {
@@ -107,7 +112,7 @@ async fn websocket(
         Ok::<(), SyncServerError>(())
     });
 
-    let device_id = handshake.device_id.clone();
+    let device_id = authed_handshake.handshake.device_id.clone();
     let vault_id_clone = vault_id.clone();
     let cursor_manager = state.cursors.clone();
     let mut receive_task = tokio::spawn(async move {
@@ -126,6 +131,7 @@ async fn websocket(
                     cursor_manager
                         .update_cursors(
                             vault_id_clone.clone(),
+                            authed_handshake.user.name.clone(),
                             &device_id,
                             cursors.document_to_cursors,
                         )
@@ -161,13 +167,13 @@ async fn websocket(
 
     state
         .cursors
-        .remove_cursors_of_device(&vault_id, &handshake.device_id)
+        .remove_cursors_of_device(&vault_id, &authed_handshake.handshake.device_id)
         .await;
 
     if result.is_err() {
         info!(
             "WebSocket disconnected on vault '{vault_id}' for '{}'",
-            handshake.device_id
+            authed_handshake.handshake.device_id
         );
     }
 

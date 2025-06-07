@@ -31,6 +31,7 @@ pub struct CursorPositionFromClient {
 #[derive(TS, Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct ClientCursors {
+    pub user_name: String,
     pub device_id: DeviceId,
     pub cursors: HashMap<String, Vec<CursorSpan>>,
 }

@@ -34,6 +34,7 @@ impl Cursors {
     pub async fn update_cursors(
         &self,
         vault_id: VaultId,
+        user_name: String,
         device_id: &DeviceId,
         document_to_cursors: HashMap<String, Vec<CursorSpan>>,
     ) {
@@ -43,6 +44,7 @@ impl Cursors {
 
         all_device_cursors.retain(|c| &c.client_cursors.device_id != device_id);
         all_device_cursors.push(ClientCursorsWithTimeToLive::new(ClientCursors {
+            user_name,
             device_id: device_id.to_string(),
             cursors: document_to_cursors,
         }));
