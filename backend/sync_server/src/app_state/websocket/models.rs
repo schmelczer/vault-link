@@ -15,17 +15,24 @@ pub struct WebSocketHandshake {
     pub last_seen_vault_update_id: Option<VaultUpdateId>,
 }
 
+#[derive(TS, Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CursorSpan {
+    pub start: usize,
+    pub end: usize,
+}
+
 #[derive(TS, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct CursorPositionFromClient {
-    pub document_to_cursors: HashMap<String, Vec<usize>>,
+    pub document_to_cursors: HashMap<String, Vec<CursorSpan>>,
 }
 
 #[derive(TS, Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct ClientCursors {
     pub device_id: DeviceId,
-    pub cursors: HashMap<String, Vec<usize>>,
+    pub cursors: HashMap<String, Vec<CursorSpan>>,
 }
 
 #[derive(TS, Serialize, Clone, Debug)]

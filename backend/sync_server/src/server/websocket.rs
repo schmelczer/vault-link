@@ -59,9 +59,9 @@ async fn websocket(
     stream: WebSocket,
     vault_id: VaultId,
 ) -> Result<(), SyncServerError> {
-    let (mut sender, mut receiver) = stream.split();
+    let (mut sender, mut websocket_receiver) = stream.split();
 
-    let handshake = if let Some(Ok(message)) = receiver.next().await {
+    let handshake = if let Some(Ok(message)) = websocket_receiver.next().await {
         get_handshake(&state, &vault_id, message)?
     } else {
         return Err(unauthenticated_error(anyhow::anyhow!(
@@ -69,7 +69,7 @@ async fn websocket(
         )));
     };
 
-    let mut rx = state.broadcasts.get_receiver(vault_id.clone()).await;
+    let mut broadcast_receiver = state.broadcasts.get_receiver(vault_id.clone()).await;
 
     send_update_over_websocket(
         &WebSocketServerMessage::VaultUpdate(WebSocketVaultUpdate {
@@ -91,7 +91,7 @@ async fn websocket(
 
     let device_id = handshake.device_id.clone();
     let mut send_task = tokio::spawn(async move {
-        while let Ok(update) = rx.recv().await {
+        while let Ok(update) = broadcast_receiver.recv().await {
             if Some(&device_id) == update.origin_device_id.as_ref() {
                 continue;
             }
@@ -103,10 +103,10 @@ async fn websocket(
     });
 
     let device_id = handshake.device_id.clone();
-    let mut recv_task = tokio::spawn(async move {
-        while let Some(Ok(Message::Text(message))) = receiver.next().await {
+    let mut receive_task = tokio::spawn(async move {
+        while let Some(Ok(Message::Text(message))) = websocket_receiver.next().await {
             let message: WebSocketClientMessage = serde_json::from_str(&message)
-                .context("Failed to parse message")
+                .context("Failed to parse WebSocket message from client")
                 .map_err(server_error)?;
 
             match message {
@@ -128,8 +128,8 @@ async fn websocket(
     });
 
     tokio::select! {
-        _ = &mut send_task => recv_task.abort(),
-        _ = &mut recv_task => send_task.abort(),
+        _ = &mut send_task => receive_task.abort(),
+        _ = &mut receive_task => send_task.abort(),
     };
 
     send_task
@@ -137,7 +137,7 @@ async fn websocket(
         .context("WebSocket send task failed")
         .map_err(server_error)??;
 
-    recv_task
+    receive_task
         .await
         .context("WebSocket receive task failed")
         .map_err(server_error)??;
