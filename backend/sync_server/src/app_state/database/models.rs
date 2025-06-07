@@ -61,7 +61,9 @@ impl From<StoredDocumentVersion> for DocumentVersionWithoutContent {
 #[derive(TS, Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentVersion {
+    #[ts(as = "i32")]
     pub vault_update_id: VaultUpdateId,
+
     pub document_id: DocumentId,
     pub relative_path: String,
     pub updated_date: DateTime<Utc>,
