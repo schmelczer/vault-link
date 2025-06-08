@@ -7,7 +7,7 @@ import type {
 } from "sync-client";
 import { lineAndColumnToPosition } from "./utils/line-and-column-to-position";
 import { positionToLineAndColumn } from "./utils/position-to-line-and-column";
-import { getCursorsFromEditor } from "./utils/get-cursors-from-editor";
+import { getCursorsFromEditor } from "./views/cursors/get-cursors-from-editor";
 
 export class ObsidianFileSystemOperations implements FileSystemOperations {
 	public constructor(

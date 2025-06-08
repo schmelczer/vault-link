@@ -1,27 +1,36 @@
 import type {
 	Editor,
+	EventRef,
 	MarkdownFileInfo,
-	MarkdownView,
 	TAbstractFile,
+	Workspace,
 	WorkspaceLeaf
 } from "obsidian";
+import { MarkdownView } from "obsidian";
 import { Platform, Plugin, TFile } from "obsidian";
 import "../manifest.json";
 import { HistoryView } from "./views/history/history-view";
 import { StatusBar } from "./views/status-bar/status-bar";
 import { LogsView } from "./views/logs/logs-view";
 import { StatusDescription } from "./views/status-description/status-description";
+import type { CursorSpan, RelativePath } from "sync-client";
 import { SyncClient, rateLimit, DEFAULT_SETTINGS } from "sync-client";
 import { ObsidianFileSystemOperations } from "./obsidian-file-system";
 import { SyncSettingsTab } from "./views/settings/settings-tab";
 import { registerConsoleForLogging } from "./utils/register-console-for-logging";
 import { updateEditorStatusDisplay } from "./views/editor-sync-line/editor-sync-line";
-import { remoteCursorsTheme } from "./views/remote-cursors/remote-cursor-theme";
-import { remoteCursorsPlugin } from "./views/remote-cursors/remote-cursors-plugin";
+import { remoteCursorsTheme } from "./views/cursors/remote-cursor-theme";
+import {
+	remoteCursorsPlugin,
+	setCursors
+} from "./views/cursors/remote-cursors-plugin";
+import { getCursorsFromEditor } from "./views/cursors/get-cursors-from-editor";
+import { LocalCursorUpdateListener } from "./views/cursors/local-cursor-update-listener";
 
 const MIN_WAIT_BETWEEN_UPDATES_IN_MS = 250;
 export default class VaultLinkPlugin extends Plugin {
 	private readonly disposables: (() => unknown)[] = [];
+
 	private settingsTab: SyncSettingsTab | undefined;
 	private client!: SyncClient;
 	private readonly rateLimitedUpdatesPerFile = new Map<
@@ -73,6 +82,17 @@ export default class VaultLinkPlugin extends Plugin {
 		);
 
 		this.registerEditorExtension([remoteCursorsTheme, remoteCursorsPlugin]);
+
+		this.client.addRemoteCursorsUpdateListener((cursors) => {
+			setCursors(cursors, this.app);
+		});
+
+		const cursorListener = new LocalCursorUpdateListener(
+			this.client,
+			this.app.workspace
+		);
+		this.disposables.push(() => cursorListener.dispose());
+
 		this.app.workspace.updateOptions();
 
 		this.addRibbonIcon(
@@ -175,9 +195,7 @@ export default class VaultLinkPlugin extends Plugin {
 					}
 				}
 			)
-		].forEach((event) => {
-			this.registerEvent(event);
-		});
+		].forEach((event) => this.registerEvent(event));
 	}
 
 	private async rateLimitedUpdate(path: string): Promise<void> {

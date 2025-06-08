@@ -1,5 +1,5 @@
 import type { Editor } from "obsidian";
-import { lineAndColumnToPosition } from "./line-and-column-to-position";
+import { lineAndColumnToPosition } from "../../utils/line-and-column-to-position";
 
 export interface Cursor {
 	id: number;

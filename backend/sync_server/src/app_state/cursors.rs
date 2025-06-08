@@ -48,6 +48,10 @@ impl Cursors {
             device_id: device_id.to_string(),
             cursors: document_to_cursors,
         }));
+
+        drop(vault_to_cursors); // Explicitly drop the lock before broadcasting to avoid deadlock
+
+        self.broadcast_cursors().await;
     }
 
     pub async fn get_cursors(&self, vault_id: &VaultId) -> Vec<ClientCursors> {
@@ -73,7 +77,6 @@ impl Cursors {
     async fn run_backround_task(&self) {
         loop {
             self.remove_expired_cursors().await;
-            self.broadcast_cursors().await;
             tokio::time::sleep(self.config.cursor_broadcast_interval).await;
         }
     }
