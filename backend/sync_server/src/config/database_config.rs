@@ -5,8 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
 use crate::consts::{
-    DEFAULT_CURSOR_BROADCAST_INTERVAL, DEFAULT_CURSOR_TIMEOUT, DEFAULT_DATABASES_DIRECTORY_PATH,
-    DEFAULT_MAX_CONNECTIONS_PER_VAULT,
+    DEFAULT_CURSOR_TIMEOUT, DEFAULT_DATABASES_DIRECTORY_PATH, DEFAULT_MAX_CONNECTIONS_PER_VAULT,
 };
 
 #[serde_with::serde_as]
@@ -21,13 +20,6 @@ pub struct DatabaseConfig {
     #[serde(default = "default_cursor_timeout", rename = "cursor_timeout_seconds")]
     #[serde_as(as = "serde_with::DurationSeconds<u64>")]
     pub cursor_timeout: Duration,
-
-    #[serde(
-        default = "default_cursor_broadcast_interval",
-        rename = "cursor_broadcast_interval_seconds"
-    )]
-    #[serde_as(as = "serde_with::DurationSeconds<u64>")]
-    pub cursor_broadcast_interval: Duration,
 }
 
 fn default_databases_directory_path() -> PathBuf {
@@ -45,18 +37,12 @@ fn default_cursor_timeout() -> Duration {
     DEFAULT_CURSOR_TIMEOUT
 }
 
-fn default_cursor_broadcast_interval() -> Duration {
-    debug!("Using default cursor broadcast interval: {DEFAULT_CURSOR_BROADCAST_INTERVAL:?}");
-    DEFAULT_CURSOR_BROADCAST_INTERVAL
-}
-
 impl Default for DatabaseConfig {
     fn default() -> Self {
         Self {
             databases_directory_path: default_databases_directory_path(),
             max_connections_per_vault: default_max_connections_per_vault(),
             cursor_timeout: default_cursor_timeout(),
-            cursor_broadcast_interval: default_cursor_broadcast_interval(),
         }
     }
 }

@@ -2,7 +2,6 @@ database:
   databases_directory_path: databases
   max_connections_per_vault: 12
   cursor_timeout_seconds: 60
-  cursor_broadcast_interval_seconds: 1
 server:
   host: 0.0.0.0
   port: 3000

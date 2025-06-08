@@ -50,7 +50,6 @@ impl Cursors {
         }));
 
         drop(vault_to_cursors); // Explicitly drop the lock before broadcasting to avoid deadlock
-
         self.broadcast_cursors().await;
     }
 
@@ -70,15 +69,11 @@ impl Cursors {
 
     pub fn start_background_task(self) {
         tokio::spawn(async move {
-            self.run_backround_task().await;
+            loop {
+                self.remove_expired_cursors().await;
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
         });
-    }
-
-    async fn run_backround_task(&self) {
-        loop {
-            self.remove_expired_cursors().await;
-            tokio::time::sleep(self.config.cursor_broadcast_interval).await;
-        }
     }
 
     async fn remove_expired_cursors(&self) {
