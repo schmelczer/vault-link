@@ -13,7 +13,7 @@ RUN sqlx migrate run --source sync_server/src/app_state/database/migrations --da
 RUN cargo build --package sync_server --release --target x86_64-unknown-linux-musl
 
 # Runtime image
-FROM alpine:3.21.3
+FROM alpine:3.22.0
 
 LABEL org.opencontainers.image.authors="andras@schmelczer.dev"
 
