@@ -1,13 +1,12 @@
 import { AnnotationType, Annotation, RangeSet, Range } from "@codemirror/state";
 import {
-	EditorView,
 	ViewUpdate,
 	ViewPlugin,
 	Decoration,
 	WidgetType
 } from "@codemirror/view";
 
-import type { PluginValue, DecorationSet } from "@codemirror/view";
+import type { PluginValue, DecorationSet, EditorView } from "@codemirror/view";
 
 export class RemoteCursorWidget extends WidgetType {
 	public constructor(
@@ -21,27 +20,27 @@ export class RemoteCursorWidget extends WidgetType {
 		return editor.contentDOM.createEl(
 			"span",
 			{
-				cls: "SelectionCaret",
+				cls: "selection-caret",
 				attr: {
 					style: `background-color: ${this.color}; border-color: ${this.color}`
 				}
 			},
 			(span) => {
-				span.appendText("\u2060");
 				span.createEl("div", {
-					cls: "SelectionCaretDot"
+					cls: "stick"
 				});
-				span.appendText("\u2060");
 				span.createEl("div", {
-					cls: "SelectionInfo",
+					cls: "dot"
+				});
+				span.createEl("div", {
+					cls: "info",
 					text: this.name
 				});
-				span.appendText("\u2060");
 			}
 		);
 	}
 
-	public eq(other: RemoteCursorWidget) {
+	public eq(other: RemoteCursorWidget): boolean {
 		return other.color === this.color && other.name === this.name;
 	}
 }

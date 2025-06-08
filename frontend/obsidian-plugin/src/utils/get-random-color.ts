@@ -5,5 +5,5 @@ export function getRandomColor(name: string): string {
 		hash |= 0; // Convert to 32bit integer
 	}
 	const normalised = hash / 0x7fffffff;
-	return `hsl(${Math.abs(normalised * 360)}, 70%, 30%)`; // HSL color
+	return `hsl(${Math.abs(normalised * 360)}, 55%, 55%)`; // HSL color
 }
