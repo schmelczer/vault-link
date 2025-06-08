@@ -275,7 +275,9 @@ export class SyncClient {
 		});
 	}
 
-	public async updateLocalCursors(documentToCursors: Record<RelativePath, CursorSpan[]>): Promise<void> {
+	public async updateLocalCursors(
+		documentToCursors: Record<RelativePath, CursorSpan[]>
+	): Promise<void> {
 		this.webSocketManager.updateLocalCursors({ documentToCursors });
 	}
 

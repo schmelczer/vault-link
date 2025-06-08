@@ -6,7 +6,7 @@ import type {
 	Workspace,
 	WorkspaceLeaf
 } from "obsidian";
-import { MarkdownView } from "obsidian";
+import type { MarkdownView } from "obsidian";
 import { Platform, Plugin, TFile } from "obsidian";
 import "../manifest.json";
 import { HistoryView } from "./views/history/history-view";
@@ -91,7 +91,9 @@ export default class VaultLinkPlugin extends Plugin {
 			this.client,
 			this.app.workspace
 		);
-		this.disposables.push(() => cursorListener.dispose());
+		this.disposables.push(() => {
+			cursorListener.dispose();
+		});
 
 		this.app.workspace.updateOptions();
 
@@ -195,7 +197,9 @@ export default class VaultLinkPlugin extends Plugin {
 					}
 				}
 			)
-		].forEach((event) => this.registerEvent(event));
+		].forEach((event) => {
+			this.registerEvent(event);
+		});
 	}
 
 	private async rateLimitedUpdate(path: string): Promise<void> {

@@ -103,15 +103,19 @@ export const remoteCursorsPlugin = ViewPlugin.fromClass(
 	}
 );
 
-export function setCursors(clients: ClientCursors[], app: App) {
+export function setCursors(clients: ClientCursors[], app: App): void {
 	cursors = clients.flatMap((client) => {
-		return Object.keys(client.cursors).flatMap((path) =>
-			client.cursors[path]!.map((span) => ({
-				name: client.userName,
-				path,
-				span
-			}))
-		);
+		const clientCursors = client.cursors;
+		return Object.keys(clientCursors).flatMap((path) => {
+			const spans = clientCursors[path];
+			return spans
+				? spans.map((span) => ({
+						name: client.userName,
+						path,
+						span
+					}))
+				: [];
+		});
 	});
 
 	app.workspace
@@ -120,6 +124,7 @@ export function setCursors(clients: ClientCursors[], app: App) {
 		.filter((view) => view instanceof MarkdownView)
 		.forEach((view) => {
 			// @ts-expect-error, not typed
+			// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
 			const editor = view.editor.cm as EditorView;
 
 			editor.dispatch({

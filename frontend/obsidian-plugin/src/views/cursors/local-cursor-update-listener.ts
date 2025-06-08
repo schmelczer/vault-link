@@ -1,12 +1,8 @@
-import {
-	EventRef,
-	Workspace,
-	Editor,
-	MarkdownView,
-	MarkdownFileInfo
-} from "obsidian";
-import { SyncClient } from "sync-client";
-import { Cursor, getCursorsFromEditor } from "./get-cursors-from-editor";
+import type { Workspace } from "obsidian";
+import { EventRef, Editor, MarkdownView, MarkdownFileInfo } from "obsidian";
+import type { Logger, SyncClient } from "sync-client";
+import type { Cursor } from "./get-cursors-from-editor";
+import { getCursorsFromEditor } from "./get-cursors-from-editor";
 
 export class LocalCursorUpdateListener {
 	private static readonly UPDATE_INTERVAL_MS = 50;
@@ -17,10 +13,13 @@ export class LocalCursorUpdateListener {
 		private readonly client: SyncClient,
 		private readonly workspace: Workspace
 	) {
-		this.eventHandle = setInterval(
-			() => this.updateAllCursors(),
-			LocalCursorUpdateListener.UPDATE_INTERVAL_MS
-		);
+		this.eventHandle = setInterval(() => {
+			this.updateAllCursors();
+		}, LocalCursorUpdateListener.UPDATE_INTERVAL_MS);
+	}
+
+	public dispose(): void {
+		clearInterval(this.eventHandle);
 	}
 
 	private updateAllCursors(): void {
@@ -32,7 +31,13 @@ export class LocalCursorUpdateListener {
 			return;
 		}
 		this.lastCursorState = currentCursors;
-		this.client.updateLocalCursors(currentCursors);
+		this.client
+			.updateLocalCursors(currentCursors)
+			.catch((error: unknown) => {
+				this.client.logger.error(
+					`Failed to update local cursors: ${error}`
+				);
+			});
 	}
 
 	private getAllCursors(): Record<string, Cursor[]> {
@@ -49,9 +54,5 @@ export class LocalCursorUpdateListener {
 				cursors[file.path] = getCursorsFromEditor(view.editor);
 			});
 		return cursors;
-	}
-
-	public dispose(): void {
-		clearInterval(this.eventHandle);
 	}
 }
