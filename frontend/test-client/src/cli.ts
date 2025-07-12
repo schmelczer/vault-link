@@ -33,7 +33,7 @@ async function runTest({
 	console.info(`Using vault name: ${vaultName}`);
 	const initialSettings: Partial<SyncSettings> = {
 		isSyncEnabled: true,
-		token: "   test-token-change-me     ", // same as in backend/config-e2e.yml with spaces
+		token: "   test-token-change-me     ", // same as in sync-server/config-e2e.yml with spaces
 		vaultName: randomCasing(vaultName) + (Math.random() > 0.5 ? "  " : ""), // extra spaces shouldn't matter
 		syncConcurrency: concurrency,
 		remoteUri: "http://localhost:3000"

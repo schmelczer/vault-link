@@ -4,6 +4,7 @@ import type { Database, RelativePath } from "../persistence/database";
 import { SafeFileSystemOperations } from "./safe-filesystem-operations";
 import type { TextWithCursors } from "reconcile-text";
 import { isBinary, reconcile } from "reconcile-text";
+import { isFileTypeMergable } from "../utils/is-file-type-mergable";
 export class FileOperations {
 	private static readonly PARENTHESES_REGEX = / \((\d+)\)$/;
 	private readonly fs: SafeFileSystemOperations;

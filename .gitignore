@@ -4,15 +4,17 @@ node_modules
 # Exclude macOS Finder (System Explorer) View States
 .DS_Store
 
-# Rust build folder
-backend/target
+
 
 # Frontend build folders
 frontend/*/dist
 
-backend/db.sqlite3*
-backend/databases
-backend/sync_server/bindings/*.ts
+sync-server/db.sqlite3*
+sync-server/databases
+
+# Rust build folders
+sync-server/target
+sync-server/bindings/*.ts
 
 *.log
 *.sqlx

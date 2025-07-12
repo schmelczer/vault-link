@@ -3,7 +3,7 @@ import type { FileSystemOperations } from "./filesystem-operations";
 import type { Logger } from "../tracing/logger";
 import { Locks } from "../utils/locks";
 import { FileNotFoundError } from "./file-not-found-error";
-import { TextWithCursors } from "reconcile-text";
+import type { TextWithCursors } from "reconcile-text";
 
 /**
  * Decorates `FileSystemOperations` to replace errors with `FileNotFoundError`

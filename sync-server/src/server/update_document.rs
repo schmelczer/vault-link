@@ -126,7 +126,7 @@ pub async fn update_document(
         && is_binary(&content)
     {
         reconcile(
-            &str::from_utf8(&parent_document.content)
+            str::from_utf8(&parent_document.content)
                 .expect("parent must be valid UTF-8 because it's not binary"),
             &str::from_utf8(&latest_version.content)
                 .expect("latest_version must be valid UTF-8 because it's not binary")

@@ -124,5 +124,7 @@ impl ClientCursorsWithTimeToLive {
         }
     }
 
-    pub fn is_expired(&self, ttl: Duration) -> bool { self.last_updated.elapsed() > ttl }
+    pub fn is_expired(&self, ttl: Duration) -> bool {
+        self.last_updated.elapsed() > ttl
+    }
 }

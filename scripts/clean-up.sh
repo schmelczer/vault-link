@@ -1,4 +1,4 @@
 #!/bin/bash
 
-rm -rf backend/databases
+rm -rf sync-server/databases
 rm -rf logs

@@ -179,6 +179,10 @@ async fn shutdown_signal() {
     }
 }
 
-async fn handle_404() -> impl IntoResponse { not_found_error(anyhow!("Page not found")) }
+async fn handle_404() -> impl IntoResponse {
+    not_found_error(anyhow!("Page not found"))
+}
 
-async fn handle_405() -> impl IntoResponse { client_error(anyhow!("Method not allowed")) }
+async fn handle_405() -> impl IntoResponse {
+    client_error(anyhow!("Method not allowed"))
+}

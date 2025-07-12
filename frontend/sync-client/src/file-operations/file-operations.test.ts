@@ -7,8 +7,7 @@ import { FileOperations } from "./file-operations";
 import { Logger } from "../tracing/logger";
 import { assertSetContainsExactly } from "../utils/assert-set-contains-exactly";
 import type { FileSystemOperations } from "./filesystem-operations";
-import fs from "fs";
-import { TextWithCursors } from "reconcile-text";
+import type { TextWithCursors } from "reconcile-text";
 
 class MockDatabase implements Partial<Database> {
 	public getLatestDocumentByRelativePath(

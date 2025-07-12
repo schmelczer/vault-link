@@ -77,11 +77,6 @@ export class SyncClient {
 
 		const history = new SyncHistory(logger);
 
-		await initWasm(
-			// eslint-disable-next-line
-			(wasmBin as any).default // it is loaded as a base64 string by webpack
-		);
-
 		let state = (await persistence.load()) ?? {
 			settings: undefined,
 			database: undefined

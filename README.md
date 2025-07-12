@@ -56,4 +56,4 @@ And to clean up the logs & database files, run `scripts/clean-up.sh`
 
 ## Projects
 
-- [Sync server](./backend/sync_server/README.md)
+- [Sync server](./sync-server/README.md)
