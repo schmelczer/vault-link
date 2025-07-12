@@ -23,9 +23,7 @@ pub struct StoredDocumentVersion {
 }
 
 impl PartialEq<Self> for StoredDocumentVersion {
-    fn eq(&self, other: &Self) -> bool {
-        self.vault_update_id == other.vault_update_id
-    }
+    fn eq(&self, other: &Self) -> bool { self.vault_update_id == other.vault_update_id }
 }
 
 #[derive(TS, Debug, Clone, Serialize)]

@@ -21,7 +21,7 @@ use crate::{
     config::user_config::User,
     errors::{SyncServerError, not_found_error, server_error},
     utils::{
-        dedup_paths::dedup_paths, is_filetype_mergable::is_file_type_mergable,
+        dedup_paths::dedup_paths, is_file_type_mergable::is_file_type_mergable,
         normalize::normalize, sanitize_path::sanitize_path,
     },
 };
@@ -121,9 +121,9 @@ pub async fn update_document(
     }
 
     let merged_content = if is_file_type_mergable(&sanitized_relative_path)
-        && is_binary(&parent_document.content)
-        && is_binary(&latest_version.content)
-        && is_binary(&content)
+        && !is_binary(&parent_document.content)
+        && !is_binary(&latest_version.content)
+        && !is_binary(&content)
     {
         reconcile(
             str::from_utf8(&parent_document.content)
