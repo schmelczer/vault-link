@@ -57,4 +57,5 @@ jobs:
       - name: Test frontend
         run: |
           cd frontend
+          npm ci
           npm run test
