@@ -7,7 +7,6 @@ import { FileOperations } from "./file-operations";
 import { Logger } from "../tracing/logger";
 import { assertSetContainsExactly } from "../utils/assert-set-contains-exactly";
 import type { FileSystemOperations } from "./filesystem-operations";
-import init from "sync_lib";
 import fs from "fs";
 import { TextWithCursors } from "reconcile-text";
 
@@ -73,13 +72,6 @@ class FakeFileSystemOperations implements FileSystemOperations {
 }
 
 describe("File operations", () => {
-	beforeEach(async () => {
-		const wasmBin = fs.readFileSync(
-			"../../backend/sync_lib/pkg/sync_lib_bg.wasm"
-		);
-		await init({ module_or_path: wasmBin });
-	});
-
 	it("should deconflict renames", async () => {
 		const fileSystemOperations = new FakeFileSystemOperations();
 		const fileOperations = new FileOperations(

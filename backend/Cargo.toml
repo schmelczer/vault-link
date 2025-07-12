@@ -2,7 +2,6 @@
 resolver = "2"
 members = [
     "sync_server",
-    "sync_lib"
 ]
 
 [workspace.package]

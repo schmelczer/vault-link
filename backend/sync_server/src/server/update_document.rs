@@ -8,7 +8,6 @@ use axum_typed_multipart::TypedMultipart;
 use log::info;
 use reconcile_text::{BuiltinTokenizer, is_binary, reconcile};
 use serde::Deserialize;
-use sync_lib::is_file_type_mergable;
 
 use super::{
     device_id_header::DeviceIdHeader, requests::UpdateDocumentVersion,
@@ -21,7 +20,10 @@ use crate::{
     },
     config::user_config::User,
     errors::{SyncServerError, not_found_error, server_error},
-    utils::{dedup_paths::dedup_paths, normalize::normalize, sanitize_path::sanitize_path},
+    utils::{
+        dedup_paths::dedup_paths, is_filetype_mergable::is_file_type_mergable,
+        normalize::normalize, sanitize_path::sanitize_path,
+    },
 };
 
 #[derive(Deserialize)]

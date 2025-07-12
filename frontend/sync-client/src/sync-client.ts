@@ -1,5 +1,3 @@
-import initWasm from "sync_lib";
-import wasmBin from "../../../backend/sync_lib/pkg/sync_lib_bg.wasm";
 import type { PersistenceProvider } from "./persistence/persistence";
 import type { HistoryEntry, HistoryStats } from "./tracing/sync-history";
 import { SyncHistory } from "./tracing/sync-history";

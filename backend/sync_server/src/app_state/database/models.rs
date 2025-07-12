@@ -1,6 +1,6 @@
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
-use sync_lib::bytes_to_base64;
 use ts_rs::TS;
 
 pub type VaultId = String;
@@ -80,7 +80,7 @@ impl From<StoredDocumentVersion> for DocumentVersion {
             document_id: value.document_id,
             relative_path: value.relative_path,
             updated_date: value.updated_date,
-            content_base64: bytes_to_base64(&value.content),
+            content_base64: STANDARD.encode(&value.content),
             is_deleted: value.is_deleted,
             user_id: value.user_id,
             device_id: value.device_id,

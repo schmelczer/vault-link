@@ -7,8 +7,6 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-sync_lib = { path = "../sync_lib" }
-
 serde = { workspace = true }
 thiserror = { workspace = true }
 
@@ -35,6 +33,7 @@ clap-verbosity-flag = "3.0.3"
 bimap = "0.6.3"
 ts-rs =  { version = "10.1", features = ["uuid-impl", "chrono-impl"] }
 serde_with = "3.12.0"
+base64 = "0.22.1"
 reconcile-text = "0.4.10"
 
 [lints]
