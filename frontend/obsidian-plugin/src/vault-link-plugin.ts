@@ -1,9 +1,7 @@
 import type {
 	Editor,
-	EventRef,
 	MarkdownFileInfo,
 	TAbstractFile,
-	Workspace,
 	WorkspaceLeaf
 } from "obsidian";
 import type { MarkdownView } from "obsidian";
@@ -13,7 +11,6 @@ import { HistoryView } from "./views/history/history-view";
 import { StatusBar } from "./views/status-bar/status-bar";
 import { LogsView } from "./views/logs/logs-view";
 import { StatusDescription } from "./views/status-description/status-description";
-import type { CursorSpan, RelativePath } from "sync-client";
 import { SyncClient, rateLimit, DEFAULT_SETTINGS } from "sync-client";
 import { ObsidianFileSystemOperations } from "./obsidian-file-system";
 import { SyncSettingsTab } from "./views/settings/settings-tab";
@@ -24,7 +21,6 @@ import {
 	remoteCursorsPlugin,
 	setCursors
 } from "./views/cursors/remote-cursors-plugin";
-import { getCursorsFromEditor } from "./views/cursors/get-cursors-from-editor";
 import { LocalCursorUpdateListener } from "./views/cursors/local-cursor-update-listener";
 
 const MIN_WAIT_BETWEEN_UPDATES_IN_MS = 250;

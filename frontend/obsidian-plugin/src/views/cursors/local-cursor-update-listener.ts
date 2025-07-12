@@ -1,20 +1,20 @@
 import type { Workspace } from "obsidian";
-import { EventRef, Editor, MarkdownView, MarkdownFileInfo } from "obsidian";
-import type { Logger, SyncClient } from "sync-client";
-import type { Cursor } from "./get-cursors-from-editor";
-import { getCursorsFromEditor } from "./get-cursors-from-editor";
+import { MarkdownView } from "obsidian";
+import type { SyncClient } from "sync-client";
+import type { Selection } from "./get-selections-from-editor";
+import { getSelectionsFromEditor } from "./get-selections-from-editor";
 
 export class LocalCursorUpdateListener {
 	private static readonly UPDATE_INTERVAL_MS = 50;
 	private readonly eventHandle: NodeJS.Timeout;
-	private lastCursorState: Record<string, Cursor[]> = {};
+	private lastCursorState: Record<string, Selection[]> = {};
 
 	public constructor(
 		private readonly client: SyncClient,
 		private readonly workspace: Workspace
 	) {
 		this.eventHandle = setInterval(() => {
-			this.updateAllCursors();
+			this.updateAllSelections();
 		}, LocalCursorUpdateListener.UPDATE_INTERVAL_MS);
 	}
 
@@ -22,8 +22,8 @@ export class LocalCursorUpdateListener {
 		clearInterval(this.eventHandle);
 	}
 
-	private updateAllCursors(): void {
-		const currentCursors = this.getAllCursors();
+	private updateAllSelections(): void {
+		const currentCursors = this.getAllSelections();
 		if (
 			JSON.stringify(this.lastCursorState) ===
 			JSON.stringify(currentCursors)
@@ -40,8 +40,8 @@ export class LocalCursorUpdateListener {
 			});
 	}
 
-	private getAllCursors(): Record<string, Cursor[]> {
-		const cursors: Record<string, Cursor[]> = {};
+	private getAllSelections(): Record<string, Selection[]> {
+		const cursors: Record<string, Selection[]> = {};
 		this.workspace
 			.getLeavesOfType("markdown")
 			.map((leaf) => leaf.view)
@@ -51,7 +51,7 @@ export class LocalCursorUpdateListener {
 				if (!file) {
 					return;
 				}
-				cursors[file.path] = getCursorsFromEditor(view.editor);
+				cursors[file.path] = getSelectionsFromEditor(view.editor);
 			});
 		return cursors;
 	}

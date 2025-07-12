@@ -1,13 +1,13 @@
 import type { Editor } from "obsidian";
 import { lineAndColumnToPosition } from "../../utils/line-and-column-to-position";
 
-export interface Cursor {
+export interface Selection {
 	id: number;
 	start: number;
 	end: number;
 }
 
-export function getCursorsFromEditor(editor: Editor): Cursor[] {
+export function getSelectionsFromEditor(editor: Editor): Selection[] {
 	const text = editor.getValue();
 	return editor.listSelections().map(({ anchor, head }, i) => ({
 		id: i,

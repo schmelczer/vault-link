@@ -1700,9 +1700,9 @@ dependencies = [
 
 [[package]]
 name = "reconcile-text"
-version = "0.4.8"
+version = "0.4.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "54fa4679b1042b1110aeac9c00fe292339af66426833da724a3fcaae0052b4da"
+checksum = "eb6c98d553dd72cd0e863f7cc1c610abd2cc7fe33e24f14262daf1420941cb3d"
 dependencies = [
  "cfg-if",
 ]

@@ -6,12 +6,10 @@ import type {
 import { FileOperations } from "./file-operations";
 import { Logger } from "../tracing/logger";
 import { assertSetContainsExactly } from "../utils/assert-set-contains-exactly";
-import type {
-	FileSystemOperations,
-	TextWithCursors
-} from "./filesystem-operations";
-import init, { base64ToBytes } from "sync_lib";
+import type { FileSystemOperations } from "./filesystem-operations";
+import init from "sync_lib";
 import fs from "fs";
+import { TextWithCursors } from "reconcile-text";
 
 class MockDatabase implements Partial<Database> {
 	public getLatestDocumentByRelativePath(
