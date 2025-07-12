@@ -1,7 +1,6 @@
 [workspace]
 resolver = "2"
 members = [
-    "reconcile",
     "sync_server",
     "sync_lib"
 ]
@@ -58,11 +57,6 @@ unused_self = "warn"
 verbose_file_reads = "warn"
 
 large_stack_arrays = { level = "allow", priority = 1 } # https://github.com/rust-lang/rust-clippy/issues/13774
-
-# TODO: fix these
-cast_possible_truncation = { level = "allow", priority = 1 }
-cast_sign_loss = { level = "allow", priority = 1 }
-cast_possible_wrap = { level = "allow", priority = 1 }
 
 # Silly lints
 implicit_return = { level = "allow", priority = 1 }

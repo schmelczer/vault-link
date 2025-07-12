@@ -1,6 +1,6 @@
 //! This crate provides utilities for easily communicating between backend &
 //! frontend and ensuring the same logic for encoding and decoding binary data,
-//! and 3-way-merging documents in Rust and JavaScript.
+//! and filtering files.
 //!
 //! The crate is designed to be used as a Rust library and as a
 //! TypeScript/JavaScript package through WebAssembly (WASM).
@@ -12,11 +12,9 @@
 use core::str;
 
 use base64::{Engine as _, engine::general_purpose::STANDARD};
-use cursor::TextWithCursors;
 use errors::SyncLibError;
 use wasm_bindgen::prelude::*;
 
-pub mod cursor;
 pub mod errors;
 
 /// Encode binary data for easy transport over HTTP. Inverse of
@@ -60,78 +58,6 @@ pub fn base64_to_bytes(input: &str) -> Result<Vec<u8>, SyncLibError> {
     set_panic_hook();
 
     STANDARD.decode(input).map_err(SyncLibError::from)
-}
-
-/// Merge two documents with a common parent. Relies on `reconcile::reconcile`
-/// for texts and returns the right document as-is if either of the updated
-/// documents is binary.
-///
-/// # Arguments
-///
-/// - `parent`: The common parent document.
-/// - `left`: The left document updated by one user.
-/// - `right`: The right document updated by another user.
-///
-/// # Returns
-///
-/// The merged document.
-///
-/// # Panics
-///
-/// If any of the input documents are not valid UTF-8 strings.
-#[wasm_bindgen]
-#[must_use]
-pub fn merge(parent: &[u8], left: &[u8], right: &[u8]) -> Vec<u8> {
-    set_panic_hook();
-
-    if is_binary(parent) || is_binary(left) || is_binary(right) {
-        right.to_vec()
-    } else {
-        reconcile::reconcile(
-            str::from_utf8(parent).expect("parent must be valid UTF-8 because it's not binary"),
-            str::from_utf8(left).expect("left must be valid UTF-8 because it's not binary"),
-            str::from_utf8(right).expect("right must be valid UTF-8 because it's not binary"),
-        )
-        .into_bytes()
-    }
-}
-
-/// WASM wrapper around `reconcile::reconcile` for merging text.
-#[wasm_bindgen(js_name = mergeText)]
-#[must_use]
-pub fn merge_text(parent: &str, left: &str, right: &str) -> String {
-    set_panic_hook();
-
-    reconcile::reconcile(parent, left, right)
-}
-
-/// WASM wrapper around `reconcile::reconcile_with_cursors` for merging text.
-#[wasm_bindgen(js_name = mergeTextWithCursors)]
-#[must_use]
-pub fn merge_text_with_cursors(
-    parent: &str,
-    left: TextWithCursors,
-    right: TextWithCursors,
-) -> TextWithCursors {
-    set_panic_hook();
-
-    reconcile::reconcile_with_cursors(parent, left.into(), right.into()).into()
-}
-
-/// Heuristically determine if the given data is a binary or a text file's
-/// content.
-#[wasm_bindgen(js_name = isBinary)]
-#[must_use]
-pub fn is_binary(data: &[u8]) -> bool {
-    set_panic_hook();
-
-    if data.contains(&0) {
-        // Even though the NUL character is valid in UTF-8, it's highly suspicious in
-        // human-readable text.
-        return true;
-    }
-
-    std::str::from_utf8(data).is_err()
 }
 
 /// We don't want to support merging structured data like JSON, YAML, etc.

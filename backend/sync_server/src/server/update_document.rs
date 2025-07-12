@@ -6,8 +6,9 @@ use axum::{
 use axum_extra::TypedHeader;
 use axum_typed_multipart::TypedMultipart;
 use log::info;
+use reconcile_text::{BuiltinTokenizer, is_binary, reconcile};
 use serde::Deserialize;
-use sync_lib::{is_file_type_mergable, merge};
+use sync_lib::is_file_type_mergable;
 
 use super::{
     device_id_header::DeviceIdHeader, requests::UpdateDocumentVersion,
@@ -117,8 +118,25 @@ pub async fn update_document(
         )));
     }
 
-    let merged_content = if is_file_type_mergable(&sanitized_relative_path) {
-        merge(&parent_document.content, &latest_version.content, &content)
+    let merged_content = if is_file_type_mergable(&sanitized_relative_path)
+        && is_binary(&parent_document.content)
+        && is_binary(&latest_version.content)
+        && is_binary(&content)
+    {
+        reconcile(
+            &str::from_utf8(&parent_document.content)
+                .expect("parent must be valid UTF-8 because it's not binary"),
+            &str::from_utf8(&latest_version.content)
+                .expect("latest_version must be valid UTF-8 because it's not binary")
+                .into(),
+            &str::from_utf8(&content)
+                .expect("content must be valid UTF-8 because it's not binary")
+                .into(),
+            &*BuiltinTokenizer::Word,
+        )
+        .apply()
+        .text()
+        .into_bytes()
     } else {
         content.clone()
     };

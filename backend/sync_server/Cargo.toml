@@ -35,6 +35,7 @@ clap-verbosity-flag = "3.0.3"
 bimap = "0.6.3"
 ts-rs =  { version = "10.1", features = ["uuid-impl", "chrono-impl"] }
 serde_with = "3.12.0"
+reconcile-text = "0.4.8"
 
 [lints]
 workspace = true
