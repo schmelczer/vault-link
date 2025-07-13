@@ -106,10 +106,9 @@ export class ObsidianFileSystemOperations implements FileSystemOperations {
 			view.editor.setValue(result.text);
 
 			const selections = [];
-			const resultCursors = result.cursors ?? [];
-			for (let i = 0; i < resultCursors.length / 2; i++) {
-				const from = resultCursors[2 * i];
-				const to = resultCursors[2 * i + 1];
+			for (let i = 0; i < result.cursors.length / 2; i++) {
+				const from = result.cursors[2 * i];
+				const to = result.cursors[2 * i + 1];
 				const { line: fromLine, column: fromColumn } =
 					positionToLineAndColumn(result.text, from.position);
 

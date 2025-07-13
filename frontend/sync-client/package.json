@@ -10,7 +10,7 @@
     "scripts": {
         "dev": "webpack watch --mode development",
         "build": "webpack --mode production",
-        "test": "NODE_OPTIONS=\"$NODE_OPTIONS --experimental-vm-modules\" jest"
+        "test": "jest"
     },
     "dependencies": {
         "byte-base64": "^1.1.0",
