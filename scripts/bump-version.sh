@@ -29,6 +29,7 @@ cargo set-version --bump $1
 echo "Bumping frontend versions"
 cd ../frontend
 npm version $1 --workspaces
+cd ..
 
 cp frontend/obsidian-plugin/manifest.json manifest.json  # for BRAT, otherwise it wouldn't update
 
