@@ -1,16 +1,6 @@
 import type { RelativePath } from "../persistence/database";
 
-export interface Cursor {
-	id: number;
-
-	/// The character position is the index of the character in the text where the text lines are separated by '\n' new line character even if the actual text uses different line endings.
-	characterPosition: number;
-}
-
-export interface TextWithCursors {
-	text: string;
-	cursors: Cursor[];
-}
+import type { TextWithCursors } from "reconcile-text";
 
 export interface FileSystemOperations {
 	// List all files that should be synced.

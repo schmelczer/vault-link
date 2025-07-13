@@ -25,20 +25,15 @@ jobs:
 
       - name: Setup rust
         run: |
-          cargo install sqlx-cli wasm-pack
-          cd backend
+          cargo install sqlx-cli
+          cd sync-server
           sqlx database create --database-url sqlite://db.sqlite3
-          sqlx migrate run --source sync_server/src/app_state/database/migrations --database-url sqlite://db.sqlite3
-
-      - name: Build wasm
-        run: |
-          cd backend
-          wasm-pack build --target web sync_lib
+          sqlx migrate run --source src/app_state/database/migrations --database-url sqlite://db.sqlite3
 
       - name: E2E tests
         run: |
-          cd backend
-          cargo run -p sync_server config-e2e.yml --color never &
+          cd sync-server
+          cargo run config-e2e.yml --color never &
           cd ..
 
           scripts/update-api-types.sh

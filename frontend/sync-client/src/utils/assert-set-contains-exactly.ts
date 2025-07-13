@@ -1,4 +1,4 @@
-import assert from "assert";
+import * as assert from "assert";
 
 export function assertSetContainsExactly<T>(set: Set<T>, ...values: T[]): void {
 	assert(

@@ -20,12 +20,6 @@ jobs:
           node-version: "22.x"
           check-latest: true
 
-      - name: Build wasm
-        run: |
-          cd backend
-          cargo install wasm-pack
-          wasm-pack build --target web sync_lib
-
       - name: Build plugin
         run: |
           cd frontend

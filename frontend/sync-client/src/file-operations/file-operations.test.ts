@@ -6,12 +6,8 @@ import type {
 import { FileOperations } from "./file-operations";
 import { Logger } from "../tracing/logger";
 import { assertSetContainsExactly } from "../utils/assert-set-contains-exactly";
-import type {
-	FileSystemOperations,
-	TextWithCursors
-} from "./filesystem-operations";
-import init, { base64ToBytes } from "sync_lib";
-import fs from "fs";
+import type { FileSystemOperations } from "./filesystem-operations";
+import type { TextWithCursors } from "reconcile-text";
 
 class MockDatabase implements Partial<Database> {
 	public getLatestDocumentByRelativePath(
@@ -75,13 +71,6 @@ class FakeFileSystemOperations implements FileSystemOperations {
 }
 
 describe("File operations", () => {
-	beforeEach(async () => {
-		const wasmBin = fs.readFileSync(
-			"../../backend/sync_lib/pkg/sync_lib_bg.wasm"
-		);
-		await init({ module_or_path: wasmBin });
-	});
-
 	it("should deconflict renames", async () => {
 		const fileSystemOperations = new FakeFileSystemOperations();
 		const fileOperations = new FileOperations(

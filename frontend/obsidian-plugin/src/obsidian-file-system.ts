@@ -1,13 +1,9 @@
 import type { Stat, Vault, Workspace } from "obsidian";
 import { MarkdownView, normalizePath } from "obsidian";
-import type {
-	FileSystemOperations,
-	RelativePath,
-	TextWithCursors
-} from "sync-client";
-import { lineAndColumnToPosition } from "./utils/line-and-column-to-position";
+import type { FileSystemOperations, RelativePath } from "sync-client";
 import { positionToLineAndColumn } from "./utils/position-to-line-and-column";
-import { getCursorsFromEditor } from "./views/cursors/get-cursors-from-editor";
+import { getSelectionsFromEditor } from "./views/cursors/get-selections-from-editor";
+import type { TextWithCursors, CursorPosition } from "reconcile-text";
 
 export class ObsidianFileSystemOperations implements FileSystemOperations {
 	public constructor(
@@ -80,18 +76,18 @@ export class ObsidianFileSystemOperations implements FileSystemOperations {
 		if (view?.file?.path === path) {
 			const text = view.editor.getValue();
 
-			const cursors = getCursorsFromEditor(view.editor).flatMap(
-				({ id, start: anchor, end: head }) => [
-					{
-						id: 2 * id,
-						characterPosition: anchor
-					},
-					{
-						id: 2 * id + 1,
-						characterPosition: head
-					}
-				]
-			);
+			const cursors: CursorPosition[] = getSelectionsFromEditor(
+				view.editor
+			).flatMap(({ id, start: anchor, end: head }) => [
+				{
+					id: 2 * id,
+					position: anchor
+				},
+				{
+					id: 2 * id + 1,
+					position: head
+				}
+			]);
 
 			const result = updater({
 				text,
@@ -109,13 +105,10 @@ export class ObsidianFileSystemOperations implements FileSystemOperations {
 				const from = result.cursors[2 * i];
 				const to = result.cursors[2 * i + 1];
 				const { line: fromLine, column: fromColumn } =
-					positionToLineAndColumn(
-						result.text,
-						from.characterPosition
-					);
+					positionToLineAndColumn(result.text, from.position);
 
 				const { line: toLine, column: toColumn } =
-					positionToLineAndColumn(result.text, to.characterPosition);
+					positionToLineAndColumn(result.text, to.position);
 
 				selections.push({
 					anchor: { line: fromLine, ch: fromColumn },

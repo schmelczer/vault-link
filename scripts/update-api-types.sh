@@ -2,10 +2,10 @@
 
 set -e
 
-rm -rf backend/sync_server/bindings
+rm -rf sync-server/bindings
 
-cd backend
+cd sync-server
 cargo test export_bindings
 cd -
 
-cp -r backend/sync_server/bindings/* frontend/sync-client/src/services/types/
+cp -r sync-server/bindings/* frontend/sync-client/src/services/types/

@@ -1,4 +1,4 @@
-import type { StoredDatabase, TextWithCursors } from "sync-client";
+import type { StoredDatabase } from "sync-client";
 import { assert } from "../utils/assert";
 import {
 	type RelativePath,
@@ -6,7 +6,7 @@ import {
 	type SyncSettings,
 	SyncClient
 } from "sync-client";
-
+import type { TextWithCursors } from "reconcile-text";
 export class MockClient implements FileSystemOperations {
 	protected readonly localFiles = new Map<string, Uint8Array>();
 	protected client!: SyncClient;

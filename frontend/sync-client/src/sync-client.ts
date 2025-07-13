@@ -1,5 +1,3 @@
-import initWasm from "sync_lib";
-import wasmBin from "../../../backend/sync_lib/pkg/sync_lib_bg.wasm";
 import type { PersistenceProvider } from "./persistence/persistence";
 import type { HistoryEntry, HistoryStats } from "./tracing/sync-history";
 import { SyncHistory } from "./tracing/sync-history";
@@ -78,11 +76,6 @@ export class SyncClient {
 		logger.info(`Initialising SyncClient with client id ${deviceId}`);
 
 		const history = new SyncHistory(logger);
-
-		await initWasm(
-			// eslint-disable-next-line
-			(wasmBin as any).default // it is loaded as a base64 string by webpack
-		);
 
 		let state = (await persistence.load()) ?? {
 			settings: undefined,
