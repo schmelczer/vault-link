@@ -1,14 +1,9 @@
 import type { Stat, Vault, Workspace } from "obsidian";
 import { MarkdownView, normalizePath } from "obsidian";
-import type {
-	CursorPosition,
-	FileSystemOperations,
-	RelativePath,
-	TextWithCursors
-} from "sync-client";
-import { lineAndColumnToPosition } from "./utils/line-and-column-to-position";
+import type { FileSystemOperations, RelativePath } from "sync-client";
 import { positionToLineAndColumn } from "./utils/position-to-line-and-column";
 import { getSelectionsFromEditor } from "./views/cursors/get-selections-from-editor";
+import type { TextWithCursors, CursorPosition } from "reconcile-text";
 
 export class ObsidianFileSystemOperations implements FileSystemOperations {
 	public constructor(
