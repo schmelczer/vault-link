@@ -20,6 +20,3 @@ export type { ClientCursors } from "./services/types/ClientCursors";
 export type { NetworkConnectionStatus } from "./types/network-connection-status";
 export { DocumentUpdateStatus } from "./types/document-update-status";
 export { SyncClient } from "./sync-client";
-
-// re-export reconcile-text types as they're part of the public API
-export type { TextWithCursors, CursorPosition } from "reconcile-text";
