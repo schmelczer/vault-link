@@ -133,7 +133,7 @@ async fn websocket(
                             vault_id_clone.clone(),
                             authed_handshake.user.name.clone(),
                             &device_id,
-                            cursors.document_to_cursors,
+                            cursors.documents_with_cursors,
                         )
                         .await;
                 }

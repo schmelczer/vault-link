@@ -8,12 +8,14 @@ use super::{
     websocket::{
         broadcasts::Broadcasts,
         models::{
-            ClientCursors, CursorPositionFromServer, CursorSpan, WebSocketServerMessage,
+            ClientCursors, CursorPositionFromServer, WebSocketServerMessage,
             WebSocketServerMessageWithOrigin,
         },
     },
 };
-use crate::config::database_config::DatabaseConfig;
+use crate::{
+    app_state::websocket::models::DocumentWithCursors, config::database_config::DatabaseConfig,
+};
 
 #[derive(Clone, Debug)]
 pub struct Cursors {
@@ -36,7 +38,7 @@ impl Cursors {
         vault_id: VaultId,
         user_name: String,
         device_id: &DeviceId,
-        document_to_cursors: HashMap<String, Vec<CursorSpan>>,
+        document_to_cursors: Vec<DocumentWithCursors>,
     ) {
         let mut vault_to_cursors = self.vault_to_cursors.lock().await;
 

@@ -1,9 +1,9 @@
-use std::collections::HashMap;
-
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::app_state::database::models::{DeviceId, DocumentVersionWithoutContent, VaultUpdateId};
+use crate::app_state::database::models::{
+    DeviceId, DocumentId, DocumentVersionWithoutContent, VaultUpdateId,
+};
 
 #[derive(TS, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -15,6 +15,22 @@ pub struct WebSocketHandshake {
     pub last_seen_vault_update_id: Option<VaultUpdateId>,
 }
 
+#[derive(TS, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CursorPositionFromClient {
+    pub documents_with_cursors: Vec<DocumentWithCursors>,
+}
+
+#[derive(TS, Serialize, Deserialize, Clone, Debug)]
+pub struct DocumentWithCursors {
+    #[ts(as = "u32")]
+    pub vault_update_id: VaultUpdateId,
+
+    pub document_id: DocumentId,
+    pub relative_path: String,
+    pub cursors: Vec<CursorSpan>,
+}
+
 #[derive(TS, Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct CursorSpan {
@@ -22,18 +38,12 @@ pub struct CursorSpan {
     pub end: usize,
 }
 
-#[derive(TS, Deserialize, Clone, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct CursorPositionFromClient {
-    pub document_to_cursors: HashMap<String, Vec<CursorSpan>>,
-}
-
 #[derive(TS, Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct ClientCursors {
     pub user_name: String,
     pub device_id: DeviceId,
-    pub cursors: HashMap<String, Vec<CursorSpan>>,
+    pub cursors: Vec<DocumentWithCursors>,
 }
 
 #[derive(TS, Serialize, Clone, Debug)]
