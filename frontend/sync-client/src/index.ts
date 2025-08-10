@@ -20,3 +20,8 @@ export type { ClientCursors } from "./services/types/ClientCursors";
 export type { NetworkConnectionStatus } from "./types/network-connection-status";
 export { DocumentUpdateStatus } from "./types/document-update-status";
 export { SyncClient } from "./sync-client";
+
+import { Locks } from "./utils/locks";
+export const helpers = {
+	Locks
+};
