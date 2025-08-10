@@ -14,7 +14,7 @@ import { StatusDescription } from "./views/status-description/status-description
 import { SyncClient, rateLimit, DEFAULT_SETTINGS } from "sync-client";
 import { ObsidianFileSystemOperations } from "./obsidian-file-system";
 import { SyncSettingsTab } from "./views/settings/settings-tab";
-import { registerConsoleForLogging } from "./utils/register-console-for-logging";
+import { logToConsole } from "./utils/log-to-console";
 import { updateEditorStatusDisplay } from "./views/editor-sync-line/editor-sync-line";
 import { remoteCursorsTheme } from "./views/cursors/remote-cursor-theme";
 import {
@@ -53,7 +53,7 @@ export default class VaultLinkPlugin extends Plugin {
 			nativeLineEndings: Platform.isWin ? "\r\n" : "\n"
 		});
 
-		registerConsoleForLogging(this.client);
+		logToConsole(this.client);
 
 		const statusDescription = new StatusDescription(this.client);
 

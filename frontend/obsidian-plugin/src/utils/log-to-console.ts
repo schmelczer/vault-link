@@ -1,7 +1,7 @@
 import type { LogLine, SyncClient } from "sync-client";
 import { LogLevel } from "sync-client";
 
-export function registerConsoleForLogging(client: SyncClient): void {
+export function logToConsole(client: SyncClient): void {
 	client.logger.addOnMessageListener((logLine: LogLine) => {
 		const formatted = `${logLine.timestamp.toISOString()} ${logLine.level} ${logLine.message}`;
 
