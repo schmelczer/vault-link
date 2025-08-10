@@ -1,12 +1,19 @@
+import type { Logger } from "sync-client";
+import { helpers } from "sync-client";
 import { sleep } from "./sleep";
 
 export function flakyWebSocketFactory(
-	jitterScaleInSeconds: number
+	jitterScaleInSeconds: number,
+	logger: Logger
 ): typeof WebSocket {
 	// eslint-disable-next-line
-	return class FlakyWebSocket extends require("ws") {
+	return class FlakyWebSocket extends WebSocket {
+		private static readonly RECEIVE_KEY = "websocket-receive";
+		private static readonly SEND_KEY = "websocket-send";
+
+		private readonly locks = new helpers.Locks(logger);
+
 		public set onopen(callback: (event: Event) => void) {
-			// eslint-disable-next-line
 			super.onopen = async (event: Event): Promise<void> => {
 				if (jitterScaleInSeconds > 0) {
 					await sleep(Math.random() * jitterScaleInSeconds * 1000);
@@ -17,18 +24,20 @@ export function flakyWebSocketFactory(
 		}
 
 		public set onmessage(callback: (event: MessageEvent) => void) {
-			// eslint-disable-next-line
 			super.onmessage = async (event: MessageEvent): Promise<void> => {
+				await this.locks.waitForLock(FlakyWebSocket.RECEIVE_KEY);
+
 				if (jitterScaleInSeconds > 0) {
 					await sleep(Math.random() * jitterScaleInSeconds * 1000);
 				}
 
 				callback(event);
+
+				this.locks.unlock(FlakyWebSocket.RECEIVE_KEY);
 			};
 		}
 
 		public set onclose(callback: (event: CloseEvent) => void) {
-			// eslint-disable-next-line
 			super.onclose = async (event: CloseEvent): Promise<void> => {
 				if (jitterScaleInSeconds > 0) {
 					await sleep(Math.random() * jitterScaleInSeconds * 1000);
@@ -38,7 +47,6 @@ export function flakyWebSocketFactory(
 		}
 
 		public set onerror(callback: (event: Event) => void) {
-			// eslint-disable-next-line
 			super.onerror = async (event: Event): Promise<void> => {
 				if (jitterScaleInSeconds > 0) {
 					await sleep(Math.random() * jitterScaleInSeconds * 1000);
@@ -50,12 +58,16 @@ export function flakyWebSocketFactory(
 		public async send(
 			data: string | ArrayBufferLike | Blob | ArrayBufferView
 		): Promise<void> {
+			// maintain message order
+			await this.locks.waitForLock(FlakyWebSocket.SEND_KEY);
+
 			if (jitterScaleInSeconds > 0) {
 				await sleep(Math.random() * jitterScaleInSeconds * 1000);
 			}
 
-			// eslint-disable-next-line
 			super.send(data);
+
+			this.locks.unlock(FlakyWebSocket.SEND_KEY);
 		}
 	} as unknown as typeof WebSocket;
 }

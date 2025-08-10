@@ -2,7 +2,7 @@ import { choose } from "../utils/choose";
 import { v4 as uuidv4 } from "uuid";
 import { assert } from "../utils/assert";
 import type { RelativePath, SyncSettings } from "sync-client";
-import { LogLevel } from "sync-client";
+import { Logger, LogLevel } from "sync-client";
 import { MockClient } from "./mock-client";
 import { sleep } from "../utils/sleep";
 import type { LogLine } from "sync-client/dist/types/tracing/logger";
@@ -29,7 +29,10 @@ export class MockAgent extends MockClient {
 	public async init(): Promise<void> {
 		await super.init(
 			flakyFetchFactory(this.jitterScaleInSeconds),
-			flakyWebSocketFactory(this.jitterScaleInSeconds)
+			flakyWebSocketFactory(
+				this.jitterScaleInSeconds,
+				new Logger() // this logger isn't wired anywhere, so messages to it will be ignored
+			)
 		);
 
 		assert(
