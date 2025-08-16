@@ -22,6 +22,8 @@ import {
 	setCursors
 } from "./views/cursors/remote-cursors-plugin";
 import { LocalCursorUpdateListener } from "./views/cursors/local-cursor-update-listener";
+import { slowFetchFactory } from "./debugging/slow-fetch-factory";
+import { flakyWebSocketFactory } from "./debugging/flaky-websocket-factory";
 
 const MIN_WAIT_BETWEEN_UPDATES_IN_MS = 250;
 export default class VaultLinkPlugin extends Plugin {
@@ -40,6 +42,15 @@ export default class VaultLinkPlugin extends Plugin {
 			".git/**",
 			".trash/**"
 		);
+
+		const isDebugBuild = process.env.NODE_ENV === "development";
+
+		const debugOptions = isDebugBuild
+			? {
+					fetch: slowFetchFactory(1),
+					webSocket: flakyWebSocketFactory(1, new Logger())
+				}
+			: {};
 
 		this.client = await SyncClient.create({
 			fs: new ObsidianFileSystemOperations(
