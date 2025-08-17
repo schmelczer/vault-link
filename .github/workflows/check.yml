@@ -25,8 +25,7 @@ jobs:
 
       - name: Setup rust
         run: |
-          rustup install 1.89
-          rustup default 1.89
+          rustup update
           cargo install sqlx-cli cargo-machete
           cd sync-server
           sqlx database create --database-url sqlite://db.sqlite3

@@ -26,7 +26,7 @@ impl Header for DeviceIdHeader {
     where
         E: Extend<HeaderValue>,
     {
-        let value = HeaderValue::from_static(Box::leak(self.0.to_string().into_boxed_str()));
+        let value = HeaderValue::from_static(Box::leak(self.0.clone().into_boxed_str()));
 
         values.extend(std::iter::once(value));
     }
