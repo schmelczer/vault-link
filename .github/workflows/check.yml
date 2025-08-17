@@ -26,6 +26,7 @@ jobs:
       - name: Setup rust
         run: |
           rustup update
+          rustup install nightly && rustup default nightly
           cargo install sqlx-cli
           cd sync-server
           sqlx database create --database-url sqlite://db.sqlite3
