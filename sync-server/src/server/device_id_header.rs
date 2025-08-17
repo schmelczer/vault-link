@@ -6,7 +6,9 @@ pub struct DeviceIdHeader(pub String);
 pub static DEVICE_ID_HEADER_NAME: HeaderName = HeaderName::from_static("device-id");
 
 impl Header for DeviceIdHeader {
-    fn name() -> &'static HeaderName { &DEVICE_ID_HEADER_NAME }
+    fn name() -> &'static HeaderName {
+        &DEVICE_ID_HEADER_NAME
+    }
 
     fn decode<'i, I>(values: &mut I) -> Result<Self, headers::Error>
     where

@@ -25,9 +25,7 @@ jobs:
 
       - name: Setup rust
         run: |
-          rustup update
-          rustup install nightly && rustup default nightly
-          cargo install sqlx-cli
+          cargo install sqlx-cli cargo-machete
           cd sync-server
           sqlx database create --database-url sqlite://db.sqlite3
           sqlx migrate run --source src/app_state/database/migrations --database-url sqlite://db.sqlite3
@@ -37,6 +35,7 @@ jobs:
           cd sync-server
           cargo clippy --all-targets --all-features
           cargo fmt --all -- --check
+          cargo machete
 
       - name: Test sync-server
         run: |
