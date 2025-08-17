@@ -11,7 +11,7 @@ import { HistoryView } from "./views/history/history-view";
 import { StatusBar } from "./views/status-bar/status-bar";
 import { LogsView } from "./views/logs/logs-view";
 import { StatusDescription } from "./views/status-description/status-description";
-import { SyncClient, rateLimit, DEFAULT_SETTINGS } from "sync-client";
+import { SyncClient, rateLimit, DEFAULT_SETTINGS, Logger } from "sync-client";
 import { ObsidianFileSystemOperations } from "./obsidian-file-system";
 import { SyncSettingsTab } from "./views/settings/settings-tab";
 import { logToConsole } from "./utils/log-to-console";
@@ -26,6 +26,7 @@ import { slowFetchFactory } from "./debugging/slow-fetch-factory";
 import { flakyWebSocketFactory } from "./debugging/flaky-websocket-factory";
 
 const MIN_WAIT_BETWEEN_UPDATES_IN_MS = 250;
+
 export default class VaultLinkPlugin extends Plugin {
 	private readonly disposables: (() => unknown)[] = [];
 
@@ -61,7 +62,8 @@ export default class VaultLinkPlugin extends Plugin {
 				load: this.loadData.bind(this),
 				save: this.saveData.bind(this)
 			},
-			nativeLineEndings: Platform.isWin ? "\r\n" : "\n"
+			nativeLineEndings: Platform.isWin ? "\r\n" : "\n",
+			...debugOptions
 		});
 
 		logToConsole(this.client);

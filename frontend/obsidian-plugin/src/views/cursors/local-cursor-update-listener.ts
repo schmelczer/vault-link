@@ -7,7 +7,6 @@ import { getSelectionsFromEditor } from "./get-selections-from-editor";
 export class LocalCursorUpdateListener {
 	private static readonly UPDATE_INTERVAL_MS = 50;
 	private readonly eventHandle: NodeJS.Timeout;
-	private lastCursorState: Record<string, Selection[]> = {};
 
 	public constructor(
 		private readonly client: SyncClient,
@@ -24,13 +23,6 @@ export class LocalCursorUpdateListener {
 
 	private updateAllSelections(): void {
 		const currentCursors = this.getAllSelections();
-		if (
-			JSON.stringify(this.lastCursorState) ===
-			JSON.stringify(currentCursors)
-		) {
-			return;
-		}
-		this.lastCursorState = currentCursors;
 		this.client
 			.updateLocalCursors(currentCursors)
 			.catch((error: unknown) => {

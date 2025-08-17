@@ -19,9 +19,21 @@ import { WebSocketManager } from "./services/websocket-manager";
 import { createClientId } from "./utils/create-client-id";
 import type { CursorSpan } from "./services/types/CursorSpan";
 import type { ClientCursors } from "./services/types/ClientCursors";
+import type { DocumentWithCursors } from "./services/types/DocumentWithCursors";
+import { hash } from "./utils/hash";
+import type { DocumentWithMaybeOutdatedClientCursors } from "./types/maybe-outdated-client-cursors";
+
+enum DocumentUpToDateness {
+	UpToDate = "UpToDate",
+	Prior = "Prior",
+	Later = "Later"
+}
 
 export class SyncClient {
 	private static readonly MINIMUM_SAVE_INTERVAL_MS = 1000;
+	private lastCursorState: DocumentWithCursors[] = [];
+
+	private readonly knownClientCursors: ClientCursors[] = [];
 
 	// eslint-disable-next-line @typescript-eslint/max-params
 	private constructor(
@@ -32,7 +44,8 @@ export class SyncClient {
 		private readonly syncService: SyncService,
 		private readonly webSocketManager: WebSocketManager,
 		private readonly _logger: Logger,
-		private readonly connectionStatus: ConnectionStatus
+		private readonly connectionStatus: ConnectionStatus,
+		private readonly fileOperations: FileOperations
 	) {
 		this.settings.addOnSettingsChangeListener(
 			(newSettings, oldSettings) => {
@@ -41,6 +54,10 @@ export class SyncClient {
 				}
 			}
 		);
+
+		this.webSocketManager.addRemoteCursorsUpdateListener((cursors) => {
+			this.knownClientCursors.push(...cursors);
+		});
 	}
 
 	public get logger(): Logger {
@@ -157,7 +174,8 @@ export class SyncClient {
 			syncService,
 			webSocketManager,
 			logger,
-			connectionStatus
+			connectionStatus,
+			fileOperations
 		);
 
 		logger.info("SyncClient initialised");
@@ -268,18 +286,6 @@ export class SyncClient {
 		});
 	}
 
-	public async updateLocalCursors(
-		documentToCursors: Record<RelativePath, CursorSpan[]>
-	): Promise<void> {
-		this.webSocketManager.updateLocalCursors({ documentToCursors });
-	}
-
-	public addRemoteCursorsUpdateListener(
-		listener: (cursors: ClientCursors[]) => void
-	): void {
-		this.webSocketManager.addRemoteCursorsUpdateListener(listener);
-	}
-
 	public getDocumentSyncingStatus(
 		relativePath: RelativePath
 	): DocumentUpdateStatus {
@@ -291,5 +297,145 @@ export class SyncClient {
 		return document.updates.length > 0
 			? DocumentUpdateStatus.SYNCING
 			: DocumentUpdateStatus.UP_TO_DATE;
+	}
+
+	/// Update the local cursors for the given documents.
+	/// Can be called frequently as it only emits an event
+	// if the state has actually changed.
+	public async updateLocalCursors(
+		documentToCursors: Record<RelativePath, CursorSpan[]>
+	): Promise<void> {
+		const documentsWithCursors: DocumentWithCursors[] = [];
+
+		for (const [relativePath, cursors] of Object.entries(
+			documentToCursors
+		)) {
+			const record =
+				this.database.getLatestDocumentByRelativePath(relativePath);
+
+			if (!record) {
+				continue; // Let's wait for the file to be created before sending cursors
+			}
+
+			const readContent = await this.fileOperations.read(relativePath);
+
+			if (record.metadata?.hash !== hash(readContent)) {
+				continue; // Wouldn't make sense to sync the positions in a dirty file
+			}
+
+			documentsWithCursors.push({
+				relative_path: relativePath,
+				document_id: record.documentId,
+				vault_update_id: record.metadata.parentVersionId,
+				cursors
+			});
+		}
+
+		if (
+			JSON.stringify(this.lastCursorState) ===
+			JSON.stringify(documentsWithCursors)
+		) {
+			return;
+		}
+
+		this.lastCursorState = documentsWithCursors;
+
+		this.webSocketManager.updateLocalCursors({ documentsWithCursors });
+	}
+
+	public addRemoteCursorsUpdateListener(
+		listener: (cursors: DocumentWithMaybeOutdatedClientCursors[]) => void
+	): void {
+		this.webSocketManager.addRemoteCursorsUpdateListener(async () => {
+			listener(await this.getRelevantClientCursors());
+		});
+	}
+
+	private async getRelevantClientCursors(): Promise<
+		DocumentWithMaybeOutdatedClientCursors[]
+	> {
+		const result: DocumentWithMaybeOutdatedClientCursors[] = [];
+		const included = new Set<string>();
+		for (const clientCursors of [...this.knownClientCursors].reverse()) {
+			if (included.has(clientCursors.deviceId)) {
+				continue;
+			}
+
+			const upToDateness =
+				await this.getDocumentsUpToDateness(clientCursors);
+			if (upToDateness == DocumentUpToDateness.Later) {
+				continue;
+			}
+
+			result.push({
+				...clientCursors,
+				isOutdated: upToDateness == DocumentUpToDateness.Prior
+			});
+
+			included.add(clientCursors.deviceId);
+		}
+
+		return result;
+	}
+
+	private async getDocumentsUpToDateness(
+		clientCursor: ClientCursors
+	): Promise<DocumentUpToDateness> {
+		const results = [];
+		for (const document of clientCursor.documentsWithCursors) {
+			results.push(await this.getDocumentUpToDateness(document));
+		}
+
+		if (
+			results.every((result) => result === DocumentUpToDateness.UpToDate)
+		) {
+			return DocumentUpToDateness.UpToDate;
+		}
+
+		if (
+			results.every(
+				(result) =>
+					result === DocumentUpToDateness.UpToDate ||
+					result === DocumentUpToDateness.Prior
+			)
+		) {
+			return DocumentUpToDateness.Prior;
+		}
+
+		return DocumentUpToDateness.Later;
+	}
+
+	private async getDocumentUpToDateness(
+		document: DocumentWithCursors
+	): Promise<DocumentUpToDateness> {
+		const record = this.database.getLatestDocumentByRelativePath(
+			document.relative_path
+		);
+
+		if (!record) {
+			// the document of the cursor must be from the future
+			return DocumentUpToDateness.Later;
+		}
+
+		if (
+			(record.metadata?.parentVersionId ?? 0) < document.vault_update_id
+		) {
+			return DocumentUpToDateness.Later;
+		} else if (
+			document.vault_update_id < (record.metadata?.parentVersionId ?? 0)
+		) {
+			// the document of the cursor must be from the past
+			return DocumentUpToDateness.Prior;
+		}
+
+		const currentContent = await this.fileOperations.read(
+			document.relative_path
+		);
+
+		return this.database.getLatestDocumentByRelativePath(
+			document.relative_path
+		)?.metadata?.hash === hash(currentContent)
+			? DocumentUpToDateness.UpToDate
+			: DocumentUpToDateness.Prior;
 	}
 }

@@ -1,6 +1,6 @@
 import type { Range } from "@codemirror/state";
-import { RangeSet, Annotation, AnnotationType } from "@codemirror/state";
-import { ViewPlugin, Decoration, WidgetType } from "@codemirror/view";
+import { RangeSet } from "@codemirror/state";
+import { ViewPlugin, Decoration } from "@codemirror/view";
 
 import type {
 	PluginValue,
@@ -9,7 +9,10 @@ import type {
 	ViewUpdate
 } from "@codemirror/view";
 import { RemoteCursorWidget } from "./remote-cursor-widget";
-import type { ClientCursors, CursorSpan } from "sync-client";
+import type {
+	CursorSpan,
+	DocumentWithMaybeOutdatedClientCursors
+} from "sync-client";
 import type { App } from "obsidian";
 import { MarkdownView } from "obsidian";
 
@@ -17,10 +20,12 @@ let cursors: {
 	name: string;
 	path: string;
 	span: CursorSpan;
+	deviceId: string;
 }[] = [];
 
 import { StateEffect } from "@codemirror/state";
 import { getRandomColor } from "src/utils/get-random-color";
+import { updateSelection } from "./update-selection";
 
 const forceUpdate = StateEffect.define();
 
@@ -28,6 +33,17 @@ export class RemoteCursorsPluginValue implements PluginValue {
 	public decorations: DecorationSet = RangeSet.of([]);
 
 	public update(update: ViewUpdate): void {
+		update.changes.iterChanges((fromA, toA, fromB, toB, _inserted) => {
+			const spans = cursors.map((cursor) => cursor.span);
+			updateSelection({
+				fromA,
+				toA,
+				fromB,
+				toB,
+				spans
+			});
+		});
+
 		const decorations: Range<Decoration>[] = [];
 
 		cursors.forEach(({ name, span: { start, end } }) => {
@@ -103,20 +119,30 @@ export const remoteCursorsPlugin = ViewPlugin.fromClass(
 	}
 );
 
-export function setCursors(clients: ClientCursors[], app: App): void {
-	cursors = clients.flatMap((client) => {
-		const clientCursors = client.cursors;
-		return Object.keys(clientCursors).flatMap((path) => {
-			const spans = clientCursors[path];
-			return spans
-				? spans.map((span) => ({
+export function setCursors(
+	clients: DocumentWithMaybeOutdatedClientCursors[],
+	app: App
+): void {
+	cursors = [
+		...cursors.filter(({ deviceId }) =>
+			clients.some(
+				(client) => client.deviceId === deviceId && client.isOutdated
+			)
+		),
+		...clients
+			.filter(({ isOutdated }) => !isOutdated)
+			.flatMap((client) => {
+				const clientCursors = client.documentsWithCursors;
+				return clientCursors.flatMap((cursor) =>
+					cursor.cursors.map((span) => ({
 						name: client.userName,
-						path,
+						path: cursor.relative_path,
+						deviceId: client.deviceId,
 						span
 					}))
-				: [];
-		});
-	});
+				);
+			})
+	];
 
 	app.workspace
 		.getLeavesOfType("markdown")

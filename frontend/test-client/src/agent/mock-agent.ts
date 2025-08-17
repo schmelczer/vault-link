@@ -7,7 +7,7 @@ import { MockClient } from "./mock-client";
 import { sleep } from "../utils/sleep";
 import type { LogLine } from "sync-client/dist/types/tracing/logger";
 import { flakyFetchFactory } from "../utils/flaky-fetch";
-import { flakyWebSocketFactory } from "../utils/flaky-websocket";
+import { flakyWebSocketFactory } from "../utils/flaky-websocket-factory";
 
 export class MockAgent extends MockClient {
 	private readonly writtenContents: string[] = [];
@@ -62,7 +62,7 @@ export class MockAgent extends MockClient {
 					console.error(formatted);
 
 					if (!this.useSlowFileEvents) {
-						// Let's not ignore errors
+						// Let's wait for the error to be caught if there was one
 						// eslint-disable-next-line @typescript-eslint/no-floating-promises
 						sleep(100).then(() => process.exit(1));
 					}
