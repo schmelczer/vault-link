@@ -1,4 +1,5 @@
-import { helpers, Logger } from "sync-client";
+import type { Logger } from "sync-client";
+import { helpers } from "sync-client";
 
 export function flakyWebSocketFactory(
 	jitterScaleInSeconds: number,
@@ -53,7 +54,15 @@ export function flakyWebSocketFactory(
 			};
 		}
 
-		public async send(
+		public send(
+			data: string | ArrayBufferLike | Blob | ArrayBufferView
+		): void {
+			this.waitingSend(data).catch((error: unknown) => {
+				logger.error(`Error sending WebSocket message: ${error}`);
+			});
+		}
+
+		private async waitingSend(
 			data: string | ArrayBufferLike | Blob | ArrayBufferView
 		): Promise<void> {
 			// maintain message order
