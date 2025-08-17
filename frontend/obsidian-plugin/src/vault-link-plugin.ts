@@ -120,7 +120,7 @@ export default class VaultLinkPlugin extends Plugin {
 
 		this.app.workspace.onLayoutReady(async () => {
 			this.registerEditorEvents();
-			void this.client.start();
+			await this.client.start();
 
 			const interval = setInterval(() => {
 				updateEditorStatusDisplay(this.app.workspace, this.client);

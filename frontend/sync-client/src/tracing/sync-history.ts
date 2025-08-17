@@ -70,7 +70,7 @@ export class SyncHistory {
 
 	private readonly syncHistoryUpdateListeners: ((
 		status: HistoryStats
-	) => void)[] = [];
+	) => unknown)[] = [];
 
 	private status: HistoryStats = {
 		success: 0,
@@ -111,7 +111,7 @@ export class SyncHistory {
 	}
 
 	public addSyncHistoryUpdateListener(
-		listener: (stats: HistoryStats) => void
+		listener: (stats: HistoryStats) => unknown
 	): void {
 		this.syncHistoryUpdateListeners.push(listener);
 		listener({ ...this.status });

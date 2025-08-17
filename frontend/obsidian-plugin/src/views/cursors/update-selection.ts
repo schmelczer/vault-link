@@ -14,7 +14,7 @@ export const updateSelection = ({
 }): void => {
 	spans.forEach((span) => {
 		if (fromA <= span.start) {
-			// The change covers the entirety of the selection
+			// the change covers the entirety of the selection
 			if (toA > span.end) {
 				span.start = toB;
 				span.end = toB;
@@ -23,6 +23,8 @@ export const updateSelection = ({
 
 			let change = toB - toA;
 			if (change < 0) {
+				// it's a deletion
+				// if overlaps with the start, we can't move it back more than the deleted range
 				change = Math.max(change, fromA - span.start);
 			}
 
@@ -31,6 +33,7 @@ export const updateSelection = ({
 		} else if (toA <= span.end) {
 			span.end += toB - toA;
 		} else if (toB <= span.end) {
+			// a deletion overlaps with the end, so we move the end
 			span.end = toB;
 		}
 	});

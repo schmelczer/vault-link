@@ -28,12 +28,12 @@ export class StatusDescription {
 			}
 		);
 
-		this.syncClient.addWebSocketStatusChangeListener(
-			() => void this.updateConnectionState()
+		this.syncClient.addWebSocketStatusChangeListener(async () =>
+			this.updateConnectionState()
 		);
 
-		this.syncClient.addOnSettingsChangeListener(
-			() => void this.updateConnectionState()
+		this.syncClient.addOnSettingsChangeListener(async () =>
+			this.updateConnectionState()
 		);
 	}
 
@@ -42,10 +42,10 @@ export class StatusDescription {
 		this.updateDescription();
 	}
 
-	public addStatusChangeListener(listener: () => void): void {
+	public addStatusChangeListener(listener: () => unknown): void {
 		this.statusChangeListeners.push(listener);
 	}
-	public removeStatusChangeListener(listener: () => void): void {
+	public removeStatusChangeListener(listener: () => unknown): void {
 		this.statusChangeListeners = this.statusChangeListeners.filter(
 			(l) => l !== listener
 		);

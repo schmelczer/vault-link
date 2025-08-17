@@ -22,7 +22,7 @@ export class Syncer {
 	private readonly remoteDocumentsLock: Locks<DocumentId>;
 	private readonly remainingOperationsListeners: ((
 		remainingOperations: number
-	) => void)[] = [];
+	) => unknown)[] = [];
 	private readonly syncQueue: PQueue;
 
 	private runningScheduleSyncForOfflineChanges: Promise<void> | undefined;
@@ -57,7 +57,7 @@ export class Syncer {
 	}
 
 	public addRemainingOperationsListener(
-		listener: (remainingOperations: number) => void
+		listener: (remainingOperations: number) => unknown
 	): void {
 		this.remainingOperationsListeners.push(listener);
 	}

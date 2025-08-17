@@ -37,7 +37,7 @@ export class MockClient implements FileSystemOperations {
 			fs: this,
 			persistence: {
 				load: async () => this.data,
-				save: async (data) => void (this.data = data)
+				save: async (data) => (this.data = data)
 			},
 			fetch: fetchImplementation,
 			webSocket: webSocketImplementation
@@ -78,9 +78,9 @@ export class MockClient implements FileSystemOperations {
 		);
 		this.localFiles.set(path, newContent);
 
-		this.executeFileOperation(() => {
-			void this.client.syncLocallyCreatedFile(path);
-		});
+		this.executeFileOperation(async () =>
+			this.client.syncLocallyCreatedFile(path)
+		);
 	}
 
 	public async createDirectory(_path: RelativePath): Promise<void> {
@@ -120,11 +120,11 @@ export class MockClient implements FileSystemOperations {
 			`Updated file ${path} with:\n  current content: ${currentContent}\n  new content: ${newContent}`
 		);
 
-		this.executeFileOperation(() => {
-			void this.client.syncLocallyUpdatedFile({
+		this.executeFileOperation(async () =>
+			this.client.syncLocallyUpdatedFile({
 				relativePath: path
-			});
-		});
+			})
+		);
 
 		return newContent;
 	}
@@ -137,13 +137,13 @@ export class MockClient implements FileSystemOperations {
 			`Updated file ${path} with:\n  new content: ${new TextDecoder().decode(content)}`
 		);
 
-		this.executeFileOperation(() => {
+		this.executeFileOperation(async () => {
 			if (hasExisted) {
-				void this.client.syncLocallyUpdatedFile({
+				return this.client.syncLocallyUpdatedFile({
 					relativePath: path
 				});
 			} else {
-				void this.client.syncLocallyCreatedFile(path);
+				return this.client.syncLocallyCreatedFile(path);
 			}
 		});
 	}
@@ -154,9 +154,9 @@ export class MockClient implements FileSystemOperations {
 		);
 		this.localFiles.delete(path);
 
-		this.executeFileOperation(() => {
-			void this.client.syncLocallyDeletedFile(path);
-		});
+		this.executeFileOperation(async () =>
+			this.client.syncLocallyDeletedFile(path)
+		);
 	}
 
 	public async rename(
@@ -176,15 +176,15 @@ export class MockClient implements FileSystemOperations {
 			`Renamed file: ${oldPath} -> ${newPath} with:\n  content ${new TextDecoder().decode(file)}`
 		);
 
-		this.executeFileOperation(() => {
-			void this.client.syncLocallyUpdatedFile({
+		this.executeFileOperation(async () =>
+			this.client.syncLocallyUpdatedFile({
 				oldPath,
 				relativePath: newPath
-			});
-		});
+			})
+		);
 	}
 
-	private executeFileOperation(callback: () => void): void {
+	private executeFileOperation(callback: () => unknown): void {
 		if (this.useSlowFileEvents) {
 			// we aren't the best client and it takes some time to notice changes
 			setTimeout(callback, Math.random() * 100);

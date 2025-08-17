@@ -16,7 +16,7 @@ export class SyncSettingsTab extends PluginSettingTab {
 	private readonly plugin: VaultLinkPlugin;
 	private readonly syncClient: SyncClient;
 	private readonly statusDescription: StatusDescription;
-	private statusDescriptionSubscription: (() => void) | undefined;
+	private statusDescriptionSubscription: (() => unknown) | undefined;
 
 	public constructor({
 		app,
@@ -90,11 +90,12 @@ export class SyncSettingsTab extends PluginSettingTab {
 				cls: "description"
 			},
 			(descriptionContainer) => {
-				this.setStatusDescriptionSubscription((): void => {
-					this.statusDescription.renderStatusDescription(
+				this.setStatusDescriptionSubscription(
+					this.statusDescription.renderStatusDescription.bind(
+						this.statusDescription,
 						descriptionContainer
-					);
-				});
+					)
+				);
 			}
 		);
 
@@ -339,7 +340,7 @@ export class SyncSettingsTab extends PluginSettingTab {
 	}
 
 	private setStatusDescriptionSubscription(
-		newSubscription?: () => void
+		newSubscription?: () => unknown
 	): void {
 		if (this.statusDescriptionSubscription) {
 			this.statusDescription.removeStatusChangeListener(
@@ -360,7 +361,7 @@ export class SyncSettingsTab extends PluginSettingTab {
 		settingName: keyof SyncSettings
 	): [
 		DocumentFragment,
-		(newValue: SyncSettings[keyof SyncSettings]) => void
+		(newValue: SyncSettings[keyof SyncSettings]) => unknown
 	] {
 		const titleContainer = document.createDocumentFragment();
 		const title = titleContainer.createEl("div", {

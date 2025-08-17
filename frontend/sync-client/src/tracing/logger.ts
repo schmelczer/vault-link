@@ -23,9 +23,11 @@ export class LogLine {
 export class Logger {
 	private static readonly MAX_MESSAGES = 100000;
 	private readonly messages: LogLine[] = [];
-	private readonly onMessageListeners: ((message: LogLine) => void)[] = [];
+	private readonly onMessageListeners: ((message: LogLine) => unknown)[] = [];
 
-	public constructor(...onMessageListeners: ((message: LogLine) => void)[]) {
+	public constructor(
+		...onMessageListeners: ((message: LogLine) => unknown)[]
+	) {
 		this.onMessageListeners = onMessageListeners;
 	}
 
@@ -53,7 +55,7 @@ export class Logger {
 		);
 	}
 
-	public addOnMessageListener(listener: (message: LogLine) => void): void {
+	public addOnMessageListener(listener: (message: LogLine) => unknown): void {
 		this.onMessageListeners.push(listener);
 	}
 

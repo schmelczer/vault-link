@@ -48,9 +48,9 @@ export class SyncClient {
 		private readonly fileOperations: FileOperations
 	) {
 		this.settings.addOnSettingsChangeListener(
-			(newSettings, oldSettings) => {
+			async (newSettings, oldSettings) => {
 				if (newSettings.vaultName !== oldSettings.vaultName) {
-					void this.reset();
+					await this.reset();
 				}
 			}
 		);
@@ -197,7 +197,7 @@ export class SyncClient {
 	}
 
 	public addSyncHistoryUpdateListener(
-		listener: (stats: HistoryStats) => void
+		listener: (stats: HistoryStats) => unknown
 	): void {
 		this.history.addSyncHistoryUpdateListener(listener);
 	}
@@ -227,7 +227,7 @@ export class SyncClient {
 		this.database.reset();
 		this._logger.reset();
 		this.connectionStatus.finishReset();
-		void this.start();
+		await this.start();
 	}
 
 	public getSettings(): SyncSettings {
@@ -246,18 +246,18 @@ export class SyncClient {
 	}
 
 	public addOnSettingsChangeListener(
-		handler: (settings: SyncSettings, oldSettings: SyncSettings) => void
+		handler: (settings: SyncSettings, oldSettings: SyncSettings) => unknown
 	): void {
 		this.settings.addOnSettingsChangeListener(handler);
 	}
 
 	public addRemainingSyncOperationsListener(
-		listener: (remainingOperations: number) => void
+		listener: (remainingOperations: number) => unknown
 	): void {
 		this.syncer.addRemainingOperationsListener(listener);
 	}
 
-	public addWebSocketStatusChangeListener(listener: () => void): void {
+	public addWebSocketStatusChangeListener(listener: () => unknown): void {
 		this.webSocketManager.addWebSocketStatusChangeListener(listener);
 	}
 
@@ -344,7 +344,7 @@ export class SyncClient {
 	}
 
 	public addRemoteCursorsUpdateListener(
-		listener: (cursors: DocumentWithMaybeOutdatedClientCursors[]) => void
+		listener: (cursors: DocumentWithMaybeOutdatedClientCursors[]) => unknown
 	): void {
 		this.webSocketManager.addRemoteCursorsUpdateListener(async () => {
 			listener(await this.getRelevantClientCursors());

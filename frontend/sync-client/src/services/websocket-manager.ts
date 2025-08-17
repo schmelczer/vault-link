@@ -64,12 +64,12 @@ export class WebSocketManager {
 		);
 	}
 
-	public addWebSocketStatusChangeListener(listener: () => void): void {
+	public addWebSocketStatusChangeListener(listener: () => unknown): void {
 		this.webSocketStatusChangeListeners.push(listener);
 	}
 
 	public addRemoteCursorsUpdateListener(
-		listener: (cursors: ClientCursors[]) => void
+		listener: (cursors: ClientCursors[]) => unknown
 	): void {
 		this.remoteCursorsUpdateListeners.push(listener);
 	}

@@ -7,8 +7,8 @@ export class ConnectionStatus {
 	private static readonly UNTIL_RESOLUTION = Symbol();
 	private canFetch: boolean;
 	private until: Promise<symbol>;
-	private resolveUntil: (result: symbol) => void;
-	private rejectUntil: (reason: unknown) => void;
+	private resolveUntil: (result: symbol) => unknown;
+	private rejectUntil: (reason: unknown) => unknown;
 
 	public constructor(
 		settings: Settings,

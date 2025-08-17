@@ -331,6 +331,8 @@ export class Database {
 			),
 			lastSeenUpdateId: this.lastSeenUpdateIds.min,
 			hasInitialSyncCompleted: this.hasInitialSyncCompleted
+		}).catch((error: unknown) => {
+			this.logger.error(`Error saving data: ${error}`);
 		});
 	}
 

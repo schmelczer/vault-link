@@ -28,7 +28,7 @@ export class Settings {
 	private readonly onSettingsChangeHandlers: ((
 		newSettings: SyncSettings,
 		oldSettings: SyncSettings
-	) => void)[] = [];
+	) => unknown)[] = [];
 
 	public constructor(
 		private readonly logger: Logger,
@@ -50,7 +50,7 @@ export class Settings {
 	}
 
 	public addOnSettingsChangeListener(
-		handler: (settings: SyncSettings, oldSettings: SyncSettings) => void
+		handler: (settings: SyncSettings, oldSettings: SyncSettings) => unknown
 	): void {
 		this.onSettingsChangeHandlers.push(handler);
 	}

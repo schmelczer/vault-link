@@ -24,13 +24,12 @@ export class HistoryView extends ItemView {
 		super(leaf);
 		this.icon = HistoryView.ICON;
 
-		this.client.addSyncHistoryUpdateListener(
-			() =>
-				void this.updateView().catch((error: unknown) => {
-					this.client.logger.error(
-						`Failed to update history view: ${error}`
-					);
-				})
+		this.client.addSyncHistoryUpdateListener(async () =>
+			this.updateView().catch((error: unknown) => {
+				this.client.logger.error(
+					`Failed to update history view: ${error}`
+				);
+			})
 		);
 	}
 
@@ -109,7 +108,15 @@ export class HistoryView extends ItemView {
 		this.historyContainer = container.createDiv({ cls: "logs-container" });
 
 		await this.updateView();
-		this.timer = setInterval(() => void this.updateView(), 1000);
+		this.timer = setInterval(
+			() =>
+				void this.updateView().catch((error: unknown) => {
+					this.client.logger.error(
+						`Failed to update history view: ${error}`
+					);
+				}),
+			1000
+		);
 	}
 
 	public async onClose(): Promise<void> {
@@ -174,11 +181,17 @@ export class HistoryView extends ItemView {
 					null
 				) {
 					card.addEventListener("click", () => {
-						void this.app.workspace.openLinkText(
-							entry.details.relativePath,
-							entry.details.relativePath,
-							false
-						);
+						this.app.workspace
+							.openLinkText(
+								entry.details.relativePath,
+								entry.details.relativePath,
+								false
+							)
+							.catch((error: unknown) => {
+								this.client.logger.error(
+									`Failed to open link for ${entry.details.relativePath}: ${error}`
+								);
+							});
 					});
 
 					card.addClass("clickable");

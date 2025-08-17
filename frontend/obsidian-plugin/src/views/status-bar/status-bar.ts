@@ -42,9 +42,7 @@ export class StatusBar {
 				text: "VaultLink is disabled, click to configure",
 				cls: "initialize-button"
 			});
-			button.onclick = (): void => {
-				this.plugin.openSettings();
-			};
+			button.onclick = this.plugin.openSettings.bind(this.plugin);
 
 			return;
 		}
