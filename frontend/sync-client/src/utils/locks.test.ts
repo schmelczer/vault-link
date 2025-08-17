@@ -35,7 +35,7 @@ describe("Document lock", () => {
 	test("should throw an error when unlocking a document that is not locked", () => {
 		expect(() => {
 			locks.unlock(testPath);
-		}).toThrow(`Document ${testPath} is not locked, cannot unlock`);
+		}).toThrow(`Key '${testPath}' is not locked, cannot unlock`);
 	});
 
 	test("should wait for a document lock and resolve when unlocked", async () => {

@@ -67,7 +67,7 @@ export class Locks<T> {
 	 */
 	public unlock(key: T): void {
 		if (!this.locked.has(key)) {
-			throw new Error(`Key ${key} is not locked, cannot unlock`);
+			throw new Error(`Key '${key}' is not locked, cannot unlock`);
 		}
 
 		// Remove first waiter to ensure FIFO order
