@@ -4,5 +4,5 @@ import type { DocumentWithCursors } from "./DocumentWithCursors";
 export interface ClientCursors {
 	userName: string;
 	deviceId: string;
-	cursors: DocumentWithCursors[];
+	documentsWithCursors: DocumentWithCursors[];
 }

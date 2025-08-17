@@ -43,7 +43,7 @@ pub struct CursorSpan {
 pub struct ClientCursors {
     pub user_name: String,
     pub device_id: DeviceId,
-    pub cursors: Vec<DocumentWithCursors>,
+    pub documents_with_cursors: Vec<DocumentWithCursors>,
 }
 
 #[derive(TS, Serialize, Clone, Debug)]

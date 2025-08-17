@@ -48,7 +48,7 @@ impl Cursors {
         all_device_cursors.push(ClientCursorsWithTimeToLive::new(ClientCursors {
             user_name,
             device_id: device_id.to_string(),
-            cursors: document_to_cursors,
+            documents_with_cursors: document_to_cursors,
         }));
 
         drop(vault_to_cursors); // Explicitly drop the lock before broadcasting to avoid deadlock
