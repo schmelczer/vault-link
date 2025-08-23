@@ -31,16 +31,14 @@ export class SafeFileSystemOperations implements FileSystemOperations {
 		this.logger.debug(`Reading file '${path}'`);
 		return this.safeOperation(
 			path,
-			this.decorateToHoldLock(path, async () => this.fs.read(path)),
+			async () => this.locks.withLock(path, () => this.fs.read(path)),
 			"read"
 		);
 	}
 
 	public async write(path: RelativePath, content: Uint8Array): Promise<void> {
 		this.logger.debug(`Writing to file '${path}'`);
-		return this.decorateToHoldLock(path, async () =>
-			this.fs.write(path, content)
-		)();
+		return this.locks.withLock(path, () => this.fs.write(path, content));
 	}
 
 	public async atomicUpdateText(
@@ -50,9 +48,10 @@ export class SafeFileSystemOperations implements FileSystemOperations {
 		this.logger.debug(`Atomically updating file '${path}'`);
 		return this.safeOperation(
 			path,
-			this.decorateToHoldLock(path, async () =>
-				this.fs.atomicUpdateText(path, updater)
-			),
+			async () =>
+				this.locks.withLock(path, () =>
+					this.fs.atomicUpdateText(path, updater)
+				),
 			"atomicUpdateText"
 		);
 	}
@@ -61,32 +60,25 @@ export class SafeFileSystemOperations implements FileSystemOperations {
 		// Logging this would be too noisy
 		return this.safeOperation(
 			path,
-			this.decorateToHoldLock(path, async () =>
-				this.fs.getFileSize(path)
-			),
+			async () =>
+				this.locks.withLock(path, () => this.fs.getFileSize(path)),
 			"getFileSize"
 		);
 	}
 
 	public async exists(path: RelativePath): Promise<boolean> {
 		this.logger.debug(`Checking if file '${path}' exists`);
-		return this.decorateToHoldLock(path, async () =>
-			this.fs.exists(path)
-		)();
+		return this.locks.withLock(path, () => this.fs.exists(path));
 	}
 
 	public async createDirectory(path: RelativePath): Promise<void> {
 		this.logger.debug(`Creating directory '${path}'`);
-		return this.decorateToHoldLock(path, async () =>
-			this.fs.createDirectory(path)
-		)();
+		return this.locks.withLock(path, () => this.fs.createDirectory(path));
 	}
 
 	public async delete(path: RelativePath): Promise<void> {
 		this.logger.debug(`Deleting file '${path}'`);
-		return this.decorateToHoldLock(path, async () =>
-			this.fs.delete(path)
-		)();
+		return this.locks.withLock(path, async () => this.fs.delete(path));
 	}
 
 	public async rename(
@@ -96,41 +88,12 @@ export class SafeFileSystemOperations implements FileSystemOperations {
 		this.logger.debug(`Renaming file '${oldPath}' to '${newPath}'`);
 		return this.safeOperation(
 			oldPath,
-			this.decorateToHoldLock([oldPath, newPath], async () =>
-				this.fs.rename(oldPath, newPath)
-			),
+			async () =>
+				this.locks.withLock([oldPath, newPath], () =>
+					this.fs.rename(oldPath, newPath)
+				),
 			"rename"
 		);
-	}
-
-	/**
-	 * Decorate an operation to ensure that the file is locked before running it
-	 * and that the lock is released afterwards. This results in at-most one
-	 * concurrent operation running per file.
-	 */
-	private decorateToHoldLock<T>(
-		pathOrPaths: RelativePath | RelativePath[],
-		operation: () => Promise<T>
-	): () => Promise<T> {
-		return async () => {
-			const paths = Array.isArray(pathOrPaths)
-				? pathOrPaths
-				: [pathOrPaths];
-
-			await Promise.all(
-				paths.map(async (path) => this.locks.waitForLock(path))
-			);
-
-			try {
-				return await operation();
-			} finally {
-				await Promise.all(
-					paths.map((path) => {
-						this.locks.unlock(path);
-					})
-				);
-			}
-		};
 	}
 
 	/**
