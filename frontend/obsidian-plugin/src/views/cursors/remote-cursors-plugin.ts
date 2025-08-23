@@ -15,7 +15,8 @@ import { MarkdownView } from "obsidian";
 
 import { StateEffect } from "@codemirror/state";
 import { getRandomColor } from "src/utils/get-random-color";
-import { reconcileWithHistory, SpanWithHistory } from "reconcile-text";
+import type { SpanWithHistory } from "reconcile-text";
+import { reconcileWithHistory } from "reconcile-text";
 
 function findWhereToMoveCursor(
 	cursor: number,
@@ -39,8 +40,6 @@ function findWhereToMoveCursor(
 const forceUpdate = StateEffect.define();
 
 export class RemoteCursorsPluginValue implements PluginValue {
-	public decorations: DecorationSet = RangeSet.of([]);
-
 	private static cursors: {
 		name: string;
 		path: string;
@@ -48,6 +47,8 @@ export class RemoteCursorsPluginValue implements PluginValue {
 		deviceId: string;
 		isOutdated: boolean;
 	}[] = [];
+
+	public decorations: DecorationSet = RangeSet.of([]);
 
 	public static setCursors(
 		clients: MaybeOutdatedClientCursors[],
@@ -101,7 +102,7 @@ export class RemoteCursorsPluginValue implements PluginValue {
 		const original = update.startState.doc.toString();
 		const edited = update.state.doc.toString();
 
-		let updatedPositions: number[] = [];
+		const updatedPositions: number[] = [];
 		const reconciled = reconcileWithHistory(
 			original,
 			{

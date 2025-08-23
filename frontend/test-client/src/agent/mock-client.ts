@@ -37,7 +37,7 @@ export class MockClient implements FileSystemOperations {
 			fs: this,
 			persistence: {
 				load: async () => this.data,
-				save: async (data) => (this.data = data)
+				save: async (data) => void (this.data = data)
 			},
 			fetch: fetchImplementation,
 			webSocket: webSocketImplementation

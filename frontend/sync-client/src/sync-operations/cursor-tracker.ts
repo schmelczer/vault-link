@@ -61,7 +61,7 @@ export class CursorTracker {
 			}
 		);
 
-		this.fileChangeNotifier.addFileChangeListener(async (relativePath) => {
+		this.fileChangeNotifier.addFileChangeListener(async (relativePath) =>
 			this.updateLock.withLock(async () => {
 				for (const clientCursor of this.knownRemoteCursors) {
 					if (
@@ -74,8 +74,8 @@ export class CursorTracker {
 							await this.getDocumentsUpToDateness(clientCursor);
 					}
 				}
-			});
-		});
+			})
+		);
 	}
 
 	/// Update the local cursors for the given documents.

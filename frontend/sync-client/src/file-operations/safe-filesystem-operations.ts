@@ -31,14 +31,17 @@ export class SafeFileSystemOperations implements FileSystemOperations {
 		this.logger.debug(`Reading file '${path}'`);
 		return this.safeOperation(
 			path,
-			async () => this.locks.withLock(path, () => this.fs.read(path)),
+			async () =>
+				this.locks.withLock(path, async () => this.fs.read(path)),
 			"read"
 		);
 	}
 
 	public async write(path: RelativePath, content: Uint8Array): Promise<void> {
 		this.logger.debug(`Writing to file '${path}'`);
-		return this.locks.withLock(path, () => this.fs.write(path, content));
+		return this.locks.withLock(path, async () =>
+			this.fs.write(path, content)
+		);
 	}
 
 	public async atomicUpdateText(
@@ -49,7 +52,7 @@ export class SafeFileSystemOperations implements FileSystemOperations {
 		return this.safeOperation(
 			path,
 			async () =>
-				this.locks.withLock(path, () =>
+				this.locks.withLock(path, async () =>
 					this.fs.atomicUpdateText(path, updater)
 				),
 			"atomicUpdateText"
@@ -61,19 +64,23 @@ export class SafeFileSystemOperations implements FileSystemOperations {
 		return this.safeOperation(
 			path,
 			async () =>
-				this.locks.withLock(path, () => this.fs.getFileSize(path)),
+				this.locks.withLock(path, async () =>
+					this.fs.getFileSize(path)
+				),
 			"getFileSize"
 		);
 	}
 
 	public async exists(path: RelativePath): Promise<boolean> {
 		this.logger.debug(`Checking if file '${path}' exists`);
-		return this.locks.withLock(path, () => this.fs.exists(path));
+		return this.locks.withLock(path, async () => this.fs.exists(path));
 	}
 
 	public async createDirectory(path: RelativePath): Promise<void> {
 		this.logger.debug(`Creating directory '${path}'`);
-		return this.locks.withLock(path, () => this.fs.createDirectory(path));
+		return this.locks.withLock(path, async () =>
+			this.fs.createDirectory(path)
+		);
 	}
 
 	public async delete(path: RelativePath): Promise<void> {
@@ -89,7 +96,7 @@ export class SafeFileSystemOperations implements FileSystemOperations {
 		return this.safeOperation(
 			oldPath,
 			async () =>
-				this.locks.withLock([oldPath, newPath], () =>
+				this.locks.withLock([oldPath, newPath], async () =>
 					this.fs.rename(oldPath, newPath)
 				),
 			"rename"

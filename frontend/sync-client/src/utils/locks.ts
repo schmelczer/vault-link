@@ -17,16 +17,16 @@ export class Locks<T> {
 
 	/**
 	 * Executes a function while holding exclusive locks on one or more keys.
-	 * 
+	 *
 	 * This method ensures that the provided function runs with exclusive access to the
 	 * specified key(s). Multiple keys are sorted to prevent deadlocks when different
 	 * operations request the same keys in different orders.
-	 * 
+	 *
 	 * @template R The return type of the function to execute
 	 * @param keyOrKeys A single key or array of keys to lock during function execution
 	 * @param fn The function to execute while holding the lock(s). Can be sync or async.
 	 * @returns A Promise that resolves to the return value of the executed function
-	 * 
+	 *
 	 * @example
 	 * ```typescript
 	 * // Lock a single key
@@ -34,14 +34,14 @@ export class Locks<T> {
 	 *   // Critical section - only one operation can access 'file1' at a time
 	 *   return processFile('file1');
 	 * });
-	 * 
+	 *
 	 * // Lock multiple keys (prevents deadlocks through consistent ordering)
 	 * await locks.withLock(['file1', 'file2'], async () => {
 	 *   // Critical section - exclusive access to both files
 	 *   await moveFile('file1', 'file2');
 	 * });
 	 * ```
-	 * 
+	 *
 	 * @throws Any error thrown by the provided function will be propagated after locks are released
 	 */
 	public async withLock<R>(
@@ -49,7 +49,7 @@ export class Locks<T> {
 		fn: () => R | Promise<R>
 	): Promise<R> {
 		const keys = Array.isArray(keyOrKeys) ? keyOrKeys : [keyOrKeys];
-		keys.sort(); // Ensure consistent order to prevent deadlocks
+		keys.sort((a, b) => String(a).localeCompare(String(b))); // Ensure consistent order to prevent deadlocks
 
 		await Promise.all(keys.map(async (key) => this.waitForLock(key)));
 

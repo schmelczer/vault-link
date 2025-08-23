@@ -29,7 +29,7 @@ describe("withLock", () => {
 		let executionCount = 0;
 		const result = await locks.withLock(testPath, async () => {
 			executionCount++;
-			await new Promise(resolve => setTimeout(resolve, 10));
+			await new Promise((resolve) => setTimeout(resolve, 10));
 			return "async-success";
 		});
 
@@ -54,14 +54,14 @@ describe("withLock", () => {
 		// Start two concurrent operations with keys in different orders
 		const promise1 = locks.withLock([testPath2, testPath], async () => {
 			executionOrder.push("operation1-start");
-			await new Promise(resolve => setTimeout(resolve, 50));
+			await new Promise((resolve) => setTimeout(resolve, 50));
 			executionOrder.push("operation1-end");
 			return "result1";
 		});
 
 		const promise2 = locks.withLock([testPath, testPath2], async () => {
 			executionOrder.push("operation2-start");
-			await new Promise(resolve => setTimeout(resolve, 50));
+			await new Promise((resolve) => setTimeout(resolve, 50));
 			executionOrder.push("operation2-end");
 			return "result2";
 		});
@@ -84,14 +84,14 @@ describe("withLock", () => {
 
 		const promise1 = locks.withLock(testPath, async () => {
 			executionOrder.push("operation1-start");
-			await new Promise(resolve => setTimeout(resolve, 50));
+			await new Promise((resolve) => setTimeout(resolve, 50));
 			executionOrder.push("operation1-end");
 			return "result1";
 		});
 
 		const promise2 = locks.withLock(testPath, async () => {
 			executionOrder.push("operation2-start");
-			await new Promise(resolve => setTimeout(resolve, 30));
+			await new Promise((resolve) => setTimeout(resolve, 30));
 			executionOrder.push("operation2-end");
 			return "result2";
 		});
@@ -113,14 +113,14 @@ describe("withLock", () => {
 
 		const promise1 = locks.withLock(testPath, async () => {
 			executionOrder.push("operation1-start");
-			await new Promise(resolve => setTimeout(resolve, 50));
+			await new Promise((resolve) => setTimeout(resolve, 50));
 			executionOrder.push("operation1-end");
 			return "result1";
 		});
 
 		const promise2 = locks.withLock(testPath2, async () => {
 			executionOrder.push("operation2-start");
-			await new Promise(resolve => setTimeout(resolve, 30));
+			await new Promise((resolve) => setTimeout(resolve, 30));
 			executionOrder.push("operation2-end");
 			return "result2";
 		});
@@ -136,26 +136,36 @@ describe("withLock", () => {
 
 	test("should release locks even if function throws", async () => {
 		const error = new Error("test error");
-		
-		await expect(locks.withLock(testPath, () => {
-			throw error;
-		})).rejects.toThrow("test error");
+
+		await expect(
+			locks.withLock(testPath, () => {
+				throw error;
+			})
+		).rejects.toThrow("test error");
 
 		// Lock should be released, allowing another operation
-		const result = await locks.withLock(testPath, () => "success-after-error");
+		const result = await locks.withLock(
+			testPath,
+			() => "success-after-error"
+		);
 		expect(result).toBe("success-after-error");
 	});
 
 	test("should release locks even if async function throws", async () => {
 		const error = new Error("async test error");
-		
-		await expect(locks.withLock(testPath, async () => {
-			await new Promise(resolve => setTimeout(resolve, 10));
-			throw error;
-		})).rejects.toThrow("async test error");
+
+		await expect(
+			locks.withLock(testPath, async () => {
+				await new Promise((resolve) => setTimeout(resolve, 10));
+				throw error;
+			})
+		).rejects.toThrow("async test error");
 
 		// Lock should be released, allowing another operation
-		const result = await locks.withLock(testPath, () => "success-after-async-error");
+		const result = await locks.withLock(
+			testPath,
+			() => "success-after-async-error"
+		);
 		expect(result).toBe("success-after-async-error");
 	});
 
@@ -170,30 +180,34 @@ describe("withLock", () => {
 		// Start first operation that holds the lock
 		const firstPromise = locks.withLock(testPath, async () => {
 			executionOrder.push("first-start");
-			await new Promise(resolve => setTimeout(resolve, 100));
+			await new Promise((resolve) => setTimeout(resolve, 100));
 			executionOrder.push("first-end");
 			return "first";
 		});
 
 		// Small delay to ensure first operation starts
-		await new Promise(resolve => setTimeout(resolve, 10));
+		await new Promise((resolve) => setTimeout(resolve, 10));
 
 		// Queue second and third operations
 		const secondPromise = locks.withLock(testPath, async () => {
 			executionOrder.push("second-start");
-			await new Promise(resolve => setTimeout(resolve, 30));
+			await new Promise((resolve) => setTimeout(resolve, 30));
 			executionOrder.push("second-end");
 			return "second";
 		});
 
 		const thirdPromise = locks.withLock(testPath, async () => {
 			executionOrder.push("third-start");
-			await new Promise(resolve => setTimeout(resolve, 20));
+			await new Promise((resolve) => setTimeout(resolve, 20));
 			executionOrder.push("third-end");
 			return "third";
 		});
 
-		const [first, second, third] = await Promise.all([firstPromise, secondPromise, thirdPromise]);
+		const [first, second, third] = await Promise.all([
+			firstPromise,
+			secondPromise,
+			thirdPromise
+		]);
 
 		expect(first).toBe("first");
 		expect(second).toBe("second");
