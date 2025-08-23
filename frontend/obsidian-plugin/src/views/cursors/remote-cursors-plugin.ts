@@ -9,10 +9,7 @@ import type {
 	ViewUpdate
 } from "@codemirror/view";
 import { RemoteCursorWidget } from "./remote-cursor-widget";
-import type {
-	CursorSpan,
-	DocumentWithMaybeOutdatedClientCursors
-} from "sync-client";
+import type { CursorSpan, MaybeOutdatedClientCursors } from "sync-client";
 import type { App } from "obsidian";
 import { MarkdownView } from "obsidian";
 
@@ -120,7 +117,7 @@ export const remoteCursorsPlugin = ViewPlugin.fromClass(
 );
 
 export function setCursors(
-	clients: DocumentWithMaybeOutdatedClientCursors[],
+	clients: MaybeOutdatedClientCursors[],
 	app: App
 ): void {
 	cursors = [

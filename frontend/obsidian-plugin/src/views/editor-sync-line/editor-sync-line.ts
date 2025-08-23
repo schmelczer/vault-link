@@ -1,7 +1,7 @@
 import type { Workspace } from "obsidian";
 import { FileView, setIcon } from "obsidian";
 import type { SyncClient } from "sync-client";
-import { DocumentUpdateStatus } from "sync-client";
+import { DocumentSyncStatus } from "sync-client";
 import "./editor-sync-line.scss";
 
 export function updateEditorStatusDisplay(
@@ -35,7 +35,7 @@ export function updateEditorStatusDisplay(
 
 			const isLoading =
 				client.getDocumentSyncingStatus(filePath) ==
-				DocumentUpdateStatus.SYNCING;
+				DocumentSyncStatus.SYNCING;
 
 			if (isLoading) {
 				element.classList.add("loading");
