@@ -23,8 +23,9 @@ pub struct CursorPositionFromClient {
 
 #[derive(TS, Serialize, Deserialize, Clone, Debug)]
 pub struct DocumentWithCursors {
-    #[ts(as = "u32")]
-    pub vault_update_id: VaultUpdateId,
+    // It's None in case the document is dirty
+    #[ts(as = "Option<u32>")]
+    pub vault_update_id: Option<VaultUpdateId>,
 
     pub document_id: DocumentId,
     pub relative_path: String,
