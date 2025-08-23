@@ -6,7 +6,7 @@ type ResolveFunction<T> = undefined extends T
  * A type-safe utility function to create a Promise with resolve and reject functions.
  * @returns A tuple containing a Promise, a resolve function, and a reject function.
  */
-export function createPromise<T = unknown | undefined>(): [
+export function createPromise<T = unknown>(): [
 	Promise<T>,
 	ResolveFunction<T>,
 	(error: unknown) => unknown
