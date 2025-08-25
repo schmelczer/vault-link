@@ -152,7 +152,7 @@ export class WebSocketManager {
 				}
 				// eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
 			} else if (message.type === "cursorPositions") {
-				this.logger.info(
+				this.logger.debug(
 					`Received cursor positions for ${JSON.stringify(message.clients)}`
 				);
 				this.remoteCursorsUpdateListeners.forEach((listener) => {

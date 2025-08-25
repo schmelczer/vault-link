@@ -19,7 +19,7 @@ import { updateEditorStatusDisplay } from "./views/editor-sync-line/editor-sync-
 import { remoteCursorsTheme } from "./views/cursors/remote-cursor-theme";
 import {
 	remoteCursorsPlugin,
-	setCursors
+	RemoteCursorsPluginValue
 } from "./views/cursors/remote-cursors-plugin";
 import { LocalCursorUpdateListener } from "./views/cursors/local-cursor-update-listener";
 import { slowFetchFactory } from "./debugging/slow-fetch-factory";
@@ -93,7 +93,7 @@ export default class VaultLinkPlugin extends Plugin {
 		this.registerEditorExtension([remoteCursorsTheme, remoteCursorsPlugin]);
 
 		this.client.addRemoteCursorsUpdateListener((cursors) => {
-			setCursors(cursors, this.app);
+			RemoteCursorsPluginValue.setCursors(cursors, this.app);
 		});
 
 		const cursorListener = new LocalCursorUpdateListener(

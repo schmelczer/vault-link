@@ -24,15 +24,18 @@ export function flakyWebSocketFactory(
 
 		public set onmessage(callback: (event: MessageEvent) => void) {
 			super.onmessage = async (event: MessageEvent): Promise<void> => {
-				await this.locks.waitForLock(FlakyWebSocket.RECEIVE_KEY);
+				await this.locks.withLock(
+					FlakyWebSocket.RECEIVE_KEY,
+					async () => {
+						if (jitterScaleInSeconds > 0) {
+							await sleep(
+								Math.random() * jitterScaleInSeconds * 1000
+							);
+						}
 
-				if (jitterScaleInSeconds > 0) {
-					await sleep(Math.random() * jitterScaleInSeconds * 1000);
-				}
-
-				callback(event);
-
-				this.locks.unlock(FlakyWebSocket.RECEIVE_KEY);
+						callback(event);
+					}
+				);
 			};
 		}
 
@@ -66,15 +69,12 @@ export function flakyWebSocketFactory(
 			data: string | ArrayBufferLike | Blob | ArrayBufferView
 		): Promise<void> {
 			// maintain message order
-			await this.locks.waitForLock(FlakyWebSocket.SEND_KEY);
-
-			if (jitterScaleInSeconds > 0) {
-				await sleep(Math.random() * jitterScaleInSeconds * 1000);
-			}
-
-			super.send(data);
-
-			this.locks.unlock(FlakyWebSocket.SEND_KEY);
+			await this.locks.withLock(FlakyWebSocket.SEND_KEY, async () => {
+				if (jitterScaleInSeconds > 0) {
+					await sleep(Math.random() * jitterScaleInSeconds * 1000);
+				}
+				super.send(data);
+			});
 		}
 	} as unknown as typeof WebSocket;
 }

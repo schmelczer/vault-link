@@ -47,7 +47,7 @@ impl Cursors {
         all_device_cursors.retain(|c| &c.client_cursors.device_id != device_id);
         all_device_cursors.push(ClientCursorsWithTimeToLive::new(ClientCursors {
             user_name,
-            device_id: device_id.to_string(),
+            device_id: device_id.clone(),
             documents_with_cursors: document_to_cursors,
         }));
 
@@ -126,5 +126,7 @@ impl ClientCursorsWithTimeToLive {
         }
     }
 
-    pub fn is_expired(&self, ttl: Duration) -> bool { self.last_updated.elapsed() > ttl }
+    pub fn is_expired(&self, ttl: Duration) -> bool {
+        self.last_updated.elapsed() > ttl
+    }
 }

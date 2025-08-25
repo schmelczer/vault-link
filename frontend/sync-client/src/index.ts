@@ -18,8 +18,8 @@ export type { PersistenceProvider } from "./persistence/persistence";
 export type { CursorSpan } from "./services/types/CursorSpan";
 export type { ClientCursors } from "./services/types/ClientCursors";
 export type { NetworkConnectionStatus } from "./types/network-connection-status";
-export type { DocumentWithMaybeOutdatedClientCursors } from "./types/maybe-outdated-client-cursors";
-export { DocumentUpdateStatus } from "./types/document-update-status";
+export type { MaybeOutdatedClientCursors } from "./types/maybe-outdated-client-cursors";
+export { DocumentSyncStatus } from "./types/document-sync-status";
 export { SyncClient } from "./sync-client";
 
 import { Locks } from "./utils/locks";

@@ -6,7 +6,9 @@ pub struct DeviceIdHeader(pub String);
 pub static DEVICE_ID_HEADER_NAME: HeaderName = HeaderName::from_static("device-id");
 
 impl Header for DeviceIdHeader {
-    fn name() -> &'static HeaderName { &DEVICE_ID_HEADER_NAME }
+    fn name() -> &'static HeaderName {
+        &DEVICE_ID_HEADER_NAME
+    }
 
     fn decode<'i, I>(values: &mut I) -> Result<Self, headers::Error>
     where
@@ -26,7 +28,7 @@ impl Header for DeviceIdHeader {
     where
         E: Extend<HeaderValue>,
     {
-        let value = HeaderValue::from_static(Box::leak(self.0.to_string().into_boxed_str()));
+        let value = HeaderValue::from_static(Box::leak(self.0.clone().into_boxed_str()));
 
         values.extend(std::iter::once(value));
     }
