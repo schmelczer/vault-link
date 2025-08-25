@@ -149,7 +149,7 @@ export class CursorTracker {
 	public addRemoteCursorsUpdateListener(
 		listener: (cursors: MaybeOutdatedClientCursors[]) => unknown
 	): void {
-		// CursorTracker registers its own event listener in the constructor so it must get called first
+		// CursorTracker registers its own event listener in the constructor so it must have been called before this
 		this.webSocketManager.addRemoteCursorsUpdateListener(async () => {
 			await this.updateLock.withLock(() =>
 				listener(this.getRelevantAndPruneKnownClientCursors())

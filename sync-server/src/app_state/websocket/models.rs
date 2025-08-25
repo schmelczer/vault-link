@@ -23,7 +23,11 @@ pub struct CursorPositionFromClient {
 
 #[derive(TS, Serialize, Deserialize, Clone, Debug)]
 pub struct DocumentWithCursors {
-    // It's None in case the document is dirty
+    // It's None in case the document is dirty.
+    // We still want to sync the cursor to mark
+    // that it exists and can be client-side
+    // interpolated. However, the actual
+    // position is meaningless.
     #[ts(as = "Option<u32>")]
     pub vault_update_id: Option<VaultUpdateId>,
 
