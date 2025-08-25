@@ -104,7 +104,10 @@ export class CursorTracker {
 				relative_path: relativePath,
 				document_id: record.documentId,
 				vault_update_id: record.metadata.parentVersionId,
-				cursors
+				cursors: cursors.map(({ start, end }) => ({
+					start: Math.min(start, end),
+					end: Math.max(start, end)
+				})) // the client might send directional selections
 			});
 		}
 
