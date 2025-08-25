@@ -15,6 +15,7 @@ process_count=$1
 mkdir -p logs
 
 cd frontend
+npm ci
 npm run build
 
 ../scripts/utils/wait-for-server.sh
@@ -33,7 +34,7 @@ print_failed_log() {
             # Get the exit code of the process
             wait ${pids[$i-1]}
             exit_code=$?
-            
+
             # Only consider non-zero exit codes as failures
             if [ $exit_code -ne 0 ]; then
                 cat "$(pwd)/logs/log_${i}.log"
