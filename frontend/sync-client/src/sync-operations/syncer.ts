@@ -9,7 +9,7 @@ import type { Logger } from "../tracing/logger";
 import PQueue from "p-queue";
 import { hash } from "../utils/hash";
 import { v4 as uuidv4 } from "uuid";
-import type { Settings, SyncSettings } from "../persistence/settings";
+import type { Settings } from "../persistence/settings";
 import type { FileOperations } from "../file-operations/file-operations";
 import { findMatchingFile } from "../utils/find-matching-file";
 import type { UnrestrictedSyncer } from "./unrestricted-syncer";
@@ -27,12 +27,10 @@ export class Syncer {
 
 	private runningScheduleSyncForOfflineChanges: Promise<void> | undefined;
 
-	// eslint-disable-next-line @typescript-eslint/max-params
 	public constructor(
-		private readonly deviceId: string,
 		private readonly logger: Logger,
 		private readonly database: Database,
-		private readonly settings: Settings,
+		settings: Settings,
 		private readonly syncService: SyncService,
 		private readonly operations: FileOperations,
 		private readonly internalSyncer: UnrestrictedSyncer
@@ -261,58 +259,77 @@ export class Syncer {
 			remoteVersion.documentId
 		);
 
-		let hasLockToRelease = false;
 		if (document === undefined) {
 			// Let's avoid the same documents getting created in parallel multiple times.
 			// There might be multiple tasks waiting for the lock
-			await this.remoteDocumentsLock.waitForLock(
-				remoteVersion.documentId
-			);
-			hasLockToRelease = true;
-			document = this.database.getDocumentByDocumentId(
-				remoteVersion.documentId
+			return this.remoteDocumentsLock.withLock(
+				remoteVersion.documentId,
+				async () => {
+					document = this.database.getDocumentByDocumentId(
+						remoteVersion.documentId
+					);
+
+					// We're either the first one to get the lock, so we have to create the document in `unrestrictedSyncRemotelyUpdatedFile`
+					if (document === undefined) {
+						await this.syncQueue.add(async () =>
+							this.internalSyncer.unrestrictedSyncRemotelyUpdatedFile(
+								remoteVersion
+							)
+						);
+					} else {
+						const [promise, resolve, reject] = createPromise();
+
+						document =
+							await this.database.getResolvedDocumentByRelativePath(
+								document.relativePath,
+								promise
+							);
+
+						try {
+							await this.syncQueue.add(async () =>
+								this.internalSyncer.unrestrictedSyncRemotelyUpdatedFile(
+									remoteVersion,
+									document
+								)
+							);
+
+							resolve();
+						} catch (e) {
+							reject(e);
+						} finally {
+							this.database.removeDocumentPromise(promise);
+						}
+					}
+
+					this.database.addSeenUpdateId(remoteVersion.vaultUpdateId);
+				}
 			);
 		}
+
+		// We're either the first one to get the lock, so we have to create the document in `unrestrictedSyncRemotelyUpdatedFile`
+		const [promise, resolve, reject] = createPromise();
+
+		document = await this.database.getResolvedDocumentByRelativePath(
+			document.relativePath,
+			promise
+		);
 
 		try {
-			// We're either the first one to get the lock, so we have to create the document in `unrestrictedSyncRemotelyUpdatedFile`
-			if (document === undefined) {
-				await this.syncQueue.add(async () =>
-					this.internalSyncer.unrestrictedSyncRemotelyUpdatedFile(
-						remoteVersion
-					)
-				);
-			} else {
-				const [promise, resolve, reject] = createPromise();
+			await this.syncQueue.add(async () =>
+				this.internalSyncer.unrestrictedSyncRemotelyUpdatedFile(
+					remoteVersion,
+					document
+				)
+			);
 
-				document =
-					await this.database.getResolvedDocumentByRelativePath(
-						document.relativePath,
-						promise
-					);
-
-				try {
-					await this.syncQueue.add(async () =>
-						this.internalSyncer.unrestrictedSyncRemotelyUpdatedFile(
-							remoteVersion,
-							document
-						)
-					);
-
-					resolve();
-				} catch (e) {
-					reject(e);
-				} finally {
-					this.database.removeDocumentPromise(promise);
-				}
-			}
-
-			this.database.addSeenUpdateId(remoteVersion.vaultUpdateId);
+			resolve();
+		} catch (e) {
+			reject(e);
 		} finally {
-			if (hasLockToRelease) {
-				this.remoteDocumentsLock.unlock(remoteVersion.documentId);
-			}
+			this.database.removeDocumentPromise(promise);
 		}
+
+		this.database.addSeenUpdateId(remoteVersion.vaultUpdateId);
 	}
 
 	private async internalScheduleSyncForOfflineChanges(): Promise<void> {

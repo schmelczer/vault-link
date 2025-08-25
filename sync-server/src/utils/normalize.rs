@@ -8,4 +8,6 @@ where
     Ok(normalize_string(&s))
 }
 
-pub fn normalize_string(s: &str) -> String { s.trim().to_lowercase() }
+pub fn normalize_string(s: &str) -> String {
+    s.trim().to_lowercase()
+}

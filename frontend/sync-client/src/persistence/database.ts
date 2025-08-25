@@ -37,7 +37,7 @@ export interface DocumentRecord {
 	documentId: DocumentId;
 	metadata: DocumentMetadata | undefined;
 	isDeleted: boolean;
-	updates: Promise<void>[];
+	updates: Promise<unknown>[];
 	parallelVersion: number;
 }
 
@@ -135,7 +135,7 @@ export class Database {
 		this.save();
 	}
 
-	public removeDocumentPromise(promise: Promise<void>): void {
+	public removeDocumentPromise(promise: Promise<unknown>): void {
 		const entry = this.documents.find(({ updates }) =>
 			updates.includes(promise)
 		);
@@ -167,7 +167,7 @@ export class Database {
 
 	public async getResolvedDocumentByRelativePath(
 		relativePath: RelativePath,
-		promise: Promise<void>
+		promise: Promise<unknown>
 	): Promise<DocumentRecord> {
 		const entry = this.getLatestDocumentByRelativePath(relativePath);
 
@@ -191,7 +191,7 @@ export class Database {
 	public createNewPendingDocument(
 		documentId: DocumentId,
 		relativePath: RelativePath,
-		promise: Promise<void>
+		promise: Promise<unknown>
 	): DocumentRecord {
 		const previousEntry =
 			this.getLatestDocumentByRelativePath(relativePath);

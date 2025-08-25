@@ -1,6 +1,6 @@
 [package]
 name = "sync_server"
-rust-version = "1.87.0"
+rust-version = "1.89.0"
 authors = ["Andras Schmelczer <andras@schmelczer.dev>"]
 edition = "2024"
 license = "MIT"
