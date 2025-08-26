@@ -102,38 +102,10 @@ export class RemoteCursorsPluginValue implements PluginValue {
 		const original = update.startState.doc.toString();
 		const edited = update.state.doc.toString();
 
-		const updatedPositions: number[] = [];
-		const reconciled = reconcileWithHistory(
+		RemoteCursorsPluginValue.interpolateRemoteCursorPositions(
 			original,
-			{
-				text: original,
-				cursors: RemoteCursorsPluginValue.cursors.flatMap(
-					({ span }, i) => [
-						{ id: i * 2, position: span.start },
-						{ id: i * 2 + 1, position: span.end }
-					]
-				)
-			},
-			edited,
-			"Character"
+			edited
 		);
-
-		reconciled.cursors.forEach(({ id, position }) => {
-			const whereToJump = findWhereToMoveCursor(
-				position,
-				reconciled.history
-			);
-			if (whereToJump !== null) {
-				updatedPositions[id] = whereToJump;
-			} else {
-				updatedPositions[id] = position;
-			}
-		});
-
-		RemoteCursorsPluginValue.cursors.forEach(({ span }, i) => {
-			span.start = updatedPositions[i * 2];
-			span.end = updatedPositions[i * 2 + 1];
-		});
 
 		const decorations: Range<Decoration>[] = [];
 
@@ -206,6 +178,50 @@ export class RemoteCursorsPluginValue implements PluginValue {
 		);
 
 		this.decorations = Decoration.set(decorations, true);
+	}
+
+	private static interpolateRemoteCursorPositions(
+		original: string,
+		edited: string
+	): void {
+		if (
+			original === edited ||
+			RemoteCursorsPluginValue.cursors.length === 0
+		) {
+			return;
+		}
+
+		const updatedPositions: number[] = [];
+		const reconciled = reconcileWithHistory(
+			original,
+			{
+				text: original,
+				cursors: RemoteCursorsPluginValue.cursors.flatMap(
+					({ span }, i) => [
+						{ id: i * 2, position: span.start },
+						{ id: i * 2 + 1, position: span.end }
+					]
+				)
+			},
+			edited
+		);
+
+		reconciled.cursors.forEach(({ id, position }) => {
+			const whereToJump = findWhereToMoveCursor(
+				position,
+				reconciled.history
+			);
+			if (whereToJump !== null) {
+				updatedPositions[id] = whereToJump;
+			} else {
+				updatedPositions[id] = position;
+			}
+		});
+
+		RemoteCursorsPluginValue.cursors.forEach(({ span }, i) => {
+			span.start = updatedPositions[i * 2];
+			span.end = updatedPositions[i * 2 + 1];
+		});
 	}
 }
 
