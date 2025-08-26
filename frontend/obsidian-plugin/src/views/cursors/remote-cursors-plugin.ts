@@ -18,25 +18,6 @@ import { getRandomColor } from "src/utils/get-random-color";
 import type { SpanWithHistory } from "reconcile-text";
 import { reconcileWithHistory } from "reconcile-text";
 
-function findWhereToMoveCursor(
-	cursor: number,
-	spans: SpanWithHistory[]
-): number | null {
-	let position = 0;
-	for (const span of spans) {
-		// left and origin are the same
-		if (position === cursor && span.history === "AddedFromRight") {
-			return position + span.text.length;
-		}
-		position += span.text.length;
-		if (position === cursor && span.history === "RemovedFromRight") {
-			return position - span.text.length;
-		}
-	}
-
-	return null;
-}
-
 const forceUpdate = StateEffect.define();
 
 export class RemoteCursorsPluginValue implements PluginValue {
@@ -96,6 +77,69 @@ export class RemoteCursorsPluginValue implements PluginValue {
 					effects: [forceUpdate.of(null)]
 				});
 			});
+	}
+
+	private static interpolateRemoteCursorPositions(
+		original: string,
+		edited: string
+	): void {
+		if (
+			original === edited ||
+			RemoteCursorsPluginValue.cursors.length === 0
+		) {
+			return;
+		}
+
+		const updatedPositions: number[] = [];
+		const reconciled = reconcileWithHistory(
+			original,
+			{
+				text: original,
+				cursors: RemoteCursorsPluginValue.cursors.flatMap(
+					({ span }, i) => [
+						{ id: i * 2, position: span.start },
+						{ id: i * 2 + 1, position: span.end }
+					]
+				)
+			},
+			edited
+		);
+
+		reconciled.cursors.forEach(({ id, position }) => {
+			const whereToJump = RemoteCursorsPluginValue.findWhereToMoveCursor(
+				position,
+				reconciled.history
+			);
+			if (whereToJump !== null) {
+				updatedPositions[id] = whereToJump;
+			} else {
+				updatedPositions[id] = position;
+			}
+		});
+
+		RemoteCursorsPluginValue.cursors.forEach(({ span }, i) => {
+			span.start = updatedPositions[i * 2];
+			span.end = updatedPositions[i * 2 + 1];
+		});
+	}
+
+	private static findWhereToMoveCursor(
+		cursor: number,
+		spans: SpanWithHistory[]
+	): number | null {
+		let position = 0;
+		for (const span of spans) {
+			// left and origin are the same
+			if (position === cursor && span.history === "AddedFromRight") {
+				return position + span.text.length;
+			}
+			position += span.text.length;
+			if (position === cursor && span.history === "RemovedFromRight") {
+				return position - span.text.length;
+			}
+		}
+
+		return null;
 	}
 
 	public update(update: ViewUpdate): void {
@@ -178,50 +222,6 @@ export class RemoteCursorsPluginValue implements PluginValue {
 		);
 
 		this.decorations = Decoration.set(decorations, true);
-	}
-
-	private static interpolateRemoteCursorPositions(
-		original: string,
-		edited: string
-	): void {
-		if (
-			original === edited ||
-			RemoteCursorsPluginValue.cursors.length === 0
-		) {
-			return;
-		}
-
-		const updatedPositions: number[] = [];
-		const reconciled = reconcileWithHistory(
-			original,
-			{
-				text: original,
-				cursors: RemoteCursorsPluginValue.cursors.flatMap(
-					({ span }, i) => [
-						{ id: i * 2, position: span.start },
-						{ id: i * 2 + 1, position: span.end }
-					]
-				)
-			},
-			edited
-		);
-
-		reconciled.cursors.forEach(({ id, position }) => {
-			const whereToJump = findWhereToMoveCursor(
-				position,
-				reconciled.history
-			);
-			if (whereToJump !== null) {
-				updatedPositions[id] = whereToJump;
-			} else {
-				updatedPositions[id] = position;
-			}
-		});
-
-		RemoteCursorsPluginValue.cursors.forEach(({ span }, i) => {
-			span.start = updatedPositions[i * 2];
-			span.end = updatedPositions[i * 2 + 1];
-		});
 	}
 }
 
