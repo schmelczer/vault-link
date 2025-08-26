@@ -9,8 +9,6 @@ cargo fmt --all -- --check
 cargo machete
 cargo test --verbose
 
-scripts/update-api-types.sh
-
 echo "Running checks in frontend"
 cd ../frontend
 npm ci
