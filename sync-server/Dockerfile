@@ -1,33 +1,33 @@
-FROM rust:1.89 AS builder
+FROM rust:1.89-alpine AS builder
 
 WORKDIR /usr/src/backend
 
-RUN apt update && apt install -y musl-tools
-RUN cargo install sqlx-cli
+# Install build dependencies for Alpine
+RUN apk add --no-cache musl-dev pkgconf openssl-dev perl make
 
+# Install sqlx-cli
+RUN cargo install sqlx-cli --features=openssl-vendored
+
+# Setup database and build
 COPY . .
-
-RUN sqlx database create --database-url sqlite://db.sqlite3
-RUN sqlx migrate run --source src/app_state/database/migrations --database-url sqlite://db.sqlite3
-
-RUN cargo build --release --target x86_64-unknown-linux-musl
+RUN sqlx database create --database-url sqlite://db.sqlite3 && \
+    sqlx migrate run --source src/app_state/database/migrations --database-url sqlite://db.sqlite3 && \
+    cargo build --release
 
 # Runtime image
 FROM alpine:3.22.0
 
 LABEL org.opencontainers.image.authors="andras@schmelczer.dev"
 
-RUN apk add --no-cache curl
+RUN apk add --no-cache curl ca-certificates
 
-COPY --from=builder /usr/src/backend/target/x86_64-unknown-linux-musl/release/sync_server /app/sync_server
+COPY --from=builder /usr/src/backend/target/release/sync_server /app/sync_server
 
 VOLUME /data
 EXPOSE 3000/tcp
 WORKDIR /data
 
-HEALTHCHECK \
-    --interval=30s \
-    --timeout=5s \
+HEALTHCHECK --interval=30s --timeout=5s \
     CMD curl -f http://localhost:3000/vaults/fake/ping || exit 1
 
 ENTRYPOINT ["/app/sync_server"]
