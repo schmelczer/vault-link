@@ -24,6 +24,7 @@ import {
 import { LocalCursorUpdateListener } from "./views/cursors/local-cursor-update-listener";
 import { slowFetchFactory } from "./debugging/slow-fetch-factory";
 import { flakyWebSocketFactory } from "./debugging/flaky-websocket-factory";
+import { renderCursorsInFileExplorer } from "./views/cursors/file-explorer";
 
 const MIN_WAIT_BETWEEN_UPDATES_IN_MS = 250;
 
@@ -94,6 +95,7 @@ export default class VaultLinkPlugin extends Plugin {
 
 		this.client.addRemoteCursorsUpdateListener((cursors) => {
 			RemoteCursorsPluginValue.setCursors(cursors, this.app);
+			renderCursorsInFileExplorer(cursors, this.app);
 		});
 
 		const cursorListener = new LocalCursorUpdateListener(
