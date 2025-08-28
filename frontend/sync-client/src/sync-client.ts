@@ -24,6 +24,7 @@ import { FileChangeNotifier } from "./sync-operations/file-change-notifier";
 
 export class SyncClient {
 	private static readonly MINIMUM_SAVE_INTERVAL_MS = 1000;
+	private hasFinishedOfflineSync = false;
 
 	// eslint-disable-next-line @typescript-eslint/max-params
 	private constructor(
@@ -42,6 +43,14 @@ export class SyncClient {
 			async (newSettings, oldSettings) => {
 				if (newSettings.vaultName !== oldSettings.vaultName) {
 					await this.reset();
+				}
+
+				if (newSettings.isSyncEnabled !== oldSettings.isSyncEnabled) {
+					if (newSettings.isSyncEnabled) {
+						await this.start();
+					} else {
+						this.stop();
+					}
 				}
 			}
 		);
@@ -198,9 +207,12 @@ export class SyncClient {
 
 	public async start(): Promise<void> {
 		await this.syncer.scheduleSyncForOfflineChanges();
+		this.hasFinishedOfflineSync = true;
+		this.webSocketManager.start();
 	}
 
 	public stop(): void {
+		this.hasFinishedOfflineSync = false;
 		this.webSocketManager.stop();
 	}
 
@@ -216,7 +228,6 @@ export class SyncClient {
 		this.stop();
 		this.connectionStatus.startReset();
 		await this.syncer.reset();
-		await this.webSocketManager.reset();
 		this.history.reset();
 		this.database.reset();
 		this._logger.reset();
@@ -286,6 +297,17 @@ export class SyncClient {
 	public getDocumentSyncingStatus(
 		relativePath: RelativePath
 	): DocumentSyncStatus {
+		if (!this.settings.getSettings().isSyncEnabled) {
+			return DocumentSyncStatus.SYNCING_IS_DISABLED;
+		}
+
+		if (
+			!this.webSocketManager.isFirstSyncCompleted ||
+			!this.hasFinishedOfflineSync
+		) {
+			return DocumentSyncStatus.SYNCING;
+		}
+
 		const document =
 			this.database.getLatestDocumentByRelativePath(relativePath);
 		if (document === undefined) {

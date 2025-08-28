@@ -1,10 +1,10 @@
 import type {
+	MarkdownView,
 	Editor,
 	MarkdownFileInfo,
 	TAbstractFile,
 	WorkspaceLeaf
 } from "obsidian";
-import type { MarkdownView } from "obsidian";
 import { Platform, Plugin, TFile } from "obsidian";
 import "../manifest.json";
 import { HistoryView } from "./views/history/history-view";
@@ -15,7 +15,7 @@ import { SyncClient, rateLimit, DEFAULT_SETTINGS, Logger } from "sync-client";
 import { ObsidianFileSystemOperations } from "./obsidian-file-system";
 import { SyncSettingsTab } from "./views/settings/settings-tab";
 import { logToConsole } from "./utils/log-to-console";
-import { updateEditorStatusDisplay } from "./views/editor-sync-line/editor-sync-line";
+import { EditorStatusDisplayManager } from "./views/editor-status-display-manager/editor-status-display-manager";
 import { remoteCursorsTheme } from "./views/cursors/remote-cursor-theme";
 import {
 	remoteCursorsPlugin,
@@ -124,17 +124,23 @@ export default class VaultLinkPlugin extends Plugin {
 			this.registerEditorEvents();
 			await this.client.start();
 
-			const interval = setInterval(() => {
-				updateEditorStatusDisplay(this.app.workspace, this.client);
-			}, 200);
+			const editorStatusDisplayManager = new EditorStatusDisplayManager(
+				this,
+				this.app.workspace,
+				this.client
+			);
 			this.disposables.push(() => {
-				clearInterval(interval);
+				editorStatusDisplayManager.stop();
 			});
 		});
 	}
 
 	public onunload(): void {
-		this.client.stop();
+		this.client.waitAndStop().catch((err: unknown) => {
+			this.client.logger.error(
+				`Error while stopping the sync client: ${err}`
+			);
+		});
 		this.disposables.forEach((disposable) => {
 			disposable();
 		});
