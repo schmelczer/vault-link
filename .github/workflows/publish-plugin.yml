@@ -25,6 +25,19 @@ jobs:
           cd frontend
           npm ci
           npm run build
+              
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.89.0"
+
+      - name: Install cross-compilation tools
+        run: |
+          sudo apt update
+          sudo apt install -y gcc-aarch64-linux-gnu musl-tools gcc-mingw-w64-x86-64 
+          
+      - name: Build Linux and Windows binaries
+        run: ./scripts/build-sync-server-binaries.sh
 
       - name: Create release
         env:
@@ -37,4 +50,4 @@ jobs:
           gh release create "$tag" \
             --title="$tag" \
             --draft \
-            main.js manifest.json styles.css
+            main.js manifest.json styles.css artifacts/sync-server-*
