@@ -10,8 +10,8 @@ sqlx migrate run --source src/app_state/database/migrations --database-url sqlit
 
 targets=${@:-"x86_64-unknown-linux-gnu x86_64-unknown-linux-musl aarch64-unknown-linux-gnu x86_64-pc-windows-gnu"}
 
-mkdir -p ../artifacts
-rm -f ../artifacts/sync-server-*
+mkdir -p artifacts
+rm -f artifacts/sync-server-*
 
 
 for target in $targets; do
