@@ -7,7 +7,7 @@
 		"esModuleInterop": true,
 		"lib": [
 			"DOM",
-			"ESNext"
+			"ES2024",
 		],
 		"moduleResolution": "node"
 	},

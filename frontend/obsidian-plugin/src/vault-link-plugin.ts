@@ -1,29 +1,33 @@
 import type {
+	MarkdownView,
 	Editor,
 	MarkdownFileInfo,
 	TAbstractFile,
 	WorkspaceLeaf
 } from "obsidian";
-import type { MarkdownView } from "obsidian";
 import { Platform, Plugin, TFile } from "obsidian";
 import "../manifest.json";
 import { HistoryView } from "./views/history/history-view";
 import { StatusBar } from "./views/status-bar/status-bar";
 import { LogsView } from "./views/logs/logs-view";
 import { StatusDescription } from "./views/status-description/status-description";
-import { SyncClient, rateLimit, DEFAULT_SETTINGS, Logger } from "sync-client";
+import {
+	SyncClient,
+	rateLimit,
+	DEFAULT_SETTINGS,
+	Logger,
+	debugging
+} from "sync-client";
 import { ObsidianFileSystemOperations } from "./obsidian-file-system";
 import { SyncSettingsTab } from "./views/settings/settings-tab";
-import { logToConsole } from "./utils/log-to-console";
-import { updateEditorStatusDisplay } from "./views/editor-sync-line/editor-sync-line";
+import { EditorStatusDisplayManager } from "./views/editor-status-display-manager/editor-status-display-manager";
 import { remoteCursorsTheme } from "./views/cursors/remote-cursor-theme";
 import {
 	remoteCursorsPlugin,
 	RemoteCursorsPluginValue
 } from "./views/cursors/remote-cursors-plugin";
 import { LocalCursorUpdateListener } from "./views/cursors/local-cursor-update-listener";
-import { slowFetchFactory } from "./debugging/slow-fetch-factory";
-import { flakyWebSocketFactory } from "./debugging/flaky-websocket-factory";
+import { renderCursorsInFileExplorer } from "./views/cursors/file-explorer";
 
 const MIN_WAIT_BETWEEN_UPDATES_IN_MS = 250;
 
@@ -48,8 +52,8 @@ export default class VaultLinkPlugin extends Plugin {
 
 		const debugOptions = isDebugBuild
 			? {
-					fetch: slowFetchFactory(1),
-					webSocket: flakyWebSocketFactory(1, new Logger())
+					fetch: debugging.slowFetchFactory(1),
+					webSocket: debugging.slowWebSocketFactory(1, new Logger())
 				}
 			: {};
 
@@ -66,7 +70,9 @@ export default class VaultLinkPlugin extends Plugin {
 			...debugOptions
 		});
 
-		logToConsole(this.client);
+		if (isDebugBuild) {
+			debugging.logToConsole(this.client);
+		}
 
 		const statusDescription = new StatusDescription(this.client);
 
@@ -94,6 +100,7 @@ export default class VaultLinkPlugin extends Plugin {
 
 		this.client.addRemoteCursorsUpdateListener((cursors) => {
 			RemoteCursorsPluginValue.setCursors(cursors, this.app);
+			renderCursorsInFileExplorer(cursors, this.app);
 		});
 
 		const cursorListener = new LocalCursorUpdateListener(
@@ -122,17 +129,23 @@ export default class VaultLinkPlugin extends Plugin {
 			this.registerEditorEvents();
 			await this.client.start();
 
-			const interval = setInterval(() => {
-				updateEditorStatusDisplay(this.app.workspace, this.client);
-			}, 200);
+			const editorStatusDisplayManager = new EditorStatusDisplayManager(
+				this,
+				this.app.workspace,
+				this.client
+			);
 			this.disposables.push(() => {
-				clearInterval(interval);
+				editorStatusDisplayManager.stop();
 			});
 		});
 	}
 
 	public onunload(): void {
-		this.client.stop();
+		this.client.waitAndStop().catch((err: unknown) => {
+			this.client.logger.error(
+				`Error while stopping the sync client: ${err}`
+			);
+		});
 		this.disposables.forEach((disposable) => {
 			disposable();
 		});

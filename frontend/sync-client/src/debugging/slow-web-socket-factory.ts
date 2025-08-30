@@ -1,8 +1,8 @@
-import type { Logger } from "sync-client";
-import { helpers } from "sync-client";
-import { sleep } from "./sleep";
+import { sleep } from "../utils/sleep";
+import { Locks } from "../utils/locks";
+import type { Logger } from "../tracing/logger";
 
-export function flakyWebSocketFactory(
+export function slowWebSocketFactory(
 	jitterScaleInSeconds: number,
 	logger: Logger
 ): typeof WebSocket {
@@ -11,7 +11,7 @@ export function flakyWebSocketFactory(
 		private static readonly RECEIVE_KEY = "websocket-receive";
 		private static readonly SEND_KEY = "websocket-send";
 
-		private readonly locks = new helpers.Locks(logger);
+		private readonly locks = new Locks(logger);
 
 		public set onopen(callback: (event: Event) => void) {
 			super.onopen = async (event: Event): Promise<void> => {
@@ -25,7 +25,7 @@ export function flakyWebSocketFactory(
 
 		public set onmessage(callback: (event: MessageEvent) => void) {
 			super.onmessage = async (event: MessageEvent): Promise<void> => {
-				return this.locks.withLock(
+				await this.locks.withLock(
 					FlakyWebSocket.RECEIVE_KEY,
 					async () => {
 						if (jitterScaleInSeconds > 0) {
@@ -70,11 +70,10 @@ export function flakyWebSocketFactory(
 			data: string | ArrayBufferLike | Blob | ArrayBufferView
 		): Promise<void> {
 			// maintain message order
-			return this.locks.withLock(FlakyWebSocket.SEND_KEY, async () => {
+			await this.locks.withLock(FlakyWebSocket.SEND_KEY, async () => {
 				if (jitterScaleInSeconds > 0) {
 					await sleep(Math.random() * jitterScaleInSeconds * 1000);
 				}
-
 				super.send(data);
 			});
 		}

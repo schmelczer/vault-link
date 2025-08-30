@@ -1,3 +1,5 @@
+import { sleep } from "../utils/sleep";
+
 export const slowFetchFactory =
 	(jitterScaleInSeconds: number) =>
 	async (

@@ -13,9 +13,10 @@ export class WebSocketManager {
 		cursors: ClientCursors[]
 	) => unknown)[] = [];
 
-	private refreshWebSocketInterval: NodeJS.Timeout | undefined;
-
 	private webSocket: WebSocket | undefined;
+
+	private isStopped = true;
+	private _isFirstSyncCompleted = false;
 
 	private readonly webSocketFactoryImplementation: typeof globalThis.WebSocket;
 
@@ -41,20 +42,15 @@ export class WebSocketManager {
 			}
 		}
 
-		this.updateWebSocket(settings.getSettings());
-
 		settings.addOnSettingsChangeListener((newSettings, oldSettings) => {
 			if (
 				newSettings.remoteUri !== oldSettings.remoteUri ||
 				newSettings.vaultName !== oldSettings.vaultName ||
-				newSettings.token !== oldSettings.token ||
-				newSettings.isSyncEnabled !== oldSettings.isSyncEnabled
+				newSettings.token !== oldSettings.token
 			) {
-				this.updateWebSocket(newSettings);
+				this.initializeWebSocket(newSettings);
 			}
 		});
-
-		this.setWebSocketRefreshInterval();
 	}
 
 	public get isWebSocketConnected(): boolean {
@@ -62,6 +58,10 @@ export class WebSocketManager {
 			this.webSocket?.readyState ===
 			this.webSocketFactoryImplementation.OPEN
 		);
+	}
+
+	public get isFirstSyncCompleted(): boolean {
+		return this._isFirstSyncCompleted;
 	}
 
 	public addWebSocketStatusChangeListener(listener: () => unknown): void {
@@ -74,19 +74,15 @@ export class WebSocketManager {
 		this.remoteCursorsUpdateListeners.push(listener);
 	}
 
-	public async reset(): Promise<void> {
-		this.setWebSocketRefreshInterval();
-		this.updateWebSocket(this.settings.getSettings());
+	public start(): void {
+		this.isStopped = false;
+		this._isFirstSyncCompleted = false;
+		this.initializeWebSocket(this.settings.getSettings());
 	}
 
 	public stop(): void {
-		clearInterval(this.refreshWebSocketInterval);
-
-		try {
-			this.webSocket?.close();
-		} catch (e) {
-			this.logger.warn(`Failed to close WebSocket: ${e}`);
-		}
+		this.isStopped = true;
+		this.webSocket?.close(1000, "WebSocketManager has been stopped");
 	}
 
 	public updateLocalCursors(cursorPositions: CursorPositionFromClient): void {
@@ -101,21 +97,20 @@ export class WebSocketManager {
 			...cursorPositions
 		};
 		this.webSocket?.send(JSON.stringify(message));
-		this.logger.info(
+		this.logger.debug(
 			`Sent cursor positions: ${JSON.stringify(cursorPositions)}`
 		);
 	}
 
-	private updateWebSocket(settings: SyncSettings): void {
+	private initializeWebSocket(settings: SyncSettings): void {
+		if (this.isStopped) {
+			return;
+		}
+
 		try {
 			this.webSocket?.close();
 		} catch (e) {
 			this.logger.warn(`Failed to close WebSocket: ${e}`);
-		}
-
-		if (!settings.isSyncEnabled) {
-			this.webSocket = undefined;
-			return;
 		}
 
 		const wsUri = new URL(settings.remoteUri);
@@ -126,55 +121,10 @@ export class WebSocketManager {
 
 		this.webSocket = new this.webSocketFactoryImplementation(wsUri);
 
-		this.webSocket.onmessage = async (event): Promise<void> => {
-			// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-			const message = JSON.parse(event.data) as WebSocketServerMessage;
-
-			if (message.type === "vaultUpdate") {
-				try {
-					await Promise.all(
-						message.documents.map(async (document) =>
-							this.syncer.syncRemotelyUpdatedFile(document)
-						)
-					);
-
-					if (message.isInitialSync && message.documents.length > 0) {
-						this.database.setLastSeenUpdateId(
-							message.documents
-								.map((document) => document.vaultUpdateId)
-								.reduce((a, b) => Math.max(a, b))
-						);
-					}
-				} catch (e) {
-					this.logger.error(
-						`Failed to sync remotely updated file: ${e}`
-					);
-				}
-				// eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-			} else if (message.type === "cursorPositions") {
-				this.logger.debug(
-					`Received cursor positions for ${JSON.stringify(message.clients)}`
-				);
-				this.remoteCursorsUpdateListeners.forEach((listener) => {
-					listener(
-						message.clients.filter(
-							(client) => client.deviceId !== this.deviceId
-						)
-					);
-				});
-			} else {
-				this.logger.warn(
-					`Received unknown message type: ${JSON.stringify(message)}`
-				);
-			}
-		};
-
 		// The JS WebSocket API doesn't support setting headers, so we have to send the token as a message
 		this.webSocket.onopen = (): void => {
 			this.logger.info("WebSocket connection opened");
-			this.webSocketStatusChangeListeners.forEach((listener) => {
-				listener();
-			});
+			this.webSocketStatusChangeListeners.forEach((l) => l());
 
 			const message: WebSocketClientMessage = {
 				type: "handshake",
@@ -185,25 +135,65 @@ export class WebSocketManager {
 			this.webSocket?.send(JSON.stringify(message));
 		};
 
+		this.webSocket.onmessage = async (event): Promise<void> => {
+			// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+			const message = JSON.parse(event.data) as WebSocketServerMessage;
+			return this.handleWebSocketMessage(message);
+		};
+
 		this.webSocket.onclose = (event): void => {
 			this.logger.warn(
 				`WebSocket closed with code ${event.code} (${event.reason == "" ? "unknown reason" : event.reason})`
 			);
-			this.webSocketStatusChangeListeners.forEach((listener) => {
-				listener();
-			});
+			this.webSocketStatusChangeListeners.forEach((l) => l());
+
+			if (!this.isStopped) {
+				setTimeout(() => {
+					this.initializeWebSocket(this.settings.getSettings());
+				}, this.settings.getSettings().webSocketRetryIntervalMs);
+			}
 		};
 	}
 
-	private setWebSocketRefreshInterval(): void {
-		this.refreshWebSocketInterval = setInterval(() => {
-			if (
-				this.webSocket?.readyState ===
-				this.webSocketFactoryImplementation.CLOSED
-			) {
-				this.logger.info("WebSocket is closed, reconnecting...");
-				this.updateWebSocket(this.settings.getSettings());
+	private async handleWebSocketMessage(
+		message: WebSocketServerMessage
+	): Promise<void> {
+		if (message.type === "vaultUpdate") {
+			try {
+				await Promise.all(
+					message.documents.map(async (document) =>
+						this.syncer.syncRemotelyUpdatedFile(document)
+					)
+				);
+
+				if (message.isInitialSync && message.documents.length > 0) {
+					this.database.setLastSeenUpdateId(
+						message.documents
+							.map((document) => document.vaultUpdateId)
+							.reduce((a, b) => Math.max(a, b))
+					);
+				}
+
+				this._isFirstSyncCompleted = true;
+			} catch (e) {
+				this.logger.error(`Failed to sync remotely updated file: ${e}`);
 			}
-		}, this.settings.getSettings().webSocketRetryIntervalMs);
+			// eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+		} else if (message.type === "cursorPositions") {
+			this.logger.debug(
+				`Received cursor positions for ${JSON.stringify(message.clients)}`
+			);
+			this.remoteCursorsUpdateListeners.forEach((listener) => {
+				listener(
+					message.clients.filter(
+						(client) => client.deviceId !== this.deviceId
+					)
+				);
+			});
+		} else {
+			this.logger.warn(
+				`Received unknown message type: ${JSON.stringify(message)}`
+			);
+		}
 	}
 }

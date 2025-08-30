@@ -30,7 +30,7 @@ RUN . /tmp/rust_env && \
     cargo build --release --target $RUST_TARGET
 
 # Runtime image
-FROM alpine:3.22.0
+FROM alpine:3.22.1
 
 LABEL org.opencontainers.image.authors="andras@schmelczer.dev"
 

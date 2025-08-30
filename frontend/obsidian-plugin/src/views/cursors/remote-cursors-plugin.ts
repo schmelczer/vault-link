@@ -9,12 +9,15 @@ import type {
 	ViewUpdate
 } from "@codemirror/view";
 import { RemoteCursorWidget } from "./remote-cursor-widget";
-import type { CursorSpan, MaybeOutdatedClientCursors } from "sync-client";
+import {
+	utils,
+	type CursorSpan,
+	type MaybeOutdatedClientCursors
+} from "sync-client";
 import type { App } from "obsidian";
 import { MarkdownView } from "obsidian";
 
 import { StateEffect } from "@codemirror/state";
-import { getRandomColor } from "src/utils/get-random-color";
 import type { SpanWithHistory } from "reconcile-text";
 import { reconcileWithHistory } from "reconcile-text";
 
@@ -155,7 +158,7 @@ export class RemoteCursorsPluginValue implements PluginValue {
 
 		RemoteCursorsPluginValue.cursors.forEach(
 			({ name, span: { start, end } }) => {
-				const color = getRandomColor(name);
+				const color = utils.getRandomColor(name);
 				const startLine = update.view.state.doc.lineAt(start);
 				const endLine = update.view.state.doc.lineAt(end);
 

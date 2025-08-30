@@ -1,5 +1,5 @@
 import type { Editor } from "obsidian";
-import { lineAndColumnToPosition } from "../../utils/line-and-column-to-position";
+import { utils } from "sync-client";
 
 export interface Selection {
 	id: number;
@@ -11,7 +11,7 @@ export function getSelectionsFromEditor(editor: Editor): Selection[] {
 	const text = editor.getValue();
 	return editor.listSelections().map(({ anchor, head }, i) => ({
 		id: i,
-		start: lineAndColumnToPosition(text, anchor.line, anchor.ch),
-		end: lineAndColumnToPosition(text, head.line, head.ch)
+		start: utils.lineAndColumnToPosition(text, anchor.line, anchor.ch),
+		end: utils.lineAndColumnToPosition(text, head.line, head.ch)
 	}));
 }

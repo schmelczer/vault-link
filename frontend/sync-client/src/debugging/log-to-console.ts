@@ -1,5 +1,6 @@
-import type { LogLine, SyncClient } from "sync-client";
-import { LogLevel } from "sync-client";
+import type { SyncClient } from "../sync-client";
+import type { LogLine } from "../tracing/logger";
+import { LogLevel } from "../tracing/logger";
 
 export function logToConsole(client: SyncClient): void {
 	client.logger.addOnMessageListener((logLine: LogLine) => {

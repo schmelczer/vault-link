@@ -1,3 +1,5 @@
+import { describe, it, beforeEach } from "node:test";
+import assert from "node:assert";
 import { Logger } from "../tracing/logger";
 import type { RelativePath } from "../persistence/database";
 import { Locks } from "./locks";
@@ -14,18 +16,18 @@ describe("withLock", () => {
 		locks = new Locks<RelativePath>(logger);
 	});
 
-	test("should execute function with single key lock", async () => {
+	it("should execute function with single key lock", async () => {
 		let executionCount = 0;
 		const result = await locks.withLock(testPath, () => {
 			executionCount++;
 			return "success";
 		});
 
-		expect(result).toBe("success");
-		expect(executionCount).toBe(1);
+		assert.strictEqual(result, "success");
+		assert.strictEqual(executionCount, 1);
 	});
 
-	test("should execute async function with single key lock", async () => {
+	it("should execute async function with single key lock", async () => {
 		let executionCount = 0;
 		const result = await locks.withLock(testPath, async () => {
 			executionCount++;
@@ -33,22 +35,22 @@ describe("withLock", () => {
 			return "async-success";
 		});
 
-		expect(result).toBe("async-success");
-		expect(executionCount).toBe(1);
+		assert.strictEqual(result, "async-success");
+		assert.strictEqual(executionCount, 1);
 	});
 
-	test("should execute function with multiple key locks", async () => {
+	it("should execute function with multiple key locks", async () => {
 		let executionCount = 0;
 		const result = await locks.withLock([testPath, testPath2], () => {
 			executionCount++;
 			return "multi-success";
 		});
 
-		expect(result).toBe("multi-success");
-		expect(executionCount).toBe(1);
+		assert.strictEqual(result, "multi-success");
+		assert.strictEqual(executionCount, 1);
 	});
 
-	test("should sort multiple keys to prevent deadlocks", async () => {
+	it("should sort multiple keys to prevent deadlocks", async () => {
 		const executionOrder: string[] = [];
 
 		// Start two concurrent operations with keys in different orders
@@ -68,10 +70,10 @@ describe("withLock", () => {
 
 		const [result1, result2] = await Promise.all([promise1, promise2]);
 
-		expect(result1).toBe("result1");
-		expect(result2).toBe("result2");
+		assert.strictEqual(result1, "result1");
+		assert.strictEqual(result2, "result2");
 		// One operation should complete entirely before the other starts
-		expect(executionOrder).toEqual([
+		assert.deepStrictEqual(executionOrder, [
 			"operation1-start",
 			"operation1-end",
 			"operation2-start",
@@ -79,7 +81,7 @@ describe("withLock", () => {
 		]);
 	});
 
-	test("should serialize access to same key", async () => {
+	it("should serialize access to same key", async () => {
 		const executionOrder: string[] = [];
 
 		const promise1 = locks.withLock(testPath, async () => {
@@ -98,9 +100,9 @@ describe("withLock", () => {
 
 		const [result1, result2] = await Promise.all([promise1, promise2]);
 
-		expect(result1).toBe("result1");
-		expect(result2).toBe("result2");
-		expect(executionOrder).toEqual([
+		assert.strictEqual(result1, "result1");
+		assert.strictEqual(result2, "result2");
+		assert.deepStrictEqual(executionOrder, [
 			"operation1-start",
 			"operation1-end",
 			"operation2-start",
@@ -108,7 +110,7 @@ describe("withLock", () => {
 		]);
 	});
 
-	test("should allow concurrent access to different keys", async () => {
+	it("should allow concurrent access to different keys", async () => {
 		const executionOrder: string[] = [];
 
 		const promise1 = locks.withLock(testPath, async () => {
@@ -127,54 +129,56 @@ describe("withLock", () => {
 
 		const [result1, result2] = await Promise.all([promise1, promise2]);
 
-		expect(result1).toBe("result1");
-		expect(result2).toBe("result2");
+		assert.strictEqual(result1, "result1");
+		assert.strictEqual(result2, "result2");
 		// Both operations should run concurrently
-		expect(executionOrder[0]).toBe("operation1-start");
-		expect(executionOrder[1]).toBe("operation2-start");
+		assert.strictEqual(executionOrder[0], "operation1-start");
+		assert.strictEqual(executionOrder[1], "operation2-start");
 	});
 
-	test("should release locks even if function throws", async () => {
+	it("should release locks even if function throws", async () => {
 		const error = new Error("test error");
 
-		await expect(
+		await assert.rejects(
 			locks.withLock(testPath, () => {
 				throw error;
-			})
-		).rejects.toThrow("test error");
+			}),
+			{ message: "test error" }
+		);
 
 		// Lock should be released, allowing another operation
 		const result = await locks.withLock(
 			testPath,
 			() => "success-after-error"
 		);
-		expect(result).toBe("success-after-error");
+		assert.strictEqual(result, "success-after-error");
 	});
 
-	test("should release locks even if async function throws", async () => {
+	it("should release locks even if async function throws", async () => {
 		const error = new Error("async test error");
 
-		await expect(
+		await assert.rejects(
 			locks.withLock(testPath, async () => {
 				await new Promise((resolve) => setTimeout(resolve, 10));
 				throw error;
-			})
-		).rejects.toThrow("async test error");
+			}),
+			{ message: "async test error" }
+		);
 
 		// Lock should be released, allowing another operation
 		const result = await locks.withLock(
 			testPath,
 			() => "success-after-async-error"
 		);
-		expect(result).toBe("success-after-async-error");
+		assert.strictEqual(result, "success-after-async-error");
 	});
 
-	test("should handle empty array of keys", async () => {
+	it("should handle empty array of keys", async () => {
 		const result = await locks.withLock([], () => "empty-keys");
-		expect(result).toBe("empty-keys");
+		assert.strictEqual(result, "empty-keys");
 	});
 
-	test("should maintain FIFO order for multiple waiters", async () => {
+	it("should maintain FIFO order for multiple waiters", async () => {
 		const executionOrder: string[] = [];
 
 		// Start first operation that holds the lock
@@ -209,10 +213,10 @@ describe("withLock", () => {
 			thirdPromise
 		]);
 
-		expect(first).toBe("first");
-		expect(second).toBe("second");
-		expect(third).toBe("third");
-		expect(executionOrder).toEqual([
+		assert.strictEqual(first, "first");
+		assert.strictEqual(second, "second");
+		assert.strictEqual(third, "third");
+		assert.deepStrictEqual(executionOrder, [
 			"first-start",
 			"first-end",
 			"second-start",
