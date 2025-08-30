@@ -1,3 +1,10 @@
+import { logToConsole } from "./debugging/log-to-console";
+import { slowFetchFactory } from "./debugging/slow-fetch-factory";
+import { slowWebSocketFactory } from "./debugging/slow-web-socket-factory";
+import { getRandomColor } from "./utils/get-random-color";
+import { lineAndColumnToPosition } from "./utils/line-and-column-to-position";
+import { positionToLineAndColumn } from "./utils/position-to-line-and-column";
+
 export {
 	SyncType,
 	SyncStatus,
@@ -22,7 +29,14 @@ export type { MaybeOutdatedClientCursors } from "./types/maybe-outdated-client-c
 export { DocumentSyncStatus } from "./types/document-sync-status";
 export { SyncClient } from "./sync-client";
 
-import { Locks } from "./utils/locks";
-export const helpers = {
-	Locks
+export const debugging = {
+	slowFetchFactory,
+	slowWebSocketFactory,
+	logToConsole
+};
+
+export const utils = {
+	getRandomColor,
+	positionToLineAndColumn,
+	lineAndColumnToPosition
 };

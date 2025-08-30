@@ -2,12 +2,10 @@ import { choose } from "../utils/choose";
 import { v4 as uuidv4 } from "uuid";
 import { assert } from "../utils/assert";
 import type { RelativePath, SyncSettings } from "sync-client";
-import { Logger, LogLevel } from "sync-client";
+import { debugging, Logger, LogLevel } from "sync-client";
 import { MockClient } from "./mock-client";
 import { sleep } from "../utils/sleep";
 import type { LogLine } from "sync-client/dist/types/tracing/logger";
-import { flakyFetchFactory } from "../utils/flaky-fetch";
-import { flakyWebSocketFactory } from "../utils/flaky-websocket-factory";
 
 export class MockAgent extends MockClient {
 	private readonly writtenContents: string[] = [];
@@ -28,8 +26,8 @@ export class MockAgent extends MockClient {
 
 	public async init(): Promise<void> {
 		await super.init(
-			flakyFetchFactory(this.jitterScaleInSeconds),
-			flakyWebSocketFactory(
+			debugging.slowFetchFactory(this.jitterScaleInSeconds),
+			debugging.slowWebSocketFactory(
 				this.jitterScaleInSeconds,
 				new Logger() // this logger isn't wired anywhere, so messages to it will be ignored
 			)

@@ -1,7 +1,10 @@
 import type { Stat, Vault, Workspace } from "obsidian";
 import { MarkdownView, normalizePath } from "obsidian";
-import type { FileSystemOperations, RelativePath } from "sync-client";
-import { positionToLineAndColumn } from "./utils/position-to-line-and-column";
+import {
+	utils,
+	type FileSystemOperations,
+	type RelativePath
+} from "sync-client";
 import { getSelectionsFromEditor } from "./views/cursors/get-selections-from-editor";
 import type { TextWithCursors, CursorPosition } from "reconcile-text";
 
@@ -105,10 +108,10 @@ export class ObsidianFileSystemOperations implements FileSystemOperations {
 				const from = result.cursors[2 * i];
 				const to = result.cursors[2 * i + 1];
 				const { line: fromLine, column: fromColumn } =
-					positionToLineAndColumn(result.text, from.position);
+					utils.positionToLineAndColumn(result.text, from.position);
 
 				const { line: toLine, column: toColumn } =
-					positionToLineAndColumn(result.text, to.position);
+					utils.positionToLineAndColumn(result.text, to.position);
 
 				selections.push({
 					anchor: { line: fromLine, ch: fromColumn },

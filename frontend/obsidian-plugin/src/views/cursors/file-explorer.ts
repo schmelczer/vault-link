@@ -1,8 +1,11 @@
 import "./file-explorer.scss";
 
 import type { App, View } from "obsidian";
-import { getRandomColor } from "src/utils/get-random-color";
-import type { MaybeOutdatedClientCursors, RelativePath } from "sync-client";
+import {
+	utils,
+	type MaybeOutdatedClientCursors,
+	type RelativePath
+} from "sync-client";
 
 const REMOTE_USER_CONTAINER_CLASS = "remote-users";
 
@@ -36,7 +39,7 @@ export function renderCursorsInFileExplorer(
 								createSpan({
 									text: cursor.userName,
 									attr: {
-										style: `border-color: ${getRandomColor(cursor.userName)}`
+										style: `border-color: ${utils.getRandomColor(cursor.userName)}`
 									}
 								})
 							);
