@@ -26,15 +26,32 @@ jobs:
           npm ci
           npm run build
 
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.89.0"
+          components: clippy, rustfmt
+
+      - name: Install cross-compilation tools
+        run: |
+          apt update
+          apt install -y gcc-aarch64-linux-gnu musl-tools gcc-mingw-w64-x86-64
+
+      - name: Build Linux and Windows binaries
+        run: ./scripts/build-sync-server-binaries.sh
+
       - name: Create release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           tag="${GITHUB_REF#refs/tags/}"
 
-          cd frontend/obsidian-plugin/dist
+          mkdir -p release
+          cp frontend/obsidian-plugin/dist/* release/
+          cp sync-server/artifacts/sync-server-* release/
+          cd release
 
           gh release create "$tag" \
             --title="$tag" \
             --draft \
-            main.js manifest.json styles.css
+            *

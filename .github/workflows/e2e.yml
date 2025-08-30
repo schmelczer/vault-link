@@ -23,6 +23,12 @@ jobs:
           node-version: "22.x"
           check-latest: true
 
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.89.0"
+          components: clippy, rustfmt
+
       - name: Setup rust
         run: |
           cargo install sqlx-cli
