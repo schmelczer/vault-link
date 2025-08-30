@@ -39,7 +39,7 @@ for target in $targets; do
     name="${name//aarch64_unknown_linux_gnu/linux-aarch64}"
     name="${name//x86_64_pc_windows_gnu/windows-x86_64}"
     
-    cp "target/$target/release/sync_server$ext" "../artifacts/$name"
+    cp "target/$target/release/sync_server$ext" "artifacts/$name"
     echo "✓ Built $name"
 done
 
