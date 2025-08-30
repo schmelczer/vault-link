@@ -16,10 +16,8 @@ export function createPromise<T = unknown>(): [
 
 	const creationPromise = new Promise<T>(
 		(resolve_, reject_) =>
-			(
-				// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-				(resolve = resolve_ as ResolveFunction<T>), (reject = reject_)
-			)
+			// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+			((resolve = resolve_ as ResolveFunction<T>), (reject = reject_))
 	);
 
 	// eslint-disable-next-line @typescript-eslint/no-non-null-assertion
