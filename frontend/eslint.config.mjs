@@ -20,7 +20,14 @@ export default [
 			"no-unused-vars": "off",
 			"@typescript-eslint/restrict-template-expressions": "off",
 			"@typescript-eslint/no-unused-vars": "off",
-			"@typescript-eslint/no-floating-promises": "error",
+			"@typescript-eslint/no-floating-promises": [
+				"error",
+				{
+					allowForKnownSafeCalls: [
+						{ from: "package", name: ["suite", "test"], package: "node:test" },
+					],
+				},
+			],
 			"@typescript-eslint/parameter-properties": "off",
 			"@typescript-eslint/require-await": "off",
 			"@typescript-eslint/class-methods-use-this": "off",
