@@ -70,7 +70,10 @@ export class SyncService {
 				formData.append("document_id", documentId);
 			}
 			formData.append("relative_path", relativePath);
-			formData.append("content", new Blob([contentBytes]));
+			formData.append(
+				"content",
+				new Blob([new Uint8Array(contentBytes)])
+			);
 
 			const response = await this.client(this.getUrl("/documents"), {
 				method: "POST",
@@ -117,7 +120,10 @@ export class SyncService {
 			const formData = new FormData();
 			formData.append("parent_version_id", parentVersionId.toString());
 			formData.append("relative_path", relativePath);
-			formData.append("content", new Blob([contentBytes]));
+			formData.append(
+				"content",
+				new Blob([new Uint8Array(contentBytes)])
+			);
 
 			const response = await this.client(
 				this.getUrl(`/documents/${documentId}`),

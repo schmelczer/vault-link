@@ -6,7 +6,8 @@
 		"allowSyntheticDefaultImports": true,
 		"moduleResolution": "bundler",
 		"lib": [
-			"DOM" // to get `fetch` & `WebSocket`
+			"DOM", // to get `fetch` & `WebSocket`
+			"ES2024"
 		],
 		"declaration": true,
 		"declarationDir": "./dist/types"

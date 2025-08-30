@@ -4,17 +4,17 @@ set -e
 
 echo "Running checks in sync-server"
 cd sync-server
+cargo test --verbose
 cargo clippy --all-targets --all-features
 cargo fmt --all -- --check
 cargo machete
-cargo test --verbose
 
 echo "Running checks in frontend"
 cd ../frontend
 npm ci
 npm run build
-npm run lint
 npm run test
+npm run lint
 
 if [[ $(git status --porcelain) ]]; then
     git status --porcelain
