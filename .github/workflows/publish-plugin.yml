@@ -48,9 +48,12 @@ jobs:
         run: |
           tag="${GITHUB_REF#refs/tags/}"
 
-          cd frontend/obsidian-plugin/dist
+          mkdir -p release
+          cp frontend/obsidian-plugin/dist/* release/
+          cp sync-server/artifacts/sync-server-* release/
+          cd release
 
           gh release create "$tag" \
             --title="$tag" \
             --draft \
-            main.js manifest.json styles.css artifacts/sync-server-*
+            *
