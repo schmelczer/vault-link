@@ -24,6 +24,7 @@ import { FileChangeNotifier } from "./sync-operations/file-change-notifier";
 
 export class SyncClient {
 	private static readonly MINIMUM_SAVE_INTERVAL_MS = 1000;
+	private hasStartedOfflineSync = false;
 	private hasFinishedOfflineSync = false;
 
 	// eslint-disable-next-line @typescript-eslint/max-params
@@ -206,7 +207,11 @@ export class SyncClient {
 	}
 
 	public async start(): Promise<void> {
-		await this.syncer.scheduleSyncForOfflineChanges();
+		if (!this.hasStartedOfflineSync) {
+			await this.syncer.scheduleSyncForOfflineChanges();
+			this.hasStartedOfflineSync = true;
+		}
+
 		this.hasFinishedOfflineSync = true;
 		this.webSocketManager.start();
 	}
