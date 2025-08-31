@@ -42,5 +42,3 @@ for target in $targets; do
     cp "target/$target/release/sync_server$ext" "artifacts/$name"
     echo "✓ Built $name"
 done
-
-ls -la ../artifacts/sync-server-*
