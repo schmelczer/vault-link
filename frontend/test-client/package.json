@@ -11,7 +11,7 @@
         "test": "tsx --test src/**/*.test.ts"
     },
     "devDependencies": {
-        "@types/node": "^22.15.30",
+        "@types/node": "^24.5.2",
         "bufferutil": "^4.0.9",
         "sync-client": "file:../sync-client",
         "ts-loader": "^9.5.2",
