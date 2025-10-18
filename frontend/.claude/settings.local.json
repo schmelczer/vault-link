@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm test:*)",
+      "Bash(npm ls:*)",
+      "Bash(find:*)",
+      "Bash(grep -n \"isBinary\" ../node_modules/reconcile-text/dist/reconcile.node.js)",
+      "Read(/home/andras/projects/obsidian-shared-sync/sync-server/**)",
+      "Read(/mnt/wsl/PHYSICALDRIVE1/projects/obsidian-shared-sync/sync-server/**)"
+    ],
+    "deny": []
+  }
+}

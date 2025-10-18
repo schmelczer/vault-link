@@ -1,0 +1,57 @@
+name: Publish Obsidian plugin
+
+on:
+  push:
+    tags: ["*"]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  publish-plugin:
+    runs-on: self-hosted
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v4.2.0
+        with:
+          node-version: "22.x"
+          check-latest: true
+
+      - name: Build plugin
+        run: |
+          cd frontend
+          npm ci
+          npm run build
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.89.0"
+          components: clippy, rustfmt
+
+      - name: Install cross-compilation tools
+        run: |
+          apt update
+          apt install -y gcc-aarch64-linux-gnu musl-tools gcc-mingw-w64-x86-64
+
+      - name: Build Linux and Windows binaries
+        run: ./scripts/build-sync-server-binaries.sh
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+
+          mkdir -p release
+          cp frontend/obsidian-plugin/dist/* release/
+          cp sync-server/artifacts/sync-server-* release/
+          cd release
+
+          gh release create "$tag" \
+            --title="$tag" \
+            --draft \
+            *

@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find:*)",
+      "Bash(npm run test:*)",
+      "Bash(npm test)",
+      "Bash(cargo:*)",
+      "Bash(grep:*)",
+      "Bash(npm test:*)",
+      "Bash(npm run lint)",
+      "Bash(docker build:*)",
+      "Bash(docker image:*)",
+      "Bash(timeout 120 docker buildx build --platform linux/arm64 -t vault-link-arm64-test . --load)",
+      "Bash(docker run:*)",
+      "Bash(./scripts/build-sync-server-binaries.sh:*)",
+      "Bash(npm install:*)"
+    ],
+    "deny": []
+  }
+}

@@ -1,0 +1,17 @@
+{
+	"compilerOptions": {
+		"baseUrl": ".",
+		"module": "ESNext",
+		"target": "ES2023",
+		"strict": true,
+		"moduleResolution": "bundler",
+		"allowSyntheticDefaultImports": true,
+		"lib": [
+			"DOM",
+			"ES2024"
+		]
+	},
+	"exclude": [
+		"./dist"
+	]
+}
