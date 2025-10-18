@@ -9,16 +9,16 @@
 
 ### Install [nvm](https://github.com/nvm-sh/nvm)
 
--   `curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash`
--   `nvm install 22`
--   `nvm use 22`
--   Optionally set the system-wide default: `nvm alias default 22`
+- `curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash`
+- `nvm install 22`
+- `nvm use 22`
+- Optionally set the system-wide default: `nvm alias default 22`
 
 ### Set up Rust
 
--   Install [`rustup`](https://rustup.rs): `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
--   Install [`wasm-pack`](https://rustwasm.github.io/wasm-pack/installer): `curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh`
--   `cargo install cargo-insta sqlx-cli cargo-edit`
+- Install [`rustup`](https://rustup.rs): `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
+- Install [`wasm-pack`](https://rustwasm.github.io/wasm-pack/installer): `curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh`
+- `cargo install cargo-insta sqlx-cli cargo-edit`
 
 ### Install Obsidian on Linux
 
@@ -38,7 +38,7 @@ cd sync-server && cargo run config-e2e.yml
 ```
 
 ```sh
-cd frontend && npm run dev
+cd frontend && npm install && npm run dev
 ```
 
 ### Scripts
@@ -65,4 +65,4 @@ And to clean up the logs & database files, run `scripts/clean-up.sh`
 
 ## Projects
 
--   [Sync server](./sync-server/README.md)
+- [Sync server](./sync-server/README.md)
