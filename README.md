@@ -5,6 +5,8 @@
 [![Publish server Docker image](https://github.com/schmelczer/vault-link/actions/workflows/publish-docker.yml/badge.svg)](https://github.com/schmelczer/vault-link/actions/workflows/publish-docker.yml)
 [![Publish Obsidian plugin](https://github.com/schmelczer/vault-link/actions/workflows/publish-plugin.yml/badge.svg)](https://github.com/schmelczer/vault-link/actions/workflows/publish-plugin.yml)
 
+hi
+
 ## Develop
 
 ### Install [nvm](https://github.com/nvm-sh/nvm)
