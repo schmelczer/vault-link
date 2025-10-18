@@ -20,7 +20,7 @@
 		"update": "ncu -u -ws"
 	},
 	"devDependencies": {
-		"concurrently": "^9.1.2",
+		"concurrently": "^9.2.1",
 		"eslint": "9.28.0",
 		"eslint-plugin-unused-imports": "^4.1.4",
 		"npm-check-updates": "^18.0.1",
