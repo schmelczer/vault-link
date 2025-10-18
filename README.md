@@ -34,14 +34,24 @@ flatpak run md.obsidian.Obsidian
 Start the server:
 
 ```sh
-cd sync-server && cargo run config-e2e.yml
+cargo install sqlx-cli cargo-machete
+cd sync-server
+cargo run config-e2e.yml
 ```
 
 ```sh
-cd frontend && npm install && npm run dev
+cd frontend
+npm install
+npm run dev
 ```
 
 ### Scripts
+
+#### Before pushing
+
+```sh
+scripts/check.sh --fix
+```
 
 #### Update HTTP API TS bindings
 
