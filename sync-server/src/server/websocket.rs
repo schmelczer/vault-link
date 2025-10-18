@@ -106,7 +106,19 @@ async fn websocket(
                 continue;
             }
 
-            send_update_over_websocket(&update.message, &mut sender).await?;
+            let message = match update.message {
+                WebSocketServerMessage::CursorPositions(CursorPositionFromServer { clients }) => {
+                    WebSocketServerMessage::CursorPositions(CursorPositionFromServer {
+                        clients: clients
+                            .into_iter()
+                            .filter(|client| client.device_id != device_id)
+                            .collect(),
+                    })
+                }
+                WebSocketServerMessage::VaultUpdate(_) => update.message,
+            };
+
+            send_update_over_websocket(&message, &mut sender).await?;
         }
 
         Ok::<(), SyncServerError>(())

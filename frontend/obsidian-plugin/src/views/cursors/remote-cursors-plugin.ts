@@ -9,6 +9,7 @@ import type {
 	ViewUpdate
 } from "@codemirror/view";
 import { RemoteCursorWidget } from "./remote-cursor-widget";
+import type { RelativePath } from "sync-client";
 import {
 	utils,
 	type CursorSpan,
@@ -32,12 +33,14 @@ export class RemoteCursorsPluginValue implements PluginValue {
 		isOutdated: boolean;
 	}[] = [];
 
+	private static app: App;
 	public decorations: DecorationSet = RangeSet.of([]);
 
 	public static setCursors(
 		clients: MaybeOutdatedClientCursors[],
 		app: App
 	): void {
+		RemoteCursorsPluginValue.app = app;
 		RemoteCursorsPluginValue.cursors = [
 			...RemoteCursorsPluginValue.cursors.filter(({ deviceId }) =>
 				clients.some(
@@ -80,6 +83,30 @@ export class RemoteCursorsPluginValue implements PluginValue {
 					effects: [forceUpdate.of(null)]
 				});
 			});
+	}
+
+	private static findFileForEditor(
+		editor: EditorView
+	): RelativePath | undefined {
+		return RemoteCursorsPluginValue.app.workspace
+			.getLeavesOfType("markdown")
+			.map((leaf) => leaf.view)
+			.filter((view) => view instanceof MarkdownView)
+			.flatMap((view) => {
+				// @ts-expect-error, not typed
+				// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+				if ((view.editor.cm as EditorView) !== editor) {
+					return [];
+				}
+
+				const { file } = view;
+				if (!file) {
+					return;
+				}
+
+				return [file.path];
+			})
+			.first();
 	}
 
 	private static interpolateRemoteCursorPositions(
@@ -155,9 +182,12 @@ export class RemoteCursorsPluginValue implements PluginValue {
 		);
 
 		const decorations: Range<Decoration>[] = [];
-
-		RemoteCursorsPluginValue.cursors.forEach(
-			({ name, span: { start, end } }) => {
+		const relative_path = RemoteCursorsPluginValue.findFileForEditor(
+			update.view
+		);
+		RemoteCursorsPluginValue.cursors
+			.filter(({ path }) => path == relative_path)
+			.forEach(({ name, span: { start, end } }) => {
 				const color = utils.getRandomColor(name);
 				const startLine = update.view.state.doc.lineAt(start);
 				const endLine = update.view.state.doc.lineAt(end);
@@ -221,8 +251,7 @@ export class RemoteCursorsPluginValue implements PluginValue {
 						widget: new RemoteCursorWidget(color, name)
 					})
 				});
-			}
-		);
+			});
 
 		this.decorations = Decoration.set(decorations, true);
 	}
