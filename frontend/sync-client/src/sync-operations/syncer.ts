@@ -335,7 +335,7 @@ export class Syncer {
 	private async internalScheduleSyncForOfflineChanges(): Promise<void> {
 		await this.createFakeDocumentsFromRemoteState();
 
-		const allLocalFiles = await this.operations.listAllFiles();
+		const allLocalFiles = await this.operations.listFilesRecursively();
 
 		let locallyPossiblyDeletedFiles: DocumentRecord[] = [];
 
@@ -431,7 +431,7 @@ export class Syncer {
 		}
 
 		const [allLocalFiles, remote] = await Promise.all([
-			this.operations.listAllFiles(),
+			this.operations.listFilesRecursively(),
 			this.syncQueue.add(async () => this.syncService.getAll())
 		]);
 

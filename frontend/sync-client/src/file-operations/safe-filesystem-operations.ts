@@ -20,9 +20,11 @@ export class SafeFileSystemOperations implements FileSystemOperations {
 		this.locks = new Locks(logger);
 	}
 
-	public async listAllFiles(): Promise<RelativePath[]> {
+	public async listFilesRecursively(
+		root: RelativePath | undefined
+	): Promise<RelativePath[]> {
 		this.logger.debug("Listing all files");
-		const result = await this.fs.listAllFiles();
+		const result = await this.fs.listFilesRecursively(root);
 		this.logger.debug(`Listed ${result.length} files`);
 		return result;
 	}

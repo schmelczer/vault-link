@@ -14,10 +14,12 @@ export class ObsidianFileSystemOperations implements FileSystemOperations {
 		private readonly workspace: Workspace
 	) {}
 
-	public async listAllFiles(): Promise<RelativePath[]> {
+	public async listFilesRecursively(
+		root: RelativePath | undefined
+	): Promise<RelativePath[]> {
 		// Let's implement this by hand because vault.adapter.listAllFiles doesn't always return all files.
 		const allFiles = [];
-		const remainingFolders = [this.vault.getRoot().path];
+		const remainingFolders = [root ?? this.vault.getRoot().path];
 
 		// eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
 		while (true) {

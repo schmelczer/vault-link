@@ -3,8 +3,10 @@ import type { RelativePath } from "../persistence/database";
 import type { TextWithCursors } from "reconcile-text";
 
 export interface FileSystemOperations {
-	// List all files that should be synced.
-	listAllFiles: () => Promise<RelativePath[]>;
+	// List all files under root that should be synced. If root is undefined, return every file.
+	listFilesRecursively: (
+		root: RelativePath | undefined
+	) => Promise<RelativePath[]>;
 
 	// Read the content of a file.
 	read: (path: RelativePath) => Promise<Uint8Array>;

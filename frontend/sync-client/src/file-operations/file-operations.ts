@@ -5,6 +5,7 @@ import { SafeFileSystemOperations } from "./safe-filesystem-operations";
 import type { TextWithCursors } from "reconcile-text";
 import { isBinary, reconcile } from "reconcile-text";
 import { isFileTypeMergable } from "../utils/is-file-type-mergable";
+
 export class FileOperations {
 	private static readonly PARENTHESES_REGEX = / \((\d+)\)$/;
 	private readonly fs: SafeFileSystemOperations;
@@ -18,8 +19,22 @@ export class FileOperations {
 		this.fs = new SafeFileSystemOperations(fs, logger);
 	}
 
-	public async listAllFiles(): Promise<RelativePath[]> {
-		return this.fs.listAllFiles();
+	private static getParentDirAndFile(
+		path: RelativePath
+	): [RelativePath, RelativePath] {
+		const pathParts = path.split("/");
+		const fileName = pathParts.pop();
+		if (fileName == "" || fileName == null) {
+			throw new Error(`Path '${path}' cannot be empty`);
+		}
+
+		return [pathParts.join("/"), fileName];
+	}
+
+	public async listFilesRecursively(
+		root: RelativePath | undefined = undefined
+	): Promise<RelativePath[]> {
+		return this.fs.listFilesRecursively(root);
 	}
 
 	public async read(path: RelativePath): Promise<Uint8Array> {
@@ -120,7 +135,8 @@ export class FileOperations {
 
 	public async delete(path: RelativePath): Promise<void> {
 		if (await this.exists(path)) {
-			return this.fs.delete(path);
+			await this.fs.delete(path);
+			await this.deletingEmptyParentDirectoriesOfDeletedFile(path);
 		} else {
 			this.logger.debug(`No need to delete '${path}', it doesn't exist`);
 		}
@@ -146,6 +162,27 @@ export class FileOperations {
 
 		this.database.move(oldPath, newPath);
 		await this.fs.rename(oldPath, newPath);
+		await this.deletingEmptyParentDirectoriesOfDeletedFile(oldPath);
+	}
+
+	private async deletingEmptyParentDirectoriesOfDeletedFile(
+		path: RelativePath
+	): Promise<void> {
+		let directory = path;
+		while (directory.length > 1) {
+			[directory] = FileOperations.getParentDirAndFile(directory);
+
+			const remainingContent =
+				await this.fs.listFilesRecursively(directory);
+			if (remainingContent.length == 0) {
+				this.logger.debug(
+					`Folder (${directory}) is now empty, deleting`
+				);
+				await this.fs.delete(directory);
+			} else {
+				break;
+			}
+		}
 	}
 
 	private fromNativeLineEndings(content: Uint8Array): Uint8Array {
@@ -184,13 +221,9 @@ export class FileOperations {
 	}
 
 	private async deconflictPath(path: RelativePath): Promise<RelativePath> {
-		const pathParts = path.split("/");
-		const fileName = pathParts.pop();
-		if (fileName == "" || fileName == null) {
-			throw new Error(`Path '${path}' cannot be empty`);
-		}
+		// eslint-disable-next-line prefer-const
+		let [directory, fileName] = FileOperations.getParentDirAndFile(path);
 
-		let directory = pathParts.join("/");
 		if (directory) {
 			directory += "/";
 		}
