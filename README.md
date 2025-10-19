@@ -34,7 +34,7 @@ flatpak run md.obsidian.Obsidian
 Start the server:
 
 ```sh
-cargo install sqlx-cli cargo-machete cargo-set-version
+cargo install sqlx-cli cargo-machete cargo-edit
 cd sync-server
 cargo run config-e2e.yml
 ```
