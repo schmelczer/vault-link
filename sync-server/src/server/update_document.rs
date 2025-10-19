@@ -120,11 +120,12 @@ pub async fn update_document(
         )));
     }
 
-    let merged_content = if is_file_type_mergable(&sanitized_relative_path)
+    let are_all_participants_mergable = is_file_type_mergable(&sanitized_relative_path)
         && !is_binary(&parent_document.content)
         && !is_binary(&latest_version.content)
-        && !is_binary(&content)
-    {
+        && !is_binary(&content);
+
+    let merged_content = if are_all_participants_mergable {
         reconcile(
             str::from_utf8(&parent_document.content)
                 .expect("parent must be valid UTF-8 because it's not binary"),
@@ -177,6 +178,7 @@ pub async fn update_document(
         is_deleted: false,
         user_id: user.name,
         device_id: device_id.0,
+        has_been_merged: are_all_participants_mergable && is_different_from_request_content,
     };
 
     state

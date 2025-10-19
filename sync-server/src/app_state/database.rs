@@ -278,7 +278,8 @@ impl Database {
                 content,
                 is_deleted,
                 user_id,
-                device_id
+                device_id,
+                has_been_merged
             from latest_document_versions
             where relative_path = ?
             order by vault_update_id desc  -- `latest_document_versions` only contains a single latest version of each document, however,
@@ -317,7 +318,8 @@ impl Database {
                 content,
                 is_deleted,
                 user_id,
-                device_id
+                device_id,
+                has_been_merged
             from latest_document_versions
             where document_id = ?
             "#,
@@ -351,7 +353,8 @@ impl Database {
                 content,
                 is_deleted,
                 user_id,
-                device_id
+                device_id,
+                has_been_merged
             from documents
             where vault_update_id = ?"#,
             vault_update_id

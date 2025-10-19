@@ -77,6 +77,7 @@ pub async fn create_document(
         is_deleted: false,
         user_id: user.name,
         device_id: device_id.0,
+        has_been_merged: false,
     };
 
     state
