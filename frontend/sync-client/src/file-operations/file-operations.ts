@@ -169,12 +169,16 @@ export class FileOperations {
 		path: RelativePath
 	): Promise<void> {
 		let directory = path;
-		while (directory.length > 1) {
+		// eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+		while (true) {
 			[directory] = FileOperations.getParentDirAndFile(directory);
+			if (directory.length === 0) {
+				break;
+			}
 
 			const remainingContent =
 				await this.fs.listFilesRecursively(directory);
-			if (remainingContent.length == 0) {
+			if (remainingContent.length === 0) {
 				this.logger.debug(
 					`Folder (${directory}) is now empty, deleting`
 				);
