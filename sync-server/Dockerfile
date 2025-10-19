@@ -28,8 +28,6 @@ RUN apt update && \
 
 COPY --from=builder /usr/src/backend/target/release/sync_server /app/sync_server
 
-RUN chmod +x /app/test-entrypoint.sh
-
 VOLUME /data
 EXPOSE 3000/tcp
 WORKDIR /data

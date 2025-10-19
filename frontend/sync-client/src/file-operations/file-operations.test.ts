@@ -32,7 +32,7 @@ class FakeFileSystemOperations implements FileSystemOperations {
 	public async listFilesRecursively(
 		_root: RelativePath | undefined
 	): Promise<RelativePath[]> {
-		throw new Error("Method not implemented.");
+		return ["file.md"];
 	}
 	public async read(_path: RelativePath): Promise<Uint8Array> {
 		throw new Error("Method not implemented.");
