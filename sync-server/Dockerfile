@@ -8,7 +8,6 @@ RUN apt update && \
     pkg-config && \
     cargo install sqlx-cli
 
-# Build application
 COPY . .
 
 RUN sqlx database create --database-url sqlite://db.sqlite3 && \
@@ -28,7 +27,6 @@ RUN apt update && \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /usr/src/backend/target/release/sync_server /app/sync_server
-COPY test-entrypoint.sh /app/test-entrypoint.sh
 
 RUN chmod +x /app/test-entrypoint.sh
 
