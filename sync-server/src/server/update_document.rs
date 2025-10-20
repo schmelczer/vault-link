@@ -183,14 +183,8 @@ pub async fn update_document(
 
     state
         .database
-        .insert_document_version(&vault_id, &new_version, Some(&mut transaction))
+        .insert_document_version(&vault_id, &new_version, Some(transaction))
         .await
-        .map_err(server_error)?;
-
-    transaction
-        .commit()
-        .await
-        .context("Failed to commit successful transaction")
         .map_err(server_error)?;
 
     Ok(Json(if is_different_from_request_content {
