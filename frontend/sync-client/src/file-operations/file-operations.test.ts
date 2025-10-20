@@ -29,8 +29,10 @@ class MockDatabase implements Partial<Database> {
 class FakeFileSystemOperations implements FileSystemOperations {
 	public readonly names = new Set<string>();
 
-	public async listAllFiles(): Promise<RelativePath[]> {
-		throw new Error("Method not implemented.");
+	public async listFilesRecursively(
+		_root: RelativePath | undefined
+	): Promise<RelativePath[]> {
+		return ["file.md"];
 	}
 	public async read(_path: RelativePath): Promise<Uint8Array> {
 		throw new Error("Method not implemented.");

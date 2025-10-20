@@ -94,7 +94,7 @@ export class MockAgent extends MockClient {
 			options.push(this.enableSyncAction.bind(this));
 		}
 
-		const files = await this.listAllFiles();
+		const files = await this.listFilesRecursively();
 
 		if (files.length > 0) {
 			options.push(

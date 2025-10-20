@@ -7,6 +7,7 @@ import {
 	SyncClient
 } from "sync-client";
 import type { TextWithCursors } from "reconcile-text";
+
 export class MockClient implements FileSystemOperations {
 	protected readonly localFiles = new Map<string, Uint8Array>();
 	protected client!: SyncClient;
@@ -46,7 +47,9 @@ export class MockClient implements FileSystemOperations {
 		await this.client.start();
 	}
 
-	public async listAllFiles(): Promise<RelativePath[]> {
+	public async listFilesRecursively(
+		_root: RelativePath | undefined = undefined // we don't use multi-level paths during tests
+	): Promise<RelativePath[]> {
 		return Array.from(this.localFiles.keys());
 	}
 
