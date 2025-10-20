@@ -36,6 +36,11 @@ if [[ "$FIX_MODE" == false ]] && [[ $(git status --porcelain) ]]; then
     exit 1
 fi
 
-echo "Success"
 
 cd ..
+
+if [[ "$FIX_MODE" == true ]]; then
+    $0
+fi
+
+echo "Success"

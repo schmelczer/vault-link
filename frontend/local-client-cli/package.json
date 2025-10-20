@@ -1,0 +1,28 @@
+{
+    "name": "local-client-cli",
+    "version": "0.8.2",
+    "description": "Standalone CLI for VaultLink sync client",
+    "private": false,
+    "bin": {
+        "vaultlink": "./dist/cli.js"
+    },
+    "scripts": {
+        "dev": "webpack watch --mode development",
+        "build": "webpack --mode production",
+        "test": "tsx --test src/args.test.ts src/node-filesystem.test.ts"
+    },
+    "dependencies": {
+        "commander": "^12.1.0"
+    },
+    "devDependencies": {
+        "@types/node": "^24.8.1",
+        "bufferutil": "^4.0.9",
+        "sync-client": "file:../sync-client",
+        "ts-loader": "^9.5.2",
+        "tslib": "2.8.1",
+        "tsx": "^4.20.5",
+        "typescript": "5.8.3",
+        "webpack": "^5.99.9",
+        "webpack-cli": "^6.0.1"
+    }
+}
