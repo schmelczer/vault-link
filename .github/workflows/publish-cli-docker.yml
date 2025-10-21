@@ -50,7 +50,7 @@ jobs:
         with:
           context: frontend
           file: frontend/local-client-cli/Dockerfile
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -62,41 +62,3 @@ jobs:
           TAGS: ${{ steps.meta.outputs.tags }}
           DIGEST: ${{ steps.build-and-push.outputs.digest }}
         run: echo "${TAGS}" | xargs -I {} cosign sign --yes {}@${DIGEST}
-
-  publish-npm:
-    runs-on: self-hosted
-
-    permissions:
-      contents: read
-      packages: write
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js environment
-        uses: actions/setup-node@v4.2.0
-        with:
-          node-version: "22.x"
-          check-latest: true
-          registry-url: 'https://npm.pkg.github.com'
-          scope: '@schmelczer'
-
-      - name: Install dependencies
-        run: |
-          cd frontend
-          npm ci
-
-      - name: Build CLI
-        run: |
-          cd frontend/local-client-cli
-          npm run build
-
-      - name: Publish to GitHub Packages
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          cd frontend/local-client-cli
-          # Update package.json to use scoped name for GitHub Packages
-          npm version --no-git-tag-version ${GITHUB_REF#refs/tags/}
-          npm publish
