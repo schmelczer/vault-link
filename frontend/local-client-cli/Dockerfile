@@ -15,9 +15,7 @@ LABEL org.opencontainers.image.source="https://github.com/schmelczer/vault-link"
 LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.authors="andras@schmelczer.dev"
 
-
-
-COPY --from=builder --chown=vaultlink:vaultlink /build/local-client-cli/dist/cli.js /app/cli.js
+COPY --from=builder /build/local-client-cli/dist/cli.js /app/cli.js
 
 WORKDIR /vault
 
