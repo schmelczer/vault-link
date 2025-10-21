@@ -1,4 +1,3 @@
-use anyhow::Context as _;
 use axum::{
     Extension, Json,
     extract::{Path, State},
@@ -71,14 +70,8 @@ pub async fn delete_document(
 
     state
         .database
-        .insert_document_version(&vault_id, &new_version, Some(&mut transaction))
+        .insert_document_version(&vault_id, &new_version, Some(transaction))
         .await
-        .map_err(server_error)?;
-
-    transaction
-        .commit()
-        .await
-        .context("Failed to commit successful transaction")
         .map_err(server_error)?;
 
     Ok(Json(new_version.into()))

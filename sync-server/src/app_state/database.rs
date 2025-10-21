@@ -370,11 +370,12 @@ impl Database {
         .context("Cannot fetch document version")
     }
 
+    // inserting the document must be the last step of the transaction if there's one
     pub async fn insert_document_version(
         &self,
         vault_id: &VaultId,
         version: &StoredDocumentVersion,
-        transaction: Option<&mut Transaction<'_>>,
+        transaction: Option<Transaction<'_>>,
     ) -> Result<()> {
         let document_id = version.document_id.as_hyphenated();
         let query = sqlx::query!(
@@ -401,14 +402,22 @@ impl Database {
             version.device_id
         );
 
-        if let Some(transaction) = transaction {
-            query.execute(&mut **transaction).await
+        if let Some(mut transaction) = transaction {
+            query
+                .execute(&mut *transaction)
+                .await
+                .context("Cannot insert document version")?;
+
+            transaction
+                .commit()
+                .await
+                .context("Failed to commit transaction")?;
         } else {
             query
                 .execute(&self.get_connection_pool(vault_id).await?)
                 .await
+                .context("Cannot insert document version")?;
         }
-        .context("Cannot insert document version")?;
 
         self.broadcasts
             .send_document_update(

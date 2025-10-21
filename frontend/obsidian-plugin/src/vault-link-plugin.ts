@@ -50,51 +50,46 @@ export default class VaultLinkPlugin extends Plugin {
 			".trash/**"
 		);
 
+		plausibleInit({
+			domain: "vault-link",
+			endpoint: "https://stats.schmelczer.dev/status",
+			autoCapturePageviews: true,
+			captureOnLocalhost: true,
+			logging: true
+		});
+
+		Sentry.init({
+			dsn: "https://56accd39d92442e788a457a04623cf57@bugs.schmelczer.dev/1",
+			skipBrowserExtensionCheck: false
+		});
+
+		const onError = (event: ErrorEvent): void => {
+			Sentry.captureException(event.error, {
+				extra: {
+					message: event.message,
+					filename: event.filename,
+					lineno: event.lineno,
+					colno: event.colno
+				}
+			});
+		};
+		window.addEventListener("error", onError);
+		this.disposables.push(() => {
+			window.removeEventListener("error", onError);
+		});
+
+		const onUnhandledRejection = (event: PromiseRejectionEvent): void => {
+			Sentry.captureException(event.reason);
+		};
+		window.addEventListener("unhandledrejection", onUnhandledRejection);
+		this.disposables.push(() => {
+			window.removeEventListener(
+				"unhandledrejection",
+				onUnhandledRejection
+			);
+		});
+
 		const isDebugBuild = process.env.NODE_ENV === "development";
-
-		if (!isDebugBuild) {
-			plausibleInit({
-				domain: "vault-link",
-				endpoint: "https://stats.schmelczer.dev/status",
-				autoCapturePageviews: true,
-				captureOnLocalhost: true,
-				logging: true
-			});
-
-			Sentry.init({
-				dsn: "https://56accd39d92442e788a457a04623cf57@bugs.schmelczer.dev/1",
-				skipBrowserExtensionCheck: false
-			});
-
-			const onError = (event: ErrorEvent): void => {
-				Sentry.captureException(event.error, {
-					extra: {
-						message: event.message,
-						filename: event.filename,
-						lineno: event.lineno,
-						colno: event.colno
-					}
-				});
-			};
-			window.addEventListener("error", onError);
-			this.disposables.push(() => {
-				window.removeEventListener("error", onError);
-			});
-
-			const onUnhandledRejection = (
-				event: PromiseRejectionEvent
-			): void => {
-				Sentry.captureException(event.reason);
-			};
-			window.addEventListener("unhandledrejection", onUnhandledRejection);
-			this.disposables.push(() => {
-				window.removeEventListener(
-					"unhandledrejection",
-					onUnhandledRejection
-				);
-			});
-		}
-
 		const debugOptions = isDebugBuild
 			? {
 					fetch: debugging.slowFetchFactory(1),
