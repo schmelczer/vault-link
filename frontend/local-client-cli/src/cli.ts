@@ -177,19 +177,11 @@ async function main(): Promise<void> {
 		}
 
 		console.log(`${colorize("✓", "green")} Server connection successful`);
+		console.log(colorize("Press Ctrl+C to stop", "dim"));
 		console.log("");
 
 		await client.start();
 		fileWatcher.start();
-
-		console.log(styleText("✓ Sync started", "bold", "green"));
-		console.log(colorize("Press Ctrl+C to stop", "dim"));
-		console.log(colorize("─".repeat(50), "dim"));
-		console.log("");
-
-		// await new Promise<void>(() => {
-
-		// });
 	} catch (error) {
 		console.error(
 			colorize(
