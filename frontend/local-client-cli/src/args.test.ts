@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import * as assert from "node:assert/strict";
 import { parseArgs } from "./args";
+import { LogLevel } from "sync-client";
 
 test("parseArgs - parse basic arguments", () => {
 	const args = parseArgs([
@@ -133,4 +134,97 @@ test("parseArgs - throws on missing vault name", () => {
 			"mytoken"
 		]);
 	}, /--vault-name/);
+});
+
+test("parseArgs - default log level is INFO", () => {
+	const args = parseArgs([
+		"node",
+		"cli.js",
+		"-l",
+		"/path/to/vault",
+		"-r",
+		"https://sync.example.com",
+		"-t",
+		"mytoken",
+		"-v",
+		"default"
+	]);
+
+	assert.equal(args.logLevel, LogLevel.INFO);
+});
+
+test("parseArgs - parse DEBUG log level", () => {
+	const args = parseArgs([
+		"node",
+		"cli.js",
+		"-l",
+		"/path/to/vault",
+		"-r",
+		"https://sync.example.com",
+		"-t",
+		"mytoken",
+		"-v",
+		"default",
+		"--log-level",
+		"DEBUG"
+	]);
+
+	assert.equal(args.logLevel, LogLevel.DEBUG);
+});
+
+test("parseArgs - parse ERROR log level", () => {
+	const args = parseArgs([
+		"node",
+		"cli.js",
+		"-l",
+		"/path/to/vault",
+		"-r",
+		"https://sync.example.com",
+		"-t",
+		"mytoken",
+		"-v",
+		"default",
+		"--log-level",
+		"ERROR"
+	]);
+
+	assert.equal(args.logLevel, LogLevel.ERROR);
+});
+
+test("parseArgs - log level is case insensitive", () => {
+	const args = parseArgs([
+		"node",
+		"cli.js",
+		"-l",
+		"/path/to/vault",
+		"-r",
+		"https://sync.example.com",
+		"-t",
+		"mytoken",
+		"-v",
+		"default",
+		"--log-level",
+		"debug"
+	]);
+
+	assert.equal(args.logLevel, LogLevel.DEBUG);
+});
+
+test("parseArgs - throws on invalid log level", () => {
+	assert.throws(() => {
+		parseArgs([
+			"node",
+			"cli.js",
+			"-l",
+			"/path/to/vault",
+			"-r",
+			"https://sync.example.com",
+			"-t",
+			"mytoken",
+			"-v",
+			"default",
+			"--log-level",
+			"INVALID"
+		]);
+	}, /Invalid log level/);
 });

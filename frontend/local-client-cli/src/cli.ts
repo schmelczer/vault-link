@@ -3,6 +3,7 @@ import * as fs from "fs/promises";
 import {
 	SyncClient,
 	DEFAULT_SETTINGS,
+	LogLevel,
 	type SyncSettings,
 	type StoredDatabase
 } from "sync-client";
@@ -11,6 +12,13 @@ import { NodeFileSystemOperations } from "./node-filesystem";
 import { FileWatcher } from "./file-watcher";
 import { formatLogLine, colorize, styleText } from "./logger-formatter";
 import packageJson from "../package.json";
+
+const LOG_LEVEL_ORDER = {
+	[LogLevel.DEBUG]: 0,
+	[LogLevel.INFO]: 1,
+	[LogLevel.WARNING]: 2,
+	[LogLevel.ERROR]: 3
+};
 
 async function main(): Promise<void> {
 	const args = parseArgs(process.argv);
@@ -34,7 +42,6 @@ async function main(): Promise<void> {
 		process.exit(1);
 	}
 
-	// Print header with colors
 	console.log(
 		styleText("VaultLink Local CLI", "bold", "cyan") +
 			colorize(` v${packageJson.version}`, "dim")
@@ -112,9 +119,12 @@ async function main(): Promise<void> {
 		nativeLineEndings: process.platform === "win32" ? "\r\n" : "\n"
 	});
 
-	// Add colored log formatter
+	// Add colored log formatter with level filtering
 	client.logger.addOnMessageListener((logLine) => {
-		console.log(formatLogLine(logLine));
+		// Only show messages at or above the configured log level
+		if (LOG_LEVEL_ORDER[logLine.level] >= LOG_LEVEL_ORDER[args.logLevel]) {
+			console.log(formatLogLine(logLine));
+		}
 	});
 
 	client.logger.info("Starting sync client");
@@ -122,10 +132,7 @@ async function main(): Promise<void> {
 	const fileWatcher = new FileWatcher(absolutePath, client);
 
 	client.addWebSocketStatusChangeListener(() => {
-		const currentSettings = client.getSettings();
-		if (currentSettings.isSyncEnabled) {
-			client.logger.info("WebSocket status changed");
-		}
+		client.logger.info("WebSocket status changed");
 	});
 
 	client.addRemainingSyncOperationsListener((remaining) => {
@@ -143,6 +150,7 @@ async function main(): Promise<void> {
 				"yellow"
 			)
 		);
+
 		fileWatcher.stop();
 		await client.waitAndStop();
 		console.log(colorize("Shutdown complete", "green"));
@@ -179,9 +187,9 @@ async function main(): Promise<void> {
 		console.log(colorize("─".repeat(50), "dim"));
 		console.log("");
 
-		await new Promise<void>(() => {
-			// Keep process alive until signal received
-		});
+		// await new Promise<void>(() => {
+
+		// });
 	} catch (error) {
 		console.error(
 			colorize(
@@ -189,6 +197,7 @@ async function main(): Promise<void> {
 				"red"
 			)
 		);
+
 		fileWatcher.stop();
 		await client.waitAndStop();
 		process.exit(1);

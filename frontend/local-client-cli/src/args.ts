@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import packageJson from "../package.json";
+import { LogLevel } from "sync-client";
 
 export interface CliArgs {
 	remoteUri: string;
@@ -10,6 +11,7 @@ export interface CliArgs {
 	maxFileSizeMB?: number;
 	ignorePatterns?: string[];
 	webSocketRetryIntervalMs?: number;
+	logLevel: LogLevel;
 }
 
 export function parseArgs(argv: string[]): CliArgs {
@@ -21,20 +23,7 @@ export function parseArgs(argv: string[]): CliArgs {
 			"VaultLink Local CLI - Sync your vault to the local filesystem"
 		)
 		.version(packageJson.version)
-		.exitOverride((err) => {
-			// Let help and version exit normally
-			if (
-				err.code === "commander.helpDisplayed" ||
-				err.code === "commander.version"
-			) {
-				process.exit(0);
-			}
-			throw err;
-		})
-		.requiredOption(
-			"-l, --local-path <path>",
-			"Local directory path to sync"
-		)
+		.option("-l, --local-path <path>", "Local directory path to sync")
 		.option("-r, --remote-uri <uri>", "Remote server URI")
 		.option("-t, --token <token>", "Authentication token")
 		.option("-v, --vault-name <name>", "Vault name")
@@ -57,6 +46,11 @@ export function parseArgs(argv: string[]): CliArgs {
 			"[OPTIONAL] WebSocket retry interval in milliseconds",
 			parseInt
 		)
+		.option(
+			"--log-level <level>",
+			"[OPTIONAL] Log level (DEBUG, INFO, WARNING, ERROR)",
+			"INFO"
+		)
 		.addHelpText(
 			"after",
 			`
@@ -64,40 +58,65 @@ Examples:
   $ vaultlink -l ./my-vault -r https://sync.example.com -t mytoken -v default
   $ vaultlink -l ./my-vault -r https://sync.example.com -t mytoken -v default \\
       --ignore-pattern ".git/**" --ignore-pattern "*.tmp"
+  $ vaultlink -l ./my-vault -r https://sync.example.com -t mytoken -v default \\
+      --log-level DEBUG
 `
 		);
 
 	program.parse(argv);
 
-	const options = program.opts<{
-		localPath: string;
-		remoteUri?: string;
-		token?: string;
-		vaultName?: string;
-		syncConcurrency?: number;
-		maxFileSizeMb?: number;
-		ignorePattern?: string[];
-		websocketRetryIntervalMs?: number;
-	}>();
+	/* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
+	const opts = program.opts();
+	const localPath = opts.localPath as string | undefined;
+	const remoteUri = opts.remoteUri as string | undefined;
+	const token = opts.token as string | undefined;
+	const vaultName = opts.vaultName as string | undefined;
+	const syncConcurrency = opts.syncConcurrency as number | undefined;
+	const maxFileSizeMb = opts.maxFileSizeMb as number | undefined;
+	const ignorePattern = opts.ignorePattern as string[] | undefined;
+	const websocketRetryIntervalMs = opts.websocketRetryIntervalMs as
+		| number
+		| undefined;
+	const logLevelStr = (opts.logLevel as string | undefined) ?? "INFO";
+	/* eslint-enable @typescript-eslint/no-unsafe-type-assertion */
 
-	if (options.remoteUri === undefined) {
+	if (localPath === undefined) {
+		throw new Error(
+			"required option '-l, --local-path <path>' not specified"
+		);
+	}
+	if (remoteUri === undefined) {
 		throw new Error("required option '--remote-uri <uri>' not specified");
 	}
-	if (options.token === undefined) {
+	if (token === undefined) {
 		throw new Error("required option '--token <token>' not specified");
 	}
-	if (options.vaultName === undefined) {
+	if (vaultName === undefined) {
 		throw new Error("required option '--vault-name <name>' not specified");
 	}
 
+	// Validate and parse log level
+	const logLevelUpper = logLevelStr.toUpperCase();
+	const validLogLevels = Object.values(LogLevel);
+	const isLogLevel = (value: string): value is LogLevel => {
+		return (validLogLevels as readonly string[]).includes(value);
+	};
+	if (!isLogLevel(logLevelUpper)) {
+		throw new Error(
+			`Invalid log level '${logLevelStr}'. Valid values are: ${validLogLevels.join(", ")}`
+		);
+	}
+	const logLevel = logLevelUpper;
+
 	return {
-		localPath: options.localPath,
-		remoteUri: options.remoteUri ?? "",
-		token: options.token ?? "",
-		vaultName: options.vaultName ?? "",
-		syncConcurrency: options.syncConcurrency,
-		maxFileSizeMB: options.maxFileSizeMb,
-		ignorePatterns: options.ignorePattern,
-		webSocketRetryIntervalMs: options.websocketRetryIntervalMs
+		localPath,
+		remoteUri,
+		token,
+		vaultName,
+		syncConcurrency,
+		maxFileSizeMB: maxFileSizeMb,
+		ignorePatterns: ignorePattern,
+		webSocketRetryIntervalMs: websocketRetryIntervalMs,
+		logLevel
 	};
 }
