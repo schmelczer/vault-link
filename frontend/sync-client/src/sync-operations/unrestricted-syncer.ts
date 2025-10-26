@@ -228,7 +228,8 @@ export class UnrestrictedSyncer {
 					},
 					message:
 						"File has been deleted remotely, so we deleted it locally",
-					author: response.userId
+					author: response.userId,
+					timestamp: new Date(response.updatedDate)
 				});
 
 				this.database.delete(document.relativePath);
@@ -325,7 +326,8 @@ export class UnrestrictedSyncer {
 					status: SyncStatus.SUCCESS,
 					details: actualUpdateDetails,
 					message: `Successfully downloaded remotely updated file from the server`,
-					author: response.userId
+					author: response.userId,
+					timestamp: new Date(response.updatedDate)
 				});
 			}
 		});
@@ -429,7 +431,8 @@ export class UnrestrictedSyncer {
 				status: SyncStatus.SUCCESS,
 				details: updateDetails,
 				message: `Successfully downloaded remote file which hadn't existed locally`,
-				author: remoteVersion.userId
+				author: remoteVersion.userId,
+				timestamp: new Date(remoteVersion.updatedDate)
 			});
 		});
 	}
