@@ -33,12 +33,7 @@ export default [
 			"@typescript-eslint/class-methods-use-this": "off",
 			"@typescript-eslint/consistent-return": "off",
 			"@typescript-eslint/no-unsafe-argument": "off",
-			"@typescript-eslint/max-params": [
-				"error",
-				{
-					max: 6
-				}
-			],
+			"@typescript-eslint/max-params": "off",
 			"@typescript-eslint/no-magic-numbers": "off",
 			"@typescript-eslint/prefer-readonly-parameter-types": "off",
 			"@typescript-eslint/naming-convention": "off",

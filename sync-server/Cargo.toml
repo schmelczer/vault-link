@@ -35,7 +35,7 @@ bimap = "0.6.3"
 ts-rs =  { version = "10.1", features = ["uuid-impl", "chrono-impl"] }
 serde_with = "3.15.1"
 base64 = "0.22.1"
-reconcile-text = "0.5.0"
+reconcile-text = { version = "0.7.1", features = ["serde"] }
 
 [profile.release]
 codegen-units = 1
