@@ -3,12 +3,14 @@ use std::path::Path;
 use anyhow::{Context as _, Result};
 use database_config::DatabaseConfig;
 use log::info;
+use logging_config::LoggingConfig;
 use serde::{Deserialize, Serialize};
 use server_config::ServerConfig;
 use tokio::fs;
 use user_config::UserConfig;
 
 pub mod database_config;
+pub mod logging_config;
 pub mod server_config;
 pub mod user_config;
 
@@ -20,6 +22,8 @@ pub struct Config {
     pub server: ServerConfig,
     #[serde(default)]
     pub users: UserConfig,
+    #[serde(default)]
+    pub logging: LoggingConfig,
 }
 
 impl Config {
