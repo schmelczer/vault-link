@@ -20,6 +20,7 @@ axum_typed_multipart = "0.11.0"
 tower-http = { version = "0.6.1", features = ["cors", "trace", "limit", "timeout"] }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["fmt", "env-filter"]}
+humantime-serde = "1.1.1"
 sqlx = { version = "0.8.6", features = ["sqlite", "runtime-tokio", "uuid", "chrono"] }
 chrono = { version = "0.4.41", features = ["serde"] }
 rand = "0.9.0"
@@ -87,3 +88,6 @@ similar_names = { level = "allow", priority = 1 }
 missing_docs_in_private_items = { level = "allow", priority = 1 }
 
 pedantic = { level = "warn", priority = 0 }
+
+[package.metadata.cargo-machete]
+ignored = ["humantime-serde"]  # only used in serde macro

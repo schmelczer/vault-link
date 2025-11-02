@@ -39,6 +39,7 @@ export interface CommonHistoryEntry {
 	message: string;
 	details: SyncDetails;
 	author?: string;
+	timestamp?: Date;
 }
 
 export enum SyncType {
@@ -92,7 +93,7 @@ export class SyncHistory {
 	public addHistoryEntry(entry: CommonHistoryEntry): void {
 		const historyEntry = {
 			...entry,
-			timestamp: new Date()
+			timestamp: entry.timestamp ?? new Date()
 		};
 
 		const candidate = this.findSimilarRecentUpdateEntry(historyEntry);

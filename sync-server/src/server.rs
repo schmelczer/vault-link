@@ -13,7 +13,7 @@ mod responses;
 mod update_document;
 mod websocket;
 
-use std::{ffi::OsString, time::Duration};
+use std::time::Duration;
 
 use anyhow::{Context as _, Result, anyhow};
 use auth::auth_middleware;
@@ -42,12 +42,12 @@ use tracing::{Level, info_span};
 
 use crate::{
     app_state::AppState,
-    config::server_config::ServerConfig,
+    config::{Config, server_config::ServerConfig},
     errors::{client_error, not_found_error},
 };
 
-pub async fn create_server(config_path: Option<OsString>) -> Result<()> {
-    let app_state = AppState::try_new(config_path)
+pub async fn create_server(config: Config) -> Result<()> {
+    let app_state = AppState::try_new(config)
         .await
         .context("Failed to initialise app state")?;
 

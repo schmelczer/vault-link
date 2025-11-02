@@ -11,3 +11,6 @@ pub const DEFAULT_PORT: u16 = 3000;
 pub const DEFAULT_MAX_BODY_SIZE_MB: usize = 4096;
 pub const DEFAULT_RESPONSE_TIMEOUT_SECONDS: u64 = 60;
 pub const DEFAULT_MAX_CLIENTS_PER_VAULT: usize = 256;
+
+pub const DEFAULT_LOG_DIRECTORY: &str = "logs";
+pub const DEFAULT_LOG_ROTATION_INTERVAL: Duration = Duration::from_secs(60 * 60 * 24); // 1 day

@@ -6,24 +6,45 @@ mod errors;
 mod server;
 mod utils;
 
-use std::process::ExitCode;
+use std::{ffi::OsString, path::PathBuf, process::ExitCode};
 
 use anyhow::{Context as _, Result};
 use clap::Parser;
 use cli::args::Args;
+use config::Config;
+use consts::DEFAULT_CONFIG_PATH;
 use errors::{SyncServerError, init_error};
 use log::info;
 use server::create_server;
-use tracing_subscriber::{EnvFilter, fmt::format, util::SubscriberInitExt};
+use tracing_subscriber::{EnvFilter, fmt::format, layer::SubscriberExt, util::SubscriberInitExt};
+use utils::rotating_file_writer::RotatingFileWriter;
 
 #[tokio::main]
 async fn main() -> ExitCode {
     let args = Args::parse();
 
-    let mut result = set_up_logging(&args);
+    let config_path = args
+        .config_path
+        .clone()
+        .unwrap_or_else(|| OsString::from(DEFAULT_CONFIG_PATH));
+    let path = PathBuf::from(config_path);
+
+    let config = match Config::read_or_create(&path)
+        .await
+        .context("Failed to start server")
+        .map_err(init_error)
+    {
+        Ok(config) => config,
+        Err(e) => {
+            eprintln!("{}", e.serialize());
+            return ExitCode::FAILURE;
+        }
+    };
+
+    let mut result = set_up_logging(&args, &config.logging);
 
     if result.is_ok() {
-        result = start_server(args).await;
+        result = start_server(config).await;
     }
 
     match result {
@@ -35,7 +56,10 @@ async fn main() -> ExitCode {
     }
 }
 
-fn set_up_logging(args: &Args) -> Result<(), SyncServerError> {
+fn set_up_logging(
+    args: &Args,
+    logging_config: &config::logging_config::LoggingConfig,
+) -> Result<(), SyncServerError> {
     let level_filter = match args.verbose.log_level_filter() {
         // We don't want to allow disabling all logging
         log::LevelFilter::Off | log::LevelFilter::Error => tracing::Level::ERROR,
@@ -55,17 +79,33 @@ fn set_up_logging(args: &Args) -> Result<(), SyncServerError> {
 
     let is_debug_mode = args.verbose.log_level_filter() >= log::LevelFilter::Debug;
 
-    tracing_subscriber::fmt()
+    let file_appender = RotatingFileWriter::new(
+        &logging_config.log_directory,
+        "vault-link",
+        logging_config.log_rotation,
+    )
+    .context("Failed to create rotating file writer")
+    .map_err(init_error)?;
+
+    let format = format()
+        .with_target(is_debug_mode)
+        .with_line_number(is_debug_mode)
+        .compact();
+
+    let stdout_layer = tracing_subscriber::fmt::layer()
         .with_ansi(use_colors)
-        .with_env_filter(env_filter)
-        .event_format(
-            format()
-                .without_time()
-                .with_target(is_debug_mode)
-                .with_line_number(is_debug_mode)
-                .compact(),
-        )
-        .finish()
+        .with_writer(std::io::stdout)
+        .event_format(format.clone());
+
+    let file_layer = tracing_subscriber::fmt::layer()
+        .with_ansi(false)
+        .with_writer(file_appender)
+        .event_format(format);
+
+    tracing_subscriber::registry()
+        .with(env_filter)
+        .with(stdout_layer)
+        .with(file_layer)
         .try_init()
         .context("Failed to initialise tracing")
         .map_err(init_error)?;
@@ -73,13 +113,13 @@ fn set_up_logging(args: &Args) -> Result<(), SyncServerError> {
     Ok(())
 }
 
-async fn start_server(args: Args) -> Result<(), SyncServerError> {
+async fn start_server(config: Config) -> Result<(), SyncServerError> {
     info!(
         "Starting VaultLink server version {}",
         env!("CARGO_PKG_VERSION")
     );
 
-    create_server(args.config_path)
+    create_server(config)
         .await
         .context("Failed to start server")
         .map_err(init_error)

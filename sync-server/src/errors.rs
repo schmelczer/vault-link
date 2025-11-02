@@ -55,6 +55,7 @@ pub struct SerializedError {
 
 impl Display for SerializedError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: {}", self.error_type, self.message)?;
         if !self.causes.is_empty() {
             write!(f, "\nCauses:\n")?;
             for cause in &self.causes {
