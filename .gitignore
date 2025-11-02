@@ -4,8 +4,6 @@ node_modules
 # Exclude macOS Finder (System Explorer) View States
 .DS_Store
 
-
-
 # Frontend build folders
 frontend/*/dist
 
@@ -19,3 +17,5 @@ sync-server/bindings/*.ts
 
 *.log
 *.sqlx
+
+target
