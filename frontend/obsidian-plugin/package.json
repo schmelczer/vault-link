@@ -13,7 +13,7 @@
     "author": "",
     "license": "MIT",
     "devDependencies": {
-        "@plausible-analytics/tracker": "^0.4.0",
+        "@plausible-analytics/tracker": "^0.4.3",
         "@sentry/browser": "^10.8.0",
         "@types/node": "^24.8.1",
         "css-loader": "^7.1.2",
