@@ -88,3 +88,6 @@ similar_names = { level = "allow", priority = 1 }
 missing_docs_in_private_items = { level = "allow", priority = 1 }
 
 pedantic = { level = "warn", priority = 0 }
+
+[package.metadata.cargo-machete]
+ignored = ["humantime-serde"]  # only used in serde macro
