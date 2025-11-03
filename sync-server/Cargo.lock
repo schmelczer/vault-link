@@ -1680,9 +1680,9 @@ dependencies = [
 
 [[package]]
 name = "reconcile-text"
-version = "0.5.0"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c8d690c19b0bf6574cd3591d10f20df5aa52d2af95b8dcaacbc86893292ac8c5"
+checksum = "a7bb0e07b021b830232d970bbd94bab3deaeac7354d4df0f7f4852526ffa142f"
 
 [[package]]
 name = "redox_syscall"
