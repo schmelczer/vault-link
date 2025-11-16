@@ -96,7 +96,8 @@ impl RotatingFileWriter {
     fn open_or_create_log_file(inner: &mut RotatingFileWriterInner) -> io::Result<()> {
         // If we haven't reached rotation time and there's an existing log file, reuse it
         if !Self::should_rotate(inner)
-            && let Some(latest_file) = Self::find_latest_log_file(&inner.directory, &inner.file_prefix)
+            && let Some(latest_file) =
+                Self::find_latest_log_file(&inner.directory, &inner.file_prefix)
         {
             let filepath = inner.directory.join(&latest_file);
             let file = OpenOptions::new()
