@@ -310,7 +310,7 @@ export class UnrestrictedSyncer {
 				);
 				this.updateCache(
 					response.vaultUpdateId,
-					contentBytes,
+					responseBytes,
 					actualPath
 				);
 
