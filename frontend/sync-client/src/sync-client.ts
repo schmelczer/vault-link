@@ -152,7 +152,8 @@ export class SyncClient {
 			settings,
 			syncService,
 			fileOperations,
-			unrestrictedSyncer
+			unrestrictedSyncer,
+			contentCache
 		);
 
 		const webSocketManager = new WebSocketManager(

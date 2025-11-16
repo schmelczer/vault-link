@@ -54,4 +54,10 @@ export class FixedSizeDocumentCache {
 			this.currentSizeInBytes -= lruEntry.byteLength;
 		}
 	}
+
+	public clear(): void {
+		this.cache.clear();
+		this.usageOrder = [];
+		this.currentSizeInBytes = 0;
+	}
 }
