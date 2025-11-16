@@ -4,6 +4,7 @@ import type {
 	RelativePath
 } from "../persistence/database";
 
+import { diff } from "reconcile-text";
 import type { SyncService } from "../services/sync-service";
 import type { Logger } from "../tracing/logger";
 import type {
@@ -27,6 +28,9 @@ import { globsToRegexes } from "../utils/globs-to-regexes";
 import type { DocumentVersion } from "../services/types/DocumentVersion";
 import type { DocumentUpdateResponse } from "../services/types/DocumentUpdateResponse";
 import type { DocumentVersionWithoutContent } from "../services/types/DocumentVersionWithoutContent";
+import type { FixedSizeDocumentCache } from "../utils/fix-sized-cache";
+import { isFileTypeMergable } from "../utils/is-file-type-mergable";
+import { isBinary } from "../utils/is-binary";
 
 export class UnrestrictedSyncer {
 	private ignorePatterns: RegExp[];
@@ -37,7 +41,8 @@ export class UnrestrictedSyncer {
 		private readonly settings: Settings,
 		private readonly syncService: SyncService,
 		private readonly operations: FileOperations,
-		private readonly history: SyncHistory
+		private readonly history: SyncHistory,
+		private readonly contentCache: FixedSizeDocumentCache
 	) {
 		this.ignorePatterns = globsToRegexes(
 			this.settings.getSettings().ignorePatterns,
@@ -87,8 +92,12 @@ export class UnrestrictedSyncer {
 				},
 				document
 			);
-
 			this.database.addSeenUpdateId(response.vaultUpdateId);
+			this.updateCache(
+				response.vaultUpdateId,
+				contentBytes,
+				response.relativePath
+			);
 
 			this.history.addHistoryEntry({
 				status: SyncStatus.SUCCESS,
@@ -178,12 +187,32 @@ export class UnrestrictedSyncer {
 				undefined;
 
 			if (areThereLocalChanges) {
-				response = await this.syncService.put({
-					documentId: document.documentId,
-					parentVersionId: document.metadata.parentVersionId,
-					relativePath: document.relativePath,
-					contentBytes
-				});
+				const isText =
+					!isBinary(contentBytes) &&
+					isFileTypeMergable(document.relativePath);
+				const cachedVersion = this.contentCache.get(
+					document.metadata.parentVersionId
+				);
+
+				response =
+					isText && cachedVersion !== undefined
+						? await this.syncService.putText({
+								documentId: document.documentId,
+								parentVersionId:
+									document.metadata.parentVersionId,
+								relativePath: document.relativePath,
+								content: diff(
+									new TextDecoder().decode(cachedVersion),
+									new TextDecoder().decode(contentBytes)
+								)
+							})
+						: await this.syncService.putBinary({
+								documentId: document.documentId,
+								parentVersionId:
+									document.metadata.parentVersionId,
+								relativePath: document.relativePath,
+								contentBytes
+							});
 			} else {
 				if (!force) {
 					this.logger.debug(
@@ -274,11 +303,15 @@ export class UnrestrictedSyncer {
 					},
 					document
 				);
-
 				await this.operations.write(
 					actualPath,
 					contentBytes,
 					responseBytes
+				);
+				this.updateCache(
+					response.vaultUpdateId,
+					responseBytes,
+					actualPath
 				);
 
 				if (!force) {
@@ -296,6 +329,11 @@ export class UnrestrictedSyncer {
 						remoteRelativePath: response.relativePath
 					},
 					document
+				);
+				this.updateCache(
+					response.vaultUpdateId,
+					contentBytes,
+					actualPath
 				);
 			}
 
@@ -423,6 +461,11 @@ export class UnrestrictedSyncer {
 				remoteVersion.relativePath,
 				contentBytes
 			);
+			this.updateCache(
+				remoteVersion.vaultUpdateId,
+				contentBytes,
+				remoteVersion.relativePath
+			);
 
 			resolve();
 			this.database.removeDocumentPromise(promise);
@@ -511,6 +554,16 @@ export class UnrestrictedSyncer {
 					maxFileSizeMB
 				} MB`
 			};
+		}
+	}
+
+	private updateCache(
+		updateId: number,
+		contentBytes: Uint8Array,
+		filePath: RelativePath
+	): void {
+		if (isFileTypeMergable(filePath) && !isBinary(contentBytes)) {
+			this.contentCache.put(updateId, contentBytes);
 		}
 	}
 }

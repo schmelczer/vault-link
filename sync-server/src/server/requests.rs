@@ -1,5 +1,6 @@
 use axum::body::Bytes;
 use axum_typed_multipart::{FieldData, TryFromMultipart};
+use reconcile_text::NumberOrString;
 use serde::{self, Deserialize};
 use ts_rs::TS;
 
@@ -20,15 +21,26 @@ pub struct CreateDocumentVersion {
     pub content: FieldData<Bytes>,
 }
 
-#[derive(TS, Debug, TryFromMultipart)]
-#[ts(export)]
-pub struct UpdateDocumentVersion {
+#[derive(Debug, TryFromMultipart)]
+pub struct UpdateBinaryDocumentVersion {
     pub parent_version_id: VaultUpdateId,
     pub relative_path: String,
 
-    #[ts(as = "Vec<u8>")]
     #[form_data(limit = "unlimited")]
     pub content: FieldData<Bytes>,
+}
+
+#[derive(TS, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct UpdateTextDocumentVersion {
+    #[ts(as = "i32")]
+    pub parent_version_id: VaultUpdateId,
+
+    pub relative_path: String,
+
+    #[ts(type = "Array<number | string>")]
+    pub content: Vec<NumberOrString>,
 }
 
 #[derive(TS, Debug, Deserialize)]

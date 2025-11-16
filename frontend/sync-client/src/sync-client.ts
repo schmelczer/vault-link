@@ -21,13 +21,13 @@ import { CursorTracker } from "./sync-operations/cursor-tracker";
 import type { CursorSpan } from "./services/types/CursorSpan";
 import type { MaybeOutdatedClientCursors } from "./types/maybe-outdated-client-cursors";
 import { FileChangeNotifier } from "./sync-operations/file-change-notifier";
+import { FixedSizeDocumentCache } from "./utils/fix-sized-cache";
 
 export class SyncClient {
 	private static readonly MINIMUM_SAVE_INTERVAL_MS = 1000;
 	private hasStartedOfflineSync = false;
 	private hasFinishedOfflineSync = false;
 
-	// eslint-disable-next-line @typescript-eslint/max-params
 	private constructor(
 		private readonly history: SyncHistory,
 		private readonly settings: Settings,
@@ -135,13 +135,15 @@ export class SyncClient {
 			nativeLineEndings
 		);
 
+		const contentCache = new FixedSizeDocumentCache(1024 * 1024 * 2); // 2 MB cache
 		const unrestrictedSyncer = new UnrestrictedSyncer(
 			logger,
 			database,
 			settings,
 			syncService,
 			fileOperations,
-			history
+			history,
+			contentCache
 		);
 
 		const syncer = new Syncer(
@@ -150,7 +152,8 @@ export class SyncClient {
 			settings,
 			syncService,
 			fileOperations,
-			unrestrictedSyncer
+			unrestrictedSyncer,
+			contentCache
 		);
 
 		const webSocketManager = new WebSocketManager(

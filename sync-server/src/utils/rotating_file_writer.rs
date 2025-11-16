@@ -93,6 +93,26 @@ impl RotatingFileWriter {
         SystemTime::now() >= inner.next_rotation_time
     }
 
+    fn open_or_create_log_file(inner: &mut RotatingFileWriterInner) -> io::Result<()> {
+        // If we haven't reached rotation time and there's an existing log file, reuse it
+        if !Self::should_rotate(inner)
+            && let Some(latest_file) =
+                Self::find_latest_log_file(&inner.directory, &inner.file_prefix)
+        {
+            let filepath = inner.directory.join(&latest_file);
+            let file = OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&filepath)?;
+
+            inner.current_file = Some(file);
+            return Ok(());
+        }
+
+        // Otherwise, create a new log file with current timestamp
+        Self::rotate(inner)
+    }
+
     fn rotate(inner: &mut RotatingFileWriterInner) -> io::Result<()> {
         let timestamp = Local::now().format("%Y-%m-%d_%H-%M-%S");
         let filename = format!("{}.{}.log", inner.file_prefix, timestamp);
@@ -114,7 +134,9 @@ impl Write for RotatingFileWriter {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let mut inner = self.inner.lock().unwrap();
 
-        if inner.current_file.is_none() || Self::should_rotate(&inner) {
+        if inner.current_file.is_none() {
+            Self::open_or_create_log_file(&mut inner)?;
+        } else if Self::should_rotate(&inner) {
             Self::rotate(&mut inner)?;
         }
 
@@ -328,6 +350,7 @@ mod tests {
     #[test]
     fn test_restart_behavior() {
         let temp_dir = std::env::temp_dir().join("test_restart_behavior");
+        let _ = fs::remove_dir_all(&temp_dir);
 
         // Create initial writer and write some data
         {

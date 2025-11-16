@@ -17,6 +17,7 @@ import { createPromise } from "../utils/create-promise";
 import { SyncResetError } from "../services/sync-reset-error";
 import { Locks } from "../utils/locks";
 import type { DocumentVersionWithoutContent } from "../services/types/DocumentVersionWithoutContent";
+import type { FixedSizeDocumentCache } from "../utils/fix-sized-cache";
 
 export class Syncer {
 	private readonly remoteDocumentsLock: Locks<DocumentId>;
@@ -33,7 +34,8 @@ export class Syncer {
 		settings: Settings,
 		private readonly syncService: SyncService,
 		private readonly operations: FileOperations,
-		private readonly internalSyncer: UnrestrictedSyncer
+		private readonly internalSyncer: UnrestrictedSyncer,
+		private readonly contentCache: FixedSizeDocumentCache
 	) {
 		this.syncQueue = new PQueue({
 			concurrency: settings.getSettings().syncConcurrency
@@ -250,6 +252,7 @@ export class Syncer {
 
 	public async reset(): Promise<void> {
 		await this.waitUntilFinished();
+		this.contentCache.clear();
 	}
 
 	public async syncRemotelyUpdatedFile(

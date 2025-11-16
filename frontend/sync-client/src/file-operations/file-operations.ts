@@ -3,8 +3,9 @@ import type { FileSystemOperations } from "./filesystem-operations";
 import type { Database, RelativePath } from "../persistence/database";
 import { SafeFileSystemOperations } from "./safe-filesystem-operations";
 import type { TextWithCursors } from "reconcile-text";
-import { isBinary, reconcile } from "reconcile-text";
+import { reconcile } from "reconcile-text";
 import { isFileTypeMergable } from "../utils/is-file-type-mergable";
+import { isBinary } from "../utils/is-binary";
 
 export class FileOperations {
 	private static readonly PARENTHESES_REGEX = / \((\d+)\)$/;
