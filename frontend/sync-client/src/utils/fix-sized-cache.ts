@@ -2,27 +2,39 @@
 
 import type { VaultUpdateId } from "../persistence/database";
 
+// Doubly-linked list node for O(1) LRU operations
+class LRUNode {
+	public constructor(
+		public key: VaultUpdateId,
+		public value: Uint8Array,
+		public prev: LRUNode | null = null,
+		public next: LRUNode | null = null
+	) {}
+}
+
 // evicting the least recently used documents when the size limit is exceeded.
 export class FixedSizeDocumentCache {
 	private readonly maxSizeInBytes: number;
 	private currentSizeInBytes: number;
-	private readonly cache: Map<VaultUpdateId, Uint8Array>;
-	private usageOrder: VaultUpdateId[];
+	private readonly cache: Map<VaultUpdateId, LRUNode>;
+	private head: LRUNode | null; // Least recently used
+	private tail: LRUNode | null; // Most recently used
 
 	public constructor(maxSizeInBytes: number) {
 		this.maxSizeInBytes = maxSizeInBytes;
 		this.currentSizeInBytes = 0;
 		this.cache = new Map();
-		this.usageOrder = [];
+		this.head = null;
+		this.tail = null;
 	}
 
 	public get(updateId: VaultUpdateId): Uint8Array | undefined {
-		const entry = this.cache.get(updateId);
-		if (entry) {
-			this.usageOrder = this.usageOrder.filter((id) => id !== updateId);
-			this.usageOrder.push(updateId);
-			return entry;
+		const node = this.cache.get(updateId);
+		if (node) {
+			this.moveToTail(node);
+			return node.value;
 		}
+
 		return undefined;
 	}
 
@@ -33,31 +45,69 @@ export class FixedSizeDocumentCache {
 		}
 
 		// If the document is already in the cache, update it
-		const existingEntry = this.cache.get(updateId);
-		if (existingEntry != null) {
-			this.currentSizeInBytes -= existingEntry.byteLength;
+		const existingNode = this.cache.get(updateId);
+		if (existingNode != null) {
+			this.currentSizeInBytes -= existingNode.value.byteLength;
+			this.removeNode(existingNode);
 			this.cache.delete(updateId);
-			this.usageOrder = this.usageOrder.filter((id) => id !== updateId);
 		}
-		this.cache.set(updateId, content);
-		this.usageOrder.push(updateId);
+
+		const newNode = new LRUNode(updateId, content);
+		this.cache.set(updateId, newNode);
+		this.addToTail(newNode);
 		this.currentSizeInBytes += content.byteLength;
 
 		// Evict least recently used documents if over size limit
-		while (
-			this.currentSizeInBytes > this.maxSizeInBytes &&
-			this.usageOrder.length > 0
-		) {
-			const lruUpdateId = this.usageOrder.shift()!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
-			const lruEntry = this.cache.get(lruUpdateId)!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
-			this.cache.delete(lruUpdateId);
-			this.currentSizeInBytes -= lruEntry.byteLength;
+		while (this.currentSizeInBytes > this.maxSizeInBytes && this.head) {
+			const lruNode = this.head;
+			this.removeNode(lruNode);
+			this.cache.delete(lruNode.key);
+			this.currentSizeInBytes -= lruNode.value.byteLength;
 		}
 	}
 
 	public clear(): void {
 		this.cache.clear();
-		this.usageOrder = [];
+		this.head = null;
+		this.tail = null;
 		this.currentSizeInBytes = 0;
+	}
+
+	private removeNode(node: LRUNode): void {
+		if (node.prev) {
+			node.prev.next = node.next;
+		} else {
+			this.head = node.next;
+		}
+
+		if (node.next) {
+			node.next.prev = node.prev;
+		} else {
+			this.tail = node.prev;
+		}
+
+		node.prev = null;
+		node.next = null;
+	}
+
+	private addToTail(node: LRUNode): void {
+		node.prev = this.tail;
+		node.next = null;
+
+		if (this.tail) {
+			this.tail.next = node;
+		}
+
+		this.tail = node;
+
+		this.head ??= node;
+	}
+
+	private moveToTail(node: LRUNode): void {
+		if (node === this.tail) {
+			return;
+		}
+		this.removeNode(node);
+		this.addToTail(node);
 	}
 }
