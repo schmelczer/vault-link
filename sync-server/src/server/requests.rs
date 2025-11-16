@@ -21,13 +21,11 @@ pub struct CreateDocumentVersion {
     pub content: FieldData<Bytes>,
 }
 
-#[derive(TS, Debug, TryFromMultipart)]
-#[ts(export)]
+#[derive(Debug, TryFromMultipart)]
 pub struct UpdateBinaryDocumentVersion {
     pub parent_version_id: VaultUpdateId,
     pub relative_path: String,
 
-    #[ts(as = "Vec<u8>")]
     #[form_data(limit = "unlimited")]
     pub content: FieldData<Bytes>,
 }
