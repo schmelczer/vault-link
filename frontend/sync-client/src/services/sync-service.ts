@@ -348,7 +348,7 @@ export class SyncService {
 	}
 
 	private getDefaultHeaders(
-		{ type }: { type?: "json" | "form" } = { type: undefined }
+		{ type }: { type?: "json" } = { type: undefined }
 	): Record<string, string> {
 		const headers: Record<string, string> = {
 			"device-id": this.deviceId,
@@ -357,8 +357,6 @@ export class SyncService {
 
 		if (type === "json") {
 			headers["Content-Type"] = "application/json";
-		} else if (type === "form") {
-			headers["Content-Type"] = "multipart/form-data";
 		}
 
 		return headers;

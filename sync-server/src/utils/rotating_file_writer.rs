@@ -350,6 +350,7 @@ mod tests {
     #[test]
     fn test_restart_behavior() {
         let temp_dir = std::env::temp_dir().join("test_restart_behavior");
+        let _ = fs::remove_dir_all(&temp_dir);
 
         // Create initial writer and write some data
         {
