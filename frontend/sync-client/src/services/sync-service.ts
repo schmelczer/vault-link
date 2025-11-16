@@ -112,7 +112,7 @@ export class SyncService {
 		parentVersionId: VaultUpdateId;
 		documentId: DocumentId;
 		relativePath: RelativePath;
-		content: (number | string | bigint)[];
+		content: (number | string)[];
 	}): Promise<DocumentUpdateResponse> {
 		return this.withRetries(async () => {
 			this.logger.debug(
@@ -122,12 +122,7 @@ export class SyncService {
 			const request: UpdateTextDocumentVersion = {
 				parentVersionId,
 				relativePath,
-				content: content.map((c) => {
-					if (typeof c === "bigint") {
-						return Number(c);
-					}
-					return c;
-				})
+				content
 			};
 
 			const response = await this.client(
