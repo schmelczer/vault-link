@@ -16,7 +16,7 @@
         "byte-base64": "^1.1.0",
         "minimatch": "^10.0.1",
         "p-queue": "^8.1.0",
-        "reconcile-text": "^0.5.0",
+        "reconcile-text": "^0.7.1",
         "uuid": "^13.0.0"
     },
     "devDependencies": {

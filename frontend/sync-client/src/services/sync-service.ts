@@ -16,6 +16,7 @@ import type { DocumentVersion } from "./types/DocumentVersion";
 import type { FetchLatestDocumentsResponse } from "./types/FetchLatestDocumentsResponse";
 import type { PingResponse } from "./types/PingResponse";
 import type { DeleteDocumentVersion } from "./types/DeleteDocumentVersion";
+import type { UpdateTextDocumentVersion } from "./types/UpdateTextDocumentVersion";
 
 export interface CheckConnectionResult {
 	isSuccessful: boolean;
@@ -102,7 +103,64 @@ export class SyncService {
 		});
 	}
 
-	public async put({
+	public async putText({
+		parentVersionId,
+		documentId,
+		relativePath,
+		content
+	}: {
+		parentVersionId: VaultUpdateId;
+		documentId: DocumentId;
+		relativePath: RelativePath;
+		content: (number | string | bigint)[];
+	}): Promise<DocumentUpdateResponse> {
+		return this.withRetries(async () => {
+			this.logger.debug(
+				`Updating text document ${documentId} with parent version ${parentVersionId} and relative path ${relativePath}`
+			);
+
+			const request: UpdateTextDocumentVersion = {
+				parentVersionId,
+				relativePath,
+				content: content.map((c) => {
+					if (typeof c === "bigint") {
+						return Number(c);
+					}
+					return c;
+				})
+			};
+
+			const response = await this.client(
+				this.getUrl(`/documents/${documentId}/text`),
+				{
+					method: "PUT",
+					body: JSON.stringify(request),
+					headers: this.getDefaultHeaders({ type: "json" })
+				}
+			);
+
+			const result: SerializedError | DocumentUpdateResponse =
+				(await response.json()) as  // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+					| SerializedError
+					| DocumentUpdateResponse;
+
+			if ("errorType" in result) {
+				throw new Error(
+					`Failed to update document: ${SyncService.formatError(result)}`
+				);
+			}
+
+			this.logger.debug(
+				`Updated document ${JSON.stringify(result)} with id ${
+					result.documentId
+				}}`
+			);
+
+			return result;
+		});
+	}
+
+	public async putBinary({
 		parentVersionId,
 		documentId,
 		relativePath,
@@ -115,7 +173,7 @@ export class SyncService {
 	}): Promise<DocumentUpdateResponse> {
 		return this.withRetries(async () => {
 			this.logger.debug(
-				`Updating document ${documentId} with parent version ${parentVersionId} and relative path ${relativePath}`
+				`Updating binary document ${documentId} with parent version ${parentVersionId} and relative path ${relativePath}`
 			);
 			const formData = new FormData();
 			formData.append("parent_version_id", parentVersionId.toString());
@@ -126,7 +184,7 @@ export class SyncService {
 			);
 
 			const response = await this.client(
-				this.getUrl(`/documents/${documentId}`),
+				this.getUrl(`/documents/${documentId}/binary`),
 				{
 					method: "PUT",
 					body: formData,
@@ -171,10 +229,7 @@ export class SyncService {
 				{
 					method: "DELETE",
 					body: JSON.stringify(request),
-					headers: {
-						"Content-Type": "application/json",
-						...this.getDefaultHeaders()
-					}
+					headers: this.getDefaultHeaders({ type: "json" })
 				}
 			);
 
@@ -297,11 +352,21 @@ export class SyncService {
 		return `${safeRemoteUri}/vaults/${vaultName}${path}`;
 	}
 
-	private getDefaultHeaders(): Record<string, string> {
-		return {
+	private getDefaultHeaders(
+		{ type }: { type?: "json" | "form" } = { type: undefined }
+	): Record<string, string> {
+		const headers: Record<string, string> = {
 			"device-id": this.deviceId,
 			authorization: `Bearer ${this.settings.getSettings().token}`
 		};
+
+		if (type === "json") {
+			headers["Content-Type"] = "application/json";
+		} else if (type === "form") {
+			headers["Content-Type"] = "multipart/form-data";
+		}
+
+		return headers;
 	}
 
 	private async withRetries<T>(fn: () => Promise<T>): Promise<T> {

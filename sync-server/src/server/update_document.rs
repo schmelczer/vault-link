@@ -6,23 +6,25 @@ use axum::{
 use axum_extra::TypedHeader;
 use axum_typed_multipart::TypedMultipart;
 use log::info;
-use reconcile_text::{BuiltinTokenizer, is_binary, reconcile};
+use reconcile_text::{BuiltinTokenizer, EditedText, reconcile};
 use serde::Deserialize;
 
 use super::{
-    device_id_header::DeviceIdHeader, requests::UpdateDocumentVersion,
+    device_id_header::DeviceIdHeader, requests::UpdateTextDocumentVersion,
     responses::DocumentUpdateResponse,
 };
 use crate::{
     app_state::{
         AppState,
-        database::models::{DocumentId, StoredDocumentVersion, VaultId},
+        database::models::{DocumentId, StoredDocumentVersion, VaultId, VaultUpdateId},
     },
     config::user_config::User,
     errors::{SyncServerError, not_found_error, server_error},
+    server::requests::UpdateBinaryDocumentVersion,
     utils::{
-        dedup_paths::dedup_paths, is_file_type_mergable::is_file_type_mergable,
-        normalize::normalize, sanitize_path::sanitize_path,
+        dedup_paths::dedup_paths, is_binary::is_binary,
+        is_file_type_mergable::is_file_type_mergable, normalize::normalize,
+        sanitize_path::sanitize_path,
     },
 };
 
@@ -30,13 +32,11 @@ use crate::{
 pub struct UpdateDocumentPathParams {
     #[serde(deserialize_with = "normalize")]
     vault_id: VaultId,
-
     document_id: DocumentId,
 }
 
 #[axum::debug_handler]
-#[allow(clippy::too_many_lines)]
-pub async fn update_document(
+pub async fn update_binary(
     Path(UpdateDocumentPathParams {
         vault_id,
         document_id,
@@ -44,25 +44,92 @@ pub async fn update_document(
     Extension(user): Extension<User>,
     TypedHeader(device_id): TypedHeader<DeviceIdHeader>,
     State(state): State<AppState>,
-    TypedMultipart(request): TypedMultipart<UpdateDocumentVersion>,
+    TypedMultipart(request): TypedMultipart<UpdateBinaryDocumentVersion>,
 ) -> Result<Json<DocumentUpdateResponse>, SyncServerError> {
-    // No need for a transaction as document versions are immutable
-    let parent_document = state
+    let parent_document = get_parent_document(&state, &vault_id, request.parent_version_id).await?;
+    let content = request.content.contents.to_vec();
+
+    update_document(
+        parent_document,
+        vault_id,
+        document_id,
+        user,
+        device_id,
+        state,
+        &request.relative_path,
+        content,
+    )
+    .await
+}
+
+#[axum::debug_handler]
+#[allow(clippy::too_many_lines)]
+pub async fn update_text(
+    Path(UpdateDocumentPathParams {
+        vault_id,
+        document_id,
+    }): Path<UpdateDocumentPathParams>,
+    Extension(user): Extension<User>,
+    TypedHeader(device_id): TypedHeader<DeviceIdHeader>,
+    State(state): State<AppState>,
+    Json(request): Json<UpdateTextDocumentVersion>,
+) -> Result<Json<DocumentUpdateResponse>, SyncServerError> {
+    let parent_document = get_parent_document(&state, &vault_id, request.parent_version_id).await?;
+
+    let edited_text = EditedText::from_diff(
+        str::from_utf8(&parent_document.content)
+            .expect("parent must be valid UTF-8 because it's a text document"),
+        request.content,
+        &*BuiltinTokenizer::Word,
+    );
+
+    let content = edited_text.apply().text().into_bytes();
+
+    update_document(
+        parent_document,
+        vault_id,
+        document_id,
+        user,
+        device_id,
+        state,
+        &request.relative_path,
+        content,
+    )
+    .await
+}
+
+async fn get_parent_document(
+    state: &AppState,
+    vault_id: &VaultId,
+    parent_version_id: VaultUpdateId,
+) -> Result<StoredDocumentVersion, SyncServerError> {
+    state
         .database
-        .get_document_version(&vault_id, request.parent_version_id, None)
+        .get_document_version(vault_id, parent_version_id, None)
         .await
         .map_err(server_error)?
         .map_or_else(
             || {
                 Err(not_found_error(anyhow!(
-                    "Parent version with id `{}` not found",
-                    request.parent_version_id
+                    "Parent version with id `{parent_version_id}` not found"
                 )))
             },
             Ok,
-        )?;
+        )
+}
 
-    let sanitized_relative_path = sanitize_path(&request.relative_path);
+#[allow(clippy::too_many_lines, clippy::too_many_arguments)]
+async fn update_document(
+    parent_document: StoredDocumentVersion,
+    vault_id: VaultId,
+    document_id: DocumentId,
+    user: User,
+    device_id: DeviceIdHeader,
+    state: AppState,
+    relative_path: &str,
+    content: Vec<u8>,
+) -> Result<Json<DocumentUpdateResponse>, SyncServerError> {
+    let sanitized_relative_path = sanitize_path(relative_path);
 
     let mut transaction = state
         .database
@@ -101,8 +168,6 @@ pub async fn update_document(
             latest_version.into(),
         )));
     }
-
-    let content = request.content.contents.to_vec();
 
     // Return the latest version if the content and path are the same as the latest
     // version
