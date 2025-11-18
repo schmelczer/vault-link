@@ -22,11 +22,13 @@ import type { CursorSpan } from "./services/types/CursorSpan";
 import type { MaybeOutdatedClientCursors } from "./types/maybe-outdated-client-cursors";
 import { FileChangeNotifier } from "./sync-operations/file-change-notifier";
 import { FixedSizeDocumentCache } from "./utils/fix-sized-cache";
+import { setUpTelemetry } from "./utils/set-up-telemetry";
 
 export class SyncClient {
 	private static readonly MINIMUM_SAVE_INTERVAL_MS = 1000;
 	private hasStartedOfflineSync = false;
 	private hasFinishedOfflineSync = false;
+	private unloadTelemetry?: () => void;
 
 	private constructor(
 		private readonly history: SyncHistory,
@@ -41,6 +43,10 @@ export class SyncClient {
 		private readonly fileChangeNotifier: FileChangeNotifier,
 		private readonly contentCache: FixedSizeDocumentCache
 	) {
+		if (settings.getSettings().enableTelemetry) {
+			this.unloadTelemetry = setUpTelemetry();
+		}
+
 		this.settings.addOnSettingsChangeListener(
 			async (newSettings, oldSettings) => {
 				if (newSettings.vaultName !== oldSettings.vaultName) {
@@ -61,6 +67,16 @@ export class SyncClient {
 					this.contentCache.resize(
 						newSettings.diffCacheSizeMB * 1024 * 1024
 					);
+				}
+
+				if (
+					newSettings.enableTelemetry !== oldSettings.enableTelemetry
+				) {
+					if (newSettings.enableTelemetry) {
+						this.unloadTelemetry = setUpTelemetry();
+					} else {
+						this.unloadTelemetry?.();
+					}
 				}
 			}
 		);

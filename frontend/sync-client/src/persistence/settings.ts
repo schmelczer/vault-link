@@ -10,6 +10,7 @@ export interface SyncSettings {
 	ignorePatterns: string[];
 	webSocketRetryIntervalMs: number;
 	diffCacheSizeMB: number;
+	enableTelemetry: boolean;
 }
 
 export const DEFAULT_SETTINGS: SyncSettings = {
@@ -21,7 +22,8 @@ export const DEFAULT_SETTINGS: SyncSettings = {
 	maxFileSizeMB: 10,
 	ignorePatterns: [],
 	webSocketRetryIntervalMs: 3500,
-	diffCacheSizeMB: 4
+	diffCacheSizeMB: 4,
+	enableTelemetry: false
 };
 
 export class Settings {
