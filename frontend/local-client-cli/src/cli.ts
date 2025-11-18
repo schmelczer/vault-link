@@ -98,7 +98,8 @@ async function main(): Promise<void> {
 		webSocketRetryIntervalMs:
 			args.webSocketRetryIntervalMs ??
 			DEFAULT_SETTINGS.webSocketRetryIntervalMs,
-		isSyncEnabled: true
+		isSyncEnabled: true,
+		enableTelemetry: args.enableTelemetry ?? false
 	};
 
 	const client = await SyncClient.create({

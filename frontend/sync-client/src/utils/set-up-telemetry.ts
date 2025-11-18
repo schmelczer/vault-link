@@ -26,6 +26,8 @@ export const setUpTelemetry = (): (() => void) => {
 	return (): void => {
 		window.removeEventListener("error", onError);
 		window.removeEventListener("unhandledrejection", onUnhandledRejection);
-		Sentry.close(5000);
+		Sentry.close(5000).catch(() => {
+			// Ignore errors during shutdown
+		});
 	};
 };

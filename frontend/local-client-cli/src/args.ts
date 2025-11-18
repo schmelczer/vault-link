@@ -13,6 +13,7 @@ export interface CliArgs {
 	webSocketRetryIntervalMs?: number;
 	logLevel: LogLevel;
 	health?: string;
+	enableTelemetry?: boolean;
 }
 
 export function parseArgs(argv: string[]): CliArgs {
@@ -56,6 +57,10 @@ export function parseArgs(argv: string[]): CliArgs {
 			"--health <path>",
 			"[OPTIONAL] Path to health status file for Docker healthcheck"
 		)
+		.option(
+			"--enable-telemetry",
+			"[OPTIONAL] Enable telemetry (disabled by default)"
+		)
 		.addHelpText(
 			"after",
 			`
@@ -84,6 +89,7 @@ Examples:
 		| undefined;
 	const logLevelStr = (opts.logLevel as string | undefined) ?? "INFO";
 	const health = opts.health as string | undefined;
+	const enableTelemetry = opts.enableTelemetry as boolean | undefined;
 	/* eslint-enable @typescript-eslint/no-unsafe-type-assertion */
 
 	if (localPath === undefined) {
@@ -124,6 +130,7 @@ Examples:
 		ignorePatterns: ignorePattern,
 		webSocketRetryIntervalMs: websocketRetryIntervalMs,
 		logLevel,
-		health
+		health,
+		enableTelemetry
 	};
 }
