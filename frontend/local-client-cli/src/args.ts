@@ -12,6 +12,7 @@ export interface CliArgs {
 	ignorePatterns?: string[];
 	webSocketRetryIntervalMs?: number;
 	logLevel: LogLevel;
+	health?: string;
 }
 
 export function parseArgs(argv: string[]): CliArgs {
@@ -51,6 +52,10 @@ export function parseArgs(argv: string[]): CliArgs {
 			"[OPTIONAL] Log level (DEBUG, INFO, WARNING, ERROR)",
 			"INFO"
 		)
+		.option(
+			"--health <path>",
+			"[OPTIONAL] Path to health status file for Docker healthcheck"
+		)
 		.addHelpText(
 			"after",
 			`
@@ -78,6 +83,7 @@ Examples:
 		| number
 		| undefined;
 	const logLevelStr = (opts.logLevel as string | undefined) ?? "INFO";
+	const health = opts.health as string | undefined;
 	/* eslint-enable @typescript-eslint/no-unsafe-type-assertion */
 
 	if (localPath === undefined) {
@@ -117,6 +123,7 @@ Examples:
 		maxFileSizeMB: maxFileSizeMb,
 		ignorePatterns: ignorePattern,
 		webSocketRetryIntervalMs: websocketRetryIntervalMs,
-		logLevel
+		logLevel,
+		health
 	};
 }

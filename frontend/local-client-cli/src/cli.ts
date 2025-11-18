@@ -1,5 +1,7 @@
 import * as path from "path";
 import * as fs from "fs/promises";
+import * as fsSync from "fs";
+import type { NetworkConnectionStatus } from "sync-client";
 import {
 	SyncClient,
 	DEFAULT_SETTINGS,
@@ -12,6 +14,19 @@ import { NodeFileSystemOperations } from "./node-filesystem";
 import { FileWatcher } from "./file-watcher";
 import { formatLogLine, colorize, styleText } from "./logger-formatter";
 import packageJson from "../package.json";
+
+function writeHealthStatus(
+	filePath: string,
+	connectionStatus: NetworkConnectionStatus
+): void {
+	try {
+		fsSync.writeFileSync(filePath, JSON.stringify(connectionStatus));
+	} catch (error) {
+		console.error(
+			`Failed to write health status to ${filePath}: ${error instanceof Error ? error.message : String(error)}`
+		);
+	}
+}
 
 const LOG_LEVEL_ORDER = {
 	[LogLevel.DEBUG]: 0,
@@ -78,6 +93,7 @@ async function main(): Promise<void> {
 		syncConcurrency:
 			args.syncConcurrency ?? DEFAULT_SETTINGS.syncConcurrency,
 		maxFileSizeMB: args.maxFileSizeMB ?? DEFAULT_SETTINGS.maxFileSizeMB,
+		diffCacheSizeMB: DEFAULT_SETTINGS.diffCacheSizeMB,
 		ignorePatterns,
 		webSocketRetryIntervalMs:
 			args.webSocketRetryIntervalMs ??
@@ -119,6 +135,15 @@ async function main(): Promise<void> {
 		nativeLineEndings: process.platform === "win32" ? "\r\n" : "\n"
 	});
 
+	if (args.health !== undefined) {
+		const healthFile = args.health;
+		setInterval(() => {
+			void client.checkConnection().then((status) => {
+				writeHealthStatus(healthFile, status);
+			});
+		}, 30 * 1000); // every 30 seconds
+	}
+
 	// Add colored log formatter with level filtering
 	client.logger.addOnMessageListener((logLine) => {
 		// Only show messages at or above the configured log level
@@ -132,7 +157,10 @@ async function main(): Promise<void> {
 	const fileWatcher = new FileWatcher(absolutePath, client);
 
 	client.addWebSocketStatusChangeListener(() => {
-		client.logger.info("WebSocket status changed");
+		const isConnected = client.isWebSocketConnected;
+		client.logger.info(
+			`WebSocket status changed: ${isConnected ? "connected" : "disconnected"}`
+		);
 	});
 
 	client.addRemainingSyncOperationsListener((remaining) => {
