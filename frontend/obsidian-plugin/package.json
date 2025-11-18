@@ -20,6 +20,7 @@
         "fs-extra": "^11.3.0",
         "mini-css-extract-plugin": "^2.9.2",
         "obsidian": "1.10.2",
+        "reconcile-text": "^0.7.1",
         "resolve-url-loader": "^5.0.0",
         "sass": "^1.91.0",
         "sass-loader": "^16.0.5",

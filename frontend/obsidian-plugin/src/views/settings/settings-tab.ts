@@ -72,6 +72,7 @@ export class SyncSettingsTab extends PluginSettingTab {
 		this.renderSettingsHeader(containerEl);
 		this.renderConnectionSettings(containerEl);
 		this.renderSyncSettings(containerEl);
+		this.renderMiscSettings(containerEl);
 	}
 
 	public hide(): void {
@@ -336,6 +337,26 @@ export class SyncSettingsTab extends PluginSettingTab {
 						"Sync state has been reset, you will need to resync"
 					);
 				})
+			);
+	}
+
+	private renderMiscSettings(containerEl: HTMLElement): void {
+		containerEl.createEl("h3", { text: "Other" });
+
+		new Setting(containerEl)
+			.setName("Enable telemetry")
+			.setDesc(
+				"Allow sending anonymous usage data & error reports to help improve the plugin. The data collected is never shared with third parties."
+			)
+			.setTooltip(
+				"Allow sending anonymous usage data & error reports to help improve the plugin. The data collected is never shared with third parties."
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.syncClient.getSettings().enableTelemetry)
+					.onChange(async (value) =>
+						this.syncClient.setSetting("enableTelemetry", value)
+					)
 			);
 	}
 
