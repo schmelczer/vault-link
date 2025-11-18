@@ -38,7 +38,8 @@ export class SyncClient {
 		private readonly _logger: Logger,
 		private readonly connectionStatus: ConnectionStatus,
 		private readonly cursorTracker: CursorTracker,
-		private readonly fileChangeNotifier: FileChangeNotifier
+		private readonly fileChangeNotifier: FileChangeNotifier,
+		private readonly contentCache: FixedSizeDocumentCache
 	) {
 		this.settings.addOnSettingsChangeListener(
 			async (newSettings, oldSettings) => {
@@ -53,6 +54,14 @@ export class SyncClient {
 						this.stop();
 					}
 				}
+
+				if (
+					newSettings.diffCacheSizeMB !== oldSettings.diffCacheSizeMB
+				) {
+					this.contentCache.resize(
+						newSettings.diffCacheSizeMB * 1024 * 1024
+					);
+				}
 			}
 		);
 	}
@@ -63,6 +72,10 @@ export class SyncClient {
 
 	public get documentCount(): number {
 		return this.database.length;
+	}
+
+	public get isWebSocketConnected(): boolean {
+		return this.webSocketManager.isWebSocketConnected;
 	}
 
 	public static async create({
@@ -152,8 +165,7 @@ export class SyncClient {
 			settings,
 			syncService,
 			fileOperations,
-			unrestrictedSyncer,
-			contentCache
+			unrestrictedSyncer
 		);
 
 		const webSocketManager = new WebSocketManager(
@@ -182,7 +194,8 @@ export class SyncClient {
 			logger,
 			connectionStatus,
 			cursorTracker,
-			fileChangeNotifier
+			fileChangeNotifier,
+			contentCache
 		);
 
 		logger.info("SyncClient initialised");
@@ -235,6 +248,7 @@ export class SyncClient {
 	public async reset(): Promise<void> {
 		this.stop();
 		this.connectionStatus.startReset();
+		this.contentCache.clear();
 		await this.syncer.reset();
 		this.history.reset();
 		this.database.reset();

@@ -34,8 +34,7 @@ export class Syncer {
 		settings: Settings,
 		private readonly syncService: SyncService,
 		private readonly operations: FileOperations,
-		private readonly internalSyncer: UnrestrictedSyncer,
-		private readonly contentCache: FixedSizeDocumentCache
+		private readonly internalSyncer: UnrestrictedSyncer
 	) {
 		this.syncQueue = new PQueue({
 			concurrency: settings.getSettings().syncConcurrency
@@ -252,7 +251,6 @@ export class Syncer {
 
 	public async reset(): Promise<void> {
 		await this.waitUntilFinished();
-		this.contentCache.clear();
 	}
 
 	public async syncRemotelyUpdatedFile(
