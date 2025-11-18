@@ -1,15 +1,6 @@
 import * as Sentry from "@sentry/browser";
-import { init as plausibleInit } from "@plausible-analytics/tracker";
 
 export const setUpTelemetry = (): (() => void) => {
-	plausibleInit({
-		domain: "vault-link",
-		endpoint: "https://stats.schmelczer.dev/status",
-		autoCapturePageviews: true,
-		captureOnLocalhost: true,
-		logging: true
-	});
-
 	Sentry.init({
 		dsn: "https://56accd39d92442e788a457a04623cf57@bugs.schmelczer.dev/1",
 		skipBrowserExtensionCheck: false
@@ -36,6 +27,5 @@ export const setUpTelemetry = (): (() => void) => {
 		window.removeEventListener("error", onError);
 		window.removeEventListener("unhandledrejection", onUnhandledRejection);
 		Sentry.close(5000);
-		// unloading plausible requires reloading
 	};
 };
