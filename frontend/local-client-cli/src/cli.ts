@@ -138,11 +138,15 @@ async function main(): Promise<void> {
 
 	if (args.health !== undefined) {
 		const healthFile = args.health;
-		setInterval(() => {
+		const healthInterval = setInterval(() => {
 			void client.checkConnection().then((status) => {
 				writeHealthStatus(healthFile, status);
 			});
 		}, 30 * 1000); // every 30 seconds
+		const clearHealthInterval = () => clearInterval(healthInterval);
+		process.on("SIGINT", clearHealthInterval);
+		process.on("SIGTERM", clearHealthInterval);
+		process.on("exit", clearHealthInterval);
 	}
 
 	// Add colored log formatter with level filtering
