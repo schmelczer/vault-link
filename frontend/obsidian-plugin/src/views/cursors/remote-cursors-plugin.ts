@@ -33,7 +33,7 @@ export class RemoteCursorsPluginValue implements PluginValue {
 		isOutdated: boolean;
 	}[] = [];
 
-	private static app: App;
+	private static app?: App;
 	public decorations: DecorationSet = RangeSet.of([]);
 
 	public static setCursors(
@@ -88,7 +88,7 @@ export class RemoteCursorsPluginValue implements PluginValue {
 	private static findFileForEditor(
 		editor: EditorView
 	): RelativePath | undefined {
-		return RemoteCursorsPluginValue.app.workspace
+		return RemoteCursorsPluginValue.app?.workspace
 			.getLeavesOfType("markdown")
 			.map((leaf) => leaf.view)
 			.filter((view) => view instanceof MarkdownView)
