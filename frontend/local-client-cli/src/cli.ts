@@ -143,7 +143,9 @@ async function main(): Promise<void> {
 				writeHealthStatus(healthFile, status);
 			});
 		}, 30 * 1000); // every 30 seconds
-		const clearHealthInterval = () => clearInterval(healthInterval);
+		const clearHealthInterval = (): void => {
+			clearInterval(healthInterval);
+		};
 		process.on("SIGINT", clearHealthInterval);
 		process.on("SIGTERM", clearHealthInterval);
 		process.on("exit", clearHealthInterval);

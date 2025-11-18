@@ -13,11 +13,13 @@ function isHealthStatus(value: unknown): value is NetworkConnectionStatus {
 		return false;
 	}
 
-	const obj = value as Record<string, unknown>;
 	return (
-		typeof obj.isSuccessful === "boolean" &&
-		typeof obj.isWebSocketConnected === "boolean" &&
-		typeof obj.serverMessage === "string"
+		"isSuccessful" in value &&
+		typeof value.isSuccessful === "boolean" &&
+		"isWebSocketConnected" in value &&
+		typeof value.isWebSocketConnected === "boolean" &&
+		"serverMessage" in value &&
+		typeof value.serverMessage === "string"
 	);
 }
 
