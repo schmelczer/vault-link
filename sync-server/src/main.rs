@@ -104,8 +104,8 @@ fn set_up_logging(
 
     tracing_subscriber::registry()
         .with(env_filter)
-        .with(stderr_layer)
         .with(file_layer)
+        .with(stderr_layer)
         .try_init()
         .context("Failed to initialise tracing")
         .map_err(init_error)?;
