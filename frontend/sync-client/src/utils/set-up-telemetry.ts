@@ -1,10 +1,18 @@
 import * as Sentry from "@sentry/browser";
 
+// @ts-expect-error, injected by webpack
+const packageVersion = __CURRENT_VERSION__; // eslint-disable-line
+
 export const setUpTelemetry = (): (() => void) => {
 	Sentry.init({
-		dsn: "https://56accd39d92442e788a457a04623cf57@bugs.schmelczer.dev/1",
-		skipBrowserExtensionCheck: false
+		dsn: "https://a9bb2b9151bb450ca86b936436e356c4@bugs.schmelczer.dev/1",
+		release: `sync-client@${packageVersion}`,
+		sendDefaultPii: true,
+		integrations: [],
+		tracesSampleRate: 0
 	});
+
+	Sentry.captureMessage("Initialised telemetry");
 
 	const onError = (event: ErrorEvent): void => {
 		Sentry.captureException(event.error, {
