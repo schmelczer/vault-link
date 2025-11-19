@@ -14,14 +14,12 @@ class LRUNode {
 
 // evicting the least recently used documents when the size limit is exceeded.
 export class FixedSizeDocumentCache {
-	private readonly maxSizeInBytes: number;
 	private currentSizeInBytes: number;
 	private readonly cache: Map<VaultUpdateId, LRUNode>;
 	private head: LRUNode | null; // Least recently used
 	private tail: LRUNode | null; // Most recently used
 
-	public constructor(maxSizeInBytes: number) {
-		this.maxSizeInBytes = maxSizeInBytes;
+	public constructor(private maxSizeInBytes: number) {
 		this.currentSizeInBytes = 0;
 		this.cache = new Map();
 		this.head = null;
@@ -56,14 +54,7 @@ export class FixedSizeDocumentCache {
 		this.cache.set(updateId, newNode);
 		this.addToTail(newNode);
 		this.currentSizeInBytes += content.byteLength;
-
-		// Evict least recently used documents if over size limit
-		while (this.currentSizeInBytes > this.maxSizeInBytes && this.head) {
-			const lruNode = this.head;
-			this.removeNode(lruNode);
-			this.cache.delete(lruNode.key);
-			this.currentSizeInBytes -= lruNode.value.byteLength;
-		}
+		this.fitBelowMaxSize();
 	}
 
 	public clear(): void {
@@ -71,6 +62,21 @@ export class FixedSizeDocumentCache {
 		this.head = null;
 		this.tail = null;
 		this.currentSizeInBytes = 0;
+	}
+
+	public resize(newMaxSizeInBytes: number): void {
+		this.maxSizeInBytes = newMaxSizeInBytes;
+		this.fitBelowMaxSize();
+	}
+
+	private fitBelowMaxSize(): void {
+		// Evict least recently used documents if over size limit
+		while (this.currentSizeInBytes > this.maxSizeInBytes && this.head) {
+			const lruNode = this.head;
+			this.removeNode(lruNode);
+			this.cache.delete(lruNode.key);
+			this.currentSizeInBytes -= lruNode.value.byteLength;
+		}
 	}
 
 	private removeNode(node: LRUNode): void {

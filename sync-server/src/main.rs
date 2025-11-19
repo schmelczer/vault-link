@@ -92,9 +92,9 @@ fn set_up_logging(
         .with_line_number(is_debug_mode)
         .compact();
 
-    let stdout_layer = tracing_subscriber::fmt::layer()
+    let stderr_layer = tracing_subscriber::fmt::layer()
         .with_ansi(use_colors)
-        .with_writer(std::io::stdout)
+        .with_writer(std::io::stderr)
         .event_format(format.clone());
 
     let file_layer = tracing_subscriber::fmt::layer()
@@ -104,8 +104,8 @@ fn set_up_logging(
 
     tracing_subscriber::registry()
         .with(env_filter)
-        .with(stdout_layer)
         .with(file_layer)
+        .with(stderr_layer)
         .try_init()
         .context("Failed to initialise tracing")
         .map_err(init_error)?;

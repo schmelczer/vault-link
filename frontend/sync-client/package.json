@@ -28,6 +28,7 @@
         "webpack": "^5.99.9",
         "webpack-cli": "^6.0.1",
         "webpack-merge": "^6.0.1",
+        "@sentry/browser": "^10.8.0",
         "ws": "^8.18.3"
     }
 }

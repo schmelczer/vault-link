@@ -2,7 +2,10 @@ const path = require("path");
 const webpack = require("webpack");
 
 module.exports = {
-		entry: "./src/cli.ts",
+		entry: {
+			cli: "./src/cli.ts",
+			healthcheck: "./src/healthcheck.ts"
+		},
 		target: "node",
 		mode: "production",
 		optimization: {
@@ -21,7 +24,7 @@ module.exports = {
 		},
 		output: {
 			globalObject: "this",
-			filename: "cli.js",
+			filename: "[name].js",
 			path: path.resolve(__dirname, "dist")
 		},
 		plugins: [

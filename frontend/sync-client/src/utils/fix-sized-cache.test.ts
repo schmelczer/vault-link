@@ -236,4 +236,40 @@ describe("fixedSizeDocumentCache", () => {
 		assert.equal(cache.get(2), doc2);
 		assert.equal(cache.get(3), doc3);
 	});
+
+	it("resizeToLargerSizeNoEviction", async () => {
+		const cache = new FixedSizeDocumentCache(4);
+		const doc1 = new Uint8Array([1, 2]);
+		const doc2 = new Uint8Array([3, 4]);
+
+		cache.put(1, doc1);
+		cache.put(2, doc2);
+
+		cache.resize(10);
+
+		assert.equal(cache.get(1), doc1);
+		assert.equal(cache.get(2), doc2);
+	});
+
+	it("resizeCausesMultipleEvictions", async () => {
+		const cache = new FixedSizeDocumentCache(10);
+		const doc1 = new Uint8Array([1, 2]);
+		const doc2 = new Uint8Array([3, 4]);
+		const doc3 = new Uint8Array([5, 6]);
+		const doc4 = new Uint8Array([7, 8]);
+
+		cache.put(1, doc1);
+		cache.put(2, doc2);
+		cache.put(3, doc3);
+		cache.put(4, doc4);
+		// Cache has 8 bytes total
+
+		cache.resize(2);
+
+		// Should evict doc1, doc2, doc3 to get down to 2 bytes
+		assert.equal(cache.get(1), undefined);
+		assert.equal(cache.get(2), undefined);
+		assert.equal(cache.get(3), undefined);
+		assert.equal(cache.get(4), doc4);
+	});
 });
