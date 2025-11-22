@@ -1,12 +1,12 @@
 # Server Setup
 
-This guide covers deploying the VaultLink sync server in various environments, from local development to production infrastructure.
+Deploy VaultLink server via Docker, binary, or build from source.
 
 ## Deployment Options
 
 ### Docker (Recommended)
 
-Docker provides the easiest deployment path with built-in health checks and minimal dependencies.
+Easiest deployment path, includes health checks.
 
 #### Basic Docker Deployment
 
@@ -60,7 +60,7 @@ docker compose up -d
 
 ### Binary Installation
 
-Download pre-built binaries from [GitHub Releases](https://github.com/schmelczer/vault-link/releases).
+Download pre-built binaries from [GitHub Releases](https://github.com/schmelczer/vault-link/releases):
 
 ```bash
 # Download the binary for your platform
@@ -75,11 +75,7 @@ chmod +x sync_server-linux-x86_64
 
 ### Build from Source
 
-Requirements:
-
-- Rust 1.89.0 or later
-- SQLite development headers
-- SQLx CLI
+Requirements: Rust 1.89.0+, SQLite development headers, SQLx CLI
 
 ```bash
 # Clone the repository

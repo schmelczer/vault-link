@@ -1,6 +1,6 @@
 # Obsidian Plugin
 
-The VaultLink Obsidian plugin provides native real-time synchronization directly within Obsidian.
+Real-time sync for Obsidian vaults.
 
 ## Installation
 

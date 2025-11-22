@@ -1,6 +1,6 @@
 # Architecture Overview
 
-VaultLink is built as a distributed system with a central sync server and multiple clients. This document explains the high-level architecture and design decisions.
+Central sync server with multiple clients. High-level architecture and design decisions.
 
 ## System Components
 
@@ -40,7 +40,7 @@ VaultLink is built as a distributed system with a central sync server and multip
 
 ### Sync Server
 
-The central authority for synchronization, written in Rust using Axum framework.
+Central authority for synchronization. Rust + Axum framework.
 
 **Responsibilities**:
 
@@ -61,7 +61,7 @@ The central authority for synchronization, written in Rust using Axum framework.
 
 ### Sync Client Library
 
-TypeScript library providing core synchronization logic, used by both the Obsidian plugin and CLI client.
+TypeScript library with core sync logic. Used by Obsidian plugin and CLI client.
 
 **Responsibilities**:
 
@@ -310,35 +310,13 @@ Token-based authentication on connection:
 
 ## Technology Choices
 
-### Why Rust for Server?
+**Rust**: Low latency, memory safe, excellent async with Tokio, compile-time SQL verification
 
-- **Performance**: Low latency for real-time sync
-- **Memory safety**: No crashes from memory bugs
-- **Concurrency**: Excellent async support with Tokio
-- **Type safety**: Catch bugs at compile time
-- **SQLx**: Compile-time SQL verification
+**SQLite**: No separate database server, fast for reads, single file per vault, backups are file copies
 
-### Why SQLite?
+**WebSocket**: Bidirectional push, no polling overhead, built-in browser/Node.js support
 
-- **Simplicity**: No separate database server required
-- **Performance**: Fast for read-heavy workloads
-- **Reliability**: Battle-tested, ACID compliant
-- **Portability**: Single file per vault
-- **Backups**: Simple file copy
-
-### Why WebSocket?
-
-- **Real-time**: Bidirectional push for instant updates
-- **Efficiency**: Persistent connection, no polling overhead
-- **Simplicity**: Built-in browser/Node.js support
-- **Standards**: Well-supported protocol
-
-### Why Operational Transformation?
-
-- **Automatic conflict resolution**: No manual merging required
-- **Preserves intent**: All edits are kept
-- **Real-time collaboration**: Users see changes as they happen
-- **Proven algorithm**: Used by Google Docs, etc.
+**Operational Transformation**: Automatic conflict resolution, preserves all edits, real-time collaboration
 
 ## Design Principles
 

@@ -1,6 +1,6 @@
 # Sync Algorithm
 
-VaultLink uses operational transformation (OT) to handle concurrent edits and maintain consistency across clients. This document explains how the algorithm works.
+VaultLink uses operational transformation (OT) to handle concurrent edits and maintain consistency across clients.
 
 ## Operational Transformation
 

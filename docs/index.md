@@ -3,8 +3,8 @@ layout: home
 
 hero:
     name: VaultLink
-    text: Self-Hosted Sync for Obsidian
-    tagline: Real-time collaborative file synchronization for your knowledge base
+    text: Self-Hosted Obsidian Sync
+    tagline: Edit with any tool. Automatic conflict-free merging. Your infrastructure.
     image:
         src: /logo.svg
         alt: VaultLink
@@ -13,60 +13,43 @@ hero:
           text: Get Started
           link: /guide/getting-started
         - theme: alt
-          text: View on GitHub
-          link: https://github.com/schmelczer/vault-link
+          text: Why VaultLink?
+          link: /guide/what-is-vaultlink
 
 features:
-    - icon: 🚀
-      title: Real-Time Synchronization
-      details: Operational transformation-based conflict resolution ensures your files stay in sync across devices without data loss
-    - icon: 🔒
-      title: Self-Hosted & Private
-      details: Run your own sync server. Your data stays on your infrastructure with full control over access and privacy
-    - icon: 🎯
-      title: Obsidian Plugin
-      details: Native integration with Obsidian for seamless synchronization directly within your favorite note-taking app
-    - icon: 🖥️
-      title: CLI Client
-      details: Sync vaults to any system using the standalone CLI client. Perfect for servers, automation, or headless setups
-    - icon: ⚡
-      title: Built for Performance
-      details: Rust-powered WebSocket server with SQLite backend delivers blazing-fast sync performance
-    - icon: 🛠️
-      title: Flexible Deployment
-      details: Deploy via Docker, binary releases, or build from source. Configure authentication and access controls to fit your needs
+    - title: Edit Anywhere
+      details: Use Obsidian, Vim, VS Code, or any editor. VaultLink syncs files, not keystrokes—edit however you want
+    - title: Your Data, Your Server
+      details: Fully self-hosted. No third parties, no subscriptions, no data mining. Single Docker container or binary
+    - title: No Conflict Markers
+      details: Automatic merge using operational transformation. Never see conflict markers in your notes again
+    - title: Real-Time Collaboration
+      details: See teammate cursors, merge edits instantly. Rust-powered WebSocket server with SQLite
+    - title: Open Source Everything
+      details: MIT licensed. Server, clients, and sync algorithm are all open source. No proprietary components
+    - title: Battle-Tested
+      details: Comprehensive test suite. E2E tests. Used in production. Unlike alternatives with zero tests
 ---
+
+## Why Self-Host?
+
+**You own your knowledge base.** Commercial sync services can disappear, change pricing, or lock you out. VaultLink runs on your infrastructure—VPS, home server, or localhost.
+
+**Edit with any tool.** Other solutions require CRDT-aware editors or break when you edit outside Obsidian. VaultLink uses differential sync: edit files however you want, sync handles the rest.
+
+**No conflict markers.** Git forces manual merging. Other tools use last-write-wins. VaultLink's operational transformation automatically merges all changes without data loss or workflow interruption.
+
+[See how VaultLink compares to alternatives →](/guide/alternatives)
 
 ## Quick Start
 
-Deploy the sync server:
+Deploy server (single command):
 
 ```bash
-docker run -d \
-  -p 3000:3000 \
-  -v $(pwd)/data:/data \
-  ghcr.io/schmelczer/vault-link-server:latest \
-  /app/sync_server config.yml
+docker run -d -p 3000:3000 -v $(pwd)/data:/data \
+  ghcr.io/schmelczer/vault-link-server:latest
 ```
 
-Install the Obsidian plugin or use the CLI client:
+Then install the [Obsidian plugin](/guide/obsidian-plugin) or [CLI client](/guide/cli-client).
 
-```bash
-docker run -v /path/to/vault:/vault \
-  ghcr.io/schmelczer/vault-link-cli:latest \
-  -l /vault -r wss://your-server.com -t your-token -v default
-```
-
-[Learn more →](/guide/getting-started)
-
-## Why VaultLink?
-
-VaultLink provides a complete self-hosted synchronization solution for Obsidian:
-
-- **No third-party services**: Your data never leaves your infrastructure
-- **Operational transformation**: Smart conflict resolution that preserves all changes
-- **Multi-platform**: Works with Obsidian plugin or standalone CLI on any system
-- **Production-ready**: Docker images, health checks, and comprehensive logging
-- **Open source**: MIT licensed with active development
-
-[Read the architecture overview →](/architecture/)
+[Full setup guide →](/guide/getting-started)
