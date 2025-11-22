@@ -4,9 +4,9 @@ import {
 	type RelativePath,
 	type FileSystemOperations,
 	type SyncSettings,
-	SyncClient
+	SyncClient,
+	TextWithCursors
 } from "sync-client";
-import type { TextWithCursors } from "reconcile-text";
 
 export class MockClient implements FileSystemOperations {
 	protected readonly localFiles = new Map<string, Uint8Array>();
