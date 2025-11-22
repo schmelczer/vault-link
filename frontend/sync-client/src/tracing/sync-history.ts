@@ -1,3 +1,7 @@
+import {
+	MAX_HISTORY_ENTRY_COUNT,
+	TIMEOUT_FOR_MERGING_HISTORY_ENTRIES_IN_SECONDS
+} from "../consts";
 import type { RelativePath } from "../persistence/database";
 import type { Logger } from "./logger";
 
@@ -64,9 +68,6 @@ export interface HistoryStats {
 }
 
 export class SyncHistory {
-	private static readonly MAX_ENTRIES = 5000;
-	private static readonly TIMEOUT_FOR_MERGING_ENTRIES_IN_SECONDS = 60;
-
 	private _entries: HistoryEntry[] = [];
 
 	private readonly syncHistoryUpdateListeners: ((
@@ -104,7 +105,7 @@ export class SyncHistory {
 		// Insert the entry at the beginning
 		this._entries.unshift(historyEntry);
 
-		if (this._entries.length > SyncHistory.MAX_ENTRIES) {
+		if (this._entries.length > MAX_HISTORY_ENTRY_COUNT) {
 			this._entries.pop();
 		}
 
@@ -145,7 +146,7 @@ export class SyncHistory {
 			candidate !== undefined &&
 			(this._entries[0] === candidate ||
 				candidate.timestamp.getTime() +
-					SyncHistory.TIMEOUT_FOR_MERGING_ENTRIES_IN_SECONDS * 1000 >
+					TIMEOUT_FOR_MERGING_HISTORY_ENTRIES_IN_SECONDS * 1000 >
 					entry.timestamp.getTime())
 		) {
 			return candidate;
