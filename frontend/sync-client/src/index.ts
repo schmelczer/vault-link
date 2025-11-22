@@ -28,6 +28,7 @@ export type { NetworkConnectionStatus } from "./types/network-connection-status"
 export type { MaybeOutdatedClientCursors } from "./types/maybe-outdated-client-cursors";
 export { DocumentSyncStatus } from "./types/document-sync-status";
 export { SyncClient } from "./sync-client";
+export type { TextWithCursors, CursorPosition } from "reconcile-text";
 
 export const debugging = {
 	slowFetchFactory,
