@@ -114,14 +114,14 @@ export class FileOperations {
 					`Performing a 3-way merge for ${path} with the expected content`
 				);
 
-				text = text.replace(this.nativeLineEndings, "\n");
+				text = text.replaceAll(this.nativeLineEndings, "\n");
 				const merged = reconcile(
 					expectedText,
 					{ text, cursors },
 					newText
 				);
 
-				const resultText = merged.text.replace(
+				const resultText = merged.text.replaceAll(
 					"\n",
 					this.nativeLineEndings
 				);
@@ -197,7 +197,7 @@ export class FileOperations {
 
 		const decoder = new TextDecoder("utf-8");
 		let text = decoder.decode(content);
-		text = text.replace(this.nativeLineEndings, "\n");
+		text = text.replaceAll(this.nativeLineEndings, "\n");
 		return new TextEncoder().encode(text);
 	}
 
@@ -208,7 +208,7 @@ export class FileOperations {
 
 		const decoder = new TextDecoder("utf-8");
 		let text = decoder.decode(content);
-		text = text.replace("\n", this.nativeLineEndings);
+		text = text.replaceAll("\n", this.nativeLineEndings);
 		return new TextEncoder().encode(text);
 	}
 

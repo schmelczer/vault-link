@@ -14,7 +14,7 @@ export function positionToLineAndColumn(
 		throw new Error("Position cannot be negative");
 	}
 
-	text = text.replace("\r", "");
+	text = text.replaceAll("\r", "");
 
 	if (
 		position >
