@@ -9,16 +9,24 @@ pub fn dedup_paths(path: &str) -> impl Iterator<Item = String> {
         directory.push('/');
     }
 
-    let name_parts = file_name.rsplitn(2, '.').collect::<Vec<_>>();
-    let mut reverse_parts = name_parts.into_iter().rev();
-    let (stem, extension) = match (reverse_parts.next(), reverse_parts.next()) {
-        (Some(stem), maybe_extension) => (
-            stem.to_owned(),
-            maybe_extension
-                .map(|ext| format!(".{ext}"))
-                .unwrap_or_default(),
-        ),
-        _ => unreachable!("Path must have at least one part"),
+    // Handle dotfiles: ".gitignore" should have no extension, ".config.json" should split as ".config" + ".json"
+    let is_simple_dotfile = file_name.starts_with('.') && file_name.matches('.').count() == 1;
+
+    let (stem, extension) = if is_simple_dotfile {
+        (file_name.clone(), String::new())
+    } else {
+        // Regular file or dotfile with extension
+        let name_parts = file_name.rsplitn(2, '.').collect::<Vec<_>>();
+        let mut reverse_parts = name_parts.into_iter().rev();
+        match (reverse_parts.next(), reverse_parts.next()) {
+            (Some(stem), maybe_extension) => (
+                stem.to_owned(),
+                maybe_extension
+                    .map(|ext| format!(".{ext}"))
+                    .unwrap_or_default(),
+            ),
+            _ => unreachable!("Path must have at least one part"),
+        }
     };
 
     let regex = Regex::new(r" \((\d+)\)$").unwrap();
@@ -84,5 +92,59 @@ mod test {
             deduped.next(),
             Some("my/path.with.dots/file (6)".to_owned())
         );
+    }
+
+    #[test]
+    fn test_regex_capturing_group() {
+        // Single digit in parentheses
+        let mut deduped = dedup_paths("document (5).md");
+        assert_eq!(deduped.next(), Some("document (5).md".to_owned()));
+        assert_eq!(deduped.next(), Some("document (6).md".to_owned()));
+        assert_eq!(deduped.next(), Some("document (7).md".to_owned()));
+
+        // Multi-digit number
+        let mut deduped = dedup_paths("report (123).pdf");
+        assert_eq!(deduped.next(), Some("report (123).pdf".to_owned()));
+        assert_eq!(deduped.next(), Some("report (124).pdf".to_owned()));
+        assert_eq!(deduped.next(), Some("report (125).pdf".to_owned()));
+
+        // Number without extension
+        let mut deduped = dedup_paths("folder (99)");
+        assert_eq!(deduped.next(), Some("folder (99)".to_owned()));
+        assert_eq!(deduped.next(), Some("folder (100)".to_owned()));
+        assert_eq!(deduped.next(), Some("folder (101)".to_owned()));
+    }
+
+    #[test]
+    fn test_dedup_dotfiles() {
+        // Simple dotfile (no extension)
+        let mut deduped = dedup_paths(".gitignore");
+        assert_eq!(deduped.next(), Some(".gitignore".to_owned()));
+        assert_eq!(deduped.next(), Some(".gitignore (1)".to_owned()));
+        assert_eq!(deduped.next(), Some(".gitignore (2)".to_owned()));
+
+        // Dotfile with extension
+        let mut deduped = dedup_paths(".config.json");
+        assert_eq!(deduped.next(), Some(".config.json".to_owned()));
+        assert_eq!(deduped.next(), Some(".config (1).json".to_owned()));
+        assert_eq!(deduped.next(), Some(".config (2).json".to_owned()));
+
+        // Dotfile with number
+        let mut deduped = dedup_paths(".gitignore (5)");
+        assert_eq!(deduped.next(), Some(".gitignore (5)".to_owned()));
+        assert_eq!(deduped.next(), Some(".gitignore (6)".to_owned()));
+        assert_eq!(deduped.next(), Some(".gitignore (7)".to_owned()));
+
+        // Dotfile with extension and number
+        let mut deduped = dedup_paths(".config (3).json");
+        assert_eq!(deduped.next(), Some(".config (3).json".to_owned()));
+        assert_eq!(deduped.next(), Some(".config (4).json".to_owned()));
+        assert_eq!(deduped.next(), Some(".config (5).json".to_owned()));
+
+        // Dotfile in subdirectory
+        let mut deduped = dedup_paths("my/path/.gitignore");
+        assert_eq!(deduped.next(), Some("my/path/.gitignore".to_owned()));
+        assert_eq!(deduped.next(), Some("my/path/.gitignore (1)".to_owned()));
+        assert_eq!(deduped.next(), Some("my/path/.gitignore (2)".to_owned()));
     }
 }
