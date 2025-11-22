@@ -29,7 +29,10 @@ cd sync-server
 cargo run config-e2e.yml  # Start development server
 cargo test --verbose      # Run Rust tests
 cargo clippy --all-targets --all-features  # Lint Rust code
+cargo clippy --all-targets --all-features --fix --allow-dirty --allow-staged  # Auto-fix clippy warnings
 cargo fmt --all -- --check  # Check Rust formatting
+cargo fmt --all            # Auto-format Rust code
+cargo machete --with-metadata  # Detect unused dependencies
 ```
 
 ### Frontend Development
@@ -49,8 +52,15 @@ sqlx migrate run --source src/app_state/database/migrations --database-url sqlit
 cargo sqlx prepare --workspace
 ```
 
+### Initial Setup
+```bash
+# Install required cargo tools
+cargo install sqlx-cli cargo-machete cargo-edit
+```
+
 ### Scripts
 - `scripts/check.sh`: Full CI check (builds, lints, tests both server and frontend)
+- `scripts/check.sh --fix`: Same as above but auto-fixes linting and formatting issues
 - `scripts/e2e.sh`: End-to-end testing
 - `scripts/clean-up.sh`: Clean logs and database files
 - `scripts/bump-version.sh patch`: Publish new version
@@ -59,10 +69,11 @@ cargo sqlx prepare --workspace
 ## Code Structure
 
 ### Workspace Configuration
-The frontend uses npm workspaces with three packages:
+The frontend uses npm workspaces with four packages:
 - `sync-client`: Core synchronization logic
 - `obsidian-plugin`: Obsidian-specific integration
 - `test-client`: Testing utilities
+- `local-client-cli`: Standalone CLI for VaultLink sync client
 
 ### Type Generation
 Rust structs generate TypeScript types via ts-rs crate, stored in `sync-server/bindings/` and used by frontend packages.
