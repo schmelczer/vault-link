@@ -22,7 +22,7 @@ export class EditorStatusDisplayManager {
 		}, EditorStatusDisplayManager.UPDATE_INTERVAL_IN_MS);
 	}
 
-	public stop(): void {
+	public dispose(): void {
 		clearInterval(this.intervalId);
 	}
 
