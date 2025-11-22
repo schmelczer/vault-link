@@ -54,9 +54,9 @@ export class Settings {
 	}
 
 	public addOnSettingsChangeListener(
-		handler: (settings: SyncSettings, oldSettings: SyncSettings) => unknown
+		listener: (settings: SyncSettings, oldSettings: SyncSettings) => unknown
 	): void {
-		this.onSettingsChangeHandlers.push(handler);
+		this.onSettingsChangeHandlers.push(listener);
 	}
 
 	public async setSetting<T extends keyof SyncSettings>(
