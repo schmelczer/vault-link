@@ -61,6 +61,15 @@ export class Syncer {
 		this.remainingOperationsListeners.push(listener);
 	}
 
+	public removeRemainingOperationsListener(
+		listener: (remainingOperations: number) => unknown
+	): void {
+		const index = this.remainingOperationsListeners.indexOf(listener);
+		if (index !== -1) {
+			this.remainingOperationsListeners.splice(index, 1);
+		}
+	}
+
 	public async syncLocallyCreatedFile(
 		relativePath: RelativePath
 	): Promise<void> {

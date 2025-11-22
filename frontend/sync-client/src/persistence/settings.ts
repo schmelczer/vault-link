@@ -59,6 +59,15 @@ export class Settings {
 		this.onSettingsChangeHandlers.push(listener);
 	}
 
+	public removeOnSettingsChangeListener(
+		listener: (settings: SyncSettings, oldSettings: SyncSettings) => unknown
+	): void {
+		const index = this.onSettingsChangeHandlers.indexOf(listener);
+		if (index !== -1) {
+			this.onSettingsChangeHandlers.splice(index, 1);
+		}
+	}
+
 	public async setSetting<T extends keyof SyncSettings>(
 		key: T,
 		value: SyncSettings[T]

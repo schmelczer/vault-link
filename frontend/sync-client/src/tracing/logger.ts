@@ -60,6 +60,15 @@ export class Logger {
 		this.onMessageListeners.push(listener);
 	}
 
+	public removeOnMessageListener(
+		listener: (message: LogLine) => unknown
+	): void {
+		const index = this.onMessageListeners.indexOf(listener);
+		if (index !== -1) {
+			this.onMessageListeners.splice(index, 1);
+		}
+	}
+
 	public reset(): void {
 		this.messages.length = 0;
 		this.debug("Logger has been reset");
