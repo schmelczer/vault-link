@@ -2,7 +2,6 @@ import * as fs from "fs/promises";
 import type { Dirent } from "fs";
 import * as path from "path";
 import type { FileSystemOperations, RelativePath } from "sync-client";
-import type { TextWithCursors } from "reconcile-text";
 
 export class NodeFileSystemOperations implements FileSystemOperations {
 	public constructor(private readonly basePath: string) {}
