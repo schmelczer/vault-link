@@ -5,7 +5,7 @@ import type {
 	TAbstractFile,
 	WorkspaceLeaf
 } from "obsidian";
-import { Platform, Plugin, TFile } from "obsidian";
+import { Notice, Platform, Plugin, TFile } from "obsidian";
 import "../manifest.json";
 import { HistoryView } from "./views/history/history-view";
 import { StatusBar } from "./views/status-bar/status-bar";
@@ -30,123 +30,45 @@ import { LocalCursorUpdateListener } from "./views/cursors/local-cursor-update-l
 import { renderCursorsInFileExplorer } from "./views/cursors/file-explorer";
 
 const MIN_WAIT_BETWEEN_UPDATES_IN_MS = 250;
+const IS_DEBUG_BUILD = process.env.NODE_ENV === "development";
 
 export default class VaultLinkPlugin extends Plugin {
-	private readonly disposables: (() => unknown)[] = [];
-
-	private settingsTab: SyncSettingsTab | undefined;
-	private client!: SyncClient;
 	private readonly rateLimitedUpdatesPerFile = new Map<
 		string,
 		() => Promise<unknown>
 	>();
 
+	private syncClient: SyncClient | undefined;
+	private settingsTab: SyncSettingsTab | undefined;
+
 	public async onload(): Promise<void> {
-		DEFAULT_SETTINGS.ignorePatterns.push(
-			".obsidian/**",
-			".git/**",
-			".trash/**"
-		);
-
-		const isDebugBuild = process.env.NODE_ENV === "development";
-		const debugOptions = isDebugBuild
-			? {
-					fetch: debugging.slowFetchFactory(1),
-					webSocket: debugging.slowWebSocketFactory(1, new Logger())
-				}
-			: {};
-
-		this.client = await SyncClient.create({
-			fs: new ObsidianFileSystemOperations(
-				this.app.vault,
-				this.app.workspace
-			),
-			persistence: {
-				load: this.loadData.bind(this),
-				save: this.saveData.bind(this)
-			},
-			nativeLineEndings: Platform.isWin ? "\r\n" : "\n",
-			...debugOptions
-		});
-
-		if (isDebugBuild) {
-			debugging.logToConsole(this.client);
-		}
-
-		const statusDescription = new StatusDescription(this.client);
-
-		this.settingsTab = new SyncSettingsTab({
-			app: this.app,
-			plugin: this,
-			syncClient: this.client,
-			statusDescription
-		});
-		this.addSettingTab(this.settingsTab);
-
-		new StatusBar(this, this.client);
-
-		this.registerView(
-			HistoryView.TYPE,
-			(leaf) => new HistoryView(this.client, leaf)
-		);
-
-		this.registerView(
-			LogsView.TYPE,
-			(leaf) => new LogsView(this.client, leaf)
-		);
-
-		this.registerEditorExtension([remoteCursorsTheme, remoteCursorsPlugin]);
-
-		this.client.addRemoteCursorsUpdateListener((cursors) => {
-			RemoteCursorsPluginValue.setCursors(cursors, this.app);
-			renderCursorsInFileExplorer(cursors, this.app);
-		});
-
-		const cursorListener = new LocalCursorUpdateListener(
-			this.client,
-			this.app.workspace
-		);
-		this.disposables.push(() => {
-			cursorListener.dispose();
-		});
-
-		this.app.workspace.updateOptions();
-
-		this.addRibbonIcon(
-			HistoryView.ICON,
-			"Open VaultLink events",
-			async (_: MouseEvent) => this.activateView(HistoryView.TYPE)
-		);
-
-		this.addRibbonIcon(
-			LogsView.ICON,
-			"Open VaultLink logs",
-			async (_: MouseEvent) => this.activateView(LogsView.TYPE)
-		);
-
 		this.app.workspace.onLayoutReady(async () => {
-			this.registerEditorEvents();
-			await this.client.start();
+			const client = await this.createSyncClient();
 
-			const editorStatusDisplayManager = new EditorStatusDisplayManager(
-				this,
-				this.app.workspace,
-				this.client
-			);
-			this.disposables.push(() => {
-				editorStatusDisplayManager.stop();
-			});
+			this.registerObsidianExtensions(client);
+
+			this.registerEditorEvents(client);
+
+			this.register(() => client.destroy());
+			await client.start();
 		});
 	}
 
-	public onunload(): void {
-		this.client.waitAndStop().catch((err: unknown) => {
-			this.client.logger.error(
-				`Error while stopping the sync client: ${err}`
+	public onUserEnable(): void {
+		new Notice(
+			"VaultLink has been enabled, check out the docs for tips on getting started!"
+		);
+		this.activateView(LogsView.TYPE);
+		this.activateView(HistoryView.TYPE);
+		this.openSettings();
+	}
+
+	public onExternalSettingsChange(): void {
+		new Notice("VaultLink settings have changed externally, applying...");
+		this.syncClient?.reloadSettings().catch((err: unknown) => {
+			throw new Error(
+				`Error while reloading settings after external change: ${err}`
 			);
-		});
-		this.disposables.forEach((disposable) => {
-			disposable();
 		});
 	}
 
@@ -180,7 +102,102 @@ export default class VaultLinkPlugin extends Plugin {
 		}
 	}
 
-	private registerEditorEvents(): void {
+	private async createSyncClient(): Promise<SyncClient> {
+		DEFAULT_SETTINGS.ignorePatterns.push(
+			".obsidian/**",
+			".git/**",
+			".trash/**"
+		);
+
+		const client = await SyncClient.create({
+			fs: new ObsidianFileSystemOperations(
+				this.app.vault,
+				this.app.workspace
+			),
+			persistence: {
+				load: this.loadData.bind(this),
+				save: this.saveData.bind(this)
+			},
+			nativeLineEndings: Platform.isWin ? "\r\n" : "\n",
+			...(IS_DEBUG_BUILD
+				? {
+						fetch: debugging.slowFetchFactory(1),
+						webSocket: debugging.slowWebSocketFactory(
+							1,
+							new Logger()
+						)
+					}
+				: {})
+		});
+
+		if (IS_DEBUG_BUILD) {
+			debugging.logToConsole(client);
+		}
+
+		return client;
+	}
+
+	private registerObsidianExtensions(client: SyncClient): void {
+		const statusDescription = new StatusDescription(client);
+
+		this.settingsTab = new SyncSettingsTab({
+			app: this.app,
+			plugin: this,
+			syncClient: client,
+			statusDescription
+		});
+		this.addSettingTab(this.settingsTab);
+
+		new StatusBar(this, client);
+
+		this.registerView(HistoryView.TYPE, (leaf) => {
+			const view = new HistoryView(client, leaf);
+			this.register(() => view.onClose());
+			return view;
+		});
+
+		this.registerView(LogsView.TYPE, (leaf) => new LogsView(client, leaf));
+
+		this.registerEditorExtension([remoteCursorsTheme, remoteCursorsPlugin]);
+
+		client.addRemoteCursorsUpdateListener((cursors) => {
+			RemoteCursorsPluginValue.setCursors(cursors, this.app);
+			renderCursorsInFileExplorer(cursors, this.app);
+		});
+
+		const cursorListener = new LocalCursorUpdateListener(
+			client,
+			this.app.workspace
+		);
+		this.register(() => cursorListener.dispose);
+
+		this.app.workspace.updateOptions();
+
+		this.addRibbonIcons();
+
+		const editorStatusDisplayManager = new EditorStatusDisplayManager(
+			this,
+			this.app.workspace,
+			client
+		);
+		this.register(() => editorStatusDisplayManager.dispose());
+	}
+
+	private addRibbonIcons(): void {
+		this.addRibbonIcon(
+			HistoryView.ICON,
+			"Open VaultLink events",
+			async (_: MouseEvent) => this.activateView(HistoryView.TYPE)
+		);
+
+		this.addRibbonIcon(
+			LogsView.ICON,
+			"Open VaultLink logs",
+			async (_: MouseEvent) => this.activateView(LogsView.TYPE)
+		);
+	}
+
+	private registerEditorEvents(client: SyncClient): void {
 		[
 			this.app.workspace.on(
 				"editor-change",
@@ -190,28 +207,28 @@ export default class VaultLinkPlugin extends Plugin {
 				) => {
 					const { file } = info;
 					if (file) {
-						await this.rateLimitedUpdate(file.path);
+						await this.rateLimitedUpdate(file.path, client);
 					}
 				}
 			),
 			this.app.vault.on("create", async (file: TAbstractFile) => {
 				if (file instanceof TFile) {
-					await this.client.syncLocallyCreatedFile(file.path);
+					await client.syncLocallyCreatedFile(file.path);
 				}
 			}),
 			this.app.vault.on("modify", async (file: TAbstractFile) => {
 				if (file instanceof TFile) {
-					await this.rateLimitedUpdate(file.path);
+					await this.rateLimitedUpdate(file.path, client);
 				}
 			}),
 			this.app.vault.on("delete", async (file: TAbstractFile) => {
-				await this.client.syncLocallyDeletedFile(file.path);
+				await client.syncLocallyDeletedFile(file.path);
 			}),
 			this.app.vault.on(
 				"rename",
 				async (file: TAbstractFile, oldPath: string) => {
 					if (file instanceof TFile) {
-						await this.client.syncLocallyUpdatedFile({
+						await client.syncLocallyUpdatedFile({
 							oldPath,
 							relativePath: file.path
 						});
@@ -223,13 +240,16 @@ export default class VaultLinkPlugin extends Plugin {
 		});
 	}
 
-	private async rateLimitedUpdate(path: string): Promise<void> {
+	private async rateLimitedUpdate(
+		path: string,
+		client: SyncClient
+	): Promise<void> {
 		if (!this.rateLimitedUpdatesPerFile.has(path)) {
 			this.rateLimitedUpdatesPerFile.set(
 				path,
 				rateLimit(
 					async () =>
-						this.client.syncLocallyUpdatedFile({
+						client.syncLocallyUpdatedFile({
 							relativePath: path
 						}),
 					MIN_WAIT_BETWEEN_UPDATES_IN_MS

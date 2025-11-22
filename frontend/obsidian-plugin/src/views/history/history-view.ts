@@ -108,6 +108,7 @@ export class HistoryView extends ItemView {
 		this.historyContainer = container.createDiv({ cls: "logs-container" });
 
 		await this.updateView();
+		this.clearTimer();
 		this.timer = setInterval(
 			() =>
 				void this.updateView().catch((error: unknown) => {
@@ -120,8 +121,13 @@ export class HistoryView extends ItemView {
 	}
 
 	public async onClose(): Promise<void> {
+		this.clearTimer();
+	}
+
+	private clearTimer(): void {
 		if (this.timer) {
 			clearInterval(this.timer);
+			this.timer = null;
 		}
 	}
 
