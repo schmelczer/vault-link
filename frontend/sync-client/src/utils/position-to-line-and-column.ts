@@ -16,11 +16,8 @@ export function positionToLineAndColumn(
 
 	text = text.replaceAll("\r", "");
 
-	if (
-		position >
-		text.length + 1
-		// +1 to account for the cursor being after last character
-	) {
+	if (position > text.length) {
+		// position == text.length accounts for the cursor being after last character
 		throw new Error(
 			`Position ${position} exceeds text length ${text.length}`
 		);
