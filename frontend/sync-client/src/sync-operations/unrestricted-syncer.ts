@@ -79,9 +79,10 @@ export class UnrestrictedSyncer {
 			); // this can throw FileNotFoundError
 			const contentHash = hash(contentBytes);
 
+			const originalRelativePath = document.relativePath;
 			const response = await this.syncService.create({
 				documentId: document.documentId,
-				relativePath: document.relativePath,
+				relativePath: originalRelativePath,
 				contentBytes
 			});
 
@@ -93,6 +94,15 @@ export class UnrestrictedSyncer {
 				},
 				document
 			);
+
+			// In case a document with the same name (but different ID) had existed remotely that we haven't known about
+			if (response.relativePath != originalRelativePath) {
+				await this.operations.move(
+					document.relativePath,
+					response.relativePath
+				); // this can throw FileNotFoundError
+			}
+
 			this.database.addSeenUpdateId(response.vaultUpdateId);
 			this.updateCache(
 				response.vaultUpdateId,
