@@ -48,15 +48,29 @@ describe("CoveredValues", () => {
 		assert.strictEqual(covered.min, 6);
 	});
 
-	it("should handle force setting min value", () => {
+	it("should auto-advance when setting min value", () => {
 		const covered = new CoveredValues(5);
 		covered.add(7);
 		covered.add(8);
 		covered.add(9);
 		assert.strictEqual(covered.min, 5);
+		// Setting min to 6 should auto-advance through 7, 8, 9
 		covered.min = 6;
-		assert.strictEqual(covered.min, 6);
+		assert.strictEqual(covered.min, 9);
 		covered.add(10);
+		assert.strictEqual(covered.min, 10);
+	});
+
+	it("should handle setting min value with no consecutive values", () => {
+		const covered = new CoveredValues(5);
+		covered.add(10);
+		covered.add(15);
+		assert.strictEqual(covered.min, 5);
+		// Setting min to 8 should not auto-advance (no consecutive values)
+		covered.min = 8;
+		assert.strictEqual(covered.min, 8);
+		// Add 9 to trigger auto-advance to 10
+		covered.add(9);
 		assert.strictEqual(covered.min, 10);
 	});
 });

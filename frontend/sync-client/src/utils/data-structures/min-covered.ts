@@ -24,7 +24,8 @@ export class CoveredValues {
 
 	public set min(value: number) {
 		this.minValue = Math.max(value, this.minValue);
-		this.seenValues = this.seenValues.filter((v) => v > value);
+		this.seenValues = this.seenValues.filter((v) => v > this.minValue);
+		this.advanceMinWhilePossible();
 	}
 
 	public add(value: number): void {
@@ -45,6 +46,10 @@ export class CoveredValues {
 			this.seenValues.splice(i, 0, value);
 		}
 
+		this.advanceMinWhilePossible();
+	}
+
+	private advanceMinWhilePossible(): void {
 		while (
 			this.seenValues.length > 0 &&
 			this.seenValues[0] === this.minValue + 1
