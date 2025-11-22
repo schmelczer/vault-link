@@ -347,7 +347,7 @@ docker logs vaultlink-server
 
 - Reduce `max_connections_per_vault`
 - Reduce `max_clients_per_vault`
-- Check for large vaults (may need database optimization)
+- Check for large vaults (may need database optimisation)
 
 ### Database corruption
 

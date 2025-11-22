@@ -1,10 +1,10 @@
 # Comparison with Alternatives
 
-VaultLink is one of several solutions for synchronizing Obsidian vaults. This page compares VaultLink with popular alternatives to help you choose the right tool.
+VaultLink is one of several solutions for synchronising Obsidian vaults. This page compares VaultLink with popular alternatives to help you choose the right tool.
 
 ## Key Differentiator: Editor Agnostic
 
-**VaultLink is not tied to Obsidian.** While it includes an Obsidian plugin for convenience, VaultLink synchronizes plain text files and works with any editor:
+**VaultLink is not tied to Obsidian.** While it includes an Obsidian plugin for convenience, VaultLink synchronises plain text files and works with any editor:
 
 - Edit with **Obsidian desktop** on your laptop
 - Edit with **Vim** on your server
@@ -12,7 +12,7 @@ VaultLink is one of several solutions for synchronizing Obsidian vaults. This pa
 - Edit with **Obsidian mobile** on your phone
 - Use the **CLI client** for automated workflows
 
-All changes merge automatically without conflict markers, regardless of which editor you use. This is possible because VaultLink uses [reconcile-text](/architecture/sync-algorithm#why-reconcile-text-over-crdts) for differential synchronization rather than requiring operation-level tracking.
+All changes merge automatically without conflict markers, regardless of which editor you use. This is possible because VaultLink uses [reconcile-text](/architecture/sync-algorithm#why-reconcile-text-over-crdts) for differential synchronisation rather than requiring operation-level tracking.
 
 ## VaultLink's Core Strengths
 
@@ -136,7 +136,7 @@ Before diving into comparisons:
 **Downloads**: ~1.4M
 **Repository**: https://github.com/denolehov/obsidian-git
 
-**Overview**: Uses Git for version control and synchronization.
+**Overview**: Uses Git for version control and synchronisation.
 
 | Aspect                    | Obsidian Git                  | VaultLink               |
 | ------------------------- | ----------------------------- | ----------------------- |
@@ -173,7 +173,7 @@ Before diving into comparisons:
 **Downloads**: ~22,600
 **Repository**: https://github.com/LBF38/obsidian-syncthing-integration
 
-**Overview**: Wrapper around Syncthing for file synchronization.
+**Overview**: Wrapper around Syncthing for file synchronisation.
 
 | Aspect                    | Syncthing Integration          | VaultLink         |
 | ------------------------- | ------------------------------ | ----------------- |
@@ -228,7 +228,7 @@ Before diving into comparisons:
 **Downloads**: ~5,000
 **Repository**: https://github.com/alex-donnan/SyncFTP
 
-**Overview**: Simple FTP-based file synchronization.
+**Overview**: Simple FTP-based file synchronisation.
 
 | Aspect                    | SyncFTP                | VaultLink        |
 | ------------------------- | ---------------------- | ---------------- |
@@ -239,7 +239,7 @@ Before diving into comparisons:
 
 **When to use SyncFTP**: Don't use SyncFTP for any scenario where data integrity matters.
 
-**When to use VaultLink**: Any scenario requiring reliable synchronization.
+**When to use VaultLink**: Any scenario requiring reliable synchronisation.
 
 ---
 
@@ -270,7 +270,7 @@ VaultLink is the **only** solution that combines:
 2. **Editor agnostic** operation (not locked to Obsidian)
 3. **Automatic conflict-free merging** using operational transformation
 4. **Real-time collaborative editing** with cursor tracking
-5. **Differential synchronization** supporting out-of-band edits
+5. **Differential synchronisation** supporting out-of-band edits
 6. **Comprehensive test coverage** ensuring reliability
 7. **Simple deployment** via Docker or single binary
 

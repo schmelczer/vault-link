@@ -195,7 +195,7 @@ vaultlink \
 
 ### Long-Running Sync
 
-Run as a daemon for continuous synchronization:
+Run as a daemon for continuous synchronisation:
 
 ```bash
 docker run -d \
