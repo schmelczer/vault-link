@@ -18,7 +18,8 @@ import type {
 } from "../tracing/sync-history";
 import { SyncStatus, SyncType } from "../tracing/sync-history";
 import { EMPTY_HASH, hash } from "../utils/hash";
-import { deserialize } from "../utils/deserialize";
+
+import { base64ToBytes } from "byte-base64";
 import type { Settings } from "../persistence/settings";
 import type { FileOperations } from "../file-operations/file-operations";
 import { createPromise } from "../utils/create-promise";
@@ -28,7 +29,7 @@ import { globsToRegexes } from "../utils/globs-to-regexes";
 import type { DocumentVersion } from "../services/types/DocumentVersion";
 import type { DocumentUpdateResponse } from "../services/types/DocumentUpdateResponse";
 import type { DocumentVersionWithoutContent } from "../services/types/DocumentVersionWithoutContent";
-import type { FixedSizeDocumentCache } from "../utils/fix-sized-cache";
+import type { FixedSizeDocumentCache } from "../utils/data-structures/fix-sized-cache";
 import { isFileTypeMergable } from "../utils/is-file-type-mergable";
 import { isBinary } from "../utils/is-binary";
 
@@ -292,7 +293,7 @@ export class UnrestrictedSyncer {
 			}
 
 			if (!("type" in response) || response.type === "MergingUpdate") {
-				const responseBytes = deserialize(response.contentBase64);
+				const responseBytes = base64ToBytes(response.contentBase64);
 				contentHash = hash(responseBytes);
 
 				this.database.updateDocumentMetadata(
@@ -439,7 +440,7 @@ export class UnrestrictedSyncer {
 				return;
 			}
 
-			const contentBytes = deserialize(content);
+			const contentBytes = base64ToBytes(content);
 
 			await this.operations.ensureClearPath(remoteVersion.relativePath);
 

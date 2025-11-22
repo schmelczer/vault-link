@@ -1,4 +1,4 @@
-import type { Logger } from "../tracing/logger";
+import type { Logger } from "../../tracing/logger";
 
 /**
  * Manages exclusive locks on items to prevent concurrent modifications.

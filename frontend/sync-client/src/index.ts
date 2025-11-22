@@ -1,6 +1,6 @@
-import { logToConsole } from "./debugging/log-to-console";
-import { slowFetchFactory } from "./debugging/slow-fetch-factory";
-import { slowWebSocketFactory } from "./debugging/slow-web-socket-factory";
+import { logToConsole } from "./utils/debugging/log-to-console";
+import { slowFetchFactory } from "./utils/debugging/slow-fetch-factory";
+import { slowWebSocketFactory } from "./utils/debugging/slow-web-socket-factory";
 import { getRandomColor } from "./utils/get-random-color";
 import { lineAndColumnToPosition } from "./utils/line-and-column-to-position";
 import { positionToLineAndColumn } from "./utils/position-to-line-and-column";
