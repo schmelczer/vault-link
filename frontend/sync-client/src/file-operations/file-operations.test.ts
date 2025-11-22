@@ -159,4 +159,61 @@ describe("File operations", () => {
 			"a/b.c/e (1)"
 		);
 	});
+
+	it("should continue deconfliction from existing number in filename", async () => {
+		const fileSystemOperations = new FakeFileSystemOperations();
+		const fileOperations = new FileOperations(
+			new Logger(),
+			new MockDatabase() as Database, // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+			fileSystemOperations
+		);
+
+		await fileOperations.create("document (5).md", new Uint8Array());
+		await fileOperations.create("other.md", new Uint8Array());
+
+		await fileOperations.move("other.md", "document (5).md");
+		assertSetContainsExactly(
+			fileSystemOperations.names,
+			"document (5).md",
+			"document (6).md"
+		);
+
+		await fileOperations.create("another.md", new Uint8Array());
+		await fileOperations.move("another.md", "document (5).md");
+		assertSetContainsExactly(
+			fileSystemOperations.names,
+			"document (5).md",
+			"document (6).md",
+			"document (7).md"
+		);
+	});
+
+	it("should handle dotfiles correctly", async () => {
+		const fileSystemOperations = new FakeFileSystemOperations();
+		const fileOperations = new FileOperations(
+			new Logger(),
+			new MockDatabase() as Database, // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+			fileSystemOperations
+		);
+
+		await fileOperations.create(".gitignore", new Uint8Array());
+		await fileOperations.create("temp", new Uint8Array());
+		await fileOperations.move("temp", ".gitignore");
+		assertSetContainsExactly(
+			fileSystemOperations.names,
+			".gitignore",
+			".gitignore (1)"
+		);
+
+		await fileOperations.create(".config.json", new Uint8Array());
+		await fileOperations.create("temp2", new Uint8Array());
+		await fileOperations.move("temp2", ".config.json");
+		assertSetContainsExactly(
+			fileSystemOperations.names,
+			".gitignore",
+			".gitignore (1)",
+			".config.json",
+			".config (1).json"
+		);
+	});
 });
