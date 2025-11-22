@@ -260,33 +260,7 @@ export class UnrestrictedSyncer {
 			}
 
 			if (response.isDeleted) {
-				this.history.addHistoryEntry({
-					status: SyncStatus.SUCCESS,
-					details: {
-						type: SyncType.DELETE,
-						relativePath: document.relativePath
-					},
-					message:
-						"File has been deleted remotely, so we deleted it locally",
-					author: response.userId,
-					timestamp: new Date(response.updatedDate)
-				});
-
-				this.database.delete(document.relativePath);
-				this.database.updateDocumentMetadata(
-					{
-						parentVersionId: response.vaultUpdateId,
-						hash: EMPTY_HASH,
-						remoteRelativePath: response.relativePath
-					},
-					document
-				);
-
-				await this.operations.delete(document.relativePath);
-
-				this.database.addSeenUpdateId(response.vaultUpdateId);
-
-				return;
+				return this.applyRemoteDeleteLocally(document, response);
 			}
 
 			let actualPath = document.relativePath;
@@ -576,5 +550,35 @@ export class UnrestrictedSyncer {
 		if (isFileTypeMergable(filePath) && !isBinary(contentBytes)) {
 			this.contentCache.put(updateId, contentBytes);
 		}
+	}
+
+	private async applyRemoteDeleteLocally(
+		document: DocumentRecord,
+		response: DocumentVersion | DocumentUpdateResponse
+	): Promise<void> {
+		this.history.addHistoryEntry({
+			status: SyncStatus.SUCCESS,
+			details: {
+				type: SyncType.DELETE,
+				relativePath: document.relativePath
+			},
+			message: "File has been deleted remotely, so we deleted it locally",
+			author: response.userId,
+			timestamp: new Date(response.updatedDate)
+		});
+
+		this.database.delete(document.relativePath);
+		this.database.updateDocumentMetadata(
+			{
+				parentVersionId: response.vaultUpdateId,
+				hash: EMPTY_HASH,
+				remoteRelativePath: response.relativePath
+			},
+			document
+		);
+
+		await this.operations.delete(document.relativePath);
+
+		this.database.addSeenUpdateId(response.vaultUpdateId);
 	}
 }
