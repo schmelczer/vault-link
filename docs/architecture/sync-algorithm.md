@@ -60,18 +60,26 @@ For note-taking workflows where users value editor freedom and offline editing, 
 
 ### How It Works
 
-Given a base document and two sets of changes, OT produces a merged result that includes both changes.
+Given three versions (parent, left, right), reconcile-text produces a merged result.
+
+**How reconcile-text works**:
+
+1. **Tokenisation**: Split text into words (using `BuiltinTokenizer::Word`)
+2. **Three-way diff**: Compare parent→left and parent→right changes
+3. **Merge**: Combine non-conflicting changes, prefer content preservation for conflicts
+4. **Result**: Merged text with both edits applied
 
 **Example**:
 
 ```
-Base document: "Hello world"
+Parent:  "The quick brown fox"
+User A:  "The quick red fox"      (changes "brown" → "red")
+User B:  "The very quick brown fox"  (inserts "very ")
 
-User A: "Hello beautiful world"  (inserts "beautiful ")
-User B: "Hello world!"            (inserts "!")
-
-OT result: "Hello beautiful world!"  (both changes applied)
+Merged:  "The very quick red fox"  (both changes applied)
 ```
+
+**Merge conditions**: Only `.md` and `.txt` files with valid UTF-8 get merged. Binary files or other extensions use last-write-wins.
 
 ### Operation Types
 
@@ -263,15 +271,25 @@ VaultLink optimises for:
 
 ## Limitations
 
-### Binary Files
+### Binary and Non-Mergeable Files
 
-OT works best for text files. Binary files:
+Only **`.md`** and **`.txt`** files get automatic merging. Everything else uses last-write-wins.
 
-- Cannot be meaningfully merged
-- Use last-write-wins strategy
-- May cause data loss on concurrent edits
+**Binary detection**:
 
-**Workaround**: Avoid concurrent edits to binary files, or use versioning.
+- Files with NUL bytes (`0x00`)
+- Files failing UTF-8 validation
+
+Even `.md` files are treated as binary if they fail UTF-8 checks.
+
+**Last-write-wins behaviour**:
+
+```
+User A uploads image.png → Server version 1
+User B uploads image.png → Server version 2 (A's upload lost)
+```
+
+**Workaround**: Avoid concurrent edits to non-text files. [See all limitations →](/guide/limitations)
 
 ### Large Documents
 

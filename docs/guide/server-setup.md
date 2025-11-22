@@ -280,9 +280,14 @@ Run daily via cron:
 The server exposes a ping endpoint:
 
 ```bash
-curl http://localhost:3000/vaults/fake/ping
-# Returns: pong
+curl http://localhost:3000/vaults/test/ping
+# Returns: {"server_version":"0.10.1","is_authenticated":false}
 ```
+
+Replace `test` with any vault name. The endpoint returns:
+
+- `server_version`: Current server version
+- `is_authenticated`: Whether the request included a valid token
 
 Docker health check is built-in and checks this endpoint every 30 seconds.
 

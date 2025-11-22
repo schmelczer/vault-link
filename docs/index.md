@@ -37,7 +37,7 @@ features:
 
 **Edit with any tool.** Other solutions require CRDT-aware editors or break when you edit outside Obsidian. VaultLink uses differential sync: edit files however you want, sync handles the rest.
 
-**No conflict markers.** Git forces manual merging. Other tools use last-write-wins. VaultLink's operational transformation automatically merges all changes without data loss or workflow interruption.
+**No conflict markers.** Git forces manual merging. Other tools use last-write-wins. VaultLink's operational transformation automatically merges Markdown and text files without conflict markers or workflow interruption. [See what's supported →](/guide/limitations)
 
 [See how VaultLink compares to alternatives →](/guide/alternatives)
 
