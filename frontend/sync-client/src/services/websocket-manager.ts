@@ -74,6 +74,15 @@ export class WebSocketManager {
 		this.remoteCursorsUpdateListeners.push(listener);
 	}
 
+	public removeRemoteCursorsUpdateListener(
+		listener: (cursors: ClientCursors[]) => unknown
+	): void {
+		const index = this.remoteCursorsUpdateListeners.indexOf(listener);
+		if (index !== -1) {
+			this.remoteCursorsUpdateListeners.splice(index, 1);
+		}
+	}
+
 	public start(): void {
 		this.isStopped = false;
 		this._isFirstSyncCompleted = false;

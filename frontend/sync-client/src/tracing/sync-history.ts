@@ -119,6 +119,15 @@ export class SyncHistory {
 		listener({ ...this.status });
 	}
 
+	public removeSyncHistoryUpdateListener(
+		listener: (stats: HistoryStats) => unknown
+	): void {
+		const index = this.syncHistoryUpdateListeners.indexOf(listener);
+		if (index !== -1) {
+			this.syncHistoryUpdateListeners.splice(index, 1);
+		}
+	}
+
 	public reset(): void {
 		this._entries.length = 0;
 		this.status = {
