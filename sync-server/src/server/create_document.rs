@@ -14,7 +14,10 @@ use crate::{
     },
     config::user_config::User,
     errors::{SyncServerError, client_error, server_error},
-    utils::{normalize::normalize, sanitize_path::sanitize_path},
+    utils::{
+        find_first_available_path::find_first_available_path, normalize::normalize,
+        sanitize_path::sanitize_path,
+    },
 };
 
 #[derive(Deserialize)]
@@ -66,11 +69,19 @@ pub async fn create_document(
         .map_err(server_error)?;
 
     let sanitized_relative_path = sanitize_path(&request.relative_path);
+    let deduped_path = find_first_available_path(
+        &vault_id,
+        &sanitized_relative_path,
+        &state.database,
+        &mut transaction,
+    )
+    .await
+    .map_err(server_error)?;
 
     let new_version = StoredDocumentVersion {
         vault_update_id: last_update_id + 1,
         document_id,
-        relative_path: sanitized_relative_path,
+        relative_path: deduped_path,
         content: request.content.contents.to_vec(),
         updated_date: chrono::Utc::now(),
         is_deleted: false,
