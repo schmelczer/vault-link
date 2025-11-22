@@ -1,12 +1,11 @@
-import { sleep } from "../utils/sleep";
-import { Locks } from "../utils/locks";
-import type { Logger } from "../tracing/logger";
+import { sleep } from "../sleep";
+import { Locks } from "../data-structures/locks";
+import type { Logger } from "../../tracing/logger";
 
 export function slowWebSocketFactory(
 	jitterScaleInSeconds: number,
 	logger: Logger
 ): typeof WebSocket {
-	// eslint-disable-next-line
 	return class FlakyWebSocket extends WebSocket {
 		private static readonly RECEIVE_KEY = "websocket-receive";
 		private static readonly SEND_KEY = "websocket-send";

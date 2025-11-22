@@ -1,6 +1,6 @@
 // Implements an in-memory fixed-size cache for document contents,
 
-import type { VaultUpdateId } from "../persistence/database";
+import type { VaultUpdateId } from "../../persistence/database";
 
 // Doubly-linked list node for O(1) LRU operations
 class LRUNode {

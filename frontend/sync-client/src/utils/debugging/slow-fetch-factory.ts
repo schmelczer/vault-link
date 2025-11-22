@@ -1,4 +1,4 @@
-import { sleep } from "../utils/sleep";
+import { sleep } from "../sleep";
 
 export const slowFetchFactory =
 	(jitterScaleInSeconds: number) =>
@@ -7,10 +7,14 @@ export const slowFetchFactory =
 		init?: RequestInit
 	): Promise<Response> => {
 		if (jitterScaleInSeconds > 0) {
-			await sleep(Math.random() * jitterScaleInSeconds * 1000);
+			await sleep(((Math.random() * jitterScaleInSeconds) / 2) * 1000);
 		}
 
 		const response = await fetch(input, init);
+
+		if (jitterScaleInSeconds > 0) {
+			await sleep(((Math.random() * jitterScaleInSeconds) / 2) * 1000);
+		}
 
 		return response;
 	};

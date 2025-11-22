@@ -1,7 +1,7 @@
 import type { RelativePath } from "../persistence/database";
 import type { FileSystemOperations } from "./filesystem-operations";
 import type { Logger } from "../tracing/logger";
-import { Locks } from "../utils/locks";
+import { Locks } from "../utils/data-structures/locks";
 import { FileNotFoundError } from "./file-not-found-error";
 import type { TextWithCursors } from "reconcile-text";
 

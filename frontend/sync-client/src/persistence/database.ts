@@ -1,6 +1,6 @@
 import type { Logger } from "../tracing/logger";
 import { EMPTY_HASH } from "../utils/hash";
-import { CoveredValues } from "../utils/min-covered";
+import { CoveredValues } from "../utils/data-structures/min-covered";
 
 export type VaultUpdateId = number;
 export type DocumentId = string;

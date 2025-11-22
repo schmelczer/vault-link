@@ -21,7 +21,7 @@ import { CursorTracker } from "./sync-operations/cursor-tracker";
 import type { CursorSpan } from "./services/types/CursorSpan";
 import type { MaybeOutdatedClientCursors } from "./types/maybe-outdated-client-cursors";
 import { FileChangeNotifier } from "./sync-operations/file-change-notifier";
-import { FixedSizeDocumentCache } from "./utils/fix-sized-cache";
+import { FixedSizeDocumentCache } from "./utils/data-structures/fix-sized-cache";
 import { setUpTelemetry } from "./utils/set-up-telemetry";
 
 export class SyncClient {

@@ -1,7 +1,7 @@
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert";
-import { Logger } from "../tracing/logger";
-import type { RelativePath } from "../persistence/database";
+import { Logger } from "../../tracing/logger";
+import type { RelativePath } from "../../persistence/database";
 import { Locks } from "./locks";
 
 describe("withLock", () => {

@@ -8,7 +8,7 @@ import type { MaybeOutdatedClientCursors } from "../types/maybe-outdated-client-
 import { DocumentUpToDateness } from "../types/document-up-to-dateness";
 import { hash } from "../utils/hash";
 import type { FileChangeNotifier } from "./file-change-notifier";
-import { Lock } from "../utils/locks";
+import { Lock } from "../utils/data-structures/locks";
 
 // Cursor positions are updated separately from documents. However, a given cursor position is only
 // valid within a certain version of the document it belongs to. This class tracks previous and the latest

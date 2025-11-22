@@ -15,9 +15,9 @@ import { findMatchingFile } from "../utils/find-matching-file";
 import type { UnrestrictedSyncer } from "./unrestricted-syncer";
 import { createPromise } from "../utils/create-promise";
 import { SyncResetError } from "../services/sync-reset-error";
-import { Locks } from "../utils/locks";
+import { Locks } from "../utils/data-structures/locks";
 import type { DocumentVersionWithoutContent } from "../services/types/DocumentVersionWithoutContent";
-import type { FixedSizeDocumentCache } from "../utils/fix-sized-cache";
+import type { FixedSizeDocumentCache } from "../utils/data-structures/fix-sized-cache";
 
 export class Syncer {
 	private readonly remoteDocumentsLock: Locks<DocumentId>;
