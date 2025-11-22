@@ -58,6 +58,16 @@ Check formatting without making changes:
 npm run format:check
 ```
 
+### Spell Check
+
+Check spelling (British English):
+
+```bash
+npm run spell
+```
+
+The spell checker enforces British English spellings (e.g., "synchronisation", "optimise", "behaviour").
+
 ## Deployment
 
 The documentation is automatically deployed to GitHub Pages when changes are pushed to the `main` branch.
@@ -92,11 +102,15 @@ docs/
 
 ## Writing Documentation
 
+### Language
+
+All documentation uses **British English**. The spell checker enforces this in CI.
+
 ### Markdown Features
 
 VitePress supports:
 
-- GitHub Flavored Markdown
+- GitHub Flavoured Markdown
 - Custom containers (tip, warning, danger)
 - Code syntax highlighting
 - Mermaid diagrams

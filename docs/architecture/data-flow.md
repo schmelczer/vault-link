@@ -33,7 +33,7 @@ sequenceDiagram
 
 ### 2. Initial Sync
 
-After authentication, the client performs initial synchronization:
+After authentication, the client performs initial synchronisation:
 
 ```mermaid
 sequenceDiagram

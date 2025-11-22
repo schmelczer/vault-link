@@ -2,7 +2,7 @@ import { defineConfig } from "vitepress"
 
 export default defineConfig({
 	title: "VaultLink",
-	description: "Self-hosted real-time synchronization for Obsidian",
+	description: "Self-hosted real-time synchronisation for Obsidian",
 	base: "/vault-link/",
 	themeConfig: {
 		logo: "/logo.svg",

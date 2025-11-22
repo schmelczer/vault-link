@@ -40,7 +40,7 @@ Central sync server with multiple clients. High-level architecture and design de
 
 ### Sync Server
 
-Central authority for synchronization. Rust + Axum framework.
+Central authority for synchronisation. Rust + Axum framework.
 
 **Responsibilities**:
 
@@ -213,7 +213,7 @@ Clients maintain sync metadata:
 └── cache/              # Optional local cache
 ```
 
-The `.vaultlink` directory tracks which files have been synced and their versions to enable efficient synchronization.
+The `.vaultlink` directory tracks which files have been synced and their versions to enable efficient synchronisation.
 
 ## Communication Protocol
 
@@ -279,7 +279,7 @@ Token-based authentication on connection:
 
 - **Small vaults** (< 1000 files): Excellent performance
 - **Medium vaults** (1000-10000 files): Good performance with tuning
-- **Large vaults** (> 10000 files): May require optimization
+- **Large vaults** (> 10000 files): May require optimisation
 - **Concurrent users**: Tested with dozens of simultaneous clients per vault
 
 ## Security Model

@@ -1,12 +1,12 @@
 # Advanced Configuration
 
-Advanced topics for optimizing and customizing your VaultLink deployment.
+Advanced topics for optimising and customising your VaultLink deployment.
 
-## Database Optimization
+## Database Optimisation
 
 ### SQLite Tuning
 
-While VaultLink handles most SQLite configuration automatically, you can optimize for specific workloads.
+While VaultLink handles most SQLite configuration automatically, you can optimise for specific workloads.
 
 #### WAL Mode
 
@@ -36,7 +36,7 @@ du -h databases/*.db
 # Vacuum to reclaim space (offline only)
 sqlite3 databases/vault.db "VACUUM;"
 
-# Analyze for query optimization
+# Analyse for query optimisation
 sqlite3 databases/vault.db "ANALYZE;"
 ```
 
@@ -47,7 +47,7 @@ sqlite3 databases/vault.db "ANALYZE;"
 # monthly-maintenance.sh
 
 for db in databases/*.db; do
-    echo "Optimizing $db"
+    echo "Optimising $db"
     sqlite3 "$db" "PRAGMA optimize;"
     sqlite3 "$db" "PRAGMA wal_checkpoint(TRUNCATE);"
 done

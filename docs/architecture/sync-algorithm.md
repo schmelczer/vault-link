@@ -19,7 +19,7 @@ Operational transformation:
 - **Automatic**: No user intervention required
 - **Preserves all edits**: No data loss
 - **Real-time**: Changes appear immediately
-- **Intuitive**: Behavior matches user expectations
+- **Intuitive**: Behaviour matches user expectations
 
 ## The reconcile-text Library
 
@@ -27,7 +27,7 @@ VaultLink uses the [`reconcile-text`](https://crates.io/crates/reconcile-text) R
 
 ### Why reconcile-text over CRDTs?
 
-VaultLink faces a **differential synchronization** challenge: users edit Obsidian vaults with various editors (Obsidian desktop, Obsidian mobile, Vim, VS Code, or any text editor), often while offline. This means we only observe the **final state** of each document after editing, not the individual keystrokes or operations that produced it.
+VaultLink faces a **differential synchronisation** challenge: users edit Obsidian vaults with various editors (Obsidian desktop, Obsidian mobile, Vim, VS Code, or any text editor), often while offline. This means we only observe the **final state** of each document after editing, not the individual keystrokes or operations that produced it.
 
 **The fundamental problem**:
 
@@ -50,9 +50,9 @@ VaultLink faces a **differential synchronization** challenge: users edit Obsidia
 
 6. **Simpler infrastructure**: No need for complex operation capture, transformation logs, or tombstone management that CRDTs require
 
-**The tradeoff**:
+**The trade-off**:
 
-CRDTs excel when you control the entire editing infrastructure and can capture every operation. reconcile-text excels when you're synchronizing independently-edited files—exactly VaultLink's scenario. The merge quality depends on Myers' diff algorithm rather than operation history, which is the correct tradeoff for differential sync.
+CRDTs excel when you control the entire editing infrastructure and can capture every operation. reconcile-text excels when you're synchronising independently-edited files—exactly VaultLink's scenario. The merge quality depends on Myers' diff algorithm rather than operation history, which is the correct trade-off for differential sync.
 
 For note-taking workflows where users value editor freedom and offline editing, this approach provides superior user experience compared to either CRDTs (which would require operation tracking) or Git-style merging (which requires manual conflict resolution).
 
@@ -253,9 +253,9 @@ Result: "Line 1\nLine 2 modified\nLine 3"
 - **Cursors**: O(clients × vaults)
 - **Active operations**: Minimal (processed in real-time)
 
-### Optimization
+### Optimisation
 
-VaultLink optimizes for:
+VaultLink optimises for:
 
 - Small, frequent edits (typical typing patterns)
 - Text documents (not binary files)
@@ -404,7 +404,7 @@ fn transform(op_a: Operation, op_b: Operation) -> (Operation, Operation) {
 1. **Small edits**: Make small, focused changes for easier merging
 2. **Coordinate major changes**: Discuss large refactors with team
 3. **Monitor sync status**: Ensure changes are uploaded before signing off
-4. **Test conflict resolution**: Verify behavior matches expectations
+4. **Test conflict resolution**: Verify behaviour matches expectations
 
 ### For Developers
 

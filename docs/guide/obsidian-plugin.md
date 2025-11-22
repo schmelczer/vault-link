@@ -96,7 +96,7 @@ When first connecting:
 1. The plugin uploads all local files to the server
 2. Downloads any missing files from the server
 3. Resolves any conflicts using operational transformation
-4. Begins real-time synchronization
+4. Begins real-time synchronisation
 
 Initial sync time depends on vault size and `sync_concurrency` setting.
 
@@ -107,7 +107,7 @@ Once connected:
 - **File changes**: Automatically synced when saved
 - **File creation**: New files immediately uploaded
 - **File deletion**: Deletions propagated to other clients
-- **File renames**: Tracked and synchronized
+- **File renames**: Tracked and synchronised
 
 The plugin watches your vault filesystem and syncs changes in real-time via WebSocket.
 
