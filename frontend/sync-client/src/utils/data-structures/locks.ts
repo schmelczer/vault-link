@@ -49,14 +49,17 @@ export class Locks<T> {
 		fn: () => R | Promise<R>
 	): Promise<R> {
 		const keys = Array.isArray(keyOrKeys) ? keyOrKeys : [keyOrKeys];
-		keys.sort((a, b) => String(a).localeCompare(String(b))); // Ensure consistent order to prevent deadlocks
 
-		await Promise.all(keys.map(async (key) => this.waitForLock(key)));
+		// Deduplicate keys to prevent deadlock from acquiring same lock twice
+		const uniqueKeys = Array.from(new Set(keys));
+		uniqueKeys.sort((a, b) => String(a).localeCompare(String(b))); // Ensure consistent order to prevent deadlocks
+
+		await Promise.all(uniqueKeys.map(async (key) => this.waitForLock(key)));
 
 		try {
 			return await fn();
 		} finally {
-			keys.forEach((key) => {
+			uniqueKeys.forEach((key) => {
 				this.unlock(key);
 			});
 		}
