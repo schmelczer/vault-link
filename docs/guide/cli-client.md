@@ -67,20 +67,20 @@ Create `docker-compose.yml`:
 
 ```yaml
 services:
-  vaultlink-cli:
-    image: ghcr.io/schmelczer/vault-link-cli:latest
-    restart: unless-stopped
-    volumes:
-      - ./vault:/vault
-    command:
-      - "-l"
-      - "/vault"
-      - "-r"
-      - "wss://sync.example.com"
-      - "-t"
-      - "your-token"
-      - "-v"
-      - "default"
+    vaultlink-cli:
+        image: ghcr.io/schmelczer/vault-link-cli:latest
+        restart: unless-stopped
+        volumes:
+            - ./vault:/vault
+        command:
+            - "-l"
+            - "/vault"
+            - "-r"
+            - "wss://sync.example.com"
+            - "-t"
+            - "your-token"
+            - "-v"
+            - "default"
 ```
 
 Start the client:
@@ -93,22 +93,22 @@ docker compose up -d
 
 ### Required Arguments
 
-| Argument | Short | Description | Example |
-|----------|-------|-------------|---------|
-| `--local-path` | `-l` | Local directory to sync | `/vault` |
-| `--remote-uri` | `-r` | Server WebSocket URI | `wss://sync.example.com` |
-| `--token` | `-t` | Authentication token | `abc123...` |
-| `--vault-name` | `-v` | Vault name on server | `default` |
+| Argument       | Short | Description             | Example                  |
+| -------------- | ----- | ----------------------- | ------------------------ |
+| `--local-path` | `-l`  | Local directory to sync | `/vault`                 |
+| `--remote-uri` | `-r`  | Server WebSocket URI    | `wss://sync.example.com` |
+| `--token`      | `-t`  | Authentication token    | `abc123...`              |
+| `--vault-name` | `-v`  | Vault name on server    | `default`                |
 
 ### Optional Arguments
 
-| Argument | Default | Description |
-|----------|---------|-------------|
-| `--sync-concurrency` | `1` | Concurrent file operations |
-| `--max-file-size-mb` | `10` | Max file size in MB |
-| `--ignore-pattern` | - | Glob pattern to ignore (repeatable) |
-| `--websocket-retry-interval-ms` | `3500` | Reconnection interval |
-| `--log-level` | `INFO` | Log level: DEBUG, INFO, WARNING, ERROR |
+| Argument                        | Default | Description                            |
+| ------------------------------- | ------- | -------------------------------------- |
+| `--sync-concurrency`            | `1`     | Concurrent file operations             |
+| `--max-file-size-mb`            | `10`    | Max file size in MB                    |
+| `--ignore-pattern`              | -       | Glob pattern to ignore (repeatable)    |
+| `--websocket-retry-interval-ms` | `3500`  | Reconnection interval                  |
+| `--log-level`                   | `INFO`  | Log level: DEBUG, INFO, WARNING, ERROR |
 
 ### Environment Variables
 
@@ -228,6 +228,7 @@ docker inspect --format='{{json .State.Health}}' vaultlink-sync | jq
 ```
 
 Health check verifies:
+
 - Health file exists
 - Status updated within last 30 seconds
 - WebSocket connection is active
@@ -236,14 +237,14 @@ Configure custom health check:
 
 ```yaml
 services:
-  vaultlink-cli:
-    image: ghcr.io/schmelczer/vault-link-cli:latest
-    healthcheck:
-      test: ["CMD", "node", "/app/healthcheck.js"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
+    vaultlink-cli:
+        image: ghcr.io/schmelczer/vault-link-cli:latest
+        healthcheck:
+            test: ["CMD", "node", "/app/healthcheck.js"]
+            interval: 15s
+            timeout: 5s
+            retries: 5
+            start_period: 20s
 ```
 
 ### Read-Only Vault
@@ -351,21 +352,25 @@ services:
 ### Client won't connect
 
 **Check server accessibility**:
+
 ```bash
 curl https://sync.example.com/vaults/test/ping
 ```
 
 **Verify WebSocket protocol**:
+
 - Use `ws://` for HTTP servers
 - Use `wss://` for HTTPS servers
 
 **Check authentication**:
+
 - Token must match server config
 - User must have access to the vault
 
 ### Permission errors
 
 **Docker volume permissions**:
+
 ```bash
 # Ensure directory is writable
 chmod 755 /path/to/vault
@@ -375,6 +380,7 @@ docker run --rm ghcr.io/schmelczer/vault-link-cli:latest id
 ```
 
 **SELinux issues**:
+
 ```bash
 # Add :z flag to volume mount
 docker run -v /path/to/vault:/vault:z ...
@@ -383,14 +389,17 @@ docker run -v /path/to/vault:/vault:z ...
 ### Files not syncing
 
 **Check ignore patterns**:
+
 - View logs to see which files are skipped
 - Ensure patterns don't match unintentionally
 
 **File size limits**:
+
 - Check `--max-file-size-mb` setting
 - Large files are skipped with a warning
 
 **Check metadata**:
+
 ```bash
 # View sync metadata
 cat /path/to/vault/.vaultlink/metadata.json
@@ -399,33 +408,39 @@ cat /path/to/vault/.vaultlink/metadata.json
 ### High memory usage
 
 **Reduce concurrency**:
+
 ```bash
 --sync-concurrency 1
 ```
 
 **Limit file sizes**:
+
 ```bash
 --max-file-size-mb 5
 ```
 
 **Check vault size**:
+
 - Very large vaults may need more resources
 - Consider splitting into multiple vaults
 
 ### Connection keeps dropping
 
 **Increase retry interval**:
+
 ```bash
 --websocket-retry-interval-ms 5000
 ```
 
 **Check network stability**:
+
 ```bash
 # Monitor connection
 docker logs -f vaultlink-sync | grep -i websocket
 ```
 
 **Server timeout settings**:
+
 - Verify reverse proxy WebSocket timeout
 - Check server `response_timeout_seconds`
 
@@ -503,6 +518,7 @@ WantedBy=multi-user.target
 ```
 
 Enable and start:
+
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable vaultlink-cli

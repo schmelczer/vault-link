@@ -74,9 +74,9 @@ You can connect to VaultLink using either the Obsidian plugin or the standalone 
 2. Browse community plugins and search for "VaultLink"
 3. Install and enable the plugin
 4. Configure the plugin:
-   - **Server URL**: `ws://localhost:3000` (or your server address)
-   - **Token**: The token from your `config.yml`
-   - **Vault Name**: `default` (or any name you choose)
+    - **Server URL**: `ws://localhost:3000` (or your server address)
+    - **Token**: The token from your `config.yml`
+    - **Vault Name**: `default` (or any name you choose)
 
 [Read the full Obsidian plugin guide →](/guide/obsidian-plugin)
 
@@ -119,20 +119,20 @@ To add more users or restrict vault access:
 
 ```yaml
 users:
-  user_configs:
-  - name: alice
-    token: alice-secure-token
-    vault_access:
-      type: allow_list
-      allowed:
-        - personal
-        - shared
-  - name: bob
-    token: bob-secure-token
-    vault_access:
-      type: allow_list
-      allowed:
-        - shared
+    user_configs:
+        - name: alice
+          token: alice-secure-token
+          vault_access:
+              type: allow_list
+              allowed:
+                  - personal
+                  - shared
+        - name: bob
+          token: bob-secure-token
+          vault_access:
+              type: allow_list
+              allowed:
+                  - shared
 ```
 
 [Learn about authentication configuration →](/config/authentication)
@@ -159,11 +159,13 @@ Want to understand how VaultLink works under the hood?
 ### Server won't start
 
 Check Docker logs:
+
 ```bash
 docker logs vaultlink-server
 ```
 
 Common issues:
+
 - Port 3000 already in use: Change the port mapping `-p 3001:3000`
 - Config file errors: Validate YAML syntax
 - Permission issues: Ensure the volume mount is writable

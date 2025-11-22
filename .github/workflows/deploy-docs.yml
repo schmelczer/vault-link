@@ -42,6 +42,11 @@ jobs:
           cd docs
           npm ci
 
+      - name: Check formatting
+        run: |
+          cd docs
+          npm run format:check
+
       - name: Build documentation
         run: |
           cd docs

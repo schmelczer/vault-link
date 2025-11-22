@@ -13,11 +13,13 @@ While VaultLink handles most SQLite configuration automatically, you can optimiz
 VaultLink uses Write-Ahead Logging (WAL) mode by default for better concurrency.
 
 **Benefits**:
+
 - Readers don't block writers
 - Writers don't block readers
 - Better performance for concurrent access
 
 **Maintenance**:
+
 ```bash
 # Checkpoint WAL to main database (run periodically)
 sqlite3 databases/vault.db "PRAGMA wal_checkpoint(TRUNCATE);"
@@ -39,6 +41,7 @@ sqlite3 databases/vault.db "ANALYZE;"
 ```
 
 **Schedule maintenance**:
+
 ```bash
 #!/bin/bash
 # monthly-maintenance.sh
@@ -83,6 +86,7 @@ max_connections = (concurrent_users × avg_operations_per_user) + buffer
 ```
 
 **Example**:
+
 - 20 concurrent users
 - 2 operations per user on average
 - 25% buffer
@@ -96,30 +100,33 @@ max_connections = (20 × 2) × 1.25 = 50
 Adjust timeouts based on network characteristics:
 
 **Fast local network**:
+
 ```yaml
 database:
-  cursor_timeout_seconds: 30
+    cursor_timeout_seconds: 30
 
 server:
-  response_timeout_seconds: 30
+    response_timeout_seconds: 30
 ```
 
 **Slow or unreliable network**:
+
 ```yaml
 database:
-  cursor_timeout_seconds: 180
+    cursor_timeout_seconds: 180
 
 server:
-  response_timeout_seconds: 120
+    response_timeout_seconds: 120
 ```
 
 **Mobile clients**:
+
 ```yaml
 database:
-  cursor_timeout_seconds: 300  # Longer for intermittent connections
+    cursor_timeout_seconds: 300 # Longer for intermittent connections
 
 server:
-  response_timeout_seconds: 180
+    response_timeout_seconds: 180
 ```
 
 ## Reverse Proxy Configuration
@@ -232,16 +239,16 @@ Using Docker labels:
 
 ```yaml
 services:
-  vaultlink-server:
-    image: ghcr.io/schmelczer/vault-link-server:latest
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.vaultlink.rule=Host(`sync.example.com`)"
-      - "traefik.http.routers.vaultlink.entrypoints=websecure"
-      - "traefik.http.routers.vaultlink.tls.certresolver=letsencrypt"
-      - "traefik.http.services.vaultlink.loadbalancer.server.port=3000"
-      # Middleware for timeouts
-      - "traefik.http.middlewares.vaultlink-timeout.timeout.request=3600s"
+    vaultlink-server:
+        image: ghcr.io/schmelczer/vault-link-server:latest
+        labels:
+            - "traefik.enable=true"
+            - "traefik.http.routers.vaultlink.rule=Host(`sync.example.com`)"
+            - "traefik.http.routers.vaultlink.entrypoints=websecure"
+            - "traefik.http.routers.vaultlink.tls.certresolver=letsencrypt"
+            - "traefik.http.services.vaultlink.loadbalancer.server.port=3000"
+            # Middleware for timeouts
+            - "traefik.http.middlewares.vaultlink-timeout.timeout.request=3600s"
 ```
 
 ## Docker Optimizations
@@ -252,16 +259,16 @@ Limit container resources:
 
 ```yaml
 services:
-  vaultlink-server:
-    image: ghcr.io/schmelczer/vault-link-server:latest
-    deploy:
-      resources:
-        limits:
-          cpus: '2.0'
-          memory: 4G
-        reservations:
-          cpus: '1.0'
-          memory: 2G
+    vaultlink-server:
+        image: ghcr.io/schmelczer/vault-link-server:latest
+        deploy:
+            resources:
+                limits:
+                    cpus: "2.0"
+                    memory: 4G
+                reservations:
+                    cpus: "1.0"
+                    memory: 2G
 ```
 
 ### Logging Configuration
@@ -270,13 +277,13 @@ Optimize Docker logging:
 
 ```yaml
 services:
-  vaultlink-server:
-    image: ghcr.io/schmelczer/vault-link-server:latest
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "50m"
-        max-file: "5"
+    vaultlink-server:
+        image: ghcr.io/schmelczer/vault-link-server:latest
+        logging:
+            driver: "json-file"
+            options:
+                max-size: "50m"
+                max-file: "5"
 ```
 
 ### Volume Optimization
@@ -285,21 +292,21 @@ Use named volumes for better performance:
 
 ```yaml
 services:
-  vaultlink-server:
-    image: ghcr.io/schmelczer/vault-link-server:latest
-    volumes:
-      - vaultlink-data:/data
-      - vaultlink-logs:/data/logs
+    vaultlink-server:
+        image: ghcr.io/schmelczer/vault-link-server:latest
+        volumes:
+            - vaultlink-data:/data
+            - vaultlink-logs:/data/logs
 
 volumes:
-  vaultlink-data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /mnt/fast-ssd/vaultlink
-  vaultlink-logs:
-    driver: local
+    vaultlink-data:
+        driver: local
+        driver_opts:
+            type: none
+            o: bind
+            device: /mnt/fast-ssd/vaultlink
+    vaultlink-logs:
+        driver: local
 ```
 
 ## High Availability
@@ -310,14 +317,14 @@ Comprehensive health monitoring:
 
 ```yaml
 services:
-  vaultlink-server:
-    image: ghcr.io/schmelczer/vault-link-server:latest
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:3000/vaults/health/ping || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
+    vaultlink-server:
+        image: ghcr.io/schmelczer/vault-link-server:latest
+        healthcheck:
+            test: ["CMD-SHELL", "curl -f http://localhost:3000/vaults/health/ping || exit 1"]
+            interval: 10s
+            timeout: 5s
+            retries: 3
+            start_period: 30s
 ```
 
 Monitor health in production:
@@ -375,6 +382,7 @@ find "$BACKUP_DIR" -name "vaultlink-*.tar.gz" -mtime +$RETENTION_DAYS -delete
 ```
 
 Schedule with cron:
+
 ```cron
 0 2 * * * /opt/vaultlink/backup-vaultlink.sh
 ```
@@ -424,21 +432,21 @@ While VaultLink doesn't expose metrics natively, monitor Docker:
 ```yaml
 # docker-compose.yml
 services:
-  vaultlink-server:
-    image: ghcr.io/schmelczer/vault-link-server:latest
-    labels:
-      - "prometheus.io/scrape=true"
-      - "prometheus.io/port=3000"
+    vaultlink-server:
+        image: ghcr.io/schmelczer/vault-link-server:latest
+        labels:
+            - "prometheus.io/scrape=true"
+            - "prometheus.io/port=3000"
 
-  cadvisor:
-    image: gcr.io/cadvisor/cadvisor:latest
-    volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:ro
-      - /sys:/sys:ro
-      - /var/lib/docker/:/var/lib/docker:ro
-    ports:
-      - 8080:8080
+    cadvisor:
+        image: gcr.io/cadvisor/cadvisor:latest
+        volumes:
+            - /:/rootfs:ro
+            - /var/run:/var/run:ro
+            - /sys:/sys:ro
+            - /var/lib/docker/:/var/lib/docker:ro
+        ports:
+            - 8080:8080
 ```
 
 ### Log Analysis
@@ -484,17 +492,17 @@ Run VaultLink in isolated network:
 
 ```yaml
 services:
-  vaultlink-server:
-    image: ghcr.io/schmelczer/vault-link-server:latest
-    networks:
-      - vaultlink-internal
-      - proxy-external
+    vaultlink-server:
+        image: ghcr.io/schmelczer/vault-link-server:latest
+        networks:
+            - vaultlink-internal
+            - proxy-external
 
 networks:
-  vaultlink-internal:
-    internal: true
-  proxy-external:
-    driver: bridge
+    vaultlink-internal:
+        internal: true
+    proxy-external:
+        driver: bridge
 ```
 
 ### Read-Only Root Filesystem
@@ -503,12 +511,12 @@ Run with read-only root (mount writable volumes for data):
 
 ```yaml
 services:
-  vaultlink-server:
-    image: ghcr.io/schmelczer/vault-link-server:latest
-    read_only: true
-    volumes:
-      - ./data:/data
-      - /tmp
+    vaultlink-server:
+        image: ghcr.io/schmelczer/vault-link-server:latest
+        read_only: true
+        volumes:
+            - ./data:/data
+            - /tmp
 ```
 
 ### Drop Capabilities
@@ -517,12 +525,12 @@ Run with minimal privileges:
 
 ```yaml
 services:
-  vaultlink-server:
-    image: ghcr.io/schmelczer/vault-link-server:latest
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
+    vaultlink-server:
+        image: ghcr.io/schmelczer/vault-link-server:latest
+        security_opt:
+            - no-new-privileges:true
+        cap_drop:
+            - ALL
 ```
 
 ## Migration
@@ -530,19 +538,22 @@ services:
 ### Moving to New Server
 
 1. **Backup on old server**:
-   ```bash
-   ./backup-vaultlink.sh
-   ```
+
+    ```bash
+    ./backup-vaultlink.sh
+    ```
 
 2. **Transfer backup**:
-   ```bash
-   scp vaultlink-backup.tar.gz new-server:/tmp/
-   ```
+
+    ```bash
+    scp vaultlink-backup.tar.gz new-server:/tmp/
+    ```
 
 3. **Restore on new server**:
-   ```bash
-   ./restore-vaultlink.sh /tmp/vaultlink-backup.tar.gz
-   ```
+
+    ```bash
+    ./restore-vaultlink.sh /tmp/vaultlink-backup.tar.gz
+    ```
 
 4. **Update DNS/clients** to point to new server
 

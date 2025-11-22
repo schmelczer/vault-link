@@ -9,6 +9,7 @@ VaultLink consists of three main components:
 ### Sync Server
 
 A Rust-based WebSocket server that handles:
+
 - Real-time bidirectional synchronization
 - Document versioning with SQLite
 - User authentication and vault access control
@@ -17,6 +18,7 @@ A Rust-based WebSocket server that handles:
 ### Obsidian Plugin
 
 A native Obsidian plugin that:
+
 - Integrates sync directly into your Obsidian workflow
 - Provides real-time updates as you edit
 - Handles file watching and automatic synchronization
@@ -25,6 +27,7 @@ A native Obsidian plugin that:
 ### CLI Client
 
 A standalone synchronization client that:
+
 - Syncs vaults without requiring Obsidian
 - Perfect for servers, automation, or backup systems
 - Provides file watching and bidirectional sync
@@ -39,6 +42,7 @@ Changes are synchronized immediately via WebSocket connections. When multiple us
 ### Self-Hosted Architecture
 
 Run the sync server on your own infrastructure:
+
 - Full control over data storage and access
 - No dependency on third-party services
 - Configurable authentication and authorization
@@ -47,6 +51,7 @@ Run the sync server on your own infrastructure:
 ### Operational Transformation
 
 VaultLink uses the `reconcile-text` library for intelligent conflict resolution:
+
 - Simultaneous edits are automatically merged
 - No manual conflict resolution required
 - Preserves intent of all contributors
@@ -55,6 +60,7 @@ VaultLink uses the `reconcile-text` library for intelligent conflict resolution:
 ### Flexible Authentication
 
 Configure user access per vault:
+
 - Token-based authentication
 - Per-user vault access control
 - Allow-list or deny-list patterns
@@ -65,6 +71,7 @@ Configure user access per vault:
 ### Personal Sync
 
 Synchronize your Obsidian vault across multiple devices:
+
 - Laptop, desktop, and mobile in real-time
 - No cloud service subscription required
 - Full privacy and data control
@@ -72,6 +79,7 @@ Synchronize your Obsidian vault across multiple devices:
 ### Team Collaboration
 
 Share knowledge bases with teammates:
+
 - Real-time collaborative editing
 - Granular access control per vault
 - Self-hosted for enterprise security requirements
@@ -79,6 +87,7 @@ Share knowledge bases with teammates:
 ### Automated Backups
 
 Use the CLI client for automated workflows:
+
 - Scheduled backups to remote servers
 - Integration with existing backup systems
 - Headless operation without Obsidian
@@ -86,6 +95,7 @@ Use the CLI client for automated workflows:
 ### Development & Testing
 
 Synchronize documentation across environments:
+
 - Keep docs in sync with development environments
 - Automated deployment of documentation
 - Version control integration

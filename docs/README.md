@@ -44,6 +44,20 @@ Preview the built site:
 npm run preview
 ```
 
+### Format
+
+Format all markdown and TypeScript files:
+
+```bash
+npm run format
+```
+
+Check formatting without making changes:
+
+```bash
+npm run format:check
+```
+
 ## Deployment
 
 The documentation is automatically deployed to GitHub Pages when changes are pushed to the `main` branch.
@@ -81,6 +95,7 @@ docs/
 ### Markdown Features
 
 VitePress supports:
+
 - GitHub Flavored Markdown
 - Custom containers (tip, warning, danger)
 - Code syntax highlighting
@@ -112,7 +127,7 @@ npm install
 
 ```yaml
 server:
-  port: 3000
+    port: 3000
 ```
 ````
 

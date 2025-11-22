@@ -43,6 +43,7 @@ VaultLink is built as a distributed system with a central sync server and multip
 The central authority for synchronization, written in Rust using Axum framework.
 
 **Responsibilities**:
+
 - Accept WebSocket connections from clients
 - Authenticate users via token-based auth
 - Store document versions in SQLite
@@ -51,6 +52,7 @@ The central authority for synchronization, written in Rust using Axum framework.
 - Manage vault access control
 
 **Technology**:
+
 - **Language**: Rust 1.89+
 - **Framework**: Axum (async web framework)
 - **Database**: SQLite with SQLx
@@ -62,6 +64,7 @@ The central authority for synchronization, written in Rust using Axum framework.
 TypeScript library providing core synchronization logic, used by both the Obsidian plugin and CLI client.
 
 **Responsibilities**:
+
 - Manage WebSocket connection to server
 - Watch local filesystem for changes
 - Upload and download files
@@ -70,6 +73,7 @@ TypeScript library providing core synchronization logic, used by both the Obsidi
 - Maintain sync metadata
 
 **Technology**:
+
 - **Language**: TypeScript
 - **Build**: Webpack
 - **Protocol**: WebSocket client
@@ -80,12 +84,14 @@ TypeScript library providing core synchronization logic, used by both the Obsidi
 Integration layer between sync client and Obsidian.
 
 **Responsibilities**:
+
 - Provide UI for configuration
 - Bridge sync client with Obsidian's file system API
 - Handle Obsidian lifecycle events
 - Display sync status to users
 
 **Technology**:
+
 - **Platform**: Obsidian Plugin API
 - **Core**: sync-client library
 - **UI**: Obsidian settings UI
@@ -95,12 +101,14 @@ Integration layer between sync client and Obsidian.
 Standalone executable for syncing vaults without Obsidian.
 
 **Responsibilities**:
+
 - Command-line interface
 - File system access via Node.js
 - Daemon mode for continuous sync
 - Health check endpoint for monitoring
 
 **Technology**:
+
 - **Language**: TypeScript
 - **Runtime**: Node.js
 - **CLI**: Commander.js
@@ -190,6 +198,7 @@ databases/
 ```
 
 **Database Schema** (simplified):
+
 - **documents**: File metadata (path, size, modified time)
 - **versions**: Document content with version history
 - **cursors**: Client sync state
@@ -213,6 +222,7 @@ The `.vaultlink` directory tracks which files have been synced and their version
 Client-server communication uses JSON messages over WebSocket.
 
 **Message Types**:
+
 - `upload_file`: Client → Server (file upload)
 - `download_file`: Client → Server (request file)
 - `file_updated`: Server → Client (file changed notification)
@@ -253,11 +263,13 @@ Token-based authentication on connection:
 ### Scaling Approaches
 
 **Vertical Scaling**:
+
 - Increase server resources (CPU, RAM, storage)
 - Optimize database queries and indexing
 - Tune connection limits
 
 **Horizontal Scaling** (future):
+
 - Separate vault servers (vault sharding)
 - Load balancer with sticky sessions
 - Shared storage layer for SQLite databases

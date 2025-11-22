@@ -6,12 +6,15 @@
   "scripts": {
     "dev": "vitepress dev",
     "build": "vitepress build",
-    "preview": "vitepress preview"
+    "preview": "vitepress preview",
+    "format": "prettier --write \"**/*.md\" \"**/*.mts\"",
+    "format:check": "prettier --check \"**/*.md\" \"**/*.mts\""
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
+    "prettier": "^3.6.2",
     "vitepress": "^1.6.4",
     "vue": "^3.5.24"
   }
