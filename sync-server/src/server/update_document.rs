@@ -22,8 +22,8 @@ use crate::{
     errors::{SyncServerError, not_found_error, server_error},
     server::requests::UpdateBinaryDocumentVersion,
     utils::{
-        dedup_paths::dedup_paths, is_binary::is_binary,
-        is_file_type_mergable::is_file_type_mergable, normalize::normalize,
+        dedup_paths::dedup_paths, find_first_available_path::find_first_available_path,
+        is_binary::is_binary, is_file_type_mergable::is_file_type_mergable, normalize::normalize,
         sanitize_path::sanitize_path,
     },
 };
@@ -215,21 +215,14 @@ async fn update_document(
     let new_relative_path = if parent_document.relative_path == latest_version.relative_path
         && latest_version.relative_path != sanitized_relative_path
     {
-        let mut new_relative_path = String::default();
-        for candidate in dedup_paths(&sanitized_relative_path) {
-            if state
-                .database
-                .get_latest_document_by_path(&vault_id, &candidate, Some(&mut transaction))
-                .await
-                .map_err(server_error)?
-                .is_none()
-            {
-                new_relative_path = candidate;
-                break;
-            }
-        }
-
-        new_relative_path
+        find_first_available_path(
+            &vault_id,
+            &sanitized_relative_path,
+            &state.database,
+            &mut transaction,
+        )
+        .await
+        .map_err(server_error)?
     } else {
         latest_version.relative_path.clone()
     };
