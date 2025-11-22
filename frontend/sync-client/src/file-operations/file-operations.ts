@@ -25,7 +25,7 @@ export class FileOperations {
 	): [RelativePath, RelativePath] {
 		const pathParts = path.split("/");
 		const fileName = pathParts.pop();
-		if (fileName == "" || fileName == null) {
+		if (!fileName || fileName === "") {
 			throw new Error(`Path '${path}' cannot be empty`);
 		}
 
@@ -234,11 +234,15 @@ export class FileOperations {
 		}
 
 		const nameParts = fileName.split(".");
+		// Handle dotfiles: ".gitignore" should have no extension, ".config.json" should have ".json"
+		const isDotfile = fileName.startsWith(".") && nameParts[0] === "";
 		const extension =
-			nameParts.length > 1 ? "." + nameParts[nameParts.length - 1] : "";
+			nameParts.length > 1 && !(isDotfile && nameParts.length === 2)
+				? "." + nameParts[nameParts.length - 1]
+				: "";
 		let stem = extension ? nameParts.slice(0, -1).join(".") : fileName;
 		let currentCount = Number.parseInt(
-			FileOperations.PARENTHESES_REGEX.exec(stem)?.groups?.[0] ?? "0"
+			FileOperations.PARENTHESES_REGEX.exec(stem)?.[1] ?? "0"
 		);
 		stem = stem.replace(FileOperations.PARENTHESES_REGEX, "");
 
