@@ -13,9 +13,11 @@ Syncing Obsidian vaults across devices or sharing with teammates sucks:
 
 ## VaultLink's Solution
 
-Differential synchronisation with operational transformation.
+Differential synchronisation with operational transformation for Markdown and text files.
 
-Edit files with Obsidian, Vim, VS Code, or any editor. VaultLink compares versions and automatically merges all changes. No operation tracking required, no conflict markers, no data loss.
+Edit `.md` and `.txt` files with Obsidian, Vim, VS Code, or any editor. VaultLink compares versions and automatically merges all changes. No operation tracking required, no conflict markers.
+
+**Note**: Binary files (images, PDFs, etc.) use last-write-wins. [See limitations →](/guide/limitations)
 
 ## How It Works
 

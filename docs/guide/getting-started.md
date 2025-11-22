@@ -49,7 +49,7 @@ docker run -d \
   /app/sync_server /data/config.yml
 ```
 
-Verify: `curl http://localhost:3000/vaults/test/ping` should return `pong`
+Verify: `curl http://localhost:3000/vaults/test/ping` should return server version and auth status
 
 ## Step 2: Connect Client
 
@@ -114,9 +114,11 @@ users:
 
 **Client can't connect**:
 
-1. Verify: `curl http://your-server:3000/vaults/test/ping`
+1. Verify server: `curl http://your-server:3000/vaults/test/ping`
 2. Check URL: `ws://` for HTTP, `wss://` for HTTPS
 3. Verify token matches config.yml
+
+**Understanding limitations**: [See what VaultLink can and can't do →](/guide/limitations)
 
 **Files not syncing**: Check client logs, verify vault name matches
 

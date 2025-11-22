@@ -18,6 +18,7 @@ export default defineConfig({
 				items: [
 					{ text: "What is VaultLink?", link: "/guide/what-is-vaultlink" },
 					{ text: "Getting Started", link: "/guide/getting-started" },
+					{ text: "Limitations", link: "/guide/limitations" },
 					{ text: "Comparison with Alternatives", link: "/guide/alternatives" }
 				]
 			},

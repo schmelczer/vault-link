@@ -55,24 +55,35 @@ done
 
 ### Version History Cleanup
 
-To limit database growth, implement version history pruning (requires custom script):
+VaultLink stores **all versions indefinitely** by default. Database grows with every change.
+
+**Database schema**: Each version stored in `documents` table with `vault_update_id` (sequential).
+
+Manual cleanup (keep last 100 versions per document):
 
 ```bash
 #!/bin/bash
 # prune-old-versions.sh
-# Keep only last 100 versions per document
 
 for db in databases/*.db; do
     sqlite3 "$db" <<EOF
-DELETE FROM versions
-WHERE id NOT IN (
-    SELECT id FROM versions
-    WHERE document_id = versions.document_id
-    ORDER BY version DESC
+DELETE FROM documents
+WHERE vault_update_id NOT IN (
+    SELECT vault_update_id FROM documents d2
+    WHERE d2.document_id = documents.document_id
+    ORDER BY vault_update_id DESC
     LIMIT 100
 );
 EOF
 done
+```
+
+**Warning**: This deletes old versions permanently. No undo.
+
+Run monthly via cron:
+
+```bash
+0 3 1 * * /opt/vaultlink/prune-old-versions.sh
 ```
 
 ## Performance Tuning
@@ -186,9 +197,9 @@ server {
         proxy_pass http://vaultlink;
     }
 
-    # Health check endpoint
+    # Health check endpoint (use any vault name)
     location /health {
-        proxy_pass http://vaultlink/vaults/health/ping;
+        proxy_pass http://vaultlink/vaults/test/ping;
         access_log off;
     }
 }
@@ -320,7 +331,7 @@ services:
     vaultlink-server:
         image: ghcr.io/schmelczer/vault-link-server:latest
         healthcheck:
-            test: ["CMD-SHELL", "curl -f http://localhost:3000/vaults/health/ping || exit 1"]
+            test: ["CMD-SHELL", "curl -f http://localhost:3000/vaults/test/ping || exit 1"]
             interval: 10s
             timeout: 5s
             retries: 3
@@ -334,7 +345,7 @@ Monitor health in production:
 # health-monitor.sh
 
 while true; do
-    if ! curl -sf http://localhost:3000/vaults/health/ping > /dev/null; then
+    if ! curl -sf http://localhost:3000/vaults/test/ping > /dev/null; then
         echo "Health check failed at $(date)" | mail -s "VaultLink Down" admin@example.com
         # Optionally restart
         # docker restart vaultlink-server
