@@ -1,3 +1,5 @@
+import { MAX_LOG_MESSAGE_COUNT } from "../consts";
+
 export enum LogLevel {
 	DEBUG = "DEBUG",
 	INFO = "INFO",
@@ -21,7 +23,6 @@ export class LogLine {
 }
 
 export class Logger {
-	private static readonly MAX_MESSAGES = 100000;
 	private readonly messages: LogLine[] = [];
 	private readonly onMessageListeners: ((message: LogLine) => unknown)[] = [];
 
@@ -68,7 +69,7 @@ export class Logger {
 		const logLine = new LogLine(level, message);
 		this.messages.push(logLine);
 
-		while (this.messages.length > Logger.MAX_MESSAGES) {
+		while (this.messages.length > MAX_LOG_MESSAGE_COUNT) {
 			this.messages.shift();
 		}
 

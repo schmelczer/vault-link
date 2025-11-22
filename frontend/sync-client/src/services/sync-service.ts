@@ -17,6 +17,7 @@ import type { FetchLatestDocumentsResponse } from "./types/FetchLatestDocumentsR
 import type { PingResponse } from "./types/PingResponse";
 import type { DeleteDocumentVersion } from "./types/DeleteDocumentVersion";
 import type { UpdateTextDocumentVersion } from "./types/UpdateTextDocumentVersion";
+import { NETWORK_RETRY_INTERVAL_MS } from "../consts";
 
 export interface CheckConnectionResult {
 	isSuccessful: boolean;
@@ -24,7 +25,6 @@ export interface CheckConnectionResult {
 }
 
 export class SyncService {
-	private static readonly NETWORK_RETRY_INTERVAL_MS = 1000;
 	private readonly client: typeof globalThis.fetch;
 	private readonly pingClient: typeof globalThis.fetch;
 
@@ -374,9 +374,9 @@ export class SyncService {
 				}
 
 				this.logger.error(
-					`Failed network call (${e}), retrying in ${SyncService.NETWORK_RETRY_INTERVAL_MS}ms`
+					`Failed network call (${e}), retrying in ${NETWORK_RETRY_INTERVAL_MS}ms`
 				);
-				await sleep(SyncService.NETWORK_RETRY_INTERVAL_MS);
+				await sleep(NETWORK_RETRY_INTERVAL_MS);
 			}
 		}
 	}
