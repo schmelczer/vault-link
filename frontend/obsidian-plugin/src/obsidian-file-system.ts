@@ -1,12 +1,13 @@
 import type { Stat, Vault, Workspace } from "obsidian";
 import { MarkdownView, normalizePath } from "obsidian";
 import {
+	CursorPosition,
+	TextWithCursors,
 	utils,
 	type FileSystemOperations,
 	type RelativePath
 } from "sync-client";
 import { getSelectionsFromEditor } from "./views/cursors/get-selections-from-editor";
-import type { TextWithCursors, CursorPosition } from "reconcile-text";
 
 export class ObsidianFileSystemOperations implements FileSystemOperations {
 	public constructor(
