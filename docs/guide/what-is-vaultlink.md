@@ -1,125 +1,69 @@
 # What is VaultLink?
 
-VaultLink is a self-hosted real-time synchronization system for Obsidian vaults. It provides collaborative file syncing with automatic conflict resolution, designed for users who want complete control over their data.
+Self-hosted sync for Obsidian vaults with automatic conflict-free merging. Edit with any tool, collaborate in real-time, no conflict markers.
 
-## Overview
+## The Problem
 
-VaultLink consists of three main components:
+Syncing Obsidian vaults across devices or sharing with teammates sucks:
 
-### Sync Server
+- **Commercial services**: Lock-in, subscriptions, third-party access to your data
+- **Git**: Manual conflict resolution with `<<<<<<<` markers interrupting your workflow
+- **Cloud storage**: Last-write-wins data loss or manual conflict resolution
+- **CRDT solutions**: Only work if you edit inside Obsidian (break if you use Vim, VS Code, etc.)
 
-A Rust-based WebSocket server that handles:
+## VaultLink's Solution
 
-- Real-time bidirectional synchronization
-- Document versioning with SQLite
-- User authentication and vault access control
-- Operational transformation for conflict resolution
+Differential synchronization with operational transformation.
 
-### Obsidian Plugin
-
-A native Obsidian plugin that:
-
-- Integrates sync directly into your Obsidian workflow
-- Provides real-time updates as you edit
-- Handles file watching and automatic synchronization
-- Works across desktop and mobile platforms
-
-### CLI Client
-
-A standalone synchronization client that:
-
-- Syncs vaults without requiring Obsidian
-- Perfect for servers, automation, or backup systems
-- Provides file watching and bidirectional sync
-- Runs in Docker or as a standalone binary
-
-## Key Features
-
-### Real-Time Synchronization
-
-Changes are synchronized immediately via WebSocket connections. When multiple users edit the same file, operational transformation ensures all edits are preserved without conflicts.
-
-### Self-Hosted Architecture
-
-Run the sync server on your own infrastructure:
-
-- Full control over data storage and access
-- No dependency on third-party services
-- Configurable authentication and authorization
-- Deploy anywhere: cloud VPS, home server, or localhost
-
-### Operational Transformation
-
-VaultLink uses the `reconcile-text` library for intelligent conflict resolution:
-
-- Simultaneous edits are automatically merged
-- No manual conflict resolution required
-- Preserves intent of all contributors
-- Works seamlessly in the background
-
-### Flexible Authentication
-
-Configure user access per vault:
-
-- Token-based authentication
-- Per-user vault access control
-- Allow-list or deny-list patterns
-- Support for multiple users and vaults
-
-## Use Cases
-
-### Personal Sync
-
-Synchronize your Obsidian vault across multiple devices:
-
-- Laptop, desktop, and mobile in real-time
-- No cloud service subscription required
-- Full privacy and data control
-
-### Team Collaboration
-
-Share knowledge bases with teammates:
-
-- Real-time collaborative editing
-- Granular access control per vault
-- Self-hosted for enterprise security requirements
-
-### Automated Backups
-
-Use the CLI client for automated workflows:
-
-- Scheduled backups to remote servers
-- Integration with existing backup systems
-- Headless operation without Obsidian
-
-### Development & Testing
-
-Synchronize documentation across environments:
-
-- Keep docs in sync with development environments
-- Automated deployment of documentation
-- Version control integration
+Edit files with Obsidian, Vim, VS Code, or any editor. VaultLink compares versions and automatically merges all changes. No operation tracking required, no conflict markers, no data loss.
 
 ## How It Works
 
-1. **Server Setup**: Deploy the sync server on your infrastructure
-2. **Authentication**: Configure users and vault access in `config.yml`
-3. **Client Connection**: Connect via Obsidian plugin or CLI client
-4. **Initial Sync**: Client uploads local files to server
-5. **Real-Time Updates**: Changes sync bidirectionally via WebSocket
-6. **Conflict Resolution**: Operational transformation handles simultaneous edits
+1. **Server**: Rust WebSocket server with SQLite stores document versions
+2. **Clients**: Obsidian plugin or CLI client watches filesystem changes
+3. **Sync**: Changes upload to server, server broadcasts to other clients
+4. **Merge**: [reconcile-text](https://schmelczer.dev/reconcile) automatically merges concurrent edits
 
-## Technology Stack
+No CRDT infrastructure. No operation logs. Just file comparison and smart merging.
 
-- **Server**: Rust with Axum framework, SQLite database, WebSocket protocol
-- **Frontend**: TypeScript with WebSocket client, npm workspaces
-- **Sync Algorithm**: reconcile-text operational transformation library
-- **Deployment**: Docker images, binary releases, or source builds
+## Key Advantages
+
+**Editor agnostic**: Edit files with any tool. Other solutions break when you edit outside their ecosystem.
+
+**Self-hosted**: Your data, your server. No third parties, no subscriptions, no surprises.
+
+**Automatic merging**: Operational transformation handles conflicts without interrupting your workflow.
+
+**Production-ready**: Comprehensive tests, E2E tests, battle-tested. Many alternatives have zero tests.
+
+**Collaborative**: Real-time sync with cursor tracking. See where teammates are editing.
+
+## Not Tied to Obsidian
+
+VaultLink syncs Markdown files. Use it for:
+
+- Obsidian vaults (Obsidian desktop + mobile + CLI)
+- Technical documentation (VS Code, your-editor, CLI)
+- Academic writing (multiple Markdown editors)
+- Automated workflows (CLI client for backups/CI/CD)
+
+The Obsidian plugin is just a convenience wrapper around the sync client.
+
+## Quick Comparison
+
+| Feature             | VaultLink | Git | Cloud Sync | CRDT Solutions |
+| ------------------- | --------- | --- | ---------- | -------------- |
+| Self-hosted         | ✅        | ✅  | ❌         | Varies         |
+| Any editor          | ✅        | ✅  | ✅         | ❌             |
+| No conflict markers | ✅        | ❌  | ❌         | ✅             |
+| Real-time           | ✅        | ❌  | ❌         | ✅             |
+| No subscriptions    | ✅        | ✅  | ❌         | Varies         |
+| Comprehensive tests | ✅        | N/A | N/A        | ❌             |
+
+[Detailed comparison with alternatives →](/guide/alternatives)
 
 ## Next Steps
 
-Ready to get started?
-
-- [Getting Started Guide →](/guide/getting-started)
-- [Server Setup →](/guide/server-setup)
-- [Architecture Overview →](/architecture/)
+- [Get started →](/guide/getting-started) (5 minute setup)
+- [See the architecture →](/architecture/) (understand how it works)
+- [Compare alternatives →](/guide/alternatives) (why VaultLink vs others)

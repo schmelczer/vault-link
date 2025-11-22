@@ -1,6 +1,6 @@
 # Data Flow
 
-This document provides a detailed look at how data flows through the VaultLink system, from client to server and back.
+How data flows through VaultLink, from client to server and back.
 
 ## Connection Lifecycle
 

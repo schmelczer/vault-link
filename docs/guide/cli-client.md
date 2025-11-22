@@ -1,6 +1,6 @@
 # CLI Client
 
-The VaultLink CLI client provides standalone synchronization without requiring Obsidian. Perfect for servers, automation, backups, or syncing vaults on headless systems.
+Sync vaults without Obsidian. Works on servers, automation, backups, headless systems.
 
 ## Installation
 

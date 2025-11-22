@@ -1,48 +1,45 @@
 # Getting Started
 
-This guide will walk you through setting up VaultLink from scratch. You'll have a working sync server and connected client in under 10 minutes.
+Set up VaultLink in 5 minutes. Deploy server, connect clients, done.
 
 ## Prerequisites
 
-- Docker installed (recommended) or Rust toolchain for building from source
-- Basic familiarity with command line
-- A server or machine to host the sync server (can be localhost for testing)
+- Docker (or Rust toolchain if building from source)
+- A server (VPS, home server, or localhost for testing)
 
-## Quick Start
+## Step 1: Deploy Server
 
-### Step 1: Deploy the Sync Server
+Create `config.yml`:
 
-The fastest way to get started is with Docker:
+```yaml
+database:
+    databases_directory_path: databases
+    max_connections_per_vault: 12
+    cursor_timeout_seconds: 60
+server:
+    host: 0.0.0.0
+    port: 3000
+    max_body_size_mb: 512
+    max_clients_per_vault: 256
+    response_timeout_seconds: 60
+users:
+    user_configs:
+        - name: admin
+          token: change-this-to-secure-random-token
+          vault_access:
+              type: allow_access_to_all
+logging:
+    log_directory: logs
+    log_rotation: 7days
+```
+
+::: tip
+Generate secure token: `openssl rand -hex 32`
+:::
+
+Run server:
 
 ```bash
-# Create a directory for server data
-mkdir -p ~/vaultlink-data
-cd ~/vaultlink-data
-
-# Create a basic configuration file
-cat > config.yml << 'EOF'
-database:
-  databases_directory_path: databases
-  max_connections_per_vault: 12
-  cursor_timeout_seconds: 60
-server:
-  host: 0.0.0.0
-  port: 3000
-  max_body_size_mb: 512
-  max_clients_per_vault: 256
-  response_timeout_seconds: 60
-users:
-  user_configs:
-  - name: admin
-    token: change-this-to-a-secure-random-token
-    vault_access:
-      type: allow_access_to_all
-logging:
-  log_directory: logs
-  log_rotation: 7days
-EOF
-
-# Run the server
 docker run -d \
   --name vaultlink-server \
   --restart unless-stopped \
@@ -52,136 +49,75 @@ docker run -d \
   /app/sync_server /data/config.yml
 ```
 
-::: warning
-Change the token in `config.yml` to a secure random value before deploying to production!
-:::
+Verify: `curl http://localhost:3000/vaults/test/ping` should return `pong`
 
-Verify the server is running:
+## Step 2: Connect Client
 
-```bash
-curl http://localhost:3000/vaults/test/ping
-```
+### Obsidian Plugin
 
-You should see: `pong`
+1. Settings → Community Plugins → Browse
+2. Search "VaultLink", install, enable
+3. Configure:
+    - Server URL: `ws://localhost:3000` (or `wss://your-server.com` for SSL)
+    - Token: Your token from config.yml
+    - Vault Name: `default`
 
-### Step 2: Choose Your Client
+[Full plugin guide →](/guide/obsidian-plugin)
 
-You can connect to VaultLink using either the Obsidian plugin or the standalone CLI client.
-
-#### Option A: Obsidian Plugin
-
-1. Open Obsidian Settings → Community Plugins
-2. Browse community plugins and search for "VaultLink"
-3. Install and enable the plugin
-4. Configure the plugin:
-    - **Server URL**: `ws://localhost:3000` (or your server address)
-    - **Token**: The token from your `config.yml`
-    - **Vault Name**: `default` (or any name you choose)
-
-[Read the full Obsidian plugin guide →](/guide/obsidian-plugin)
-
-#### Option B: CLI Client
-
-Perfect for syncing vaults without Obsidian:
+### CLI Client
 
 ```bash
 docker run -d \
   --name vaultlink-cli \
   --restart unless-stopped \
-  -v /path/to/your/vault:/vault \
+  -v /path/to/vault:/vault \
   ghcr.io/schmelczer/vault-link-cli:latest \
-  -l /vault \
-  -r ws://localhost:3000 \
-  -t change-this-to-a-secure-random-token \
-  -v default
+  -l /vault -r ws://localhost:3000 -t your-token -v default
 ```
 
-Replace `/path/to/your/vault` with the directory containing your files.
+[Full CLI guide →](/guide/cli-client)
 
-[Read the full CLI client guide →](/guide/cli-client)
+## Production Setup
 
-## Next Steps
+For production:
 
-### Production Deployment
+1. **SSL/TLS**: Use Nginx/Caddy reverse proxy for `wss://` ([setup guide](/guide/server-setup#ssl-tls-with-reverse-proxy))
+2. **Secure tokens**: Generate with `openssl rand -hex 32`, don't reuse the example
+3. **Firewall**: Only expose port 3000 to reverse proxy
+4. **Backups**: SQLite databases are in `databases/` directory
 
-For production use, you should:
-
-1. **Use HTTPS/WSS**: Put the sync server behind a reverse proxy with SSL
-2. **Secure tokens**: Generate cryptographically random tokens
-3. **Configure backups**: Back up the SQLite databases regularly
-4. **Set up monitoring**: Use Docker health checks and logging
-
-[Learn about production deployment →](/guide/server-setup#production-deployment)
-
-### Multiple Users
-
-To add more users or restrict vault access:
+## Multiple Users
 
 ```yaml
 users:
     user_configs:
         - name: alice
-          token: alice-secure-token
+          token: alice-token
           vault_access:
               type: allow_list
               allowed:
                   - personal
                   - shared
         - name: bob
-          token: bob-secure-token
+          token: bob-token
           vault_access:
               type: allow_list
               allowed:
                   - shared
 ```
 
-[Learn about authentication configuration →](/config/authentication)
-
-### Advanced Configuration
-
-Explore advanced server options:
-
-- Database tuning for large vaults
-- Rate limiting and connection limits
-- Custom logging and log rotation
-- Multi-vault setups
-
-[View configuration reference →](/config/server)
-
-## Architecture Overview
-
-Want to understand how VaultLink works under the hood?
-
-[Read the architecture documentation →](/architecture/)
+[Auth docs →](/config/authentication)
 
 ## Troubleshooting
 
-### Server won't start
+**Server won't start**: `docker logs vaultlink-server`
 
-Check Docker logs:
+**Client can't connect**:
 
-```bash
-docker logs vaultlink-server
-```
+1. Verify: `curl http://your-server:3000/vaults/test/ping`
+2. Check URL: `ws://` for HTTP, `wss://` for HTTPS
+3. Verify token matches config.yml
 
-Common issues:
+**Files not syncing**: Check client logs, verify vault name matches
 
-- Port 3000 already in use: Change the port mapping `-p 3001:3000`
-- Config file errors: Validate YAML syntax
-- Permission issues: Ensure the volume mount is writable
-
-### Client can't connect
-
-1. Verify server is accessible: `curl http://your-server:3000/vaults/test/ping`
-2. Check WebSocket connectivity (browser dev tools or wscat)
-3. Verify token matches between client and server config
-4. Check firewall rules allow port 3000
-
-### Files not syncing
-
-1. Check client logs for errors
-2. Verify vault name matches on both server and client
-3. Ensure user has access to the vault (check server config)
-4. Check for file size limits (default 10MB for CLI)
-
-For more help, [open an issue on GitHub](https://github.com/schmelczer/vault-link/issues).
+[Server setup →](/guide/server-setup) | [Architecture →](/architecture/)
