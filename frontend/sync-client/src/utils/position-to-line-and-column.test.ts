@@ -43,6 +43,28 @@ describe("positionToLineAndColumn", () => {
 		});
 	});
 
+	test("with multiple carriage returns", () => {
+		// Test that all \r characters are removed, not just the first one
+		const text = "line1\r\nline2\r\nline3\r\n";
+
+		assert.deepStrictEqual(positionToLineAndColumn(text, 0), {
+			line: 0,
+			column: 0
+		});
+
+		// Position 6 = start of 'line2' after all \r removed
+		assert.deepStrictEqual(positionToLineAndColumn(text, 6), {
+			line: 1,
+			column: 0
+		});
+
+		// Position 12 = start of 'line3' after all \r removed
+		assert.deepStrictEqual(positionToLineAndColumn(text, 12), {
+			line: 2,
+			column: 0
+		});
+	});
+
 	test("handles empty input", () => {
 		assert.deepStrictEqual(positionToLineAndColumn("", 0), {
 			line: 0,

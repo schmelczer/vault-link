@@ -343,7 +343,7 @@ export class SyncService {
 
 	private getUrl(path: string): string {
 		const { vaultName, remoteUri } = this.settings.getSettings();
-		const safeRemoteUri = remoteUri.replace(/\/+$/, "");
+		const safeRemoteUri = remoteUri.replace(/\/+$/g, "");
 		return `${safeRemoteUri}/vaults/${vaultName}${path}`;
 	}
 
