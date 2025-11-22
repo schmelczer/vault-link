@@ -27,6 +27,7 @@ After installation, configure the plugin in **Settings → VaultLink**.
 ### Required Settings
 
 #### Server URL
+
 The WebSocket URL of your sync server.
 
 - **Development/Local**: `ws://localhost:3000`
@@ -37,14 +38,17 @@ Use `ws://` for unencrypted connections and `wss://` for SSL connections (produc
 :::
 
 #### Authentication Token
+
 Your authentication token from the server's `config.yml`.
 
 Generate a secure token:
+
 ```bash
 openssl rand -hex 32
 ```
 
 #### Vault Name
+
 The name of the vault on the server. Can be any string.
 
 Multiple Obsidian vaults can sync to the same server vault name (for shared vaults), or use unique names for separate vaults.
@@ -52,26 +56,34 @@ Multiple Obsidian vaults can sync to the same server vault name (for shared vaul
 ### Optional Settings
 
 #### Sync Concurrency
+
 Number of files to sync simultaneously.
+
 - **Default**: 1
 - **Range**: 1-10
 - Higher values = faster initial sync, more resource usage
 
 #### Max File Size
+
 Maximum file size to sync (in MB).
+
 - **Default**: 10
 - Files larger than this are skipped
 
 #### Ignore Patterns
+
 Glob patterns for files to exclude from sync.
 
 Examples:
+
 - `*.tmp` - Ignore temporary files
 - `.trash/**` - Ignore trash folder
 - `private/**` - Ignore private directory
 
 #### WebSocket Retry Interval
+
 Milliseconds between reconnection attempts when disconnected.
+
 - **Default**: 3500ms
 - Increase for flaky networks to avoid connection spam
 
@@ -172,24 +184,26 @@ Share specific folders while keeping others private:
 ### Plugin won't connect
 
 1. **Verify server is running**:
-   ```bash
-   curl http://your-server:3000/vaults/test/ping
-   ```
-   Should return `pong`
+
+    ```bash
+    curl http://your-server:3000/vaults/test/ping
+    ```
+
+    Should return `pong`
 
 2. **Check URL format**:
-   - Local: `ws://localhost:3000`
-   - Remote (SSL): `wss://sync.example.com`
-   - Don't include `/vault/name` in the URL
+    - Local: `ws://localhost:3000`
+    - Remote (SSL): `wss://sync.example.com`
+    - Don't include `/vault/name` in the URL
 
 3. **Verify token**:
-   - Must match server config exactly
-   - No extra spaces or quotes
-   - Check server logs for authentication errors
+    - Must match server config exactly
+    - No extra spaces or quotes
+    - Check server logs for authentication errors
 
 4. **Check firewall**:
-   - Ensure port is accessible from your network
-   - For mobile, server must be publicly accessible or use VPN
+    - Ensure port is accessible from your network
+    - For mobile, server must be publicly accessible or use VPN
 
 ### Files not syncing
 

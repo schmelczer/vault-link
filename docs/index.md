@@ -2,39 +2,39 @@
 layout: home
 
 hero:
-  name: VaultLink
-  text: Self-Hosted Sync for Obsidian
-  tagline: Real-time collaborative file synchronization for your knowledge base
-  image:
-    src: /logo.svg
-    alt: VaultLink
-  actions:
-    - theme: brand
-      text: Get Started
-      link: /guide/getting-started
-    - theme: alt
-      text: View on GitHub
-      link: https://github.com/schmelczer/vault-link
+    name: VaultLink
+    text: Self-Hosted Sync for Obsidian
+    tagline: Real-time collaborative file synchronization for your knowledge base
+    image:
+        src: /logo.svg
+        alt: VaultLink
+    actions:
+        - theme: brand
+          text: Get Started
+          link: /guide/getting-started
+        - theme: alt
+          text: View on GitHub
+          link: https://github.com/schmelczer/vault-link
 
 features:
-  - icon: 🚀
-    title: Real-Time Synchronization
-    details: Operational transformation-based conflict resolution ensures your files stay in sync across devices without data loss
-  - icon: 🔒
-    title: Self-Hosted & Private
-    details: Run your own sync server. Your data stays on your infrastructure with full control over access and privacy
-  - icon: 🎯
-    title: Obsidian Plugin
-    details: Native integration with Obsidian for seamless synchronization directly within your favorite note-taking app
-  - icon: 🖥️
-    title: CLI Client
-    details: Sync vaults to any system using the standalone CLI client. Perfect for servers, automation, or headless setups
-  - icon: ⚡
-    title: Built for Performance
-    details: Rust-powered WebSocket server with SQLite backend delivers blazing-fast sync performance
-  - icon: 🛠️
-    title: Flexible Deployment
-    details: Deploy via Docker, binary releases, or build from source. Configure authentication and access controls to fit your needs
+    - icon: 🚀
+      title: Real-Time Synchronization
+      details: Operational transformation-based conflict resolution ensures your files stay in sync across devices without data loss
+    - icon: 🔒
+      title: Self-Hosted & Private
+      details: Run your own sync server. Your data stays on your infrastructure with full control over access and privacy
+    - icon: 🎯
+      title: Obsidian Plugin
+      details: Native integration with Obsidian for seamless synchronization directly within your favorite note-taking app
+    - icon: 🖥️
+      title: CLI Client
+      details: Sync vaults to any system using the standalone CLI client. Perfect for servers, automation, or headless setups
+    - icon: ⚡
+      title: Built for Performance
+      details: Rust-powered WebSocket server with SQLite backend delivers blazing-fast sync performance
+    - icon: 🛠️
+      title: Flexible Deployment
+      details: Deploy via Docker, binary releases, or build from source. Configure authentication and access controls to fit your needs
 ---
 
 ## Quick Start

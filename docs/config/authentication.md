@@ -5,6 +5,7 @@ VaultLink uses token-based authentication with per-user vault access control. Th
 ## Overview
 
 Authentication in VaultLink:
+
 - **Token-based**: Users authenticate with secure tokens
 - **Configured in YAML**: All users defined in `config.yml`
 - **Vault-level access**: Control which vaults each user can access
@@ -14,11 +15,11 @@ Authentication in VaultLink:
 
 ```yaml
 users:
-  user_configs:
-  - name: alice
-    token: alice-secure-token-here
-    vault_access:
-      type: allow_access_to_all
+    user_configs:
+        - name: alice
+          token: alice-secure-token-here
+          vault_access:
+              type: allow_access_to_all
 ```
 
 ## User Configuration Fields
@@ -35,6 +36,7 @@ Human-readable identifier for the user. Used in logs and auditing.
 ```
 
 **Notes**:
+
 - Must be unique across all users
 - Used for identification only, not authentication
 - Appears in server logs
@@ -52,6 +54,7 @@ Authentication token for the user. Must be kept secret.
 ```
 
 **Best practices**:
+
 - Generate with: `openssl rand -hex 32`
 - Minimum length: 32 characters
 - Use different token per user
@@ -59,6 +62,7 @@ Authentication token for the user. Must be kept secret.
 - Rotate periodically
 
 **Example token generation**:
+
 ```bash
 # Generate a secure token
 openssl rand -hex 32
@@ -73,6 +77,7 @@ openssl rand -hex 32
 Defines which vaults the user can access.
 
 **Three modes**:
+
 1. `allow_access_to_all`: Access to all vaults
 2. `allow_list`: Access to specific vaults only
 3. `deny_list`: Access to all vaults except specific ones
@@ -85,14 +90,15 @@ Grant access to every vault:
 
 ```yaml
 users:
-  user_configs:
-  - name: admin
-    token: admin-token
-    vault_access:
-      type: allow_access_to_all
+    user_configs:
+        - name: admin
+          token: admin-token
+          vault_access:
+              type: allow_access_to_all
 ```
 
 **Use cases**:
+
 - Administrator accounts
 - Personal single-user deployments
 - Development/testing
@@ -103,23 +109,25 @@ Grant access only to specific vaults:
 
 ```yaml
 users:
-  user_configs:
-  - name: alice
-    token: alice-token
-    vault_access:
-      type: allow_list
-      allowed:
-        - personal
-        - shared-team
-        - project-alpha
+    user_configs:
+        - name: alice
+          token: alice-token
+          vault_access:
+              type: allow_list
+              allowed:
+                  - personal
+                  - shared-team
+                  - project-alpha
 ```
 
 **Use cases**:
+
 - Multi-user deployments
 - Restricted access scenarios
 - Separation of concerns
 
 **Notes**:
+
 - User can only access listed vaults
 - Attempting to access other vaults returns authentication error
 - Empty list = no access to any vault
@@ -130,21 +138,23 @@ Grant access to all vaults except specific ones:
 
 ```yaml
 users:
-  user_configs:
-  - name: bob
-    token: bob-token
-    vault_access:
-      type: deny_list
-      denied:
-        - restricted
-        - admin-only
+    user_configs:
+        - name: bob
+          token: bob-token
+          vault_access:
+              type: deny_list
+              denied:
+                  - restricted
+                  - admin-only
 ```
 
 **Use cases**:
+
 - Users with broad access except sensitive vaults
 - Simplify configuration when most vaults are accessible
 
 **Notes**:
+
 - User can access any vault not in the deny list
 - Attempting to access denied vaults returns authentication error
 
@@ -154,75 +164,75 @@ users:
 
 ```yaml
 users:
-  user_configs:
-  - name: me
-    token: my-super-secret-token
-    vault_access:
-      type: allow_access_to_all
+    user_configs:
+        - name: me
+          token: my-super-secret-token
+          vault_access:
+              type: allow_access_to_all
 ```
 
 ### Small Team (Shared Vaults)
 
 ```yaml
 users:
-  user_configs:
-  - name: alice
-    token: alice-token
-    vault_access:
-      type: allow_list
-      allowed:
-        - personal-alice
-        - team-shared
-  - name: bob
-    token: bob-token
-    vault_access:
-      type: allow_list
-      allowed:
-        - personal-bob
-        - team-shared
-  - name: charlie
-    token: charlie-token
-    vault_access:
-      type: allow_list
-      allowed:
-        - personal-charlie
-        - team-shared
+    user_configs:
+        - name: alice
+          token: alice-token
+          vault_access:
+              type: allow_list
+              allowed:
+                  - personal-alice
+                  - team-shared
+        - name: bob
+          token: bob-token
+          vault_access:
+              type: allow_list
+              allowed:
+                  - personal-bob
+                  - team-shared
+        - name: charlie
+          token: charlie-token
+          vault_access:
+              type: allow_list
+              allowed:
+                  - personal-charlie
+                  - team-shared
 ```
 
 ### Organization (Mixed Access)
 
 ```yaml
 users:
-  user_configs:
-  - name: admin
-    token: admin-token
-    vault_access:
-      type: allow_access_to_all
+    user_configs:
+        - name: admin
+          token: admin-token
+          vault_access:
+              type: allow_access_to_all
 
-  - name: developer
-    token: dev-token
-    vault_access:
-      type: allow_list
-      allowed:
-        - engineering-docs
-        - api-specs
-        - shared
+        - name: developer
+          token: dev-token
+          vault_access:
+              type: allow_list
+              allowed:
+                  - engineering-docs
+                  - api-specs
+                  - shared
 
-  - name: designer
-    token: design-token
-    vault_access:
-      type: allow_list
-      allowed:
-        - design-docs
-        - brand-assets
-        - shared
+        - name: designer
+          token: design-token
+          vault_access:
+              type: allow_list
+              allowed:
+                  - design-docs
+                  - brand-assets
+                  - shared
 
-  - name: readonly
-    token: readonly-token
-    vault_access:
-      type: allow_list
-      allowed:
-        - public-wiki
+        - name: readonly
+          token: readonly-token
+          vault_access:
+              type: allow_list
+              allowed:
+                  - public-wiki
 ```
 
 ## Authentication Flow
@@ -231,23 +241,24 @@ users:
 
 1. Client connects via WebSocket
 2. Client sends authentication message:
-   ```json
-   {
-     "type": "auth",
-     "token": "user-token",
-     "vault": "vault-name"
-   }
-   ```
+    ```json
+    {
+    	"type": "auth",
+    	"token": "user-token",
+    	"vault": "vault-name"
+    }
+    ```
 3. Server validates:
-   - Token exists in config
-   - User has access to requested vault
+    - Token exists in config
+    - User has access to requested vault
 4. Server responds:
-   - Success: Connection established
-   - Failure: Connection closed with error
+    - Success: Connection established
+    - Failure: Connection closed with error
 
 ### Validation
 
 Server checks:
+
 1. **Token match**: Token exists in `user_configs`
 2. **Vault access**: User has permission for vault
 3. **Connection limits**: Not exceeding `max_clients_per_vault`
@@ -255,16 +266,19 @@ Server checks:
 ### Errors
 
 **Invalid token**:
+
 ```
 Authentication failed: Invalid token
 ```
 
 **No vault access**:
+
 ```
 Authentication failed: User does not have access to vault 'restricted'
 ```
 
 **Connection limit**:
+
 ```
 Connection rejected: Maximum clients reached for vault
 ```
@@ -289,14 +303,16 @@ uuidgen
 ### Token Storage
 
 **In config file**:
+
 ```yaml
 users:
-  user_configs:
-  - name: alice
-    token: !ENV ALICE_TOKEN  # Read from environment variable
+    user_configs:
+        - name: alice
+          token: !ENV ALICE_TOKEN # Read from environment variable
 ```
 
 **Load from environment**:
+
 ```bash
 export ALICE_TOKEN="$(openssl rand -hex 32)"
 ./sync_server config.yml
@@ -314,11 +330,13 @@ Periodically change tokens:
 ### Token Revocation
 
 To revoke access:
+
 1. Remove user from `config.yml`
 2. Restart server
 3. User's connections will be rejected
 
 For immediate revocation:
+
 - Remove user from config
 - Restart server
 - Existing connections are terminated
@@ -354,6 +372,7 @@ Grant temporary access:
 4. Restart server
 
 For automation:
+
 ```bash
 # Add user with expiry comment
 echo "  - name: temp-user  # EXPIRES: 2024-12-31" >> config.yml
@@ -363,6 +382,7 @@ echo "    token: temp-token" >> config.yml
 ### Shared Tokens (Not Recommended)
 
 Multiple users sharing a token:
+
 - All appear as same user in logs
 - Can't revoke individual access
 - Security risk if one person leaves
@@ -432,25 +452,25 @@ Tokens for automated systems:
 
 ```yaml
 users:
-  user_configs:
-  - name: backup-service
-    token: backup-service-token
-    vault_access:
-      type: allow_access_to_all
+    user_configs:
+        - name: backup-service
+          token: backup-service-token
+          vault_access:
+              type: allow_access_to_all
 
-  - name: ci-pipeline
-    token: ci-token
-    vault_access:
-      type: allow_list
-      allowed:
-        - documentation
+        - name: ci-pipeline
+          token: ci-token
+          vault_access:
+              type: allow_list
+              allowed:
+                  - documentation
 
-  - name: monitoring
-    token: monitoring-token
-    vault_access:
-      type: allow_list
-      allowed:
-        - metrics
+        - name: monitoring
+          token: monitoring-token
+          vault_access:
+              type: allow_list
+              allowed:
+                  - metrics
 ```
 
 ### Dynamic Vault Access
@@ -462,6 +482,7 @@ VaultLink doesn't support runtime user management. To change access:
 3. Users reconnect automatically
 
 For frequent changes, consider:
+
 - Over-provision access (deny list)
 - Use external authentication proxy
 - Script config updates + reload
@@ -471,18 +492,21 @@ For frequent changes, consider:
 ### Can't connect
 
 **Check token**:
+
 ```bash
 # Verify token in config matches client
 grep "token:" config.yml
 ```
 
 **Check vault name**:
+
 ```bash
 # Ensure vault is in allowed list
 grep -A 5 "name: alice" config.yml
 ```
 
 **Check server logs**:
+
 ```bash
 tail -f logs/*.log | grep -i auth
 ```
@@ -490,18 +514,20 @@ tail -f logs/*.log | grep -i auth
 ### Access denied
 
 **Verify vault access**:
+
 ```yaml
 # Check user's vault_access configuration
 users:
-  user_configs:
-  - name: alice
-    vault_access:
-      type: allow_list
-      allowed:
-        - vault-name  # Must match exactly
+    user_configs:
+        - name: alice
+          vault_access:
+              type: allow_list
+              allowed:
+                  - vault-name # Must match exactly
 ```
 
 **Case sensitivity**:
+
 - Vault names are case-sensitive
 - `Vault` ≠ `vault`
 - Ensure exact match in config and client
@@ -509,11 +535,13 @@ users:
 ### Token not working
 
 **Check for typos**:
+
 - Extra spaces
 - Hidden characters
 - Wrong quotes in YAML
 
 **Regenerate token**:
+
 ```bash
 # Generate new token
 openssl rand -hex 32

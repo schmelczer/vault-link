@@ -35,21 +35,21 @@ Create `docker-compose.yml`:
 
 ```yaml
 services:
-  vaultlink-server:
-    image: ghcr.io/schmelczer/vault-link-server:latest
-    container_name: vaultlink-server
-    restart: unless-stopped
-    ports:
-      - "3000:3000"
-    volumes:
-      - ./data:/data
-    command: ["/app/sync_server", "/data/config.yml"]
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/vaults/fake/ping"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
+    vaultlink-server:
+        image: ghcr.io/schmelczer/vault-link-server:latest
+        container_name: vaultlink-server
+        restart: unless-stopped
+        ports:
+            - "3000:3000"
+        volumes:
+            - ./data:/data
+        command: ["/app/sync_server", "/data/config.yml"]
+        healthcheck:
+            test: ["CMD", "curl", "-f", "http://localhost:3000/vaults/fake/ping"]
+            interval: 30s
+            timeout: 5s
+            retries: 3
+            start_period: 10s
 ```
 
 Start the server:
@@ -76,6 +76,7 @@ chmod +x sync_server-linux-x86_64
 ### Build from Source
 
 Requirements:
+
 - Rust 1.89.0 or later
 - SQLite development headers
 - SQLx CLI
@@ -106,27 +107,27 @@ Create a `config.yml` file with your server configuration:
 
 ```yaml
 database:
-  databases_directory_path: databases
-  max_connections_per_vault: 12
-  cursor_timeout_seconds: 60
+    databases_directory_path: databases
+    max_connections_per_vault: 12
+    cursor_timeout_seconds: 60
 
 server:
-  host: 0.0.0.0
-  port: 3000
-  max_body_size_mb: 512
-  max_clients_per_vault: 256
-  response_timeout_seconds: 60
+    host: 0.0.0.0
+    port: 3000
+    max_body_size_mb: 512
+    max_clients_per_vault: 256
+    response_timeout_seconds: 60
 
 users:
-  user_configs:
-  - name: admin
-    token: your-secure-random-token-here
-    vault_access:
-      type: allow_access_to_all
+    user_configs:
+        - name: admin
+          token: your-secure-random-token-here
+          vault_access:
+              type: allow_access_to_all
 
 logging:
-  log_directory: logs
-  log_rotation: 7days
+    log_directory: logs
+    log_rotation: 7days
 ```
 
 ### Configuration Fields
@@ -192,6 +193,7 @@ server {
 ```
 
 Reload Nginx:
+
 ```bash
 sudo nginx -t
 sudo systemctl reload nginx
@@ -208,6 +210,7 @@ sync.example.com {
 ```
 
 Start Caddy:
+
 ```bash
 caddy run --config Caddyfile
 ```
@@ -269,6 +272,7 @@ find /backup/vaultlink -type d -mtime +30 -exec rm -rf {} +
 ```
 
 Run daily via cron:
+
 ```cron
 0 2 * * * /opt/vaultlink/backup.sh
 ```
@@ -293,12 +297,14 @@ For advanced monitoring, collect Docker stats or implement custom metrics.
 #### Log Monitoring
 
 Logs are written to the configured `log_directory`. Monitor for:
+
 - Connection failures
 - Authentication errors
 - Database errors
 - WebSocket disconnections
 
 Example log watching:
+
 ```bash
 tail -f /data/logs/*.log | grep -i error
 ```
@@ -316,11 +322,13 @@ VaultLink currently uses SQLite, which limits horizontal scaling. For multiple s
 ### Vertical Scaling
 
 Increase resources for the server:
+
 - More CPU for handling concurrent connections
 - More RAM for database caching
 - Faster storage (SSD) for database operations
 
 Tune configuration:
+
 - Increase `max_clients_per_vault` for more concurrent users
 - Increase `max_connections_per_vault` for database performance
 - Adjust `max_body_size_mb` based on typical file sizes

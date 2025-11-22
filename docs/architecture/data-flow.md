@@ -22,6 +22,7 @@ sequenceDiagram
 ```
 
 **Steps**:
+
 1. Client initiates WebSocket connection to server
 2. Server accepts connection
 3. Client sends authentication message with token and vault name
@@ -72,6 +73,7 @@ sequenceDiagram
 ```
 
 **Process**:
+
 1. Client scans local filesystem
 2. Client requests file list from server
 3. Server queries database and returns metadata
@@ -106,6 +108,7 @@ sequenceDiagram
 ```
 
 **Flow**:
+
 1. Filesystem watcher detects local change
 2. Client reads file content
 3. Client uploads file via WebSocket
@@ -325,6 +328,7 @@ CREATE TABLE cursors (
 ### Queries
 
 **Get files since version**:
+
 ```sql
 SELECT * FROM documents
 WHERE version > ? AND deleted = FALSE
@@ -332,6 +336,7 @@ ORDER BY version ASC;
 ```
 
 **Store new version**:
+
 ```sql
 INSERT INTO versions (document_id, version, content, created_at)
 VALUES (?, ?, ?, ?);
@@ -342,6 +347,7 @@ WHERE id = ?;
 ```
 
 **Update cursor**:
+
 ```sql
 INSERT OR REPLACE INTO cursors (client_id, last_version, last_updated)
 VALUES (?, ?, ?);
@@ -352,87 +358,96 @@ VALUES (?, ?, ?);
 ### Client → Server Messages
 
 **Upload File**:
+
 ```json
 {
-    "type": "upload_file",
-    "path": "notes/example.md",
-    "content": "File content here...",
-    "base_version": 10,
-    "timestamp": "2024-01-01T12:00:00Z"
+	"type": "upload_file",
+	"path": "notes/example.md",
+	"content": "File content here...",
+	"base_version": 10,
+	"timestamp": "2024-01-01T12:00:00Z"
 }
 ```
 
 **Download File**:
+
 ```json
 {
-    "type": "download_file",
-    "path": "notes/example.md"
+	"type": "download_file",
+	"path": "notes/example.md"
 }
 ```
 
 **Delete File**:
+
 ```json
 {
-    "type": "delete_file",
-    "path": "notes/old.md"
+	"type": "delete_file",
+	"path": "notes/old.md"
 }
 ```
 
 **List Files**:
+
 ```json
 {
-    "type": "list_files",
-    "since_version": 0
+	"type": "list_files",
+	"since_version": 0
 }
 ```
 
 ### Server → Client Messages
 
 **File Updated**:
+
 ```json
 {
-    "type": "file_updated",
-    "path": "notes/example.md",
-    "version": 11,
-    "size": 1024,
-    "hash": "abc123..."
+	"type": "file_updated",
+	"path": "notes/example.md",
+	"version": 11,
+	"size": 1024,
+	"hash": "abc123..."
 }
 ```
 
 **File Content**:
+
 ```json
 {
-    "type": "file_content",
-    "path": "notes/example.md",
-    "content": "Updated content...",
-    "version": 11
+	"type": "file_content",
+	"path": "notes/example.md",
+	"content": "Updated content...",
+	"version": 11
 }
 ```
 
 **File Deleted**:
+
 ```json
 {
-    "type": "file_deleted",
-    "path": "notes/old.md",
-    "version": 12
+	"type": "file_deleted",
+	"path": "notes/old.md",
+	"version": 12
 }
 ```
 
 **Sync Complete**:
+
 ```json
 {
-    "type": "sync_complete",
-    "total_files": 150,
-    "current_version": 200
+	"type": "sync_complete",
+	"total_files": 150,
+	"current_version": 200
 }
 ```
 
 **Error**:
+
 ```json
 {
-    "type": "error",
-    "message": "File too large",
-    "code": "FILE_TOO_LARGE"
+	"type": "error",
+	"message": "File too large",
+	"code": "FILE_TOO_LARGE"
 }
 ```
 
@@ -441,18 +456,21 @@ VALUES (?, ?, ?);
 ### Client-Side Errors
 
 **Network failure**:
+
 1. Detect WebSocket disconnect
 2. Queue pending operations
 3. Retry connection with exponential backoff
 4. Replay queued operations on reconnect
 
 **File read error**:
+
 1. Log error
 2. Skip file
 3. Continue with other files
 4. Report to user
 
 **Write conflict**:
+
 1. Receive updated version from server
 2. Apply OT merge locally
 3. Overwrite local file
@@ -461,16 +479,19 @@ VALUES (?, ?, ?);
 ### Server-Side Errors
 
 **Database error**:
+
 1. Log error
 2. Return error to client
 3. Client retries operation
 
 **Invalid operation**:
+
 1. Validate message format
 2. Return specific error code
 3. Client handles error appropriately
 
 **Authentication failure**:
+
 1. Reject connection
 2. Send auth error
 3. Client prompts for new credentials
