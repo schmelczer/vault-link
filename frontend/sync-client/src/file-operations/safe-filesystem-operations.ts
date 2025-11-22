@@ -117,7 +117,8 @@ export class SafeFileSystemOperations implements FileSystemOperations {
 	): Promise<T> {
 		if (!(await this.fs.exists(path))) {
 			throw new FileNotFoundError(
-				`File '${path}' not found before trying to ${operationName}`
+				`File not found before trying to ${operationName}`,
+				path
 			);
 		}
 
@@ -131,7 +132,8 @@ export class SafeFileSystemOperations implements FileSystemOperations {
 				throw error;
 			} else {
 				throw new FileNotFoundError(
-					`File '${path}' not found when trying to ${operationName}`
+					`File not found when trying to ${operationName}`,
+					path
 				);
 			}
 		}
