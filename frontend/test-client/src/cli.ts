@@ -53,10 +53,12 @@ async function runTest({
 	}
 
 	try {
+		// eslint-disable-next-line no-restricted-properties
 		await Promise.all(clients.map(async (client) => client.init()));
 
 		for (let i = 0; i < iterations; i++) {
 			console.info(`Iteration ${i + 1}/${iterations}`);
+			// eslint-disable-next-line no-restricted-properties
 			await Promise.all(clients.map(async (client) => client.act()));
 			await sleep(100);
 		}

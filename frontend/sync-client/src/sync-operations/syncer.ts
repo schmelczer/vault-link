@@ -299,6 +299,13 @@ export class Syncer {
 		}
 	}
 
+	public reset(): void {
+		this._isFirstSyncComplete = false;
+		this.syncQueue.clear();
+		this.remoteDocumentsLock.reset();
+		this.runningScheduleSyncForOfflineChanges = undefined;
+	}
+
 	private sendHandshakeMessage(): void {
 		const message: WebSocketClientMessage = {
 			type: "handshake",
@@ -512,12 +519,5 @@ export class Syncer {
 		}
 
 		this.database.setHasInitialSyncCompleted(true);
-	}
-
-	public reset(): void {
-		this._isFirstSyncComplete = false;
-		this.syncQueue.clear();
-		this.remoteDocumentsLock.reset();
-		this.runningScheduleSyncForOfflineChanges = undefined;
 	}
 }

@@ -25,7 +25,7 @@ export class FileOperations {
 	): [RelativePath, RelativePath] {
 		const pathParts = path.split("/");
 		const fileName = pathParts.pop();
-		if (!fileName || fileName === "") {
+		if (fileName == null || fileName === "") {
 			throw new Error(`Path '${path}' cannot be empty`);
 		}
 
@@ -166,6 +166,10 @@ export class FileOperations {
 		await this.deletingEmptyParentDirectoriesOfDeletedFile(oldPath);
 	}
 
+	public reset(): void {
+		this.fs.reset();
+	}
+
 	private async deletingEmptyParentDirectoriesOfDeletedFile(
 		path: RelativePath
 	): Promise<void> {
@@ -253,9 +257,5 @@ export class FileOperations {
 		} while (await this.fs.exists(newName));
 
 		return newName;
-	}
-
-	public reset(): void {
-		this.fs.reset();
 	}
 }

@@ -24,16 +24,6 @@ export class FetchController {
 			createPromise<symbol>();
 	}
 
-	private static getUrlFromInput(input: RequestInfo | URL): string {
-		if (input instanceof URL) {
-			return input.href;
-		}
-		if (typeof input === "string") {
-			return input;
-		}
-		return input.url;
-	}
-
 	/**
 	 * Whether the fetch implementation can immediately send requests once outside of a reset.
 	 */
@@ -56,6 +46,16 @@ export class FetchController {
 				createPromise<symbol>();
 			previousResolve(FetchController.UNTIL_RESOLUTION);
 		}
+	}
+
+	private static getUrlFromInput(input: RequestInfo | URL): string {
+		if (input instanceof URL) {
+			return input.href;
+		}
+		if (typeof input === "string") {
+			return input;
+		}
+		return input.url;
 	}
 
 	/**

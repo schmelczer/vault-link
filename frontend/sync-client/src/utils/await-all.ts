@@ -9,6 +9,7 @@ type ResolvedTuple<T extends readonly unknown[]> = {
 export const awaitAll = async <T extends readonly unknown[]>(
 	promises: PromiseTuple<T>
 ): Promise<ResolvedTuple<T>> => {
+	// eslint-disable-next-line no-restricted-properties
 	const result = await Promise.allSettled(promises);
 	for (const res of result) {
 		if (res.status === "rejected") {
@@ -16,7 +17,9 @@ export const awaitAll = async <T extends readonly unknown[]>(
 		}
 	}
 
+	// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
 	return result.map(
+		// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
 		(res) => (res as PromiseFulfilledResult<unknown>).value
 	) as ResolvedTuple<T>;
 };

@@ -6,6 +6,7 @@ export function slowWebSocketFactory(
 	jitterScaleInSeconds: number,
 	logger: Logger
 ): typeof WebSocket {
+	// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
 	return class FlakyWebSocket extends WebSocket {
 		private static readonly RECEIVE_KEY = "websocket-receive";
 		private static readonly SEND_KEY = "websocket-send";

@@ -157,6 +157,13 @@ export class CursorTracker {
 		});
 	}
 
+	public reset(): void {
+		this.knownRemoteCursors = [];
+		this.lastLocalCursorState = [];
+		this.lastLocalCursorStateWithoutDirtyDocuments = [];
+		this.updateLock.reset();
+	}
+
 	private getRelevantAndPruneKnownClientCursors(): MaybeOutdatedClientCursors[] {
 		const result: MaybeOutdatedClientCursors[] = [];
 		const included = new Set<string>();
@@ -249,12 +256,5 @@ export class CursorTracker {
 		)?.metadata?.hash === hash(currentContent)
 			? DocumentUpToDateness.UpToDate
 			: DocumentUpToDateness.Prior;
-	}
-
-	public reset(): void {
-		this.knownRemoteCursors = [];
-		this.lastLocalCursorState = [];
-		this.lastLocalCursorStateWithoutDirtyDocuments = [];
-		this.updateLock.reset();
 	}
 }

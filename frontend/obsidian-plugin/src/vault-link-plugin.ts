@@ -49,7 +49,7 @@ export default class VaultLinkPlugin extends Plugin {
 
 			this.registerEditorEvents(client);
 
-			this.register(() => client.destroy());
+			this.register(async () => client.destroy());
 			await client.start();
 		});
 	}
@@ -58,8 +58,16 @@ export default class VaultLinkPlugin extends Plugin {
 		new Notice(
 			"VaultLink has been enabled, check out the docs for tips on getting started!"
 		);
-		this.activateView(LogsView.TYPE);
-		this.activateView(HistoryView.TYPE);
+		void this.activateView(HistoryView.TYPE).catch((e: unknown) => {
+			this.syncClient?.logger.error(
+				`Failed to open history view on enable: ${e}`
+			);
+		});
+		void this.activateView(LogsView.TYPE).catch((e: unknown) => {
+			this.syncClient?.logger.error(
+				`Failed to open logs view on enable: ${e}`
+			);
+		});
 		this.openSettings();
 	}
 
@@ -169,7 +177,9 @@ export default class VaultLinkPlugin extends Plugin {
 			client,
 			this.app.workspace
 		);
-		this.register(() => cursorListener.dispose);
+		this.register(() => {
+			cursorListener.dispose();
+		});
 
 		this.app.workspace.updateOptions();
 

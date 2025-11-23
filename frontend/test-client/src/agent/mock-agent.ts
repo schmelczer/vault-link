@@ -127,8 +127,9 @@ export class MockAgent extends MockClient {
 
 	public async finish(): Promise<void> {
 		await this.client.setSetting("isSyncEnabled", true);
-		await Promise.allSettled(this.pendingActions);
-		await this.client.waitAndStop();
+		// eslint-disable-next-line no-restricted-properties
+		await Promise.all(this.pendingActions);
+		await this.client.destroy();
 	}
 
 	public assertFileSystemsAreConsistent(otherAgent: MockAgent): void {

@@ -82,7 +82,7 @@ export class WebSocketManager {
 	}
 
 	public async stop(): Promise<void> {
-		const [promise, resolve] = createPromise<void>();
+		const [promise, resolve] = createPromise();
 		this.resolveDisconnectingPromise = resolve;
 
 		this.isStopped = true;
@@ -99,7 +99,7 @@ export class WebSocketManager {
 			await promise;
 		}
 
-		await awaitAll(this.outstandingPromises).then(() => {});
+		await awaitAll(this.outstandingPromises);
 	}
 
 	public sendHandshakeMessage(
@@ -164,10 +164,25 @@ export class WebSocketManager {
 			);
 		};
 
-		this.webSocket.onmessage = async (event): Promise<void> => {
-			// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-			const message = JSON.parse(event.data) as WebSocketServerMessage;
-			return this.handleWebSocketMessage(message);
+		this.webSocket.onmessage = (event): void => {
+			try {
+				// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+				const message = JSON.parse(
+					event.data
+				) as WebSocketServerMessage;
+
+				void this.handleWebSocketMessage(message).catch(
+					(error: unknown) => {
+						this.logger.error(
+							`Error handling WebSocket message: ${String(error)}`
+						);
+					}
+				);
+			} catch (error) {
+				this.logger.error(
+					`Error parsing WebSocket message: ${String(error)}`
+				);
+			}
 		};
 
 		this.webSocket.onclose = (event): void => {
@@ -194,42 +209,58 @@ export class WebSocketManager {
 		message: WebSocketServerMessage
 	): Promise<void> {
 		if (message.type === "vaultUpdate") {
-			this.outstandingPromises.push(
-				...this.remoteVaultUpdateListeners.map(async (listener) => {
-					const promise = listener(message);
-					return promise.finally(() => {
-						if (this.outstandingPromises.includes(promise)) {
-							this.outstandingPromises.splice(
-								this.outstandingPromises.indexOf(promise),
-								1
+			const promises = this.remoteVaultUpdateListeners.map(
+				async (listener) => {
+					const trackedPromise = listener(message)
+						.catch((error: unknown) => {
+							this.logger.error(
+								`Error in vault update listener: ${String(error)}`
 							);
-						}
-					});
-				})
+						})
+						.finally(() => {
+							const index =
+								this.outstandingPromises.indexOf(
+									trackedPromise
+								);
+							if (index !== -1) {
+								// eslint-disable-next-line @typescript-eslint/no-floating-promises
+								this.outstandingPromises.splice(index, 1);
+							}
+						});
+					await trackedPromise;
+				}
 			);
+			this.outstandingPromises.push(...promises);
 			// eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
 		} else if (message.type === "cursorPositions") {
 			this.logger.debug(
 				`Received cursor positions for ${JSON.stringify(message.clients)}`
 			);
-			this.outstandingPromises.push(
-				...this.remoteCursorsUpdateListeners.map(async (listener) => {
-					const promise = listener(
-						message.clients.filter(
-							(client) => client.deviceId !== this.deviceId
-						)
-					);
-
-					return promise.finally(() => {
-						if (this.outstandingPromises.includes(promise)) {
-							this.outstandingPromises.splice(
-								this.outstandingPromises.indexOf(promise),
-								1
-							);
-						}
-					});
-				})
+			const filteredClients = message.clients.filter(
+				(client) => client.deviceId !== this.deviceId
 			);
+			const promises = this.remoteCursorsUpdateListeners.map(
+				async (listener) => {
+					const trackedPromise = listener(filteredClients)
+						.catch((error: unknown) => {
+							this.logger.error(
+								`Error in cursor positions listener: ${String(error)}`
+							);
+						})
+						.finally(() => {
+							const index =
+								this.outstandingPromises.indexOf(
+									trackedPromise
+								);
+							if (index !== -1) {
+								// eslint-disable-next-line @typescript-eslint/no-floating-promises
+								this.outstandingPromises.splice(index, 1);
+							}
+						});
+					await trackedPromise;
+				}
+			);
+			this.outstandingPromises.push(...promises);
 		} else {
 			this.logger.warn(
 				`Received unknown message type: ${JSON.stringify(message)}`

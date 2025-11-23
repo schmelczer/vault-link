@@ -1,6 +1,4 @@
-import type { StoredDatabase ,
-	TextWithCursors
-} from "sync-client";
+import type { StoredDatabase, TextWithCursors } from "sync-client";
 import { assert } from "../utils/assert";
 import {
 	type RelativePath,

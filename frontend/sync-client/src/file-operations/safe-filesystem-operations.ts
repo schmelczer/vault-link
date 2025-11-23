@@ -105,6 +105,10 @@ export class SafeFileSystemOperations implements FileSystemOperations {
 		);
 	}
 
+	public reset(): void {
+		this.locks.reset();
+	}
+
 	/**
 	 * Decorate an operation to ensure that the file exists before running it.
 	 * If the operation fails, it will check if the file still exists and throw
@@ -137,9 +141,5 @@ export class SafeFileSystemOperations implements FileSystemOperations {
 				);
 			}
 		}
-	}
-
-	public reset(): void {
-		this.locks.reset();
 	}
 }
