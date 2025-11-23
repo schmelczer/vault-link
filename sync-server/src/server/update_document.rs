@@ -185,8 +185,10 @@ async fn update_document(
         )));
     }
 
-    let are_all_participants_mergable = is_file_type_mergable(&sanitized_relative_path)
-        && !is_binary(&parent_document.content)
+    let are_all_participants_mergable = is_file_type_mergable(
+        &sanitized_relative_path,
+        &state.config.server.mergeable_file_extensions,
+    ) && !is_binary(&parent_document.content)
         && !is_binary(&latest_version.content)
         && !is_binary(&content);
 

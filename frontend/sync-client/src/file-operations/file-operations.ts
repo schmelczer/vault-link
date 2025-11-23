@@ -6,6 +6,7 @@ import type { TextWithCursors } from "reconcile-text";
 import { reconcile } from "reconcile-text";
 import { isFileTypeMergable } from "../utils/is-file-type-mergable";
 import { isBinary } from "../utils/is-binary";
+import type { ServerConfig } from "../services/server-config";
 
 export class FileOperations {
 	private static readonly PARENTHESES_REGEX = / \((\d+)\)$/;
@@ -15,6 +16,7 @@ export class FileOperations {
 		private readonly logger: Logger,
 		private readonly database: Database,
 		fs: FileSystemOperations,
+		private readonly serverConfig: ServerConfig,
 		private readonly nativeLineEndings = "\n"
 	) {
 		this.fs = new SafeFileSystemOperations(fs, logger);
@@ -89,7 +91,10 @@ export class FileOperations {
 		}
 
 		if (
-			!isFileTypeMergable(path) ||
+			!isFileTypeMergable(
+				path,
+				this.serverConfig.getConfig().mergeableFileExtensions
+			) ||
 			isBinary(expectedContent) ||
 			isBinary(newContent)
 		) {

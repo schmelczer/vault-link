@@ -13,4 +13,8 @@ export interface PingResponse {
 	 * header.
 	 */
 	isAuthenticated: boolean;
+	/**
+	 * List of file extensions that are allowed to be merged.
+	 */
+	mergeableFileExtensions: string[];
 }

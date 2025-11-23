@@ -25,6 +25,7 @@ import { FileChangeNotifier } from "./sync-operations/file-change-notifier";
 import { FixedSizeDocumentCache } from "./utils/data-structures/fix-sized-cache";
 import { setUpTelemetry } from "./utils/set-up-telemetry";
 import { DIFF_CACHE_SIZE_MB } from "./consts";
+import { ServerConfig } from "./services/server-config";
 
 export class SyncClient {
 	private hasStartedOfflineSync = false;
@@ -46,6 +47,7 @@ export class SyncClient {
 		private readonly fileChangeNotifier: FileChangeNotifier,
 		private readonly contentCache: FixedSizeDocumentCache,
 		private readonly fileOperations: FileOperations,
+		private readonly serverConfig: ServerConfig,
 		private readonly persistence: PersistenceProvider<
 			Partial<{
 				settings: Partial<SyncSettings>;
@@ -139,10 +141,13 @@ export class SyncClient {
 			fetch
 		);
 
+		const serverConfig = new ServerConfig(syncService);
+
 		const fileOperations = new FileOperations(
 			logger,
 			database,
 			fs,
+			serverConfig,
 			nativeLineEndings
 		);
 
@@ -156,7 +161,8 @@ export class SyncClient {
 			syncService,
 			fileOperations,
 			history,
-			contentCache
+			contentCache,
+			serverConfig
 		);
 
 		const webSocketManager = new WebSocketManager(
@@ -197,6 +203,7 @@ export class SyncClient {
 			fileChangeNotifier,
 			contentCache,
 			fileOperations,
+			serverConfig,
 			persistence
 		);
 
@@ -212,6 +219,8 @@ export class SyncClient {
 			throw new Error("SyncClient has already been started");
 		}
 		this.hasStarted = true;
+
+		await this.serverConfig.initialize();
 
 		if (
 			!this.unloadTelemetry &&
@@ -260,7 +269,7 @@ export class SyncClient {
 	public async checkConnection(): Promise<NetworkConnectionStatus> {
 		this.checkIfDestroyed();
 
-		const server = await this.syncService.checkConnection();
+		const server = await this.serverConfig.checkConnection(true);
 		return {
 			isSuccessful: server.isSuccessful,
 			serverMessage: server.message,

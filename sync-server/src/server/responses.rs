@@ -16,6 +16,9 @@ pub struct PingResponse {
     /// Whether the client is authenticated based on the sent Authorization
     /// header.
     pub is_authenticated: bool,
+
+    /// List of file extensions that are allowed to be merged.
+    pub mergeable_file_extensions: Vec<String>,
 }
 
 /// Response to a fetch latest documents request.

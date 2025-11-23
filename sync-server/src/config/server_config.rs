@@ -2,8 +2,8 @@ use log::debug;
 use serde::{Deserialize, Serialize};
 
 use crate::consts::{
-    DEFAULT_HOST, DEFAULT_MAX_BODY_SIZE_MB, DEFAULT_MAX_CLIENTS_PER_VAULT, DEFAULT_PORT,
-    DEFAULT_RESPONSE_TIMEOUT_SECONDS,
+    DEFAULT_HOST, DEFAULT_MAX_BODY_SIZE_MB, DEFAULT_MAX_CLIENTS_PER_VAULT,
+    DEFAULT_MERGEABLE_FILE_EXTENSIONS, DEFAULT_PORT, DEFAULT_RESPONSE_TIMEOUT_SECONDS,
 };
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
@@ -22,6 +22,9 @@ pub struct ServerConfig {
 
     #[serde(default = "default_response_timeout_seconds")]
     pub response_timeout_seconds: u64,
+
+    #[serde(default = "default_mergeable_file_extensions")]
+    pub mergeable_file_extensions: Vec<String>,
 }
 
 fn default_host() -> String {
@@ -47,4 +50,12 @@ fn default_max_clients_per_vault() -> usize {
 fn default_response_timeout_seconds() -> u64 {
     debug!("Using default response timeout (seconds): {DEFAULT_RESPONSE_TIMEOUT_SECONDS}");
     DEFAULT_RESPONSE_TIMEOUT_SECONDS
+}
+
+fn default_mergeable_file_extensions() -> Vec<String> {
+    debug!("Using default mergeable file extensions: {DEFAULT_MERGEABLE_FILE_EXTENSIONS:?}");
+    DEFAULT_MERGEABLE_FILE_EXTENSIONS
+        .iter()
+        .map(|s| (*s).to_owned())
+        .collect()
 }

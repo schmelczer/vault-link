@@ -1,5 +1,3 @@
-export const MERGABLE_FILE_TYPES = ["md", "txt"];
-
 export const TIMEOUT_FOR_MERGING_HISTORY_ENTRIES_IN_SECONDS = 60;
 export const DIFF_CACHE_SIZE_MB = 2;
 export const MAX_LOG_MESSAGE_COUNT = 100000;

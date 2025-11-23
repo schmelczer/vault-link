@@ -8,6 +8,9 @@ server:
   max_body_size_mb: 512
   max_clients_per_vault: 256
   response_timeout_seconds: 60
+  mergeable_file_extensions:
+  - md
+  - txt
 users:
   user_configs:
   - name: admin

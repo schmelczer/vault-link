@@ -302,40 +302,24 @@ export class SyncService {
 		});
 	}
 
-	public async checkConnection(): Promise<{
-		isSuccessful: boolean;
-		message: string;
-	}> {
-		try {
-			const response = await this.pingClient(this.getUrl("/ping"), {
-				headers: this.getDefaultHeaders()
-			});
-			const result: PingResponse | SerializedError =
-				(await response.json()) as PingResponse | SerializedError; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+	public async ping(): Promise<PingResponse> {
+		const response = await this.pingClient(this.getUrl("/ping"), {
+			headers: this.getDefaultHeaders()
+		});
+		const result: PingResponse | SerializedError =
+			(await response.json()) as PingResponse | SerializedError; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
 
-			if ("errorType" in result) {
-				throw new Error(
-					`Failed to ping server: ${SyncService.formatError(result)}`
-				);
-			}
-
-			if (result.isAuthenticated) {
-				return {
-					isSuccessful: true,
-					message: `Successfully connected to server (version: ${result.serverVersion}) and authenticated`
-				};
-			}
-
-			return {
-				isSuccessful: false,
-				message: `Successfully connected to server (version: ${result.serverVersion}) but failed to authenticate`
-			};
-		} catch (e) {
-			return {
-				isSuccessful: false,
-				message: `Failed to connect to server: ${e}`
-			};
+		if ("errorType" in result) {
+			throw new Error(
+				`Failed to ping server: ${SyncService.formatError(result)}`
+			);
 		}
+
+		this.logger.debug(
+			`Pinged server, got response: ${JSON.stringify(result)}`
+		);
+
+		return result;
 	}
 
 	private getUrl(path: string): string {
