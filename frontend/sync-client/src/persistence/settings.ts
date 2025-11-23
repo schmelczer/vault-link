@@ -11,6 +11,8 @@ export interface SyncSettings {
 	webSocketRetryIntervalMs: number;
 	diffCacheSizeMB: number;
 	enableTelemetry: boolean;
+	networkRetryIntervalMs: number;
+	minimumSaveIntervalMs: number;
 }
 
 export const DEFAULT_SETTINGS: SyncSettings = {
@@ -23,7 +25,9 @@ export const DEFAULT_SETTINGS: SyncSettings = {
 	ignorePatterns: [],
 	webSocketRetryIntervalMs: 3500,
 	diffCacheSizeMB: 4,
-	enableTelemetry: false
+	enableTelemetry: false,
+	networkRetryIntervalMs: 1000,
+	minimumSaveIntervalMs: 1000
 };
 
 export class Settings {
