@@ -6,7 +6,7 @@ import type {
 
 import type { Logger } from "../tracing/logger";
 import type { Settings } from "../persistence/settings";
-import type { ConnectionStatus } from "./connection-status";
+import type { FetchController } from "./fetch-controller";
 import { sleep } from "../utils/sleep";
 import { SyncResetError } from "./sync-reset-error";
 import type { SerializedError } from "./types/SerializedError";
@@ -25,7 +25,7 @@ export class SyncService {
 
 	public constructor(
 		private readonly deviceId: string,
-		private readonly connectionStatus: ConnectionStatus,
+		private readonly connectionStatus: FetchController,
 		private readonly settings: Settings,
 		private readonly logger: Logger,
 		fetchImplementation: typeof globalThis.fetch = globalThis.fetch
@@ -34,7 +34,7 @@ export class SyncService {
 		const unboundFetch: typeof globalThis.fetch = async (...args) =>
 			fetchImplementation(...args);
 
-		this.client = this.connectionStatus.getFetchImplementation(
+		this.client = this.connectionStatus.getControlledFetchImplementation(
 			this.logger,
 			unboundFetch
 		);
