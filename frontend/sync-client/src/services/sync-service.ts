@@ -25,7 +25,7 @@ export class SyncService {
 
 	public constructor(
 		private readonly deviceId: string,
-		private readonly connectionStatus: FetchController,
+		private readonly fetchController: FetchController,
 		private readonly settings: Settings,
 		private readonly logger: Logger,
 		fetchImplementation: typeof globalThis.fetch = globalThis.fetch
@@ -34,7 +34,7 @@ export class SyncService {
 		const unboundFetch: typeof globalThis.fetch = async (...args) =>
 			fetchImplementation(...args);
 
-		this.client = this.connectionStatus.getControlledFetchImplementation(
+		this.client = this.fetchController.getControlledFetchImplementation(
 			this.logger,
 			unboundFetch
 		);
@@ -341,8 +341,8 @@ export class SyncService {
 
 	private getUrl(path: string): string {
 		const { vaultName, remoteUri } = this.settings.getSettings();
-		const safeRemoteUri = remoteUri.replace(/\/+$/g, "");
-		return `${safeRemoteUri}/vaults/${vaultName}${path}`;
+		const remoteUriWithoutTrailingSlash = remoteUri.replace(/\/+$/, "");
+		return `${remoteUriWithoutTrailingSlash}/vaults/${vaultName}${path}`;
 	}
 
 	private getDefaultHeaders(

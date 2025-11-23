@@ -9,7 +9,7 @@ describe("FetchController", () => {
 	const createMockFetch = (shouldSleep: boolean) =>
 		mock.fn(async () => {
 			if (shouldSleep) {
-				await sleep(50);
+				await sleep(30);
 			}
 			return Promise.resolve(new Response("OK", { status: 200 }));
 		});
@@ -25,13 +25,12 @@ describe("FetchController", () => {
 	it("should allow fetch when canFetch is true", async () => {
 		const logger = new Logger();
 		const controller = new FetchController(true, logger);
-		const mockFetch = createMockFetch(true);
+		const mockFetch = createMockFetch(false);
 		const controlledFetch = controller.getControlledFetchImplementation(
 			logger,
 			mockFetch
 		);
 
-		mock.timers.tick(50);
 		const response = await controlledFetch("http://example.com");
 
 		assert.strictEqual(await response.text(), "OK");
@@ -48,12 +47,12 @@ describe("FetchController", () => {
 		);
 
 		const fetchPromise = controlledFetch("http://example.com");
-		mock.timers.tick(10);
 		assert.strictEqual(mockFetch.mock.calls.length, 0);
 
 		controller.canFetch = true;
+		await Promise.resolve();
+		mock.timers.tick(30);
 
-		mock.timers.tick(50);
 		const response = await fetchPromise;
 		assert.strictEqual(await response.text(), "OK");
 		assert.strictEqual(mockFetch.mock.calls.length, 1);
@@ -69,11 +68,11 @@ describe("FetchController", () => {
 		);
 
 		const firstRequest = controlledFetch("http://example.com");
-		assert.strictEqual(mockFetch.mock.calls.length, 1); // because firstRequest started before reset
-		controller.startReset();
-		const secondRequest = controlledFetch("http://example.com");
+		assert.strictEqual(mockFetch.mock.calls.length, 1);
 
-		mock.timers.tick(50);
+		controller.startReset();
+
+		const secondRequest = controlledFetch("http://example.com");
 
 		await assert.rejects(
 			firstRequest,
@@ -83,13 +82,13 @@ describe("FetchController", () => {
 			secondRequest,
 			(error: unknown) => error instanceof SyncResetError
 		);
-		assert.strictEqual(mockFetch.mock.calls.length, 1); // because firstRequest started before reset
+		assert.strictEqual(mockFetch.mock.calls.length, 1);
 	});
 
 	it("should allow fetch after reset finishes", async () => {
 		const logger = new Logger();
 		const controller = new FetchController(true, logger);
-		const mockFetch = createMockFetch(true);
+		const mockFetch = createMockFetch(false);
 		const controlledFetch = controller.getControlledFetchImplementation(
 			logger,
 			mockFetch
@@ -98,7 +97,6 @@ describe("FetchController", () => {
 		controller.startReset();
 		controller.finishReset();
 
-		mock.timers.tick(50);
 		const response = await controlledFetch("http://example.com");
 		assert.strictEqual(await response.text(), "OK");
 	});
@@ -134,8 +132,10 @@ describe("FetchController", () => {
 
 		controller.finishReset();
 
-		mock.timers.tick(50);
-		const response = await controlledFetch("http://example.com");
+		const fetchPromise = controlledFetch("http://example.com");
+		mock.timers.tick(30);
+
+		const response = await fetchPromise;
 		assert.strictEqual(await response.text(), "OK");
 	});
 
