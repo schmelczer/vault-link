@@ -1,7 +1,6 @@
-export const NETWORK_RETRY_INTERVAL_MS = 1000;
-export const MINIMUM_SAVE_INTERVAL_MS = 1000;
+export const MERGABLE_FILE_TYPES = ["md", "txt"];
+
+export const TIMEOUT_FOR_MERGING_HISTORY_ENTRIES_IN_SECONDS = 60;
 export const DIFF_CACHE_SIZE_MB = 2;
 export const MAX_LOG_MESSAGE_COUNT = 100000;
 export const MAX_HISTORY_ENTRY_COUNT = 5000;
-export const TIMEOUT_FOR_MERGING_HISTORY_ENTRIES_IN_SECONDS = 60;
-export const MERGABLE_FILE_TYPES = ["md", "txt"];

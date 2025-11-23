@@ -10,7 +10,8 @@ import { sleep } from "./sleep";
  *
  * @template T - Type of the function to be rate limited
  * @param {T} fn - The asynchronous function to rate limit
- * @param {number} minIntervalMs - The minimum interval in milliseconds between function calls
+ * @param {number | (() => number)} minIntervalMs - Minimum interval in milliseconds between calls,
+ *        or a function that returns the minimum interval
  * @returns {(...args: Parameters<T>) => ReturnType<T> | Promise<undefined>} A decorated function that respects the rate limit.
  *         Returns the original function's return type when executed, or undefined if the call was superseded by a newer one.
  */
@@ -21,7 +22,7 @@ export function rateLimit<
 	) => Promise<R>
 >(
 	fn: T,
-	minIntervalMs: number
+	minIntervalMs: number | (() => number)
 ): (...args: Parameters<T>) => Promise<R | undefined> {
 	let newArgs: Parameters<T> | undefined = undefined;
 	let running: Promise<unknown> | undefined = undefined;
@@ -46,7 +47,11 @@ export function rateLimit<
 
 		const [promise, resolve] = createPromise();
 		running = promise;
-		sleep(minIntervalMs)
+		sleep(
+			typeof minIntervalMs === "function"
+				? minIntervalMs()
+				: minIntervalMs
+		)
 			.then(resolve)
 			.catch(() => {
 				// sleep cannot fail

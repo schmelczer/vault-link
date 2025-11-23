@@ -24,7 +24,7 @@ import type { MaybeOutdatedClientCursors } from "./types/maybe-outdated-client-c
 import { FileChangeNotifier } from "./sync-operations/file-change-notifier";
 import { FixedSizeDocumentCache } from "./utils/data-structures/fix-sized-cache";
 import { setUpTelemetry } from "./utils/set-up-telemetry";
-import { DIFF_CACHE_SIZE_MB, MINIMUM_SAVE_INTERVAL_MS } from "./consts";
+import { DIFF_CACHE_SIZE_MB } from "./consts";
 
 export class SyncClient {
 	private hasStartedOfflineSync = false;
@@ -157,9 +157,20 @@ export class SyncClient {
 			database: undefined
 		};
 
+		const settings = new Settings(
+			logger,
+			state.settings,
+			async (data): Promise<void> => {
+				state = { ...state, settings: data };
+				// we're not rate-limiting settings saves as (1) we need to initialise the settings to know the rate limit
+				// and (2) settings changes are infrequent enough that rate-limiting is not necessary
+				await persistence.save(state);
+			}
+		);
+
 		const rateLimitedSave = rateLimit(
 			persistence.save,
-			MINIMUM_SAVE_INTERVAL_MS
+			() => settings.getSettings().minimumSaveIntervalMs
 		);
 
 		const database = new Database(
@@ -167,15 +178,6 @@ export class SyncClient {
 			state.database,
 			async (data): Promise<void> => {
 				state = { ...state, database: data };
-				await rateLimitedSave(state);
-			}
-		);
-
-		const settings = new Settings(
-			logger,
-			state.settings,
-			async (data): Promise<void> => {
-				state = { ...state, settings: data };
 				await rateLimitedSave(state);
 			}
 		);
@@ -201,6 +203,7 @@ export class SyncClient {
 		const fileOperations = new FileOperations(
 			logger,
 			database,
+			settings,
 			fs,
 			nativeLineEndings
 		);
