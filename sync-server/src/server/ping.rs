@@ -11,6 +11,7 @@ use serde::Deserialize;
 use super::{auth::auth, responses::PingResponse};
 use crate::{
     app_state::{AppState, database::models::VaultId},
+    consts::SUPPORTED_API_VERSION,
     errors::SyncServerError,
     utils::normalize::normalize,
 };
@@ -34,5 +35,6 @@ pub async fn ping(
         server_version: env!("CARGO_PKG_VERSION").to_owned(),
         is_authenticated,
         mergeable_file_extensions: state.config.server.mergeable_file_extensions.clone(),
+        supported_api_version: SUPPORTED_API_VERSION,
     }))
 }

@@ -17,4 +17,9 @@ export interface PingResponse {
 	 * List of file extensions that are allowed to be merged.
 	 */
 	mergeableFileExtensions: string[];
+	/**
+	 * API version ensuring backwards & forwards compatibility between the client
+	 * and server.
+	 */
+	supportedApiVersion: number;
 }
