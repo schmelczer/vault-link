@@ -5,7 +5,7 @@ import type { WebSocketClientMessage } from "./types/WebSocketClientMessage";
 import type { CursorPositionFromClient } from "./types/CursorPositionFromClient";
 import type { ClientCursors } from "./types/ClientCursors";
 import { createPromise } from "../utils/create-promise";
-import { WebSocketVaultUpdate } from "./types/WebSocketVaultUpdate";
+import type { WebSocketVaultUpdate } from "./types/WebSocketVaultUpdate";
 
 export class WebSocketManager {
 	private readonly webSocketStatusChangeListeners: ((
@@ -26,7 +26,7 @@ export class WebSocketManager {
 	private resolveDisconnectingPromise: null | (() => unknown) = null;
 	private reconnectTimeoutId: ReturnType<typeof setTimeout> | undefined;
 
-	private readonly outstandingPromises: Array<Promise<unknown>> = [];
+	private readonly outstandingPromises: Promise<unknown>[] = [];
 	private readonly webSocketFactoryImplementation: typeof globalThis.WebSocket;
 
 	public constructor(
@@ -104,7 +104,7 @@ export class WebSocketManager {
 	public sendHandshakeMessage(
 		message: WebSocketClientMessage & { type: "handshake" }
 	): void {
-		const webSocket = this.webSocket;
+		const {webSocket} = this;
 		if (!webSocket) {
 			throw new Error(
 				"WebSocket is not connected, cannot send handshake message"
@@ -126,7 +126,7 @@ export class WebSocketManager {
 			type: "cursorPositions",
 			...cursorPositions
 		};
-		const webSocket = this.webSocket;
+		const {webSocket} = this;
 		if (!webSocket) {
 			this.logger.warn(
 				"WebSocket is not connected, cannot send cursor positions"
@@ -194,7 +194,7 @@ export class WebSocketManager {
 	): Promise<void> {
 		if (message.type === "vaultUpdate") {
 			this.outstandingPromises.push(
-				...this.remoteVaultUpdateListeners.map((listener) =>
+				...this.remoteVaultUpdateListeners.map(async (listener) =>
 					listener(message)
 				)
 			);
@@ -204,7 +204,7 @@ export class WebSocketManager {
 				`Received cursor positions for ${JSON.stringify(message.clients)}`
 			);
 			this.outstandingPromises.push(
-				...this.remoteCursorsUpdateListeners.map((listener) =>
+				...this.remoteCursorsUpdateListeners.map(async (listener) =>
 					listener(
 						message.clients.filter(
 							(client) => client.deviceId !== this.deviceId
