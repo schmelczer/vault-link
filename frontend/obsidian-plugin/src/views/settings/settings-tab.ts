@@ -322,7 +322,7 @@ export class SyncSettingsTab extends PluginSettingTab {
 			)
 			.addButton((button) =>
 				button.setButtonText("Reset sync state").onClick(async () => {
-					await this.syncClient.reset();
+					await this.syncClient.applyChangedConnectionSettings();
 					new Notice(
 						"Sync state has been reset, you will need to resync"
 					);
@@ -347,6 +347,76 @@ export class SyncSettingsTab extends PluginSettingTab {
 					.onChange(async (value) =>
 						this.syncClient.setSetting("enableTelemetry", value)
 					)
+			);
+
+		containerEl.createEl("h3", { text: "Advanced" });
+
+		new Setting(containerEl)
+			.setName("Network retry interval (ms)")
+			.setDesc(
+				"The time to wait between retrying failed network requests, in milliseconds."
+			)
+			.addText((input) =>
+				input
+					.setValue(
+						this.syncClient
+							.getSettings()
+							.networkRetryIntervalMs.toString()
+					)
+					.onChange(async (value) => {
+						if (value === "") {
+							return;
+						}
+						let parsedValue = Number.parseInt(value, 10);
+						if (Number.isNaN(parsedValue) || parsedValue < 0) {
+							parsedValue =
+								this.syncClient.getSettings()
+									.networkRetryIntervalMs;
+						}
+
+						if (value !== parsedValue.toString()) {
+							input.setValue(parsedValue.toString());
+						}
+
+						return this.syncClient.setSetting(
+							"networkRetryIntervalMs",
+							parsedValue
+						);
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Minimum save interval (ms)")
+			.setDesc(
+				"The minimum time between saving settings and database to disk, in milliseconds. Lower values save more frequently but may impact performance."
+			)
+			.addText((input) =>
+				input
+					.setValue(
+						this.syncClient
+							.getSettings()
+							.minimumSaveIntervalMs.toString()
+					)
+					.onChange(async (value) => {
+						if (value === "") {
+							return;
+						}
+						let parsedValue = Number.parseInt(value, 10);
+						if (Number.isNaN(parsedValue) || parsedValue < 0) {
+							parsedValue =
+								this.syncClient.getSettings()
+									.minimumSaveIntervalMs;
+						}
+
+						if (value !== parsedValue.toString()) {
+							input.setValue(parsedValue.toString());
+						}
+
+						return this.syncClient.setSetting(
+							"minimumSaveIntervalMs",
+							parsedValue
+						);
+					})
 			);
 	}
 
