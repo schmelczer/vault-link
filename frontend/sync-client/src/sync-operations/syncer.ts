@@ -20,6 +20,7 @@ import type { DocumentVersionWithoutContent } from "../services/types/DocumentVe
 import type { WebSocketVaultUpdate } from "../services/types/WebSocketVaultUpdate";
 import type { WebSocketManager } from "../services/websocket-manager";
 import type { WebSocketClientMessage } from "../services/types/WebSocketClientMessage";
+import { awaitAll } from "../utils/await-all";
 
 export class Syncer {
 	private readonly remoteDocumentsLock: Locks<DocumentId>;
@@ -277,7 +278,7 @@ export class Syncer {
 		message: WebSocketVaultUpdate
 	): Promise<void> {
 		try {
-			const handlerPromise = Promise.allSettled(
+			const handlerPromise = awaitAll(
 				message.documents.map(async (document) =>
 					this.internalSyncRemotelyUpdatedFile(document)
 				)
@@ -405,7 +406,7 @@ export class Syncer {
 			}
 		}
 
-		const updates = Promise.allSettled(
+		const updates = awaitAll(
 			allLocalFiles.map(async (relativePath) => {
 				if (
 					this.database.getLatestDocumentByRelativePath(relativePath)
@@ -463,7 +464,7 @@ export class Syncer {
 			})
 		);
 
-		const deletes = Promise.allSettled(
+		const deletes = awaitAll(
 			locallyPossiblyDeletedFiles.map(async ({ relativePath }) => {
 				this.logger.debug(
 					`Document ${relativePath} has been deleted locally, scheduling sync to delete it`
@@ -474,7 +475,7 @@ export class Syncer {
 			})
 		);
 
-		await Promise.allSettled([updates, deletes]);
+		await awaitAll([updates, deletes]);
 	}
 
 	/**
@@ -487,7 +488,7 @@ export class Syncer {
 			return;
 		}
 
-		const [allLocalFiles, remote] = await Promise.allSettled([
+		const [allLocalFiles, remote] = await awaitAll([
 			this.operations.listFilesRecursively(),
 			this.syncQueue.add(async () => this.syncService.getAll())
 		]);

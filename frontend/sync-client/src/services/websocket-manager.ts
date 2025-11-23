@@ -6,6 +6,7 @@ import type { CursorPositionFromClient } from "./types/CursorPositionFromClient"
 import type { ClientCursors } from "./types/ClientCursors";
 import { createPromise } from "../utils/create-promise";
 import type { WebSocketVaultUpdate } from "./types/WebSocketVaultUpdate";
+import { awaitAll } from "../utils/await-all";
 
 export class WebSocketManager {
 	private readonly webSocketStatusChangeListeners: ((
@@ -98,13 +99,13 @@ export class WebSocketManager {
 			await promise;
 		}
 
-		await Promise.allSettled(this.outstandingPromises).then(() => {});
+		await awaitAll(this.outstandingPromises).then(() => {});
 	}
 
 	public sendHandshakeMessage(
 		message: WebSocketClientMessage & { type: "handshake" }
 	): void {
-		const {webSocket} = this;
+		const { webSocket } = this;
 		if (!webSocket) {
 			throw new Error(
 				"WebSocket is not connected, cannot send handshake message"
@@ -126,7 +127,7 @@ export class WebSocketManager {
 			type: "cursorPositions",
 			...cursorPositions
 		};
-		const {webSocket} = this;
+		const { webSocket } = this;
 		if (!webSocket) {
 			this.logger.warn(
 				"WebSocket is not connected, cannot send cursor positions"

@@ -53,13 +53,11 @@ async function runTest({
 	}
 
 	try {
-		await Promise.allSettled(clients.map(async (client) => client.init()));
+		await Promise.all(clients.map(async (client) => client.init()));
 
 		for (let i = 0; i < iterations; i++) {
 			console.info(`Iteration ${i + 1}/${iterations}`);
-			await Promise.allSettled(
-				clients.map(async (client) => client.act())
-			);
+			await Promise.all(clients.map(async (client) => client.act()));
 			await sleep(100);
 		}
 

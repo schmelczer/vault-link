@@ -1,4 +1,5 @@
 import type { Logger } from "../../tracing/logger";
+import { awaitAll } from "../await-all";
 
 /**
  * Manages exclusive locks on items to prevent concurrent modifications.
@@ -54,9 +55,7 @@ export class Locks<T> {
 		const uniqueKeys = Array.from(new Set(keys));
 		uniqueKeys.sort((a, b) => String(a).localeCompare(String(b))); // Ensure consistent order to prevent deadlocks
 
-		await Promise.allSettled(
-			uniqueKeys.map(async (key) => this.waitForLock(key))
-		);
+		await awaitAll(uniqueKeys.map(async (key) => this.waitForLock(key)));
 
 		try {
 			return await fn();
