@@ -220,8 +220,6 @@ export class SyncClient {
 		}
 		this.hasStarted = true;
 
-		await this.serverConfig.initialize();
-
 		if (
 			!this.unloadTelemetry &&
 			this.settings.getSettings().enableTelemetry
@@ -311,6 +309,7 @@ export class SyncClient {
 		this.resetInMemoryState();
 		this.hasStartedOfflineSync = false;
 		this.hasFinishedOfflineSync = false;
+		this.serverConfig.reset();
 
 		// restart syncing
 		this.fetchController.finishReset();
@@ -456,6 +455,8 @@ export class SyncClient {
 
 	private async startSyncing(): Promise<void> {
 		this.checkIfDestroyed();
+
+		await this.serverConfig.initialize();
 
 		if (!this.hasStartedOfflineSync) {
 			this.hasStartedOfflineSync = true;

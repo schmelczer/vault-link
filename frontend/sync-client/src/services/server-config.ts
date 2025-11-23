@@ -1,9 +1,13 @@
-import { createPromise } from "../utils/create-promise";
+import { SUPPORTED_API_VERSION } from "../consts";
+import { AuthenticationError } from "./authentication-error";
+import { ServerVersionMismatchError } from "./server-version-mismatch-error";
 import type { SyncService } from "./sync-service";
 import type { PingResponse } from "./types/PingResponse";
 
 export interface ServerConfigData {
 	mergeableFileExtensions: string[];
+	supportedApiVersion: number;
+	isAuthenticated: boolean;
 }
 
 export class ServerConfig {
@@ -15,6 +19,22 @@ export class ServerConfig {
 	public async initialize(): Promise<void> {
 		this.response = this.syncService.ping();
 		this.config = await this.response;
+
+		if (this.config.supportedApiVersion !== SUPPORTED_API_VERSION) {
+			const shouldUpgradeClient =
+				this.config.supportedApiVersion > SUPPORTED_API_VERSION;
+			throw new ServerVersionMismatchError(
+				`Unsupported API version: ${this.config.supportedApiVersion}. Consider upgrading the ${
+					shouldUpgradeClient ? "client" : "sync-server"
+				} to ensure compatibility.`
+			);
+		}
+
+		if (!this.config.isAuthenticated) {
+			throw new AuthenticationError(
+				"Failed to authenticate with the sync-server."
+			);
+		}
 	}
 
 	public async checkConnection(forceUpdate = false): Promise<{
