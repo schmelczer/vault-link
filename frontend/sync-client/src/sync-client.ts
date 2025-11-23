@@ -148,7 +148,16 @@ export class SyncClient {
 			}
 		);
 
-		const connectionStatus = new ConnectionStatus(settings, logger);
+		const connectionStatus = new FetchController(
+			settings.getSettings().isSyncEnabled,
+			logger
+		);
+		settings.addOnSettingsChangeListener((newSettings, oldSettings) => {
+			if (oldSettings.isSyncEnabled != newSettings.isSyncEnabled) {
+				connectionStatus.canFetch = newSettings.isSyncEnabled;
+			}
+		});
+
 		const syncService = new SyncService(
 			deviceId,
 			connectionStatus,
