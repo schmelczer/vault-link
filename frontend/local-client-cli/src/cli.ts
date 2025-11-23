@@ -87,19 +87,20 @@ async function main(): Promise<void> {
 	];
 
 	const settings: SyncSettings = {
+		...DEFAULT_SETTINGS,
 		remoteUri: args.remoteUri,
 		token: args.token,
 		vaultName: args.vaultName,
 		syncConcurrency:
 			args.syncConcurrency ?? DEFAULT_SETTINGS.syncConcurrency,
 		maxFileSizeMB: args.maxFileSizeMB ?? DEFAULT_SETTINGS.maxFileSizeMB,
-		diffCacheSizeMB: DEFAULT_SETTINGS.diffCacheSizeMB,
 		ignorePatterns,
 		webSocketRetryIntervalMs:
 			args.webSocketRetryIntervalMs ??
 			DEFAULT_SETTINGS.webSocketRetryIntervalMs,
 		isSyncEnabled: true,
-		enableTelemetry: args.enableTelemetry ?? false
+		enableTelemetry:
+			args.enableTelemetry ?? DEFAULT_SETTINGS.enableTelemetry
 	};
 
 	const client = await SyncClient.create({

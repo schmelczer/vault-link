@@ -22,8 +22,8 @@ use crate::{
     errors::{SyncServerError, not_found_error, server_error},
     server::requests::UpdateBinaryDocumentVersion,
     utils::{
-        dedup_paths::dedup_paths, find_first_available_path::find_first_available_path,
-        is_binary::is_binary, is_file_type_mergable::is_file_type_mergable, normalize::normalize,
+        find_first_available_path::find_first_available_path, is_binary::is_binary,
+        is_file_type_mergable::is_file_type_mergable, normalize::normalize,
         sanitize_path::sanitize_path,
     },
 };

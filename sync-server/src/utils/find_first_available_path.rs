@@ -9,9 +9,9 @@ pub async fn find_first_available_path(
     transaction: &mut Transaction<'_>,
 ) -> Result<String> {
     let mut new_relative_path = String::default();
-    for candidate in dedup_paths(&sanitized_relative_path) {
+    for candidate in dedup_paths(sanitized_relative_path) {
         if database
-            .get_latest_document_by_path(&vault_id, &candidate, Some(transaction))
+            .get_latest_document_by_path(vault_id, &candidate, Some(transaction))
             .await?
             .is_none()
         {
