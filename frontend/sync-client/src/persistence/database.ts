@@ -183,7 +183,7 @@ export class Database {
 
 		const currentPromises = entry.updates;
 		entry.updates = [...currentPromises, promise];
-		await Promise.all(currentPromises);
+		await Promise.allSettled(currentPromises);
 
 		return entry;
 	}

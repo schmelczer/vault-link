@@ -54,7 +54,9 @@ export class Locks<T> {
 		const uniqueKeys = Array.from(new Set(keys));
 		uniqueKeys.sort((a, b) => String(a).localeCompare(String(b))); // Ensure consistent order to prevent deadlocks
 
-		await Promise.all(uniqueKeys.map(async (key) => this.waitForLock(key)));
+		await Promise.allSettled(
+			uniqueKeys.map(async (key) => this.waitForLock(key))
+		);
 
 		try {
 			return await fn();
