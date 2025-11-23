@@ -77,7 +77,7 @@ export class SyncClient {
 	// Missing values will be filled in from DEFAULT_SETTINGS rather than
 	// retaining current in-memory settings.
 	public async reloadSettings(): Promise<void> {
-		let state = (await this.persistence.load()) ?? {
+		const state = (await this.persistence.load()) ?? {
 			settings: undefined
 		};
 

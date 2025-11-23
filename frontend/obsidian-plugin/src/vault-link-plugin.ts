@@ -38,7 +38,7 @@ export default class VaultLinkPlugin extends Plugin {
 		() => Promise<unknown>
 	>();
 
-	private syncClient: SyncClient | undefined;
+	private readonly syncClient: SyncClient | undefined;
 	private settingsTab: SyncSettingsTab | undefined;
 
 	public async onload(): Promise<void> {
@@ -152,7 +152,7 @@ export default class VaultLinkPlugin extends Plugin {
 
 		this.registerView(HistoryView.TYPE, (leaf) => {
 			const view = new HistoryView(client, leaf);
-			this.register(() => view.onClose());
+			this.register(async () => view.onClose());
 			return view;
 		});
 
@@ -180,7 +180,7 @@ export default class VaultLinkPlugin extends Plugin {
 			this.app.workspace,
 			client
 		);
-		this.register(() => editorStatusDisplayManager.dispose());
+		this.register(() => { editorStatusDisplayManager.dispose(); });
 	}
 
 	private addRibbonIcons(): void {

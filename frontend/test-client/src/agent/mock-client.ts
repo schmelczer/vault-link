@@ -1,11 +1,12 @@
-import type { StoredDatabase } from "sync-client";
+import type { StoredDatabase ,
+	TextWithCursors
+} from "sync-client";
 import { assert } from "../utils/assert";
 import {
 	type RelativePath,
 	type FileSystemOperations,
 	type SyncSettings,
-	SyncClient,
-	TextWithCursors
+	SyncClient
 } from "sync-client";
 
 export class MockClient implements FileSystemOperations {

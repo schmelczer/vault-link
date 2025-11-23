@@ -106,7 +106,7 @@ describe("FetchController", () => {
 		const controller = new FetchController(true, logger);
 
 		assert.throws(
-			() => controller.finishReset(),
+			() => { controller.finishReset(); },
 			(error: unknown) =>
 				error instanceof Error &&
 				error.message === "Cannot finish reset when not resetting"
