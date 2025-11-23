@@ -37,6 +37,19 @@ export default [
 			"@typescript-eslint/no-magic-numbers": "off",
 			"@typescript-eslint/prefer-readonly-parameter-types": "off",
 			"@typescript-eslint/naming-convention": "off",
+			"no-restricted-properties": [
+				"error",
+				{
+					object: "Promise",
+					property: "all",
+					message: "Use Promise.allSettled instead of Promise.all to always await all promises."
+				},
+				{
+					object: "String",
+					property: "replace",
+					message: "Use replaceAll instead of replace to replace all occurrences of a substring."
+				}
+			],
 			"unused-imports/no-unused-vars": [
 				"warn",
 				{
