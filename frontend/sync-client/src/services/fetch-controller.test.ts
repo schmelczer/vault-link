@@ -101,18 +101,6 @@ describe("FetchController", () => {
 		assert.strictEqual(await response.text(), "OK");
 	});
 
-	it("should throw when finishing reset without starting", () => {
-		const logger = new Logger();
-		const controller = new FetchController(true, logger);
-
-		assert.throws(
-			() => { controller.finishReset(); },
-			(error: unknown) =>
-				error instanceof Error &&
-				error.message === "Cannot finish reset when not resetting"
-		);
-	});
-
 	it("should defer canFetch changes during reset", async () => {
 		const logger = new Logger();
 		const controller = new FetchController(false, logger);

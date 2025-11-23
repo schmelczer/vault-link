@@ -326,7 +326,7 @@ export class Database {
 		});
 	}
 
-	public save(): Promise<void> {
+	public async save(): Promise<void> {
 		return this.saveData({
 			documents: this.resolvedDocuments.map(
 				({ relativePath, documentId, metadata }) => ({

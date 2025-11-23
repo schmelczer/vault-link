@@ -180,7 +180,9 @@ export default class VaultLinkPlugin extends Plugin {
 			this.app.workspace,
 			client
 		);
-		this.register(() => { editorStatusDisplayManager.dispose(); });
+		this.register(() => {
+			editorStatusDisplayManager.dispose();
+		});
 	}
 
 	private addRibbonIcons(): void {
