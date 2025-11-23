@@ -30,7 +30,7 @@ export class SyncClient {
 	private hasStartedOfflineSync = false;
 	private hasFinishedOfflineSync = false;
 	private hasStarted = false;
-	private hasBeenDestroyed = false;
+	private readonly hasBeenDestroyed = false;
 	private unloadTelemetry?: () => void;
 
 	private constructor(
