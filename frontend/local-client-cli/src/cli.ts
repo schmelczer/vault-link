@@ -226,7 +226,7 @@ async function main(): Promise<void> {
 		);
 
 		fileWatcher.stop();
-		await client.waitAndStop();
+		await client.destroy();
 		process.exit(1);
 	}
 }

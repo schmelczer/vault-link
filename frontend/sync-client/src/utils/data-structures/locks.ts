@@ -66,6 +66,11 @@ export class Locks<T> {
 		}
 	}
 
+	public reset(): void {
+		this.locked.clear();
+		this.waiters.clear();
+	}
+
 	/**
 	 * Attempts to acquire a lock immediately without waiting.
 	 * Must call `unlock()` if successful.
@@ -130,11 +135,6 @@ export class Locks<T> {
 		} else {
 			this.locked.delete(key);
 		}
-	}
-
-	public reset(): void {
-		this.locked.clear();
-		this.waiters.clear();
 	}
 }
 

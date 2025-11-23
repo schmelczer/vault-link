@@ -1,8 +1,6 @@
 import type { Stat, Vault, Workspace } from "obsidian";
 import { MarkdownView, normalizePath } from "obsidian";
-import type {
-	CursorPosition,
-	TextWithCursors} from "sync-client";
+import type { CursorPosition, TextWithCursors } from "sync-client";
 import {
 	utils,
 	type FileSystemOperations,

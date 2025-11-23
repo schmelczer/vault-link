@@ -319,13 +319,6 @@ export class Database {
 		this.saveInTheBackground();
 	}
 
-	private saveInTheBackground(): void {
-		this.ensureConsistency();
-		void this.save().catch((error: unknown) => {
-			this.logger.error(`Error saving data: ${error}`);
-		});
-	}
-
 	public async save(): Promise<void> {
 		return this.saveData({
 			documents: this.resolvedDocuments.map(
@@ -361,5 +354,12 @@ export class Database {
 					duplicates.join("; ")
 			);
 		}
+	}
+
+	private saveInTheBackground(): void {
+		this.ensureConsistency();
+		void this.save().catch((error: unknown) => {
+			this.logger.error(`Error saving data: ${error}`);
+		});
 	}
 }

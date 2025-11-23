@@ -1,3 +1,4 @@
+import type { Mock } from "node:test";
 import { describe, it, mock, beforeEach, afterEach } from "node:test";
 import assert from "node:assert";
 import { FetchController } from "./fetch-controller";
@@ -6,7 +7,9 @@ import { SyncResetError } from "./sync-reset-error";
 import { sleep } from "../utils/sleep";
 
 describe("FetchController", () => {
-	const createMockFetch = (shouldSleep: boolean) =>
+	const createMockFetch = (
+		shouldSleep: boolean
+	): Mock<() => Promise<Response>> =>
 		mock.fn(async () => {
 			if (shouldSleep) {
 				await sleep(30);
