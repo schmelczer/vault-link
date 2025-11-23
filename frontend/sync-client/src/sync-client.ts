@@ -1,16 +1,17 @@
 import type { PersistenceProvider } from "./persistence/persistence";
 import type { HistoryEntry, HistoryStats } from "./tracing/sync-history";
 import { SyncHistory } from "./tracing/sync-history";
-import { Logger } from "./tracing/logger";
+import { Logger, LogLevel, LogLine } from "./tracing/logger";
 import type { RelativePath, StoredDatabase } from "./persistence/database";
 import { Database } from "./persistence/database";
+import * as Sentry from "@sentry/browser";
 import type { SyncSettings } from "./persistence/settings";
-import { Settings } from "./persistence/settings";
+import { DEFAULT_SETTINGS, Settings } from "./persistence/settings";
 import { SyncService } from "./services/sync-service";
 import { Syncer } from "./sync-operations/syncer";
 import type { FileSystemOperations } from "./file-operations/filesystem-operations";
 import { FileOperations } from "./file-operations/file-operations";
-import { ConnectionStatus } from "./services/connection-status";
+import { FetchController } from "./services/fetch-controller";
 import { UnrestrictedSyncer } from "./sync-operations/unrestricted-syncer";
 import { rateLimit } from "./utils/rate-limit";
 import type { NetworkConnectionStatus } from "./types/network-connection-status";
@@ -23,9 +24,9 @@ import type { MaybeOutdatedClientCursors } from "./types/maybe-outdated-client-c
 import { FileChangeNotifier } from "./sync-operations/file-change-notifier";
 import { FixedSizeDocumentCache } from "./utils/data-structures/fix-sized-cache";
 import { setUpTelemetry } from "./utils/set-up-telemetry";
+import { DIFF_CACHE_SIZE_MB, MINIMUM_SAVE_INTERVAL_MS } from "./consts";
 
 export class SyncClient {
-	private static readonly MINIMUM_SAVE_INTERVAL_MS = 1000;
 	private hasStartedOfflineSync = false;
 	private hasFinishedOfflineSync = false;
 	private unloadTelemetry?: () => void;
@@ -37,53 +38,84 @@ export class SyncClient {
 		private readonly syncer: Syncer,
 		private readonly syncService: SyncService,
 		private readonly webSocketManager: WebSocketManager,
-		private readonly _logger: Logger,
-		private readonly connectionStatus: ConnectionStatus,
+		public readonly logger: Logger,
+		private readonly fetchController: FetchController,
 		private readonly cursorTracker: CursorTracker,
 		private readonly fileChangeNotifier: FileChangeNotifier,
-		private readonly contentCache: FixedSizeDocumentCache
-	) {
-		if (settings.getSettings().enableTelemetry) {
+		private readonly contentCache: FixedSizeDocumentCache,
+		private readonly persistence: PersistenceProvider<
+			Partial<{
+				settings: Partial<SyncSettings>;
+				database: Partial<StoredDatabase>;
+			}>
+		>
+	) {}
+
+	public async start(): Promise<void> {
+		if (this.settings.getSettings().enableTelemetry) {
 			this.unloadTelemetry = setUpTelemetry();
 		}
 
-		this.settings.addOnSettingsChangeListener(
-			async (newSettings, oldSettings) => {
-				if (newSettings.vaultName !== oldSettings.vaultName) {
-					await this.reset();
-				}
-
-				if (newSettings.isSyncEnabled !== oldSettings.isSyncEnabled) {
-					if (newSettings.isSyncEnabled) {
-						await this.start();
-					} else {
-						this.stop();
-					}
-				}
-
-				if (
-					newSettings.diffCacheSizeMB !== oldSettings.diffCacheSizeMB
-				) {
-					this.contentCache.resize(
-						newSettings.diffCacheSizeMB * 1024 * 1024
-					);
-				}
-
-				if (
-					newSettings.enableTelemetry !== oldSettings.enableTelemetry
-				) {
-					if (newSettings.enableTelemetry) {
-						this.unloadTelemetry = setUpTelemetry();
-					} else {
-						this.unloadTelemetry?.();
-					}
-				}
+		this.logger.addOnMessageListener((log): void => {
+			if (log.level === LogLevel.ERROR && Sentry.isInitialized()) {
+				Sentry.captureMessage(log.message);
 			}
+		});
+
+		this.settings.addOnSettingsChangeListener(
+			this.onSettingsChange.bind(this)
 		);
+
+		if (this.settings.getSettings().isSyncEnabled) {
+			this.logger.info("Starting SyncClient");
+			await this.startSyncing();
+			this.logger.info("SyncClient has successfully started");
+		}
 	}
 
-	public get logger(): Logger {
-		return this._logger;
+	// Reload settings from disk overriding current in-memory settings.
+	// Missing values will be filled in from DEFAULT_SETTINGS rather than
+	// retaining current in-memory settings.
+	public async reloadSettings(): Promise<void> {
+		let state = (await this.persistence.load()) ?? {
+			settings: undefined
+		};
+
+		const settings = {
+			...DEFAULT_SETTINGS,
+			...(state.settings ?? {})
+		};
+
+		this.setSettings(settings);
+	}
+
+	private async onSettingsChange(
+		newSettings: SyncSettings,
+		oldSettings: SyncSettings
+	): Promise<void> {
+		if (newSettings.vaultName !== oldSettings.vaultName) {
+			await this.reset();
+		}
+
+		if (newSettings.isSyncEnabled !== oldSettings.isSyncEnabled) {
+			if (newSettings.isSyncEnabled) {
+				await this.startSyncing();
+			} else {
+				this.stop();
+			}
+		}
+
+		if (newSettings.diffCacheSizeMB !== oldSettings.diffCacheSizeMB) {
+			this.contentCache.resize(newSettings.diffCacheSizeMB * 1024 * 1024);
+		}
+
+		if (newSettings.enableTelemetry !== oldSettings.enableTelemetry) {
+			if (newSettings.enableTelemetry) {
+				this.unloadTelemetry = setUpTelemetry();
+			} else {
+				this.unloadTelemetry?.();
+			}
+		}
 	}
 
 	public get documentCount(): number {
@@ -116,7 +148,7 @@ export class SyncClient {
 
 		const deviceId = createClientId();
 
-		logger.info(`Initialising SyncClient with client id ${deviceId}`);
+		logger.info(`Creating SyncClient with client id ${deviceId}`);
 
 		const history = new SyncHistory(logger);
 
@@ -127,7 +159,7 @@ export class SyncClient {
 
 		const rateLimitedSave = rateLimit(
 			persistence.save,
-			SyncClient.MINIMUM_SAVE_INTERVAL_MS
+			MINIMUM_SAVE_INTERVAL_MS
 		);
 
 		const database = new Database(
@@ -148,19 +180,19 @@ export class SyncClient {
 			}
 		);
 
-		const connectionStatus = new FetchController(
+		const fetchController = new FetchController(
 			settings.getSettings().isSyncEnabled,
 			logger
 		);
 		settings.addOnSettingsChangeListener((newSettings, oldSettings) => {
 			if (oldSettings.isSyncEnabled != newSettings.isSyncEnabled) {
-				connectionStatus.canFetch = newSettings.isSyncEnabled;
+				fetchController.canFetch = newSettings.isSyncEnabled;
 			}
 		});
 
 		const syncService = new SyncService(
 			deviceId,
-			connectionStatus,
+			fetchController,
 			settings,
 			logger,
 			fetch
@@ -173,7 +205,9 @@ export class SyncClient {
 			nativeLineEndings
 		);
 
-		const contentCache = new FixedSizeDocumentCache(1024 * 1024 * 2); // 2 MB cache
+		const contentCache = new FixedSizeDocumentCache(
+			1024 * 1024 * DIFF_CACHE_SIZE_MB
+		);
 		const unrestrictedSyncer = new UnrestrictedSyncer(
 			logger,
 			database,
@@ -184,22 +218,22 @@ export class SyncClient {
 			contentCache
 		);
 
-		const syncer = new Syncer(
+		const webSocketManager = new WebSocketManager(
+			deviceId,
 			logger,
-			database,
 			settings,
-			syncService,
-			fileOperations,
-			unrestrictedSyncer
+			webSocket
 		);
 
-		const webSocketManager = new WebSocketManager(
+		const syncer = new Syncer(
 			deviceId,
 			logger,
 			database,
 			settings,
-			syncer,
-			webSocket
+			syncService,
+			webSocketManager,
+			fileOperations,
+			unrestrictedSyncer
 		);
 
 		const fileChangeNotifier = new FileChangeNotifier();
@@ -217,13 +251,14 @@ export class SyncClient {
 			syncService,
 			webSocketManager,
 			logger,
-			connectionStatus,
+			fetchController,
 			cursorTracker,
 			fileChangeNotifier,
-			contentCache
+			contentCache,
+			persistence
 		);
 
-		logger.info("SyncClient initialised");
+		logger.info("SyncClient created successfully");
 
 		return client;
 	}
@@ -247,39 +282,48 @@ export class SyncClient {
 		this.history.addSyncHistoryUpdateListener(listener);
 	}
 
-	public async start(): Promise<void> {
+	private async startSyncing(): Promise<void> {
 		if (!this.hasStartedOfflineSync) {
-			await this.syncer.scheduleSyncForOfflineChanges();
 			this.hasStartedOfflineSync = true;
+			await this.syncer.scheduleSyncForOfflineChanges();
 		}
 
 		this.hasFinishedOfflineSync = true;
 		this.webSocketManager.start();
 	}
 
-	public stop(): void {
+	private stop(): void {
 		this.hasFinishedOfflineSync = false;
 		this.webSocketManager.stop();
+
+		this.unloadTelemetry?.();
 	}
 
-	public async waitAndStop(): Promise<void> {
-		this.stop();
+	public async waitUntilStopped(): Promise<void> {
 		await this.syncer.waitUntilFinished();
+	}
+
+	public async applyChangedConnectionSettings(): Promise<void> {
+		this.fetchController.startReset();
+		this.webSocketManager.stop();
+
+		this.webSocketManager.start();
+		this.fetchController.finishReset();
 	}
 
 	/// Wait for the in-flight operations to finish, reset all tracking,
 	/// and the local database but retain the settings.
 	/// The SyncClient can be used again after calling this method.
-	public async reset(): Promise<void> {
+	private async reset(): Promise<void> {
 		this.stop();
-		this.connectionStatus.startReset();
+		this.fetchController.startReset();
 		this.contentCache.clear();
 		await this.syncer.reset();
 		this.history.reset();
 		this.database.reset();
-		this._logger.reset();
-		this.connectionStatus.finishReset();
-		await this.start();
+		this.logger.reset();
+		this.fetchController.finishReset();
+		await this.startSyncing();
 	}
 
 	public getSettings(): SyncSettings {
@@ -298,9 +342,9 @@ export class SyncClient {
 	}
 
 	public addOnSettingsChangeListener(
-		handler: (settings: SyncSettings, oldSettings: SyncSettings) => unknown
+		listener: (settings: SyncSettings, oldSettings: SyncSettings) => unknown
 	): void {
-		this.settings.addOnSettingsChangeListener(handler);
+		this.settings.addOnSettingsChangeListener(listener);
 	}
 
 	public addRemainingSyncOperationsListener(
@@ -348,10 +392,7 @@ export class SyncClient {
 			return DocumentSyncStatus.SYNCING_IS_DISABLED;
 		}
 
-		if (
-			!this.webSocketManager.isFirstSyncCompleted ||
-			!this.hasFinishedOfflineSync
-		) {
+		if (!this.syncer.isFirstSyncComplete || !this.hasFinishedOfflineSync) {
 			return DocumentSyncStatus.SYNCING;
 		}
 
