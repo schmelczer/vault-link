@@ -133,7 +133,7 @@ export class Database {
 
 		toUpdate.metadata = metadata;
 
-		this.save();
+		this.saveInTheBackground();
 	}
 
 	public removeDocumentPromise(promise: Promise<unknown>): void {
@@ -153,7 +153,7 @@ export class Database {
 
 	public removeDocument(find: DocumentRecord): void {
 		this.documents = this.documents.filter((document) => document !== find);
-		this.save();
+		this.saveInTheBackground();
 	}
 
 	public getLatestDocumentByRelativePath(
@@ -210,7 +210,7 @@ export class Database {
 		};
 
 		this.documents.push(entry);
-		this.save();
+		this.saveInTheBackground();
 
 		return entry;
 	}
@@ -234,7 +234,7 @@ export class Database {
 		};
 
 		this.documents.push(entry);
-		this.save();
+		this.saveInTheBackground();
 
 		return entry;
 	}
@@ -271,7 +271,7 @@ export class Database {
 		oldDocument.parallelVersion =
 			newDocument !== undefined ? newDocument.parallelVersion + 1 : 0;
 
-		this.save();
+		this.saveInTheBackground();
 	}
 
 	public delete(relativePath: RelativePath): void {
@@ -290,7 +290,7 @@ export class Database {
 
 	public setHasInitialSyncCompleted(value: boolean): void {
 		this.hasInitialSyncCompleted = value;
-		this.save();
+		this.saveInTheBackground();
 	}
 
 	public getLastSeenUpdateId(): VaultUpdateId {
@@ -301,13 +301,13 @@ export class Database {
 		const previousMin = this.lastSeenUpdateIds.min;
 		this.lastSeenUpdateIds.add(value);
 		if (previousMin !== this.lastSeenUpdateIds.min) {
-			this.save();
+			this.saveInTheBackground();
 		}
 	}
 
 	public setLastSeenUpdateId(value: number): void {
 		this.lastSeenUpdateIds.min = value;
-		this.save();
+		this.saveInTheBackground();
 	}
 
 	public reset(): void {
@@ -316,12 +316,18 @@ export class Database {
 			0 // the first updateId will be 1 which is the first integer after -1
 		);
 		this.hasInitialSyncCompleted = false;
-		this.save();
+		this.saveInTheBackground();
 	}
 
-	private save(): void {
+	private saveInTheBackground(): void {
 		this.ensureConsistency();
-		void this.saveData({
+		void this.save().catch((error: unknown) => {
+			this.logger.error(`Error saving data: ${error}`);
+		});
+	}
+
+	public save(): Promise<void> {
+		return this.saveData({
 			documents: this.resolvedDocuments.map(
 				({ relativePath, documentId, metadata }) => ({
 					documentId,
@@ -332,8 +338,6 @@ export class Database {
 			),
 			lastSeenUpdateId: this.lastSeenUpdateIds.min,
 			hasInitialSyncCompleted: this.hasInitialSyncCompleted
-		}).catch((error: unknown) => {
-			this.logger.error(`Error saving data: ${error}`);
 		});
 	}
 

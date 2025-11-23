@@ -21,13 +21,13 @@ export class WebSocketManager {
 		cursors: ClientCursors[]
 	) => Promise<void>)[] = [];
 
-	private webSocket: WebSocket | undefined;
-
 	private isStopped = true;
 	private resolveDisconnectingPromise: null | (() => unknown) = null;
 	private reconnectTimeoutId: ReturnType<typeof setTimeout> | undefined;
 
 	private readonly outstandingPromises: Promise<unknown>[] = [];
+
+	private webSocket: WebSocket | undefined;
 	private readonly webSocketFactoryImplementation: typeof globalThis.WebSocket;
 
 	public constructor(

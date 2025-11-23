@@ -32,7 +32,6 @@ export class Syncer {
 	private readonly syncQueue: PQueue;
 
 	private _isFirstSyncComplete = false;
-
 	private runningScheduleSyncForOfflineChanges: Promise<void> | undefined;
 
 	public constructor(
@@ -513,5 +512,12 @@ export class Syncer {
 		}
 
 		this.database.setHasInitialSyncCompleted(true);
+	}
+
+	public reset(): void {
+		this._isFirstSyncComplete = false;
+		this.syncQueue.clear();
+		this.remoteDocumentsLock.reset();
+		this.runningScheduleSyncForOfflineChanges = undefined;
 	}
 }

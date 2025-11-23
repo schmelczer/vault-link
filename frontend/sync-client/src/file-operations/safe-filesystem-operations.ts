@@ -138,4 +138,8 @@ export class SafeFileSystemOperations implements FileSystemOperations {
 			}
 		}
 	}
+
+	public reset(): void {
+		this.locks.reset();
+	}
 }

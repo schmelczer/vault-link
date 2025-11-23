@@ -77,7 +77,7 @@ export class FetchController {
 	 */
 	public finishReset(): void {
 		if (!this.isResetting) {
-			throw new Error("Cannot finish reset when not resetting");
+			return;
 		}
 
 		this.isResetting = false;
