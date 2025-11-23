@@ -42,7 +42,12 @@ export default [
 				{
 					object: "Promise",
 					property: "all",
-					message: "Use Promise.allSettled instead of Promise.all to always await all promises."
+					message: "Use `awaitAll` instead of Promise.all to always await all promises."
+				},
+                {
+					object: "Promise",
+					property: "allSettled",
+					message: "Use `awaitAll` instead of Promise.allSettled to always await all promises and throw on errors."
 				},
 				{
 					object: "String",

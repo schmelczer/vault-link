@@ -1,6 +1,7 @@
 import type { Logger } from "../tracing/logger";
 import { EMPTY_HASH } from "../utils/hash";
 import { CoveredValues } from "../utils/data-structures/min-covered";
+import { awaitAll } from "../utils/await-all";
 
 export type VaultUpdateId = number;
 export type DocumentId = string;
@@ -183,7 +184,7 @@ export class Database {
 
 		const currentPromises = entry.updates;
 		entry.updates = [...currentPromises, promise];
-		await Promise.allSettled(currentPromises);
+		await awaitAll(currentPromises);
 
 		return entry;
 	}
