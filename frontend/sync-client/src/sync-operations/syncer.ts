@@ -17,7 +17,9 @@ import { createPromise } from "../utils/create-promise";
 import { SyncResetError } from "../services/sync-reset-error";
 import { Locks } from "../utils/data-structures/locks";
 import type { DocumentVersionWithoutContent } from "../services/types/DocumentVersionWithoutContent";
-import type { FixedSizeDocumentCache } from "../utils/data-structures/fix-sized-cache";
+import { WebSocketVaultUpdate } from "../services/types/WebSocketVaultUpdate";
+import { WebSocketManager } from "../services/websocket-manager";
+import { WebSocketClientMessage } from "../services/types/WebSocketClientMessage";
 
 export class Syncer {
 	private readonly remoteDocumentsLock: Locks<DocumentId>;
@@ -26,13 +28,17 @@ export class Syncer {
 	) => unknown)[] = [];
 	private readonly syncQueue: PQueue;
 
+	private _isFirstSyncComplete = false;
+
 	private runningScheduleSyncForOfflineChanges: Promise<void> | undefined;
 
 	public constructor(
+		private readonly deviceId: string,
 		private readonly logger: Logger,
 		private readonly database: Database,
-		settings: Settings,
+		private readonly settings: Settings,
 		private readonly syncService: SyncService,
+		private readonly webSocketManager: WebSocketManager,
 		private readonly operations: FileOperations,
 		private readonly internalSyncer: UnrestrictedSyncer
 	) {
@@ -53,6 +59,22 @@ export class Syncer {
 				listener(this.syncQueue.size);
 			});
 		});
+
+		this.webSocketManager.addWebSocketStatusChangeListener(
+			(isConnected) => {
+				if (isConnected) {
+					// The JS WebSocket API doesn't support setting headers, so we have to send the token as a message
+					this.sendHandshakeMessage();
+				}
+			}
+		);
+		this.webSocketManager.addRemoteVaultUpdateListener(
+			this.syncRemotelyUpdatedFile.bind(this)
+		);
+	}
+
+	public get isFirstSyncComplete(): boolean {
+		return this._isFirstSyncComplete;
 	}
 
 	public addRemainingOperationsListener(
@@ -263,6 +285,42 @@ export class Syncer {
 	}
 
 	public async syncRemotelyUpdatedFile(
+		message: WebSocketVaultUpdate
+	): Promise<void> {
+		try {
+			const handlerPromise = Promise.allSettled(
+				message.documents.map(async (document) =>
+					this.internalSyncRemotelyUpdatedFile(document)
+				)
+			);
+
+			await handlerPromise;
+
+			if (message.isInitialSync && message.documents.length > 0) {
+				this.database.setLastSeenUpdateId(
+					message.documents
+						.map((document) => document.vaultUpdateId)
+						.reduce((a, b) => Math.max(a, b))
+				);
+			}
+
+			this._isFirstSyncComplete = true;
+		} catch (e) {
+			this.logger.error(`Failed to sync remotely updated file: ${e}`);
+		}
+	}
+
+	private sendHandshakeMessage(): void {
+		const message: WebSocketClientMessage = {
+			type: "handshake",
+			deviceId: this.deviceId,
+			token: this.settings.getSettings().token,
+			lastSeenVaultUpdateId: this.database.getLastSeenUpdateId()
+		};
+		this.webSocketManager.sendHandshakeMessage(message);
+	}
+
+	private async internalSyncRemotelyUpdatedFile(
 		remoteVersion: DocumentVersionWithoutContent
 	): Promise<void> {
 		let document = this.database.getDocumentByDocumentId(
