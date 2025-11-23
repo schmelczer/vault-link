@@ -14,6 +14,7 @@ async function runTest({
 	concurrency,
 	iterations,
 	doDeletes,
+	doResets,
 	useSlowFileEvents,
 	jitterScaleInSeconds
 }: {
@@ -21,12 +22,13 @@ async function runTest({
 	concurrency: number;
 	iterations: number;
 	doDeletes: boolean;
+	doResets: boolean;
 	useSlowFileEvents: boolean;
 	jitterScaleInSeconds: number;
 }): Promise<void> {
 	slowFileEvents = useSlowFileEvents;
 
-	const settings = `with ${agentCount} agents, concurrency ${concurrency}, iterations ${iterations}, doDeletes ${doDeletes}, jitterScaleInSeconds ${jitterScaleInSeconds}, useSlowFileEvents ${useSlowFileEvents}`;
+	const settings = `with ${agentCount} agents, concurrency ${concurrency}, iterations ${iterations}, doDeletes ${doDeletes}, doResets ${doResets}, jitterScaleInSeconds ${jitterScaleInSeconds}, useSlowFileEvents ${useSlowFileEvents}`;
 	console.info(`Running test ${settings}`);
 
 	const vaultName = uuidv4();
@@ -46,6 +48,7 @@ async function runTest({
 				initialSettings,
 				`agent-${i}`,
 				doDeletes,
+				doResets,
 				useSlowFileEvents,
 				jitterScaleInSeconds
 			)
@@ -113,6 +116,16 @@ async function runTest({
 }
 
 async function runTests(): Promise<void> {
+	await runTest({
+		agentCount: 2,
+		concurrency: 16,
+		iterations: 100,
+		doDeletes: true,
+		doResets: true,
+		useSlowFileEvents: true,
+		jitterScaleInSeconds: 0.75
+	});
+
 	for (let i = 0; i < TEST_ITERATIONS; i++) {
 		for (const useSlowFileEvents of [false, true]) {
 			for (const concurrency of [
@@ -125,6 +138,7 @@ async function runTests(): Promise<void> {
 						concurrency,
 						iterations: 100,
 						doDeletes,
+						doResets: false,
 						useSlowFileEvents,
 						jitterScaleInSeconds: 0.75
 					});

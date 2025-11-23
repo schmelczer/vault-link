@@ -18,6 +18,7 @@ export class MockAgent extends MockClient {
 		initialSettings: Partial<SyncSettings>,
 		public readonly name: string,
 		private readonly doDeletes: boolean,
+		private readonly doResets: boolean,
 		useSlowFileEvents: boolean,
 		private readonly jitterScaleInSeconds: number
 	) {
@@ -105,6 +106,10 @@ export class MockAgent extends MockClient {
 			if (this.doDeletes) {
 				options.push(this.deleteFileAction.bind(this, files));
 			}
+		}
+
+		if (Math.random() < 0.1 && this.doResets) {
+			options.push(this.resetClient.bind(this));
 		}
 
 		this.pendingActions.push(
@@ -227,6 +232,12 @@ export class MockAgent extends MockClient {
 				);
 			}
 		}
+	}
+
+	private async resetClient(): Promise<void> {
+		this.client.logger.info(`Resetting client ${this.name}`);
+		await this.client.destroy();
+		await this.init();
 	}
 
 	private async createFileAction(): Promise<void> {
