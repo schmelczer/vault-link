@@ -17,9 +17,9 @@ import { createPromise } from "../utils/create-promise";
 import { SyncResetError } from "../services/sync-reset-error";
 import { Locks } from "../utils/data-structures/locks";
 import type { DocumentVersionWithoutContent } from "../services/types/DocumentVersionWithoutContent";
-import { WebSocketVaultUpdate } from "../services/types/WebSocketVaultUpdate";
-import { WebSocketManager } from "../services/websocket-manager";
-import { WebSocketClientMessage } from "../services/types/WebSocketClientMessage";
+import type { WebSocketVaultUpdate } from "../services/types/WebSocketVaultUpdate";
+import type { WebSocketManager } from "../services/websocket-manager";
+import type { WebSocketClientMessage } from "../services/types/WebSocketClientMessage";
 
 export class Syncer {
 	private readonly remoteDocumentsLock: Locks<DocumentId>;
