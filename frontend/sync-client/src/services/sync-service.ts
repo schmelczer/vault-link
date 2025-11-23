@@ -19,11 +19,6 @@ import type { DeleteDocumentVersion } from "./types/DeleteDocumentVersion";
 import type { UpdateTextDocumentVersion } from "./types/UpdateTextDocumentVersion";
 import { NETWORK_RETRY_INTERVAL_MS } from "../consts";
 
-export interface CheckConnectionResult {
-	isSuccessful: boolean;
-	message: string;
-}
-
 export class SyncService {
 	private readonly client: typeof globalThis.fetch;
 	private readonly pingClient: typeof globalThis.fetch;
@@ -65,7 +60,7 @@ export class SyncService {
 		relativePath: RelativePath;
 		contentBytes: Uint8Array;
 	}): Promise<DocumentVersionWithoutContent> {
-		return this.withRetries(async () => {
+		return this.retryForever(async () => {
 			const formData = new FormData();
 			if (documentId !== undefined) {
 				formData.append("document_id", documentId);
@@ -114,7 +109,7 @@ export class SyncService {
 		relativePath: RelativePath;
 		content: (number | string)[];
 	}): Promise<DocumentUpdateResponse> {
-		return this.withRetries(async () => {
+		return this.retryForever(async () => {
 			this.logger.debug(
 				`Updating text document ${documentId} with parent version ${parentVersionId} and relative path ${relativePath}`
 			);
@@ -166,7 +161,7 @@ export class SyncService {
 		relativePath: RelativePath;
 		contentBytes: Uint8Array;
 	}): Promise<DocumentUpdateResponse> {
-		return this.withRetries(async () => {
+		return this.retryForever(async () => {
 			this.logger.debug(
 				`Updating binary document ${documentId} with parent version ${parentVersionId} and relative path ${relativePath}`
 			);
@@ -215,7 +210,7 @@ export class SyncService {
 		documentId: DocumentId;
 		relativePath: RelativePath;
 	}): Promise<DocumentVersionWithoutContent> {
-		return this.withRetries(async () => {
+		return this.retryForever(async () => {
 			const request: DeleteDocumentVersion = {
 				relativePath
 			};
@@ -252,7 +247,7 @@ export class SyncService {
 	}: {
 		documentId: DocumentId;
 	}): Promise<DocumentVersion> {
-		return this.withRetries(async () => {
+		return this.retryForever(async () => {
 			const response = await this.client(
 				this.getUrl(`/documents/${documentId}`),
 				{
@@ -280,7 +275,7 @@ export class SyncService {
 	public async getAll(
 		since?: VaultUpdateId
 	): Promise<FetchLatestDocumentsResponse> {
-		return this.withRetries(async () => {
+		return this.retryForever(async () => {
 			const url = new URL(this.getUrl("/documents"));
 			if (since !== undefined) {
 				url.searchParams.append("since", since.toString());
@@ -308,7 +303,10 @@ export class SyncService {
 		});
 	}
 
-	public async checkConnection(): Promise<CheckConnectionResult> {
+	public async checkConnection(): Promise<{
+		isSuccessful: boolean;
+		message: string;
+	}> {
 		try {
 			const response = await this.pingClient(this.getUrl("/ping"), {
 				headers: this.getDefaultHeaders()
@@ -362,7 +360,7 @@ export class SyncService {
 		return headers;
 	}
 
-	private async withRetries<T>(fn: () => Promise<T>): Promise<T> {
+	private async retryForever<T>(fn: () => Promise<T>): Promise<T> {
 		// eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
 		while (true) {
 			try {
