@@ -26,6 +26,8 @@ export class Syncer {
 	private readonly remainingOperationsListeners: ((
 		remainingOperations: number
 	) => unknown)[] = [];
+
+	// FIFO to limit the number of concurrent sync operations
 	private readonly syncQueue: PQueue;
 
 	private _isFirstSyncComplete = false;
@@ -81,15 +83,6 @@ export class Syncer {
 		listener: (remainingOperations: number) => unknown
 	): void {
 		this.remainingOperationsListeners.push(listener);
-	}
-
-	public removeRemainingOperationsListener(
-		listener: (remainingOperations: number) => unknown
-	): void {
-		const index = this.remainingOperationsListeners.indexOf(listener);
-		if (index !== -1) {
-			this.remainingOperationsListeners.splice(index, 1);
-		}
 	}
 
 	public async syncLocallyCreatedFile(
@@ -280,10 +273,6 @@ export class Syncer {
 		return this.syncQueue.onEmpty();
 	}
 
-	public async reset(): Promise<void> {
-		await this.waitUntilFinished();
-	}
-
 	public async syncRemotelyUpdatedFile(
 		message: WebSocketVaultUpdate
 	): Promise<void> {
@@ -416,7 +405,7 @@ export class Syncer {
 			}
 		}
 
-		const updates = Promise.all(
+		const updates = Promise.allSettled(
 			allLocalFiles.map(async (relativePath) => {
 				if (
 					this.database.getLatestDocumentByRelativePath(relativePath)
@@ -474,7 +463,7 @@ export class Syncer {
 			})
 		);
 
-		const deletes = Promise.all(
+		const deletes = Promise.allSettled(
 			locallyPossiblyDeletedFiles.map(async ({ relativePath }) => {
 				this.logger.debug(
 					`Document ${relativePath} has been deleted locally, scheduling sync to delete it`
@@ -485,7 +474,7 @@ export class Syncer {
 			})
 		);
 
-		await Promise.all([updates, deletes]);
+		await Promise.allSettled([updates, deletes]);
 	}
 
 	/**
@@ -498,7 +487,7 @@ export class Syncer {
 			return;
 		}
 
-		const [allLocalFiles, remote] = await Promise.all([
+		const [allLocalFiles, remote] = await Promise.allSettled([
 			this.operations.listFilesRecursively(),
 			this.syncQueue.add(async () => this.syncService.getAll())
 		]);

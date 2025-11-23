@@ -127,7 +127,7 @@ export class MockAgent extends MockClient {
 
 	public async finish(): Promise<void> {
 		await this.client.setSetting("isSyncEnabled", true);
-		await Promise.all(this.pendingActions);
+		await Promise.allSettled(this.pendingActions);
 		await this.client.waitAndStop();
 	}
 
