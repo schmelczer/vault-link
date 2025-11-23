@@ -131,6 +131,11 @@ export class Locks<T> {
 			this.locked.delete(key);
 		}
 	}
+
+	public reset(): void {
+		this.locked.clear();
+		this.waiters.clear();
+	}
 }
 
 export class Lock {
@@ -142,5 +147,9 @@ export class Lock {
 
 	public async withLock<R>(fn: () => R | Promise<R>): Promise<R> {
 		return this.locks.withLock(true, fn);
+	}
+
+	public reset(): void {
+		this.locks.reset();
 	}
 }

@@ -29,6 +29,8 @@ import { DIFF_CACHE_SIZE_MB } from "./consts";
 export class SyncClient {
 	private hasStartedOfflineSync = false;
 	private hasFinishedOfflineSync = false;
+	private hasStarted = false;
+	private hasBeenDestroyed = false;
 	private unloadTelemetry?: () => void;
 
 	private constructor(
@@ -43,6 +45,7 @@ export class SyncClient {
 		private readonly cursorTracker: CursorTracker,
 		private readonly fileChangeNotifier: FileChangeNotifier,
 		private readonly contentCache: FixedSizeDocumentCache,
+		private readonly fileOperations: FileOperations,
 		private readonly persistence: PersistenceProvider<
 			Partial<{
 				settings: Partial<SyncSettings>;
@@ -52,7 +55,17 @@ export class SyncClient {
 	) {}
 
 	public async start(): Promise<void> {
-		if (this.settings.getSettings().enableTelemetry) {
+		this.checkIfDestroyed();
+
+		if (this.hasStarted) {
+			throw new Error("SyncClient has already been started");
+		}
+		this.hasStarted = true;
+
+		if (
+			!this.unloadTelemetry &&
+			this.settings.getSettings().enableTelemetry
+		) {
 			this.unloadTelemetry = setUpTelemetry();
 		}
 
@@ -73,10 +86,14 @@ export class SyncClient {
 		}
 	}
 
-	// Reload settings from disk overriding current in-memory settings.
-	// Missing values will be filled in from DEFAULT_SETTINGS rather than
-	// retaining current in-memory settings.
+	/**
+	 * Reload settings from disk overriding current in-memory settings.
+	 * Missing values will be filled in from DEFAULT_SETTINGS rather than
+	 * retaining current in-memory settings.
+	 */
 	public async reloadSettings(): Promise<void> {
+		this.checkIfDestroyed();
+
 		const state = (await this.persistence.load()) ?? {
 			settings: undefined
 		};
@@ -93,15 +110,20 @@ export class SyncClient {
 		newSettings: SyncSettings,
 		oldSettings: SyncSettings
 	): Promise<void> {
-		if (newSettings.vaultName !== oldSettings.vaultName) {
-			await this.reset();
+		this.checkIfDestroyed();
+
+		if (
+			newSettings.vaultName !== oldSettings.vaultName ||
+			newSettings.remoteUri !== oldSettings.remoteUri
+		) {
+			await this.applyChangedConnectionSettings();
 		}
 
 		if (newSettings.isSyncEnabled !== oldSettings.isSyncEnabled) {
 			if (newSettings.isSyncEnabled) {
 				await this.startSyncing();
 			} else {
-				this.stop();
+				await this.pause();
 			}
 		}
 
@@ -119,10 +141,14 @@ export class SyncClient {
 	}
 
 	public get documentCount(): number {
+		this.checkIfDestroyed();
+
 		return this.database.length;
 	}
 
 	public get isWebSocketConnected(): boolean {
+		this.checkIfDestroyed();
+
 		return this.webSocketManager.isWebSocketConnected;
 	}
 
@@ -203,7 +229,6 @@ export class SyncClient {
 		const fileOperations = new FileOperations(
 			logger,
 			database,
-			settings,
 			fs,
 			nativeLineEndings
 		);
@@ -258,6 +283,7 @@ export class SyncClient {
 			cursorTracker,
 			fileChangeNotifier,
 			contentCache,
+			fileOperations,
 			persistence
 		);
 
@@ -267,6 +293,8 @@ export class SyncClient {
 	}
 
 	public async checkConnection(): Promise<NetworkConnectionStatus> {
+		this.checkIfDestroyed();
+
 		const server = await this.syncService.checkConnection();
 		return {
 			isSuccessful: server.isSuccessful,
@@ -276,59 +304,94 @@ export class SyncClient {
 	}
 
 	public getHistoryEntries(): readonly HistoryEntry[] {
+		this.checkIfDestroyed();
+
 		return this.history.entries;
 	}
 
 	public addSyncHistoryUpdateListener(
 		listener: (stats: HistoryStats) => unknown
 	): void {
+		this.checkIfDestroyed();
+
 		this.history.addSyncHistoryUpdateListener(listener);
 	}
 
 	private async startSyncing(): Promise<void> {
+		this.checkIfDestroyed();
+
 		if (!this.hasStartedOfflineSync) {
 			this.hasStartedOfflineSync = true;
 			await this.syncer.scheduleSyncForOfflineChanges();
 		}
 
 		this.hasFinishedOfflineSync = true;
-		this.webSocketManager.start();
-	}
-
-	private stop(): void {
-		this.hasFinishedOfflineSync = false;
-		this.webSocketManager.stop();
-
-		this.unloadTelemetry?.();
-	}
-
-	public async waitUntilStopped(): Promise<void> {
-		await this.syncer.waitUntilFinished();
-	}
-
-	public async applyChangedConnectionSettings(): Promise<void> {
-		this.fetchController.startReset();
-		this.webSocketManager.stop();
-
-		this.webSocketManager.start();
 		this.fetchController.finishReset();
+		this.webSocketManager.start();
 	}
 
-	/// Wait for the in-flight operations to finish, reset all tracking,
-	/// and the local database but retain the settings.
-	/// The SyncClient can be used again after calling this method.
-	private async reset(): Promise<void> {
-		this.stop();
-		this.fetchController.startReset();
-		this.contentCache.clear();
-		await this.syncer.reset();
-		this.history.reset();
+	/**
+	 * Wait for the in-flight operations to finish, reset all tracking,
+	 * and the local database but retain the settings.
+	 * The SyncClient can be used again after calling this method.
+	 */
+	public async applyChangedConnectionSettings(): Promise<void> {
+		this.checkIfDestroyed();
+
+		this.logger.info(
+			"Stopping SyncClient to apply changed connection settings"
+		);
+		await this.pause();
+
+		// clear all local state
+		this.logger.info("Resetting SyncClient's local state");
 		this.database.reset();
-		this.logger.reset();
+		await this.database.save(); // ensure the new database reads as empty
+		this.resetInMemoryState();
+		this.hasStartedOfflineSync = false;
+		this.hasFinishedOfflineSync = false;
+
+		// restart syncing
 		this.fetchController.finishReset();
 		await this.startSyncing();
 	}
 
+	/**
+	 * Completely destroy the SyncClient, cancelling all in-progress operations.
+	 * After calling this method, the SyncClient cannot be used again.
+	 */
+	public async destroy(): Promise<void> {
+		this.checkIfDestroyed();
+
+		// cancel everything that's in progress
+		this.fetchController.startReset();
+		await this.pause();
+
+		// clean-up memory early
+		this.resetInMemoryState();
+
+		this.logger.info("SyncClient has been successfully disposed");
+
+		this.unloadTelemetry?.();
+	}
+
+	private async pause(): Promise<void> {
+		this.checkIfDestroyed();
+
+		this.fetchController.startReset();
+		await this.webSocketManager.stop();
+		await this.syncer.waitUntilFinished();
+		await this.database.save(); // flush all changes to disk
+	}
+
+	private resetInMemoryState(): void {
+		this.history.reset();
+		this.contentCache.reset();
+		this.logger.reset();
+		this.cursorTracker.reset();
+		this.syncer.reset();
+		this.fileOperations.reset();
+	}
 	public getSettings(): SyncSettings {
 		return this.settings.getSettings();
 	}
@@ -419,5 +482,13 @@ export class SyncClient {
 		listener: (cursors: MaybeOutdatedClientCursors[]) => unknown
 	): void {
 		this.cursorTracker.addRemoteCursorsUpdateListener(listener);
+	}
+
+	private checkIfDestroyed(): void {
+		if (this.hasBeenDestroyed) {
+			throw new Error(
+				"SyncClient has been destroyed and can no longer be used."
+			);
+		}
 	}
 }

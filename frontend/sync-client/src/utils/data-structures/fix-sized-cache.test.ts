@@ -89,7 +89,7 @@ describe("fixedSizeDocumentCache", () => {
 		assert.equal(cache.get(1), doc1);
 		assert.equal(cache.get(2), doc2);
 
-		cache.clear();
+		cache.reset();
 		assert.equal(cache.get(1), undefined);
 		assert.equal(cache.get(2), undefined);
 

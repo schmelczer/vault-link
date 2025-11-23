@@ -250,4 +250,11 @@ export class CursorTracker {
 			? DocumentUpToDateness.UpToDate
 			: DocumentUpToDateness.Prior;
 	}
+
+	public reset(): void {
+		this.knownRemoteCursors = [];
+		this.lastLocalCursorState = [];
+		this.lastLocalCursorStateWithoutDirtyDocuments = [];
+		this.updateLock.reset();
+	}
 }

@@ -254,4 +254,8 @@ export class FileOperations {
 
 		return newName;
 	}
+
+	public reset(): void {
+		this.fs.reset();
+	}
 }

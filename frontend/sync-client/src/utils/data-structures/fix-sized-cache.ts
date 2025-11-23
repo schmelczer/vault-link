@@ -57,7 +57,7 @@ export class FixedSizeDocumentCache {
 		this.fitBelowMaxSize();
 	}
 
-	public clear(): void {
+	public reset(): void {
 		this.cache.clear();
 		this.head = null;
 		this.tail = null;
