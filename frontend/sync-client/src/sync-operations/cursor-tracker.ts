@@ -167,14 +167,14 @@ export class CursorTracker {
 				continue;
 			}
 
-			if (clientCursors.upToDateness == DocumentUpToDateness.Later) {
+			if (clientCursors.upToDateness === DocumentUpToDateness.Later) {
 				continue;
 			}
 
 			result.push({
 				...clientCursors,
 				isOutdated:
-					clientCursors.upToDateness == DocumentUpToDateness.Prior
+					clientCursors.upToDateness === DocumentUpToDateness.Prior
 			});
 
 			included.add(clientCursors.deviceId);

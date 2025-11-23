@@ -65,6 +65,10 @@ export class FetchController {
 	public startReset(): void {
 		this.isResetting = true;
 		this.rejectUntil(new SyncResetError());
+		// Catch unhandled rejection if no fetches are waiting
+		this.until.catch(() => {
+			// Intentionally ignore - this rejection is handled by waiting fetches
+		});
 	}
 
 	/**
