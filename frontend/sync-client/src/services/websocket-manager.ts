@@ -195,9 +195,17 @@ export class WebSocketManager {
 	): Promise<void> {
 		if (message.type === "vaultUpdate") {
 			this.outstandingPromises.push(
-				...this.remoteVaultUpdateListeners.map(async (listener) =>
-					listener(message)
-				)
+				...this.remoteVaultUpdateListeners.map(async (listener) => {
+					const promise = listener(message);
+					return promise.finally(() => {
+						if (this.outstandingPromises.includes(promise)) {
+							this.outstandingPromises.splice(
+								this.outstandingPromises.indexOf(promise),
+								1
+							);
+						}
+					});
+				})
 			);
 			// eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
 		} else if (message.type === "cursorPositions") {
@@ -205,13 +213,22 @@ export class WebSocketManager {
 				`Received cursor positions for ${JSON.stringify(message.clients)}`
 			);
 			this.outstandingPromises.push(
-				...this.remoteCursorsUpdateListeners.map(async (listener) =>
-					listener(
+				...this.remoteCursorsUpdateListeners.map(async (listener) => {
+					const promise = listener(
 						message.clients.filter(
 							(client) => client.deviceId !== this.deviceId
 						)
-					)
-				)
+					);
+
+					return promise.finally(() => {
+						if (this.outstandingPromises.includes(promise)) {
+							this.outstandingPromises.splice(
+								this.outstandingPromises.indexOf(promise),
+								1
+							);
+						}
+					});
+				})
 			);
 		} else {
 			this.logger.warn(
