@@ -32,6 +32,7 @@ import type { DocumentVersionWithoutContent } from "../services/types/DocumentVe
 import type { FixedSizeDocumentCache } from "../utils/data-structures/fix-sized-cache";
 import { isFileTypeMergable } from "../utils/is-file-type-mergable";
 import { isBinary } from "../utils/is-binary";
+import type { ServerConfig } from "../services/server-config";
 
 export class UnrestrictedSyncer {
 	private ignorePatterns: RegExp[];
@@ -43,7 +44,8 @@ export class UnrestrictedSyncer {
 		private readonly syncService: SyncService,
 		private readonly operations: FileOperations,
 		private readonly history: SyncHistory,
-		private readonly contentCache: FixedSizeDocumentCache
+		private readonly contentCache: FixedSizeDocumentCache,
+		private readonly serverConfig: ServerConfig
 	) {
 		this.ignorePatterns = globsToRegexes(
 			this.settings.getSettings().ignorePatterns,
@@ -200,7 +202,10 @@ export class UnrestrictedSyncer {
 			if (areThereLocalChanges) {
 				const isText =
 					!isBinary(contentBytes) &&
-					isFileTypeMergable(document.relativePath);
+					isFileTypeMergable(
+						document.relativePath,
+						this.serverConfig.getConfig().mergeableFileExtensions
+					);
 				const cachedVersion = this.contentCache.get(
 					document.metadata.parentVersionId
 				);
@@ -547,7 +552,13 @@ export class UnrestrictedSyncer {
 		contentBytes: Uint8Array,
 		filePath: RelativePath
 	): void {
-		if (isFileTypeMergable(filePath) && !isBinary(contentBytes)) {
+		if (
+			isFileTypeMergable(
+				filePath,
+				this.serverConfig.getConfig().mergeableFileExtensions
+			) &&
+			!isBinary(contentBytes)
+		) {
 			this.contentCache.put(updateId, contentBytes);
 		}
 	}

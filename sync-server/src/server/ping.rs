@@ -33,5 +33,6 @@ pub async fn ping(
     Ok(Json(PingResponse {
         server_version: env!("CARGO_PKG_VERSION").to_owned(),
         is_authenticated,
+        mergeable_file_extensions: state.config.server.mergeable_file_extensions.clone(),
     }))
 }
