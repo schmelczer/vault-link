@@ -412,7 +412,7 @@ export class Syncer {
 			}
 		}
 
-		const updates = awaitAll(
+		await awaitAll(
 			allLocalFiles.map(async (relativePath) => {
 				if (
 					this.database.getLatestDocumentByRelativePath(relativePath)
@@ -470,7 +470,9 @@ export class Syncer {
 			})
 		);
 
-		const deletes = awaitAll(
+		// this has to happen strictly after the previous awaitAll, as that one
+		// might have removed some of the documents from the list
+		await awaitAll(
 			locallyPossiblyDeletedFiles.map(async ({ relativePath }) => {
 				this.logger.debug(
 					`Document ${relativePath} has been deleted locally, scheduling sync to delete it`
@@ -480,8 +482,6 @@ export class Syncer {
 				return this.syncLocallyDeletedFile(relativePath);
 			})
 		);
-
-		await awaitAll([updates, deletes]);
 	}
 
 	/**
