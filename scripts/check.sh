@@ -41,6 +41,7 @@ cd ..
 
 if [[ "$FIX_MODE" == true ]]; then
     $0
+else
+    echo "Success"
 fi
 
-echo "Success"
