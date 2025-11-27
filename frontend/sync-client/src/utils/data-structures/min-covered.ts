@@ -28,8 +28,8 @@ export class CoveredValues {
 		this.advanceMinWhilePossible();
 	}
 
-	public add(value: number): void {
-		if (value < this.minValue) {
+	public add(value: number | undefined): void {
+		if (value === undefined || value < this.minValue) {
 			return;
 		}
 
