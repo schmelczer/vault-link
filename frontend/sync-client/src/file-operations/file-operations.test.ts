@@ -9,6 +9,17 @@ import { Logger } from "../tracing/logger";
 import { assertSetContainsExactly } from "../utils/assert-set-contains-exactly";
 import type { FileSystemOperations } from "./filesystem-operations";
 import type { TextWithCursors } from "reconcile-text";
+import type { ServerConfig, ServerConfigData } from "../services/server-config";
+
+class MockServerConfig implements Pick<ServerConfig, "getConfig"> {
+	public getConfig(): ServerConfigData {
+		return {
+			mergeableFileExtensions: ["md", "txt"],
+			supportedApiVersion: 1,
+			isAuthenticated: true
+		};
+	}
+}
 
 class MockDatabase implements Partial<Database> {
 	public getLatestDocumentByRelativePath(
@@ -79,7 +90,8 @@ describe("File operations", () => {
 		const fileOperations = new FileOperations(
 			new Logger(),
 			new MockDatabase() as Database, // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
-			fileSystemOperations
+			fileSystemOperations,
+			new MockServerConfig() as ServerConfig // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
 		);
 
 		await fileOperations.create("a", new Uint8Array());
@@ -108,7 +120,8 @@ describe("File operations", () => {
 		const fileOperations = new FileOperations(
 			new Logger(),
 			new MockDatabase() as Database, // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
-			fileSystemOperations
+			fileSystemOperations,
+			new MockServerConfig() as ServerConfig // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
 		);
 
 		await fileOperations.create("b.md", new Uint8Array());
@@ -147,7 +160,8 @@ describe("File operations", () => {
 		const fileOperations = new FileOperations(
 			new Logger(),
 			new MockDatabase() as Database, // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
-			fileSystemOperations
+			fileSystemOperations,
+			new MockServerConfig() as ServerConfig // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
 		);
 
 		await fileOperations.create("a/b.c/d", new Uint8Array());
@@ -165,7 +179,8 @@ describe("File operations", () => {
 		const fileOperations = new FileOperations(
 			new Logger(),
 			new MockDatabase() as Database, // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
-			fileSystemOperations
+			fileSystemOperations,
+			new MockServerConfig() as ServerConfig // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
 		);
 
 		await fileOperations.create("document (5).md", new Uint8Array());
@@ -193,7 +208,8 @@ describe("File operations", () => {
 		const fileOperations = new FileOperations(
 			new Logger(),
 			new MockDatabase() as Database, // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
-			fileSystemOperations
+			fileSystemOperations,
+			new MockServerConfig() as ServerConfig // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
 		);
 
 		await fileOperations.create(".gitignore", new Uint8Array());

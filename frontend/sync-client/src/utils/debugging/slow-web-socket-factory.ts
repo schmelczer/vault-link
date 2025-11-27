@@ -13,17 +13,17 @@ export function slowWebSocketFactory(
 
 		private readonly locks = new Locks(logger);
 
-		public set onopen(callback: (event: Event) => void) {
+		public set onopen(callback: ((event: Event) => void) | null) {
 			super.onopen = async (event: Event): Promise<void> => {
 				if (jitterScaleInSeconds > 0) {
 					await sleep(Math.random() * jitterScaleInSeconds * 1000);
 				}
 
-				callback(event);
+				callback?.(event);
 			};
 		}
 
-		public set onmessage(callback: (event: MessageEvent) => void) {
+		public set onmessage(callback: ((event: MessageEvent) => void) | null) {
 			super.onmessage = async (event: MessageEvent): Promise<void> => {
 				await this.locks.withLock(
 					FlakyWebSocket.RECEIVE_KEY,
@@ -34,27 +34,27 @@ export function slowWebSocketFactory(
 							);
 						}
 
-						callback(event);
+						callback?.(event);
 					}
 				);
 			};
 		}
 
-		public set onclose(callback: (event: CloseEvent) => void) {
+		public set onclose(callback: ((event: CloseEvent) => void) | null) {
 			super.onclose = async (event: CloseEvent): Promise<void> => {
 				if (jitterScaleInSeconds > 0) {
 					await sleep(Math.random() * jitterScaleInSeconds * 1000);
 				}
-				callback(event);
+				callback?.(event);
 			};
 		}
 
-		public set onerror(callback: (event: Event) => void) {
+		public set onerror(callback: ((event: Event) => void) | null) {
 			super.onerror = async (event: Event): Promise<void> => {
 				if (jitterScaleInSeconds > 0) {
 					await sleep(Math.random() * jitterScaleInSeconds * 1000);
 				}
-				callback(event);
+				callback?.(event);
 			};
 		}
 
