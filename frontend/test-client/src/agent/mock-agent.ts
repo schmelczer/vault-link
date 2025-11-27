@@ -108,32 +108,40 @@ export class MockAgent extends MockClient {
 			}
 		}
 
-		if (Math.random() < 0.1 && this.doResets) {
-			options.push(this.resetClient.bind(this));
+		if (Math.random() < 0.015 && this.doResets) {
+			// we can't just queue this up as once it's destroyed, no more method calls can go to SyncClient
+			await this.resetClient();
+		} else {
+			this.pendingActions.push(
+				(async (): Promise<unknown> => {
+					try {
+						return await choose(options)();
+					} catch (error) {
+						this.client.logger.error(
+							`Failed to perform an action: ${error}`
+						);
+						this.client.logger.info(
+							JSON.stringify(this.data, null, 2)
+						);
+						this.client.logger.info(
+							JSON.stringify(this.localFiles, null, 2)
+						);
+						throw error;
+					}
+				})()
+			);
 		}
-
-		this.pendingActions.push(
-			(async (): Promise<unknown> => {
-				try {
-					return await choose(options)();
-				} catch (error) {
-					this.client.logger.error(
-						`Failed to perform an action: ${error}`
-					);
-					this.client.logger.info(JSON.stringify(this.data, null, 2));
-					this.client.logger.info(
-						JSON.stringify(this.localFiles, null, 2)
-					);
-					throw error;
-				}
-			})()
-		);
 	}
 
 	public async finish(): Promise<void> {
 		await this.client.setSetting("isSyncEnabled", true);
 		// eslint-disable-next-line no-restricted-properties
 		await Promise.all(this.pendingActions);
+		await this.client.waitUntilFinished();
+	}
+
+	public async destroy(): Promise<void> {
+		await this.client.waitUntilFinished();
 		await this.client.destroy();
 	}
 

@@ -82,7 +82,7 @@ async function runTest({
 		// then we need a second pass to ensure that all agents pull the same state.
 		for (const client of clients) {
 			try {
-				await client.finish();
+				await client.destroy();
 			} catch (err) {
 				if (!slowFileEvents) {
 					throw err;
@@ -116,17 +116,17 @@ async function runTest({
 }
 
 async function runTests(): Promise<void> {
-	await runTest({
-		agentCount: 2,
-		concurrency: 16,
-		iterations: 100,
-		doDeletes: true,
-		doResets: true,
-		useSlowFileEvents: true,
-		jitterScaleInSeconds: 0.75
-	});
-
 	for (let i = 0; i < TEST_ITERATIONS; i++) {
+		await runTest({
+			agentCount: 2,
+			concurrency: 16,
+			iterations: 100,
+			doDeletes: true,
+			doResets: true,
+			useSlowFileEvents: true,
+			jitterScaleInSeconds: 0.75
+		});
+
 		for (const useSlowFileEvents of [false, true]) {
 			for (const concurrency of [
 				16,
