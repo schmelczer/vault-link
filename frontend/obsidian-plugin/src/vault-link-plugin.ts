@@ -75,15 +75,6 @@ export default class VaultLinkPlugin extends Plugin {
 		this.openSettings();
 	}
 
-	public onExternalSettingsChange(): void {
-		new Notice("VaultLink settings have changed externally, applying...");
-		this.syncClient?.reloadSettings().catch((err: unknown) => {
-			throw new Error(
-				`Error while reloading settings after external change: ${err}`
-			);
-		});
-	}
-
 	public openSettings(): void {
 		// eslint-disable-next-line
 		(this.app as any).setting.open(); // this is undocumented
