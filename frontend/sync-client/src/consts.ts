@@ -3,3 +3,4 @@ export const DIFF_CACHE_SIZE_MB = 2;
 export const MAX_LOG_MESSAGE_COUNT = 100000;
 export const MAX_HISTORY_ENTRY_COUNT = 5000;
 export const SUPPORTED_API_VERSION = 1;
+export const WEBSOCKET_DISCONNECT_TIMEOUT_IN_S = 10;

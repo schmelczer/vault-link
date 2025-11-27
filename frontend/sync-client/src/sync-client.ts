@@ -39,7 +39,6 @@ export class SyncClient {
 		private readonly settings: Settings,
 		private readonly database: Database,
 		private readonly syncer: Syncer,
-		private readonly syncService: SyncService,
 		private readonly webSocketManager: WebSocketManager,
 		public readonly logger: Logger,
 		private readonly fetchController: FetchController,
@@ -57,14 +56,10 @@ export class SyncClient {
 	) {}
 
 	public get documentCount(): number {
-		this.checkIfDestroyed();
-
 		return this.database.length;
 	}
 
 	public get isWebSocketConnected(): boolean {
-		this.checkIfDestroyed();
-
 		return this.webSocketManager.isWebSocketConnected;
 	}
 	public static async create({
@@ -195,7 +190,6 @@ export class SyncClient {
 			settings,
 			database,
 			syncer,
-			syncService,
 			webSocketManager,
 			logger,
 			fetchController,
@@ -213,7 +207,7 @@ export class SyncClient {
 	}
 
 	public async start(): Promise<void> {
-		this.checkIfDestroyed();
+		this.checkIfDestroyed("start");
 
 		if (this.hasStarted) {
 			throw new Error("SyncClient has already been started");
@@ -250,7 +244,7 @@ export class SyncClient {
 	 * retaining current in-memory settings.
 	 */
 	public async reloadSettings(): Promise<void> {
-		this.checkIfDestroyed();
+		this.checkIfDestroyed("reloadSettings");
 
 		const state = (await this.persistence.load()) ?? {
 			settings: undefined
@@ -265,7 +259,7 @@ export class SyncClient {
 	}
 
 	public async checkConnection(): Promise<NetworkConnectionStatus> {
-		this.checkIfDestroyed();
+		this.checkIfDestroyed("checkConnection");
 
 		const server = await this.serverConfig.checkConnection(true);
 		return {
@@ -276,15 +270,13 @@ export class SyncClient {
 	}
 
 	public getHistoryEntries(): readonly HistoryEntry[] {
-		this.checkIfDestroyed();
-
 		return this.history.entries;
 	}
 
 	public addSyncHistoryUpdateListener(
 		listener: (stats: HistoryStats) => unknown
 	): void {
-		this.checkIfDestroyed();
+		this.checkIfDestroyed("addSyncHistoryUpdateListener");
 
 		this.history.addSyncHistoryUpdateListener(listener);
 	}
@@ -295,7 +287,7 @@ export class SyncClient {
 	 * The SyncClient can be used again after calling this method.
 	 */
 	public async applyChangedConnectionSettings(): Promise<void> {
-		this.checkIfDestroyed();
+		this.checkIfDestroyed("applyChangedConnectionSettings");
 
 		this.logger.info(
 			"Stopping SyncClient to apply changed connection settings"
@@ -311,35 +303,10 @@ export class SyncClient {
 		this.hasFinishedOfflineSync = false;
 		this.serverConfig.reset();
 
-		// restart syncing
-		this.fetchController.finishReset();
 		await this.startSyncing();
 	}
 
-	/**
-	 * Completely destroy the SyncClient, cancelling all in-progress operations.
-	 * After calling this method, the SyncClient cannot be used again.
-	 */
-	public async destroy(): Promise<void> {
-		this.checkIfDestroyed();
-
-		// cancel everything that's in progress
-		this.fetchController.startReset();
-		await this.pause();
-
-		this.hasBeenDestroyed = true;
-
-		// clean-up memory early
-		this.resetInMemoryState();
-
-		this.logger.info("SyncClient has been successfully disposed");
-
-		this.unloadTelemetry?.();
-	}
-
 	public getSettings(): SyncSettings {
-		this.checkIfDestroyed();
-
 		return this.settings.getSettings();
 	}
 
@@ -347,13 +314,13 @@ export class SyncClient {
 		key: T,
 		value: SyncSettings[T]
 	): Promise<void> {
-		this.checkIfDestroyed();
+		this.checkIfDestroyed("setSetting");
 
 		await this.settings.setSetting(key, value);
 	}
 
 	public async setSettings(value: Partial<SyncSettings>): Promise<void> {
-		this.checkIfDestroyed();
+		this.checkIfDestroyed("setSettings");
 
 		await this.settings.setSettings(value);
 	}
@@ -361,7 +328,7 @@ export class SyncClient {
 	public addOnSettingsChangeListener(
 		listener: (settings: SyncSettings, oldSettings: SyncSettings) => unknown
 	): void {
-		this.checkIfDestroyed();
+		this.checkIfDestroyed("addOnSettingsChangeListener");
 
 		this.settings.addOnSettingsChangeListener(listener);
 	}
@@ -369,13 +336,13 @@ export class SyncClient {
 	public addRemainingSyncOperationsListener(
 		listener: (remainingOperations: number) => unknown
 	): void {
-		this.checkIfDestroyed();
+		this.checkIfDestroyed("addRemainingSyncOperationsListener");
 
 		this.syncer.addRemainingOperationsListener(listener);
 	}
 
 	public addWebSocketStatusChangeListener(listener: () => unknown): void {
-		this.checkIfDestroyed();
+		this.checkIfDestroyed("addWebSocketStatusChangeListener");
 
 		this.webSocketManager.addWebSocketStatusChangeListener(listener);
 	}
@@ -383,7 +350,7 @@ export class SyncClient {
 	public async syncLocallyCreatedFile(
 		relativePath: RelativePath
 	): Promise<void> {
-		this.checkIfDestroyed();
+		this.checkIfDestroyed("syncLocallyCreatedFile");
 
 		this.fileChangeNotifier.notifyOfFileChange(relativePath);
 		return this.syncer.syncLocallyCreatedFile(relativePath);
@@ -392,7 +359,7 @@ export class SyncClient {
 	public async syncLocallyDeletedFile(
 		relativePath: RelativePath
 	): Promise<void> {
-		this.checkIfDestroyed();
+		this.checkIfDestroyed("syncLocallyDeletedFile");
 
 		this.fileChangeNotifier.notifyOfFileChange(relativePath);
 		return this.syncer.syncLocallyDeletedFile(relativePath);
@@ -405,7 +372,7 @@ export class SyncClient {
 		oldPath?: RelativePath;
 		relativePath: RelativePath;
 	}): Promise<void> {
-		this.checkIfDestroyed();
+		this.checkIfDestroyed("syncLocallyUpdatedFile");
 
 		this.fileChangeNotifier.notifyOfFileChange(relativePath);
 		return this.syncer.syncLocallyUpdatedFile({
@@ -417,7 +384,7 @@ export class SyncClient {
 	public getDocumentSyncingStatus(
 		relativePath: RelativePath
 	): DocumentSyncStatus {
-		this.checkIfDestroyed();
+		this.checkIfDestroyed("getDocumentSyncingStatus");
 
 		if (!this.settings.getSettings().isSyncEnabled) {
 			return DocumentSyncStatus.SYNCING_IS_DISABLED;
@@ -440,7 +407,7 @@ export class SyncClient {
 	public async updateLocalCursors(
 		documentToCursors: Record<RelativePath, CursorSpan[]>
 	): Promise<void> {
-		this.checkIfDestroyed();
+		this.checkIfDestroyed("updateLocalCursors");
 
 		await this.cursorTracker.sendLocalCursorsToServer(documentToCursors);
 	}
@@ -448,13 +415,40 @@ export class SyncClient {
 	public addRemoteCursorsUpdateListener(
 		listener: (cursors: MaybeOutdatedClientCursors[]) => unknown
 	): void {
-		this.checkIfDestroyed();
+		this.checkIfDestroyed("addRemoteCursorsUpdateListener");
 
 		this.cursorTracker.addRemoteCursorsUpdateListener(listener);
 	}
 
+	public async waitUntilFinished(): Promise<void> {
+		this.checkIfDestroyed("waitUntilIdle");
+		await this.syncer.waitUntilFinished();
+		await this.webSocketManager.waitUntilFinished();
+		await this.database.save(); // flush all changes to disk
+	}
+
+	/**
+	 * Completely destroy the SyncClient, cancelling all in-progress operations.
+	 * After calling this method, the SyncClient cannot be used again.
+	 */
+	public async destroy(): Promise<void> {
+		this.checkIfDestroyed("destroy");
+
+		// cancel everything that's in progress
+		await this.pause();
+
+		this.hasBeenDestroyed = true;
+
+		this.resetInMemoryState();
+
+		this.logger.info("SyncClient has been successfully disposed");
+
+		this.unloadTelemetry?.();
+	}
+
 	private async startSyncing(): Promise<void> {
-		this.checkIfDestroyed();
+		this.checkIfDestroyed("startSyncing");
+		this.fetchController.finishReset();
 
 		await this.serverConfig.initialize();
 
@@ -464,15 +458,13 @@ export class SyncClient {
 		}
 
 		this.hasFinishedOfflineSync = true;
-		this.fetchController.finishReset();
 		this.webSocketManager.start();
 	}
 
 	private async pause(): Promise<void> {
 		this.fetchController.startReset();
 		await this.webSocketManager.stop();
-		await this.syncer.waitUntilFinished();
-		await this.database.save(); // flush all changes to disk
+		await this.waitUntilFinished();
 	}
 
 	private resetInMemoryState(): void {
@@ -488,7 +480,7 @@ export class SyncClient {
 		newSettings: SyncSettings,
 		oldSettings: SyncSettings
 	): Promise<void> {
-		this.checkIfDestroyed();
+		this.checkIfDestroyed("onSettingsChange");
 
 		if (
 			newSettings.vaultName !== oldSettings.vaultName ||
@@ -518,10 +510,10 @@ export class SyncClient {
 		}
 	}
 
-	private checkIfDestroyed(): void {
+	private checkIfDestroyed(origin: string): void {
 		if (this.hasBeenDestroyed) {
 			throw new Error(
-				"SyncClient has been destroyed and can no longer be used."
+				`SyncClient has been destroyed and can no longer be used; called from ${origin}`
 			);
 		}
 	}
