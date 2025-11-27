@@ -188,6 +188,7 @@ async function main(): Promise<void> {
 		);
 
 		fileWatcher.stop();
+		await client.waitUntilFinished();
 		await client.destroy();
 		console.log(colorize("Shutdown complete", "green"));
 		process.exit(0);

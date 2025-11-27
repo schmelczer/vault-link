@@ -49,7 +49,11 @@ export default class VaultLinkPlugin extends Plugin {
 
 			this.registerEditorEvents(client);
 
-			this.register(async () => client.destroy());
+			this.register(async () => {
+				await client.waitUntilFinished();
+				await client.destroy();
+			});
+
 			await client.start();
 		});
 	}
