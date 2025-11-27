@@ -75,9 +75,9 @@ export class Database {
 			Math.max(0, lastSeenUpdateId ?? 0) // the first updateId will be 1 which is the first integer after -1
 		);
 
-		this.documents.forEach((doc) =>
-			this.lastSeenUpdateIds.add(doc.metadata?.parentVersionId)
-		);
+		this.documents.forEach((doc) => {
+			this.lastSeenUpdateIds.add(doc.metadata?.parentVersionId);
+		});
 
 		this.hasInitialSyncCompleted =
 			initialState.hasInitialSyncCompleted ?? false;
