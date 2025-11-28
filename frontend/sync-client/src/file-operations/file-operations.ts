@@ -9,7 +9,7 @@ import { isBinary } from "../utils/is-binary";
 import type { ServerConfig } from "../services/server-config";
 
 export class FileOperations {
-	private static readonly PARENTHESES_REGEX = / \((\d+)\)$/;
+	private static readonly PARENTHESES_REGEX = / \((?<count>\d+)\)$/;
 	private readonly fs: SafeFileSystemOperations;
 
 	public constructor(
@@ -251,7 +251,8 @@ export class FileOperations {
 				: "";
 		let stem = extension ? nameParts.slice(0, -1).join(".") : fileName;
 		let currentCount = Number.parseInt(
-			FileOperations.PARENTHESES_REGEX.exec(stem)?.[1] ?? "0"
+			FileOperations.PARENTHESES_REGEX.exec(stem)?.groups?.["count"] ??
+				"0"
 		);
 		stem = stem.replace(FileOperations.PARENTHESES_REGEX, "");
 
