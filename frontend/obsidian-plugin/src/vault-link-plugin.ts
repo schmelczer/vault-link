@@ -43,6 +43,14 @@ export default class VaultLinkPlugin extends Plugin {
 
 	public async onload(): Promise<void> {
 		this.app.workspace.onLayoutReady(async () => {
+			if ((globalThis as any).VAULT_LINK_RUNNING_INSTANCE) {
+				new Notice(
+					"Another instance of VaultLink is already running. Please disable the duplicate instance."
+				);
+				throw new Error("VaultLink instance already running");
+			}
+			(globalThis as any).VAULT_LINK_RUNNING_INSTANCE = this;
+
 			const client = await this.createSyncClient();
 
 			this.registerObsidianExtensions(client);
@@ -187,6 +195,10 @@ export default class VaultLinkPlugin extends Plugin {
 		);
 		this.register(() => {
 			editorStatusDisplayManager.dispose();
+		});
+
+		this.register(() => {
+			(globalThis as any).VAULT_LINK_RUNNING_INSTANCE = null;
 		});
 	}
 
