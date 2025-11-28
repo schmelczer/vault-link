@@ -174,7 +174,7 @@ export class SyncHistory {
 				this.logger.error(`Cannot sync file: ${message}`);
 				break;
 			case SyncStatus.SKIPPED:
-				this.logger.error(`Skipping file: ${message}`);
+				this.logger.warn(`Skipping file: ${message}`);
 				break;
 		}
 
