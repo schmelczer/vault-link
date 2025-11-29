@@ -1,4 +1,5 @@
 import type { Logger } from "../tracing/logger";
+import { awaitAll } from "../utils/await-all";
 
 export interface SyncSettings {
 	remoteUri: string;
@@ -36,7 +37,7 @@ export class Settings {
 	private readonly onSettingsChangeHandlers: ((
 		newSettings: SyncSettings,
 		oldSettings: SyncSettings
-	) => unknown)[] = [];
+	) => Promise<unknown> | unknown)[] = [];
 
 	public constructor(
 		private readonly logger: Logger,
@@ -76,22 +77,29 @@ export class Settings {
 		key: T,
 		value: SyncSettings[T]
 	): Promise<void> {
-		this.logger.debug(`Setting '${key}' to '${value}'`);
 		await this.setSettings({
 			[key]: value
 		});
 	}
 
 	public async setSettings(value: Partial<SyncSettings>): Promise<void> {
+		this.logger.debug(`Updating settings with: ${JSON.stringify(value)}`);
 		const oldSettings = this.settings;
 		this.settings = {
 			...this.settings,
 			...value
 		};
 
-		this.onSettingsChangeHandlers.forEach((handler) => {
-			handler(this.settings, oldSettings);
-		});
+		await awaitAll(
+			this.onSettingsChangeHandlers
+				.map((handler) => {
+					return handler(this.settings, oldSettings);
+				})
+				.filter((result): result is Promise<unknown> => {
+					return result instanceof Promise;
+				})
+		);
+
 		await this.save();
 	}
 
