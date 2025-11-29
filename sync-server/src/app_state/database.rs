@@ -50,7 +50,7 @@ impl Database {
             .await
             .with_context(|| {
                 format!(
-                    "Failed to create databases directory: {}",
+                    "Failed to create databases directory at `{}`",
                     config.databases_directory_path.to_string_lossy()
                 )
             })?;
@@ -110,7 +110,7 @@ impl Database {
             .test_before_acquire(true)
             .connect_with(connection_options)
             .await
-            .with_context(|| format!("Cannot open database at {}", file_name.display()))?;
+            .with_context(|| format!("Cannot open database at `{}`", file_name.display()))?;
 
         Self::run_migrations(&pool).await?;
 
@@ -254,7 +254,7 @@ impl Database {
                 .await
         }
         .with_context(|| {
-            format!("Cannot fetch latest documents since vault_update_id {vault_update_id}")
+            format!("Cannot fetch latest documents since vault_update_id `{vault_update_id}`")
         })
         .map(|rows| {
             rows.into_iter()
@@ -489,10 +489,7 @@ impl Database {
         // Close and remove idle pools
         for vault_id in &vaults_to_remove {
             if let Some(pool_with_timestamp) = pools.remove(vault_id) {
-                info!(
-                    "Closing idle database connection pool for vault {}",
-                    vault_id
-                );
+                info!("Closing idle database connection pool for vault `{vault_id}`");
                 pool_with_timestamp.pool.close().await;
             }
         }

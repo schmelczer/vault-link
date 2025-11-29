@@ -24,7 +24,7 @@ impl Default for LoggingConfig {
 }
 
 fn default_log_directory() -> String {
-    debug!("Using default log directory: {DEFAULT_LOG_DIRECTORY}");
+    debug!("Using default log directory: `{DEFAULT_LOG_DIRECTORY}`");
     DEFAULT_LOG_DIRECTORY.to_owned()
 }
 

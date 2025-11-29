@@ -1,6 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use anyhow::Context;
+use log::warn;
 use tokio::sync::{Mutex, broadcast};
 
 use super::models::WebSocketServerMessageWithOrigin;
@@ -32,7 +33,7 @@ impl Broadcasts {
     }
 
     /// Notify all clients (who are subscribed to the vault) about an update.
-    /// We only log failures.
+    /// We only log failures and don't propagate them.
     pub async fn send_document_update(
         &self,
         vault: VaultId,
@@ -46,7 +47,7 @@ impl Broadcasts {
             .map_err(server_error);
 
         if result.is_err() {
-            log::debug!("Failed to send message: {result:?}");
+            warn!("Failed to send message: {result:?}");
         }
     }
 

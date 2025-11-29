@@ -1,8 +1,10 @@
+use anyhow::Context;
 use axum::{
     Extension, Json,
     extract::{Path, State},
 };
 use axum_extra::TypedHeader;
+use log::{debug, info};
 use serde::Deserialize;
 
 use super::{device_id_header::DeviceIdHeader, requests::DeleteDocumentVersion};
@@ -37,6 +39,8 @@ pub async fn delete_document(
     State(state): State<AppState>,
     Json(request): Json<DeleteDocumentVersion>,
 ) -> Result<Json<DocumentVersionWithoutContent>, SyncServerError> {
+    debug!("Deleting document `{document_id}` in vault `{vault_id}`");
+
     let mut transaction = state
         .database
         .create_write_transaction(&vault_id)
@@ -49,12 +53,26 @@ pub async fn delete_document(
         .await
         .map_err(server_error)?;
 
-    let latest_content = state
+    let latest_version = state
         .database
         .get_latest_document(&vault_id, &document_id, Some(&mut transaction))
         .await
-        .map_err(server_error)?
-        .map_or_else(Vec::new, |version| version.content); // in case the document has never existed before deleting it
+        .map_err(server_error)?;
+
+    if let Some(latest_version) = &latest_version
+        && latest_version.is_deleted
+    {
+        transaction
+            .rollback()
+            .await
+            .context("Failed to roll back transaction")
+            .map_err(server_error)?;
+
+        info!("Document `{document_id}` has already been deleted",);
+        return Ok(Json(latest_version.clone().into()));
+    }
+
+    let latest_content = latest_version.map_or_else(Vec::new, |version| version.content); // in case the document has never existed before deleting it
 
     let new_version = StoredDocumentVersion {
         vault_update_id: last_update_id + 1,

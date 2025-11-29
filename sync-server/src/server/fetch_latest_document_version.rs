@@ -3,6 +3,7 @@ use axum::{
     Json,
     extract::{Path, State},
 };
+use log::debug;
 use serde::Deserialize;
 
 use crate::{
@@ -30,6 +31,8 @@ pub async fn fetch_latest_document_version(
     }): Path<FetchLatestDocumentVersionPathParams>,
     State(state): State<AppState>,
 ) -> Result<Json<DocumentVersion>, SyncServerError> {
+    debug!("Fetching latest document version for document `{document_id}` in vault `{vault_id}`");
+
     let latest_version = state
         .database
         .get_latest_document(&vault_id, &document_id, None)

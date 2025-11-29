@@ -43,12 +43,12 @@ pub async fn websocket_handler(
 }
 
 async fn websocket_wrapped(state: AppState, stream: WebSocket, vault_id: VaultId) {
-    info!("WebSocket connection opened on vault '{vault_id}'");
+    info!("WebSocket connection opened on vault `{vault_id}`");
 
     let result = websocket(state, stream, vault_id.clone()).await;
 
     if let Err(err) = result {
-        debug!("WebSocket connection error on vault '{vault_id}': {err}");
+        debug!("WebSocket connection error on vault `{vault_id}`: {err}");
     }
 }
 
@@ -71,7 +71,7 @@ async fn websocket(
     )?;
 
     info!(
-        "WebSocket handshake successful for vault '{vault_id}' for '{}'",
+        "WebSocket handshake successful for vault `{vault_id}` for `{}`",
         authed_handshake.handshake.device_id
     );
 
@@ -184,7 +184,7 @@ async fn websocket(
 
     if result.is_err() {
         info!(
-            "WebSocket disconnected on vault '{vault_id}' for '{}'",
+            "WebSocket disconnected on vault `{vault_id}` for `{}`",
             authed_handshake.handshake.device_id
         );
     }

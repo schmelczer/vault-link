@@ -4,6 +4,7 @@ use axum::{
 };
 use axum_extra::TypedHeader;
 use axum_typed_multipart::TypedMultipart;
+use log::{debug, info};
 use serde::Deserialize;
 
 use super::{device_id_header::DeviceIdHeader, requests::CreateDocumentVersion};
@@ -37,6 +38,8 @@ pub async fn create_document(
     State(state): State<AppState>,
     TypedMultipart(request): TypedMultipart<CreateDocumentVersion>,
 ) -> Result<Json<DocumentVersionWithoutContent>, SyncServerError> {
+    debug!("Creating document in vault `{vault_id}`");
+
     let mut transaction = state
         .database
         .create_write_transaction(&vault_id)
@@ -53,7 +56,7 @@ pub async fn create_document(
 
             if existing_version.is_some() {
                 return Err(client_error(anyhow::anyhow!(
-                    "Document with the same ID already exists"
+                    "Document with the same ID `{document_id}` already exists"
                 )));
             }
 
@@ -77,6 +80,12 @@ pub async fn create_document(
     )
     .await
     .map_err(server_error)?;
+
+    if deduped_path != sanitized_relative_path {
+        info!(
+            "Document already exists at new location: `{sanitized_relative_path}` when trying to create it in vault `{vault_id}`, deconflicting by creating at `{deduped_path}`"
+        );
+    }
 
     let new_version = StoredDocumentVersion {
         vault_update_id: last_update_id + 1,

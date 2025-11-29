@@ -52,14 +52,14 @@ pub fn auth(state: &AppState, token: &str, vault_id: &VaultId) -> Result<User, S
         VaultAccess::AllowList(AllowListedVaults { ref allowed }) => allowed.contains(vault_id),
     } {
         info!(
-            "User '{}' is authenticated and is authorised to access to vault '{vault_id}'",
+            "User `{}` is authenticated and is authorised to access to vault `{vault_id}`",
             user.name
         );
 
         Ok(user)
     } else {
         info!(
-            "User '{}' is authenticated but is not authorised to access vault '{vault_id}'",
+            "User `{}` is authenticated but is not authorised to access vault `{vault_id}`",
             user.name
         );
 

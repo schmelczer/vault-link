@@ -6,6 +6,7 @@ use axum_extra::{
     TypedHeader,
     headers::{Authorization, authorization::Bearer},
 };
+use log::debug;
 use serde::Deserialize;
 
 use super::{auth::auth, responses::PingResponse};
@@ -28,6 +29,8 @@ pub async fn ping(
     Path(PingPathParams { vault_id }): Path<PingPathParams>,
     State(state): State<AppState>,
 ) -> Result<Json<PingResponse>, SyncServerError> {
+    debug!("Pinging vault `{vault_id}`");
+
     let is_authenticated = maybe_auth_header
         .is_some_and(|auth_header| auth(&state, auth_header.token(), &vault_id).is_ok());
 

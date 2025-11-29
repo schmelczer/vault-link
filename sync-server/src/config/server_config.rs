@@ -38,7 +38,7 @@ fn default_port() -> u16 {
 }
 
 fn default_max_body_size_mb() -> usize {
-    debug!("Using default max body size (MB): {DEFAULT_MAX_BODY_SIZE_MB}");
+    debug!("Using default max body size {DEFAULT_MAX_BODY_SIZE_MB} MB");
     DEFAULT_MAX_BODY_SIZE_MB
 }
 
@@ -48,7 +48,7 @@ fn default_max_clients_per_vault() -> usize {
 }
 
 fn default_response_timeout_seconds() -> u64 {
-    debug!("Using default response timeout (seconds): {DEFAULT_RESPONSE_TIMEOUT_SECONDS}");
+    debug!("Using default response timeout: {DEFAULT_RESPONSE_TIMEOUT_SECONDS} seconds");
     DEFAULT_RESPONSE_TIMEOUT_SECONDS
 }
 

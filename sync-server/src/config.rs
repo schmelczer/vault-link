@@ -30,7 +30,7 @@ impl Config {
     pub async fn read_or_create(path: &Path) -> Result<Self> {
         let config = if path.exists() {
             info!(
-                "Loading configuration from '{}'",
+                "Loading configuration from `{}`",
                 path.canonicalize().unwrap().display()
             );
             Self::load_from_file(path).await?
@@ -40,7 +40,7 @@ impl Config {
 
         config.write(path).await?;
         info!(
-            "Updated configuration at '{}'",
+            "Updated configuration at `{}`",
             path.canonicalize().unwrap().display()
         );
 
@@ -50,14 +50,12 @@ impl Config {
     pub async fn load_from_file(path: &Path) -> Result<Self> {
         let contents = fs::read_to_string(path).await.with_context(|| {
             format!(
-                "Cannot load configuration from disk from {}",
+                "Cannot load configuration from disk from `{}`",
                 path.display()
             )
         })?;
 
-        let config = serde_yaml::from_str(&contents).context("Failed to parse configuration")?;
-
-        Ok(config)
+        serde_yaml::from_str(&contents).context("Failed to parse configuration")
     }
 
     pub async fn write(&self, path: &Path) -> Result<()> {

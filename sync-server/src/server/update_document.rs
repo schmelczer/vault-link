@@ -5,7 +5,7 @@ use axum::{
 };
 use axum_extra::TypedHeader;
 use axum_typed_multipart::TypedMultipart;
-use log::info;
+use log::{debug, info};
 use reconcile_text::{BuiltinTokenizer, EditedText, reconcile};
 use serde::Deserialize;
 
@@ -129,6 +129,8 @@ async fn update_document(
     relative_path: &str,
     content: Vec<u8>,
 ) -> Result<Json<DocumentUpdateResponse>, SyncServerError> {
+    debug!("Updating document `{document_id}` in vault `{vault_id}`");
+
     let sanitized_relative_path = sanitize_path(relative_path);
 
     let mut transaction = state
@@ -164,6 +166,7 @@ async fn update_document(
             .context("Failed to roll back transaction")
             .map_err(server_error)?;
 
+        info!("Document `{document_id}` has been deleted, ignoring update to it",);
         return Ok(Json(DocumentUpdateResponse::FastForwardUpdate(
             latest_version.into(),
         )));
@@ -173,7 +176,9 @@ async fn update_document(
     // version
     if content == latest_version.content && sanitized_relative_path == latest_version.relative_path
     {
-        info!("Document content is the same as the latest version, skipping update");
+        info!(
+            "Document content is the same as the latest version for `{document_id}`, skipping update"
+        );
         transaction
             .rollback()
             .await
@@ -193,6 +198,7 @@ async fn update_document(
         && !is_binary(&content);
 
     let merged_content = if are_all_participants_mergable {
+        info!("Merging changes for document `{document_id}` in vault `{vault_id}`");
         reconcile(
             str::from_utf8(&parent_document.content)
                 .expect("parent must be valid UTF-8 because it's not binary"),
@@ -217,14 +223,22 @@ async fn update_document(
     let new_relative_path = if parent_document.relative_path == latest_version.relative_path
         && latest_version.relative_path != sanitized_relative_path
     {
-        find_first_available_path(
+        let new_path = find_first_available_path(
             &vault_id,
             &sanitized_relative_path,
             &state.database,
             &mut transaction,
         )
         .await
-        .map_err(server_error)?
+        .map_err(server_error)?;
+
+        if new_path != sanitized_relative_path {
+            info!(
+                "Document already exists at new location: `{sanitized_relative_path}` when trying to update it in vault `{vault_id}`, deconflicting by creating at `{new_path}`"
+            );
+        }
+
+        new_path
     } else {
         latest_version.relative_path.clone()
     };
