@@ -117,7 +117,8 @@ export default class VaultLinkPlugin extends Plugin {
 		DEFAULT_SETTINGS.ignorePatterns.push(
 			".obsidian/**",
 			".git/**",
-			".trash/**"
+			".trash/**",
+			"**/.DS_Store"
 		);
 
 		const client = await SyncClient.create({
