@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use anyhow::Context;
-use log::warn;
+use log::{debug, warn};
 use tokio::sync::{Mutex, broadcast};
 
 use super::models::WebSocketServerMessageWithOrigin;
@@ -39,7 +39,12 @@ impl Broadcasts {
         vault: VaultId,
         document: WebSocketServerMessageWithOrigin,
     ) {
-        let tx = self.get_or_create(vault).await;
+        let tx = self.get_or_create(vault.clone()).await;
+
+        if tx.receiver_count() == 0 {
+            debug!("Skipping broadcast, no clients connected for vault `{vault}`");
+            return;
+        }
 
         let result = tx
             .send(document)
