@@ -2,6 +2,7 @@ use axum::{
     Json,
     extract::{Path, Query, State},
 };
+use log::debug;
 use serde::Deserialize;
 
 use super::responses::FetchLatestDocumentsResponse;
@@ -31,6 +32,8 @@ pub async fn fetch_latest_documents(
     Query(QueryParams { since_update_id }): Query<QueryParams>,
     State(state): State<AppState>,
 ) -> Result<Json<FetchLatestDocumentsResponse>, SyncServerError> {
+    debug!("Fetching latest documents in vault `{vault_id}` since update ID `{since_update_id:?}`");
+
     let documents = if let Some(since_update_id) = since_update_id {
         state
             .database

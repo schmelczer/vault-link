@@ -3,6 +3,7 @@ use axum::{
     body::Bytes,
     extract::{Path, State},
 };
+use log::debug;
 use serde::Deserialize;
 
 use crate::{
@@ -32,6 +33,10 @@ pub async fn fetch_document_version_content(
     }): Path<FetchDocumentVersionContentPathParams>,
     State(state): State<AppState>,
 ) -> Result<Bytes, SyncServerError> {
+    debug!(
+        "Fetching document version `{vault_update_id}` for document `{document_id}` in vault `{vault_id}`"
+    );
+
     let result = state
         .database
         .get_document_version(&vault_id, vault_update_id, None)
