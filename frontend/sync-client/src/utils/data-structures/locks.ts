@@ -78,7 +78,7 @@ export class Locks<T> {
 	 * @param key The key to lock
 	 * @returns `true` if lock acquired, `false` if already locked
 	 */
-	private tryLock(key: T): boolean {
+	public tryLock(key: T): boolean {
 		if (this.locked.has(key)) {
 			return false;
 		}
@@ -95,7 +95,7 @@ export class Locks<T> {
 	 * @param key The key to wait for and lock
 	 * @returns Promise that resolves when lock is acquired
 	 */
-	private async waitForLock(key: T): Promise<void> {
+	public async waitForLock(key: T): Promise<void> {
 		if (this.tryLock(key)) {
 			return Promise.resolve();
 		}
@@ -121,9 +121,9 @@ export class Locks<T> {
 	 * @param key The key to unlock
 	 * @throws {Error} If key is not currently locked
 	 */
-	private unlock(key: T): void {
+	public unlock(key: T): void {
 		if (!this.locked.has(key)) {
-			throw new Error(`Key '${key}' is not locked, cannot unlock`);
+			return;
 		}
 
 		// Remove first waiter to ensure FIFO order

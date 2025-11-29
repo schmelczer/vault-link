@@ -87,15 +87,6 @@ export class UnrestrictedSyncer {
 				contentBytes
 			});
 
-			this.database.updateDocumentMetadata(
-				{
-					parentVersionId: response.vaultUpdateId,
-					hash: contentHash,
-					remoteRelativePath: response.relativePath
-				},
-				document
-			);
-
 			// In case a document with the same name (but different ID) had existed remotely that we haven't known about
 			if (response.relativePath != originalRelativePath) {
 				this.logger.debug(
@@ -106,6 +97,15 @@ export class UnrestrictedSyncer {
 					response.relativePath
 				); // this can throw FileNotFoundError
 			}
+
+			this.database.updateDocumentMetadata(
+				{
+					parentVersionId: response.vaultUpdateId,
+					hash: contentHash,
+					remoteRelativePath: response.relativePath
+				},
+				document
+			);
 
 			this.database.addSeenUpdateId(response.vaultUpdateId);
 			this.updateCache(
