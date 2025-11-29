@@ -1,7 +1,7 @@
 import "./logs-view.scss";
 
 import type { WorkspaceLeaf } from "obsidian";
-import { ItemView } from "obsidian";
+import { ItemView, Notice, setIcon } from "obsidian";
 import type { LogLine } from "sync-client";
 import { LogLevel, type SyncClient } from "sync-client";
 
@@ -78,7 +78,16 @@ export class LogsView extends ItemView {
 					text: "VaultLink logs"
 				});
 
-				verbositySection.createEl("select", {}, (dropdown) => {
+				const controls = verbositySection.createDiv({ cls: "logs-controls" });
+
+				const copyButton = controls.createEl("button", {
+					text: "Copy logs",
+					cls: "clickable-icon"
+				});
+				setIcon(copyButton, "clipboard-copy");
+				copyButton.addEventListener("click", () => this.copyLogsToClipboard());
+
+				controls.createEl("select", {}, (dropdown) => {
 					logLevels.forEach(({ label, value }) =>
 						dropdown.createEl("option", { text: label, value })
 					);
@@ -100,6 +109,32 @@ export class LogsView extends ItemView {
 		this.logsContainer = container.createDiv({ cls: "logs-container" });
 
 		this.updateView();
+	}
+
+	private copyLogsToClipboard(): void {
+		const logs = this.client.logger.getMessages(this.minLogLevel);
+
+		if (logs.length === 0) {
+			new Notice("No logs to copy");
+			return;
+		}
+
+		const formattedLogs = logs
+			.map((logLine) => {
+				const timestamp = logLine.timestamp.toLocaleString();
+				const level = logLine.level.toUpperCase();
+				return `[${timestamp}] ${level}: ${logLine.message}`;
+			})
+			.join("\n");
+
+		navigator.clipboard.writeText(formattedLogs)
+			.then(() => {
+				new Notice(`Copied ${logs.length} log entries to clipboard`);
+			})
+			.catch((error: unknown) => {
+				this.client.logger.error(`Failed to copy logs to clipboard: ${error}`);
+				new Notice("Failed to copy logs to clipboard");
+			});
 	}
 
 	private updateView(): void {
