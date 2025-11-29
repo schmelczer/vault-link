@@ -198,6 +198,9 @@ export class Database {
 		relativePath: RelativePath,
 		promise: Promise<unknown>
 	): DocumentRecord {
+		this.logger.debug(
+			`Creating new pending document: ${relativePath} (${documentId})`
+		);
 		const previousEntry =
 			this.getLatestDocumentByRelativePath(relativePath);
 

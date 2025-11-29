@@ -69,19 +69,18 @@ export class UnrestrictedSyncer {
 		};
 
 		return this.executeSync(updateDetails, async () => {
+			const originalRelativePath = document.relativePath;
 			if (document.isDeleted) {
 				this.logger.debug(
-					`Document ${document.relativePath} has been already deleted, no need to create it`
+					`Document ${originalRelativePath} has been already deleted, no need to create it`
 				);
 				return;
 			}
 
-			const contentBytes = await this.operations.read(
-				document.relativePath
-			); // this can throw FileNotFoundError
+			const contentBytes =
+				await this.operations.read(originalRelativePath); // this can throw FileNotFoundError
 			const contentHash = hash(contentBytes);
 
-			const originalRelativePath = document.relativePath;
 			const response = await this.syncService.create({
 				documentId: document.documentId,
 				relativePath: originalRelativePath,
@@ -99,6 +98,9 @@ export class UnrestrictedSyncer {
 
 			// In case a document with the same name (but different ID) had existed remotely that we haven't known about
 			if (response.relativePath != originalRelativePath) {
+				this.logger.debug(
+					`Document ${originalRelativePath} has been created remotely at a different path: ${response.relativePath}, moving it locally`
+				);
 				await this.operations.move(
 					document.relativePath,
 					response.relativePath

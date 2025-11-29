@@ -282,13 +282,10 @@ export class WebSocketManager {
 			this.logger.debug(
 				`Received cursor positions for ${JSON.stringify(message.clients)}`
 			);
-			const filteredClients = message.clients.filter(
-				(client) => client.deviceId !== this.deviceId
-			);
 
 			await awaitAll(
 				this.remoteCursorsUpdateListeners.map(async (listener) => {
-					await listener(filteredClients).catch((error: unknown) => {
+					await listener(message.clients).catch((error: unknown) => {
 						this.logger.error(
 							`Error in cursor positions listener: ${String(error)}`
 						);
