@@ -14,8 +14,22 @@
 			margin: 0;
 		}
 
-		select {
-			cursor: pointer;
+		.logs-controls {
+			display: flex;
+			align-items: center;
+			gap: var(--size-4-2);
+
+			button {
+				display: flex;
+				align-items: center;
+				gap: var(--size-2-1);
+				padding: var(--size-2-2) var(--size-4-2);
+				cursor: pointer;
+			}
+
+			select {
+				cursor: pointer;
+			}
 		}
 	}
 
