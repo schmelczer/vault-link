@@ -61,12 +61,16 @@ export class FileOperations {
 	public async ensureClearPath(path: RelativePath): Promise<void> {
 		if (await this.fs.exists(path)) {
 			const deconflictedPath = await this.deconflictPath(path);
-			this.logger.debug(
-				`Didn't expect ${path} to exist, deconflicting by moving it to '${deconflictedPath}'`
-			);
+			try {
+				this.logger.debug(
+					`Didn't expect ${path} to exist, deconflicting by moving it to '${deconflictedPath}'`
+				);
 
-			this.database.move(path, deconflictedPath);
-			await this.fs.rename(path, deconflictedPath);
+				this.database.move(path, deconflictedPath);
+				await this.fs.rename(path, deconflictedPath, true);
+			} finally {
+				this.fs.unlock(deconflictedPath);
+			}
 		} else {
 			await this.createParentDirectories(path);
 		}
@@ -234,6 +238,13 @@ export class FileOperations {
 		}
 	}
 
+	/**
+	 * Deconflicts the given path by appending (1), (2), etc. before the file extension until a non-existent path is found.
+	 * The returned path has a lock acquired on it; it must be released by the caller when no longer needed.
+	 *
+	 * @param path The starting path to deconflict
+	 * @returns a non-existent path with a lock acquired on it
+	 */
 	private async deconflictPath(path: RelativePath): Promise<RelativePath> {
 		// eslint-disable-next-line prefer-const
 		let [directory, fileName] = FileOperations.getParentDirAndFile(path);
@@ -256,11 +267,24 @@ export class FileOperations {
 		stem = stem.replace(FileOperations.PARENTHESES_REGEX, "");
 
 		let newName = path;
-		do {
+
+		while (true) {
 			currentCount++;
 			newName = `${directory}${stem} (${currentCount})${extension}`;
-		} while (await this.fs.exists(newName));
 
-		return newName;
+			// Avoid multiple deconflictPath calls returning the same path
+			if (this.fs.tryLock(newName)) {
+				const newDocument =
+					this.database.getLatestDocumentByRelativePath(newName);
+				if (
+					newDocument?.isDeleted === false || // the document might have been confirmed by the server at a new path but haven't yet moved there locally
+					(await this.fs.exists(newName, true))
+				) {
+					this.fs.unlock(newName);
+				} else {
+					return newName;
+				}
+			}
+		}
 	}
 }

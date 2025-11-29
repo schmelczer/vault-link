@@ -73,9 +73,16 @@ export class SafeFileSystemOperations implements FileSystemOperations {
 		);
 	}
 
-	public async exists(path: RelativePath): Promise<boolean> {
+	public async exists(
+		path: RelativePath,
+		skipLock: boolean = false
+	): Promise<boolean> {
 		this.logger.debug(`Checking if file '${path}' exists`);
-		return this.locks.withLock(path, async () => this.fs.exists(path));
+		if (skipLock) {
+			return this.fs.exists(path);
+		} else {
+			return this.locks.withLock(path, async () => this.fs.exists(path));
+		}
 	}
 
 	public async createDirectory(path: RelativePath): Promise<void> {
@@ -92,17 +99,35 @@ export class SafeFileSystemOperations implements FileSystemOperations {
 
 	public async rename(
 		oldPath: RelativePath,
-		newPath: RelativePath
+		newPath: RelativePath,
+		skipLock: boolean = false
 	): Promise<void> {
 		this.logger.debug(`Renaming file '${oldPath}' to '${newPath}'`);
 		return this.safeOperation(
 			oldPath,
-			async () =>
-				this.locks.withLock([oldPath, newPath], async () =>
-					this.fs.rename(oldPath, newPath)
-				),
+			async () => {
+				if (skipLock) {
+					return this.fs.rename(oldPath, newPath);
+				} else {
+					return this.locks.withLock([oldPath, newPath], async () =>
+						this.fs.rename(oldPath, newPath)
+					);
+				}
+			},
 			"rename"
 		);
+	}
+
+	public tryLock(path: RelativePath): boolean {
+		return this.locks.tryLock(path);
+	}
+
+	public waitForLock(path: RelativePath) {
+		return this.locks.waitForLock(path);
+	}
+
+	public unlock(path: RelativePath) {
+		this.locks.unlock(path);
 	}
 
 	public reset(): void {
