@@ -251,8 +251,7 @@ export class FileOperations {
 				: "";
 		let stem = extension ? nameParts.slice(0, -1).join(".") : fileName;
 		let currentCount = Number.parseInt(
-			FileOperations.PARENTHESES_REGEX.exec(stem)?.groups?.["count"] ??
-				"0"
+			FileOperations.PARENTHESES_REGEX.exec(stem)?.groups?.count ?? "0"
 		);
 		stem = stem.replace(FileOperations.PARENTHESES_REGEX, "");
 

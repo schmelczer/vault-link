@@ -8,17 +8,15 @@ pub async fn find_first_available_path(
     database: &crate::app_state::database::Database,
     transaction: &mut Transaction<'_>,
 ) -> Result<String> {
-    let mut new_relative_path = String::default();
     for candidate in dedup_paths(sanitized_relative_path) {
         if database
             .get_latest_document_by_path(vault_id, &candidate, Some(transaction))
             .await?
             .is_none()
         {
-            new_relative_path = candidate;
-            break;
+            return Ok(candidate);
         }
     }
 
-    Ok(new_relative_path)
+    unreachable!("dedup_paths produces infinite paths");
 }
