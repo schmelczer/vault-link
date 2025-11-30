@@ -286,8 +286,8 @@ export class SyncClient {
 	 * and the local database but retain the settings.
 	 * The SyncClient can be used again after calling this method.
 	 */
-	public async applyChangedConnectionSettings(): Promise<void> {
-		this.checkIfDestroyed("applyChangedConnectionSettings");
+	public async reset(): Promise<void> {
+		this.checkIfDestroyed("reset");
 
 		this.logger.info(
 			"Stopping SyncClient to apply changed connection settings"
@@ -451,6 +451,7 @@ export class SyncClient {
 		this.fetchController.finishReset();
 
 		await this.serverConfig.initialize();
+		this.webSocketManager.start();
 
 		if (!this.hasStartedOfflineSync) {
 			this.hasStartedOfflineSync = true;
@@ -458,7 +459,6 @@ export class SyncClient {
 		}
 
 		this.hasFinishedOfflineSync = true;
-		this.webSocketManager.start();
 	}
 
 	private async pause(): Promise<void> {
@@ -470,7 +470,7 @@ export class SyncClient {
 	private resetInMemoryState(): void {
 		this.history.reset();
 		this.contentCache.reset();
-		this.logger.reset();
+		// don't reset the logger
 		this.cursorTracker.reset();
 		this.syncer.reset();
 		this.fileOperations.reset();
@@ -486,7 +486,7 @@ export class SyncClient {
 			newSettings.vaultName !== oldSettings.vaultName ||
 			newSettings.remoteUri !== oldSettings.remoteUri
 		) {
-			await this.applyChangedConnectionSettings();
+			await this.reset();
 		}
 
 		if (newSettings.isSyncEnabled !== oldSettings.isSyncEnabled) {
