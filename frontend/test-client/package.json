@@ -8,7 +8,9 @@
 	"scripts": {
 		"dev": "webpack watch --mode development",
 		"build": "webpack --mode production",
-		"test": "tsx --test src/**/*.test.ts"
+		"test": "tsx --test src/**/*.test.ts",
+		"test:deterministic": "npm run build && node dist/deterministic/cli.js",
+		"test:fuzzing": "npm run build && node dist/cli.js"
 	},
 	"devDependencies": {
 		"@types/node": "^24.8.1",

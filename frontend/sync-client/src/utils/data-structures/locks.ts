@@ -123,6 +123,9 @@ export class Locks<T> {
 	 */
 	public unlock(key: T): void {
 		if (!this.locked.has(key)) {
+			this.logger?.warn(
+				`Attempted to unlock key "${key}" which is not currently locked`
+			);
 			return;
 		}
 

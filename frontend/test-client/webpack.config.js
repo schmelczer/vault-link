@@ -1,8 +1,7 @@
 const path = require("path");
 const webpack = require("webpack");
 
-module.exports = {
-	entry: "./src/cli.ts",
+const baseConfig = {
 	target: "node",
 	mode: "production",
 	optimization: {
@@ -19,12 +18,28 @@ module.exports = {
 	resolve: {
 		extensions: [".ts", ".js"]
 	},
-	output: {
-		globalObject: "this",
-		filename: "cli.js",
-		path: path.resolve(__dirname, "dist")
-	},
 	plugins: [
 		new webpack.BannerPlugin({ banner: "#!/usr/bin/env node", raw: true })
 	]
 };
+
+module.exports = [
+	{
+		...baseConfig,
+		entry: "./src/cli.ts",
+		output: {
+			globalObject: "this",
+			filename: "cli.js",
+			path: path.resolve(__dirname, "dist")
+		}
+	},
+	{
+		...baseConfig,
+		entry: "./src/deterministic/cli.ts",
+		output: {
+			globalObject: "this",
+			filename: "deterministic/cli.js",
+			path: path.resolve(__dirname, "dist")
+		}
+	}
+];
