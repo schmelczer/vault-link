@@ -13,6 +13,9 @@ export class SyncSettingsTab extends PluginSettingTab {
 	private editedToken: string;
 	private editedVaultName: string;
 
+	private _isApplyingChanges = false;
+	private syncEnabledOverride: boolean | undefined = undefined;
+
 	private readonly plugin: VaultLinkPlugin;
 	private readonly syncClient: SyncClient;
 	private readonly statusDescription: StatusDescription;
@@ -64,11 +67,28 @@ export class SyncSettingsTab extends PluginSettingTab {
 		);
 	}
 
+	private get isApplyingChanges(): boolean {
+		return this._isApplyingChanges;
+	}
+
+	private set isApplyingChanges(value: boolean) {
+		this._isApplyingChanges = value;
+		this.display()
+	}
+
 	public display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
 		containerEl.addClass("vault-link-settings");
+		containerEl.parentElement?.addClass("vault-link-settings-container");
 
+		if (this.isApplyingChanges) {
+			containerEl.addClass("applying-changes");
+		} else {
+			containerEl.removeClass("applying-changes");
+		}
+
+		this.renderApplyingChanges(containerEl);
 		this.renderSettingsHeader(containerEl);
 		this.renderConnectionSettings(containerEl);
 		this.renderSyncSettings(containerEl);
@@ -78,6 +98,32 @@ export class SyncSettingsTab extends PluginSettingTab {
 	public hide(): void {
 		super.hide();
 		this.setStatusDescriptionSubscription();
+	}
+
+	private renderApplyingChanges(containerEl: HTMLElement): void {
+		if (this.isApplyingChanges) {
+			const overlay = containerEl.createDiv({
+				cls: "applying-changes-overlay"
+			});
+
+			const spinnerContainer = overlay.createDiv({
+				cls: "spinner-container"
+			});
+
+			spinnerContainer.createDiv({
+				cls: "spinner"
+			});
+
+			spinnerContainer.createDiv({
+				text: "Applying changes...",
+				cls: "spinner-text"
+			});
+
+			spinnerContainer.createDiv({
+				text: "You can exit, but changes won't be saved",
+				cls: "spinner-warning"
+			});
+		}
 	}
 
 	private renderSettingsHeader(containerEl: HTMLElement): void {
@@ -111,10 +157,10 @@ export class SyncSettingsTab extends PluginSettingTab {
 						text: "Show history"
 					},
 					(button) =>
-						(button.onclick = async (): Promise<void> => {
-							this.plugin.closeSettings();
-							await this.plugin.activateView(HistoryView.TYPE);
-						})
+					(button.onclick = async (): Promise<void> => {
+						this.plugin.closeSettings();
+						await this.plugin.activateView(HistoryView.TYPE);
+					})
 				);
 
 				buttonContainer.createEl(
@@ -123,10 +169,10 @@ export class SyncSettingsTab extends PluginSettingTab {
 						text: "Show logs"
 					},
 					(button) =>
-						(button.onclick = async (): Promise<void> => {
-							this.plugin.closeSettings();
-							await this.plugin.activateView(LogsView.TYPE);
-						})
+					(button.onclick = async (): Promise<void> => {
+						this.plugin.closeSettings();
+						await this.plugin.activateView(LogsView.TYPE);
+					})
 				);
 			}
 		);
@@ -197,23 +243,40 @@ export class SyncSettingsTab extends PluginSettingTab {
 		new Setting(containerEl).addButton((button) =>
 			button
 				.setButtonText("Apply & test connection")
-				.onClick(async () => {
-					if (this.areThereUnsavedChanges()) {
-						await this.syncClient.setSettings({
-							vaultName: this.editedVaultName,
-							remoteUri: this.editedServerUri,
-							token: this.editedToken
-						});
-						new Notice("Checking connection to the server...");
-						new Notice(
-							(
-								await this.syncClient.checkConnection()
-							).serverMessage
-						);
-						await this.statusDescription.updateConnectionState();
-					} else {
-						new Notice("No changes to apply");
-					}
+				.setDisabled(this.isApplyingChanges)
+				.setTooltip(
+					this.isApplyingChanges
+						? "Waiting for applying changes to finish..."
+						: "Apply the changes made to the connection settings and test the connection to the server."
+				)
+				.onClick(() => {
+					// don't show loader within the button
+					void (async () => {
+						if (this.areThereUnsavedChanges()) {
+							new Notice("Applying changes to the server...");
+
+							this.isApplyingChanges = true;
+							try {
+								await this.syncClient.setSettings({
+									vaultName: this.editedVaultName,
+									remoteUri: this.editedServerUri,
+									token: this.editedToken
+								});
+							} finally {
+								this.isApplyingChanges = false;
+							}
+
+							new Notice("Checking connection to the server...");
+							new Notice(
+								(
+									await this.syncClient.checkConnection()
+								).serverMessage
+							);
+							await this.statusDescription.updateConnectionState();
+						} else {
+							new Notice("No changes to apply");
+						}
+					})();
 				})
 		);
 	}
@@ -239,9 +302,24 @@ export class SyncSettingsTab extends PluginSettingTab {
 			)
 			.addToggle((toggle) =>
 				toggle
-					.setValue(this.syncClient.getSettings().isSyncEnabled)
-					.onChange(async (value) =>
-						this.syncClient.setSetting("isSyncEnabled", value)
+					.setValue(this.syncEnabledOverride ?? this.syncClient.getSettings().isSyncEnabled)
+					.setDisabled(this.isApplyingChanges)
+					.setTooltip(
+						this.isApplyingChanges
+							? "Waiting for applying changes to finish..."
+							: "Enable or disable syncing."
+					)
+					.onChange((value) => void (async () => {
+						this.syncEnabledOverride = value;
+						this.isApplyingChanges = true;
+						try {
+							await this.syncClient.setSetting("isSyncEnabled", value);
+						} finally {
+							this.syncEnabledOverride = undefined;
+							this.isApplyingChanges = false;
+						}
+					}
+					)()
 					)
 			);
 
@@ -321,12 +399,26 @@ export class SyncSettingsTab extends PluginSettingTab {
 				"Delete the local metadata database while leaving the local and remote files intact."
 			)
 			.addButton((button) =>
-				button.setButtonText("Reset sync state").onClick(async () => {
-					await this.syncClient.applyChangedConnectionSettings();
-					new Notice(
-						"Sync state has been reset, you will need to resync"
-					);
-				})
+				button
+					.setDisabled(this.isApplyingChanges)
+					.setTooltip(
+						this.isApplyingChanges
+							? "Waiting for applying changes to finish..."
+							: "Reset sync state"
+					)
+					.setButtonText("Reset sync state")
+					.onClick(() => void (async () => {
+						this.isApplyingChanges = true;
+						try {
+							await this.syncClient.reset();
+						} finally {
+							this.isApplyingChanges = false;
+						}
+
+						new Notice(
+							"Sync state has been reset, you will need to resync"
+						);
+					})())
 			);
 	}
 
@@ -441,9 +533,9 @@ export class SyncSettingsTab extends PluginSettingTab {
 		name: string,
 		settingName: keyof SyncSettings
 	): [
-		DocumentFragment,
-		(newValue: SyncSettings[keyof SyncSettings]) => unknown
-	] {
+			DocumentFragment,
+			(newValue: SyncSettings[keyof SyncSettings]) => unknown
+		] {
 		const titleContainer = document.createDocumentFragment();
 		const title = titleContainer.createEl("div", {
 			text: name,
@@ -453,11 +545,10 @@ export class SyncSettingsTab extends PluginSettingTab {
 		const updateTitle = (
 			currentValue: SyncSettings[keyof SyncSettings]
 		): void => {
-			title.innerText = `${name}${
-				currentValue !== this.syncClient.getSettings()[settingName]
-					? " (unsaved)"
-					: ""
-			}`;
+			title.innerText = `${name}${currentValue !== this.syncClient.getSettings()[settingName]
+				? " (unsaved)"
+				: ""
+				}`;
 		};
 
 		return [titleContainer, updateTitle];
