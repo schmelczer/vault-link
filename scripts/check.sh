@@ -21,6 +21,7 @@ else
     cargo fmt --all -- --check
 fi
 
+cargo install cargo-machete
 cargo machete --with-metadata
 
 echo "Running checks in frontend"
