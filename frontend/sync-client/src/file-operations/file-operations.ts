@@ -268,6 +268,7 @@ export class FileOperations {
 
 		let newName = path;
 
+		// eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
 		while (true) {
 			currentCount++;
 			newName = `${directory}${stem} (${currentCount})${extension}`;

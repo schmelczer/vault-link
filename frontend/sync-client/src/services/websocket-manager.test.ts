@@ -4,6 +4,8 @@ import assert from "node:assert";
 import { WebSocketManager } from "./websocket-manager";
 import type { Logger } from "../tracing/logger";
 import type { Settings } from "../persistence/settings";
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const WebSocket = require("ws") as typeof globalThis.WebSocket;
 
 class MockCloseEvent extends Event {
 	public code: number;

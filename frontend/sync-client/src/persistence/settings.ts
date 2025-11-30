@@ -39,7 +39,7 @@ export class Settings {
 	private readonly onSettingsChangeHandlers: ((
 		newSettings: SyncSettings,
 		oldSettings: SyncSettings
-	) => Promise<unknown> | unknown)[] = [];
+	) => unknown)[] = [];
 
 	public constructor(
 		private readonly logger: Logger,
@@ -86,7 +86,9 @@ export class Settings {
 
 	public async setSettings(value: Partial<SyncSettings>): Promise<void> {
 		await this.lock.withLock(async () => {
-			this.logger.debug(`Updating settings with: ${JSON.stringify(value)}`);
+			this.logger.debug(
+				`Updating settings with: ${JSON.stringify(value)}`
+			);
 			const oldSettings = this.settings;
 			this.settings = {
 				...this.settings,
