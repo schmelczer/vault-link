@@ -1,5 +1,6 @@
 import type { Logger } from "../tracing/logger";
 import { awaitAll } from "../utils/await-all";
+import { Lock } from "../utils/data-structures/locks";
 
 export interface SyncSettings {
 	remoteUri: string;
@@ -33,6 +34,7 @@ export const DEFAULT_SETTINGS: SyncSettings = {
 
 export class Settings {
 	private settings: SyncSettings;
+	private readonly lock: Lock = new Lock();
 
 	private readonly onSettingsChangeHandlers: ((
 		newSettings: SyncSettings,
@@ -83,24 +85,26 @@ export class Settings {
 	}
 
 	public async setSettings(value: Partial<SyncSettings>): Promise<void> {
-		this.logger.debug(`Updating settings with: ${JSON.stringify(value)}`);
-		const oldSettings = this.settings;
-		this.settings = {
-			...this.settings,
-			...value
-		};
+		await this.lock.withLock(async () => {
+			this.logger.debug(`Updating settings with: ${JSON.stringify(value)}`);
+			const oldSettings = this.settings;
+			this.settings = {
+				...this.settings,
+				...value
+			};
 
-		await awaitAll(
-			this.onSettingsChangeHandlers
-				.map((handler) => {
-					return handler(this.settings, oldSettings);
-				})
-				.filter((result): result is Promise<unknown> => {
-					return result instanceof Promise;
-				})
-		);
+			await awaitAll(
+				this.onSettingsChangeHandlers
+					.map((handler) => {
+						return handler(this.settings, oldSettings);
+					})
+					.filter((result): result is Promise<unknown> => {
+						return result instanceof Promise;
+					})
+			);
 
-		await this.save();
+			await this.save();
+		});
 	}
 
 	private async save(): Promise<void> {
