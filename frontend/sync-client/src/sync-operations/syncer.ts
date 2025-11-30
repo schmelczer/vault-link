@@ -270,7 +270,7 @@ export class Syncer {
 
 	public async waitUntilFinished(): Promise<void> {
 		await this.runningScheduleSyncForOfflineChanges;
-		return this.syncQueue.onEmpty();
+		await this.syncQueue.onEmpty();
 	}
 
 	public async syncRemotelyUpdatedFile(
