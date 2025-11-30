@@ -73,7 +73,7 @@ export class SyncSettingsTab extends PluginSettingTab {
 
 	private set isApplyingChanges(value: boolean) {
 		this._isApplyingChanges = value;
-		this.display()
+		this.display();
 	}
 
 	public display(): void {
@@ -157,10 +157,10 @@ export class SyncSettingsTab extends PluginSettingTab {
 						text: "Show history"
 					},
 					(button) =>
-					(button.onclick = async (): Promise<void> => {
-						this.plugin.closeSettings();
-						await this.plugin.activateView(HistoryView.TYPE);
-					})
+						(button.onclick = async (): Promise<void> => {
+							this.plugin.closeSettings();
+							await this.plugin.activateView(HistoryView.TYPE);
+						})
 				);
 
 				buttonContainer.createEl(
@@ -169,10 +169,10 @@ export class SyncSettingsTab extends PluginSettingTab {
 						text: "Show logs"
 					},
 					(button) =>
-					(button.onclick = async (): Promise<void> => {
-						this.plugin.closeSettings();
-						await this.plugin.activateView(LogsView.TYPE);
-					})
+						(button.onclick = async (): Promise<void> => {
+							this.plugin.closeSettings();
+							await this.plugin.activateView(LogsView.TYPE);
+						})
 				);
 			}
 		);
@@ -251,7 +251,7 @@ export class SyncSettingsTab extends PluginSettingTab {
 				)
 				.onClick(() => {
 					// don't show loader within the button
-					void (async () => {
+					void (async (): Promise<void> => {
 						if (this.areThereUnsavedChanges()) {
 							new Notice("Applying changes to the server...");
 
@@ -302,24 +302,31 @@ export class SyncSettingsTab extends PluginSettingTab {
 			)
 			.addToggle((toggle) =>
 				toggle
-					.setValue(this.syncEnabledOverride ?? this.syncClient.getSettings().isSyncEnabled)
+					.setValue(
+						this.syncEnabledOverride ??
+							this.syncClient.getSettings().isSyncEnabled
+					)
 					.setDisabled(this.isApplyingChanges)
 					.setTooltip(
 						this.isApplyingChanges
 							? "Waiting for applying changes to finish..."
 							: "Enable or disable syncing."
 					)
-					.onChange((value) => void (async () => {
-						this.syncEnabledOverride = value;
-						this.isApplyingChanges = true;
-						try {
-							await this.syncClient.setSetting("isSyncEnabled", value);
-						} finally {
-							this.syncEnabledOverride = undefined;
-							this.isApplyingChanges = false;
-						}
-					}
-					)()
+					.onChange(
+						(value) =>
+							void (async (): Promise<void> => {
+								this.syncEnabledOverride = value;
+								this.isApplyingChanges = true;
+								try {
+									await this.syncClient.setSetting(
+										"isSyncEnabled",
+										value
+									);
+								} finally {
+									this.syncEnabledOverride = undefined;
+									this.isApplyingChanges = false;
+								}
+							})()
 					)
 			);
 
@@ -407,18 +414,21 @@ export class SyncSettingsTab extends PluginSettingTab {
 							: "Reset sync state"
 					)
 					.setButtonText("Reset sync state")
-					.onClick(() => void (async () => {
-						this.isApplyingChanges = true;
-						try {
-							await this.syncClient.reset();
-						} finally {
-							this.isApplyingChanges = false;
-						}
+					.onClick(
+						() =>
+							void (async (): Promise<void> => {
+								this.isApplyingChanges = true;
+								try {
+									await this.syncClient.reset();
+								} finally {
+									this.isApplyingChanges = false;
+								}
 
-						new Notice(
-							"Sync state has been reset, you will need to resync"
-						);
-					})())
+								new Notice(
+									"Sync state has been reset, you will need to resync"
+								);
+							})()
+					)
 			);
 	}
 
@@ -533,9 +543,9 @@ export class SyncSettingsTab extends PluginSettingTab {
 		name: string,
 		settingName: keyof SyncSettings
 	): [
-			DocumentFragment,
-			(newValue: SyncSettings[keyof SyncSettings]) => unknown
-		] {
+		DocumentFragment,
+		(newValue: SyncSettings[keyof SyncSettings]) => unknown
+	] {
 		const titleContainer = document.createDocumentFragment();
 		const title = titleContainer.createEl("div", {
 			text: name,
@@ -545,10 +555,11 @@ export class SyncSettingsTab extends PluginSettingTab {
 		const updateTitle = (
 			currentValue: SyncSettings[keyof SyncSettings]
 		): void => {
-			title.innerText = `${name}${currentValue !== this.syncClient.getSettings()[settingName]
-				? " (unsaved)"
-				: ""
-				}`;
+			title.innerText = `${name}${
+				currentValue !== this.syncClient.getSettings()[settingName]
+					? " (unsaved)"
+					: ""
+			}`;
 		};
 
 		return [titleContainer, updateTitle];

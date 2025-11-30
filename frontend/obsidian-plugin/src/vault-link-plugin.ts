@@ -43,12 +43,14 @@ export default class VaultLinkPlugin extends Plugin {
 
 	public async onload(): Promise<void> {
 		this.app.workspace.onLayoutReady(async () => {
+			// eslint-disable-next-line
 			if ((globalThis as any).VAULT_LINK_RUNNING_INSTANCE) {
 				new Notice(
 					"Another instance of VaultLink is already running. Please disable the duplicate instance."
 				);
 				throw new Error("VaultLink instance already running");
 			}
+			// eslint-disable-next-line
 			(globalThis as any).VAULT_LINK_RUNNING_INSTANCE = this;
 
 			const client = await this.createSyncClient();
@@ -199,6 +201,7 @@ export default class VaultLinkPlugin extends Plugin {
 		});
 
 		this.register(() => {
+			// eslint-disable-next-line
 			(globalThis as any).VAULT_LINK_RUNNING_INSTANCE = null;
 		});
 	}

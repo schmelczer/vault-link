@@ -173,7 +173,7 @@ export class Syncer {
 			// in that case, we mustn't move it again.
 			if (
 				this.database.getLatestDocumentByRelativePath(relativePath) ===
-				undefined ||
+					undefined ||
 				this.database.getLatestDocumentByRelativePath(relativePath)
 					?.isDeleted === true
 			) {

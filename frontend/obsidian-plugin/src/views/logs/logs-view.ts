@@ -78,14 +78,18 @@ export class LogsView extends ItemView {
 					text: "VaultLink logs"
 				});
 
-				const controls = verbositySection.createDiv({ cls: "logs-controls" });
+				const controls = verbositySection.createDiv({
+					cls: "logs-controls"
+				});
 
 				const copyButton = controls.createEl("button", {
 					text: "Copy logs",
 					cls: "clickable-icon"
 				});
 				setIcon(copyButton, "clipboard-copy");
-				copyButton.addEventListener("click", () => { this.copyLogsToClipboard(); });
+				copyButton.addEventListener("click", () => {
+					this.copyLogsToClipboard();
+				});
 
 				controls.createEl("select", {}, (dropdown) => {
 					logLevels.forEach(({ label, value }) =>
@@ -127,12 +131,15 @@ export class LogsView extends ItemView {
 			})
 			.join("\n");
 
-		navigator.clipboard.writeText(formattedLogs)
+		navigator.clipboard
+			.writeText(formattedLogs)
 			.then(() => {
 				new Notice(`Copied ${logs.length} log entries to clipboard`);
 			})
 			.catch((error: unknown) => {
-				this.client.logger.error(`Failed to copy logs to clipboard: ${error}`);
+				this.client.logger.error(
+					`Failed to copy logs to clipboard: ${error}`
+				);
 				new Notice("Failed to copy logs to clipboard");
 			});
 	}
