@@ -85,7 +85,7 @@ export class LogsView extends ItemView {
 					cls: "clickable-icon"
 				});
 				setIcon(copyButton, "clipboard-copy");
-				copyButton.addEventListener("click", () => this.copyLogsToClipboard());
+				copyButton.addEventListener("click", () => { this.copyLogsToClipboard(); });
 
 				controls.createEl("select", {}, (dropdown) => {
 					logLevels.forEach(({ label, value }) =>

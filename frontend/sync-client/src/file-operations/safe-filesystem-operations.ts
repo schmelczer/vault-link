@@ -75,7 +75,7 @@ export class SafeFileSystemOperations implements FileSystemOperations {
 
 	public async exists(
 		path: RelativePath,
-		skipLock: boolean = false
+		skipLock = false
 	): Promise<boolean> {
 		this.logger.debug(`Checking if file '${path}' exists`);
 		if (skipLock) {
@@ -100,7 +100,7 @@ export class SafeFileSystemOperations implements FileSystemOperations {
 	public async rename(
 		oldPath: RelativePath,
 		newPath: RelativePath,
-		skipLock: boolean = false
+		skipLock = false
 	): Promise<void> {
 		this.logger.debug(`Renaming file '${oldPath}' to '${newPath}'`);
 		return this.safeOperation(
@@ -122,11 +122,11 @@ export class SafeFileSystemOperations implements FileSystemOperations {
 		return this.locks.tryLock(path);
 	}
 
-	public waitForLock(path: RelativePath) {
+	public async waitForLock(path: RelativePath): Promise<void> {
 		return this.locks.waitForLock(path);
 	}
 
-	public unlock(path: RelativePath) {
+	public unlock(path: RelativePath): void {
 		this.locks.unlock(path);
 	}
 
