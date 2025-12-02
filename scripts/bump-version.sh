@@ -15,7 +15,7 @@ else
   exit 1
 fi
 
-cargo install cargo-edit
+cargo install cargo-edit --force
 
 if [[ -n $(git status --porcelain) ]]; then
   echo "Your working directory is not clean. Please commit or stash your changes before proceeding."
