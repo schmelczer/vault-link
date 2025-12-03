@@ -6,7 +6,7 @@ on:
   pull_request:
     branches: ["main"]
   schedule:
-    - cron: '0 */4 * * *'
+    - cron: '0 * * * *'
 
 concurrency:
   group: e2e-tests
@@ -48,4 +48,4 @@ jobs:
           cargo run config-e2e.yml --color never &
           cd ..
 
-          scripts/e2e.sh 8
+          scripts/e2e.sh 16

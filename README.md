@@ -2,7 +2,8 @@
 
 [![Check](https://github.com/schmelczer/vault-link/actions/workflows/check.yml/badge.svg)](https://github.com/schmelczer/vault-link/actions/workflows/check.yml)
 [![E2E tests](https://github.com/schmelczer/vault-link/actions/workflows/e2e.yml/badge.svg)](https://github.com/schmelczer/vault-link/actions/workflows/e2e.yml)
-[![Publish server Docker image](https://github.com/schmelczer/vault-link/actions/workflows/publish-docker.yml/badge.svg)](https://github.com/schmelczer/vault-link/actions/workflows/publish-docker.yml)
+[![Publish server Docker image](https://github.com/schmelczer/vault-link/actions/workflows/publish-server-docker.yml/badge.svg)](https://github.com/schmelczer/vault-link/actions/workflows/publish-server-docker.yml)
+[![Publish CLI](https://github.com/schmelczer/vault-link/actions/workflows/publish-cli-docker.yml/badge.svg)](https://github.com/schmelczer/vault-link/actions/workflows/publish-cli-docker.yml)
 [![Publish Obsidian plugin](https://github.com/schmelczer/vault-link/actions/workflows/publish-plugin.yml/badge.svg)](https://github.com/schmelczer/vault-link/actions/workflows/publish-plugin.yml)
 
 ## Develop
@@ -18,7 +19,7 @@
 
 - Install [`rustup`](https://rustup.rs): `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
 - Install [`wasm-pack`](https://rustwasm.github.io/wasm-pack/installer): `curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh`
-- `cargo install cargo-insta sqlx-cli cargo-edit`
+- `cargo install cargo-insta sqlx-cli`
 
 ### Install Obsidian on Linux
 
@@ -34,7 +35,7 @@ flatpak run md.obsidian.Obsidian
 Start the server:
 
 ```sh
-cargo install sqlx-cli cargo-machete cargo-edit
+cargo install sqlx-cli
 cd sync-server
 cargo run config-e2e.yml
 ```
@@ -68,7 +69,7 @@ scripts/bump-version.sh patch
 #### Run E2E tests
 
 ```sh
-scripts/e2e.sh
+scripts/e2e.sh 8
 ```
 
 And to clean up the logs & database files, run `scripts/clean-up.sh`
