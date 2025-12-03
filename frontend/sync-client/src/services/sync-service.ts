@@ -78,8 +78,8 @@ export class SyncService {
 
 			const result: SerializedError | DocumentVersionWithoutContent =
 				(await response.json()) as  // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
-				| SerializedError
-				| DocumentVersionWithoutContent;
+					| SerializedError
+					| DocumentVersionWithoutContent;
 
 			if ("errorType" in result) {
 				throw new Error(
@@ -88,7 +88,8 @@ export class SyncService {
 			}
 
 			this.logger.debug(
-				`Created document ${JSON.stringify(result)} with id ${result.documentId
+				`Created document ${JSON.stringify(result)} with id ${
+					result.documentId
 				}`
 			);
 
@@ -129,8 +130,8 @@ export class SyncService {
 
 			const result: SerializedError | DocumentUpdateResponse =
 				(await response.json()) as  // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
-				| SerializedError
-				| DocumentUpdateResponse;
+					| SerializedError
+					| DocumentUpdateResponse;
 
 			if ("errorType" in result) {
 				throw new Error(
@@ -139,7 +140,8 @@ export class SyncService {
 			}
 
 			this.logger.debug(
-				`Updated document ${JSON.stringify(result)} with id ${result.documentId
+				`Updated document ${JSON.stringify(result)} with id ${
+					result.documentId
 				}}`
 			);
 
@@ -181,8 +183,8 @@ export class SyncService {
 
 			const result: SerializedError | DocumentUpdateResponse =
 				(await response.json()) as  // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
-				| SerializedError
-				| DocumentUpdateResponse;
+					| SerializedError
+					| DocumentUpdateResponse;
 
 			if ("errorType" in result) {
 				throw new Error(
@@ -191,7 +193,8 @@ export class SyncService {
 			}
 
 			this.logger.debug(
-				`Updated document ${JSON.stringify(result)} with id ${result.documentId
+				`Updated document ${JSON.stringify(result)} with id ${
+					result.documentId
 				}}`
 			);
 
@@ -221,8 +224,8 @@ export class SyncService {
 
 			const result: SerializedError | DocumentVersionWithoutContent =
 				(await response.json()) as  // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
-				| SerializedError
-				| DocumentVersionWithoutContent;
+					| SerializedError
+					| DocumentVersionWithoutContent;
 
 			if ("errorType" in result) {
 				throw new Error(
@@ -282,8 +285,8 @@ export class SyncService {
 
 			const result: SerializedError | FetchLatestDocumentsResponse =
 				(await response.json()) as  // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
-				| SerializedError
-				| FetchLatestDocumentsResponse;
+					| SerializedError
+					| FetchLatestDocumentsResponse;
 
 			if ("errorType" in result) {
 				throw new Error(
