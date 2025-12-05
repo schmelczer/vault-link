@@ -49,3 +49,7 @@ jobs:
           cd ..
 
           scripts/e2e.sh 16
+
+      - name: Cleanup
+        if: always()
+        run: scripts/clean-up.sh

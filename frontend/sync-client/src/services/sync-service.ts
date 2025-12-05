@@ -70,6 +70,10 @@ export class SyncService {
 				new Blob([new Uint8Array(contentBytes)])
 			);
 
+			this.logger.debug(
+				`Creating document with id ${documentId} and relative path ${relativePath}`
+			);
+
 			const response = await this.client(this.getUrl("/documents"), {
 				method: "POST",
 				body: formData,
@@ -110,7 +114,7 @@ export class SyncService {
 	}): Promise<DocumentUpdateResponse> {
 		return this.retryForever(async () => {
 			this.logger.debug(
-				`Updating text document ${documentId} with parent version ${parentVersionId} and relative path ${relativePath}`
+				`Updating text document ${documentId} with parent version ${parentVersionId} and relative path ${relativePath}, content [${content.join(", ")}]`
 			);
 
 			const request: UpdateTextDocumentVersion = {
@@ -213,6 +217,11 @@ export class SyncService {
 			const request: DeleteDocumentVersion = {
 				relativePath
 			};
+
+			this.logger.debug(
+				`Delete document with id ${documentId} and relative path ${relativePath}`
+			);
+
 			const response = await this.client(
 				this.getUrl(`/documents/${documentId}`),
 				{
@@ -247,6 +256,8 @@ export class SyncService {
 		documentId: DocumentId;
 	}): Promise<DocumentVersion> {
 		return this.retryForever(async () => {
+			this.logger.debug(`Getting document with id ${documentId}`);
+
 			const response = await this.client(
 				this.getUrl(`/documents/${documentId}`),
 				{
@@ -275,6 +286,11 @@ export class SyncService {
 		since?: VaultUpdateId
 	): Promise<FetchLatestDocumentsResponse> {
 		return this.retryForever(async () => {
+			this.logger.debug(
+				"Getting all documents" +
+					(since != null ? ` since ${since}` : "")
+			);
+
 			const url = new URL(this.getUrl("/documents"));
 			if (since !== undefined) {
 				url.searchParams.append("since", since.toString());
@@ -303,6 +319,7 @@ export class SyncService {
 	}
 
 	public async ping(): Promise<PingResponse> {
+		this.logger.debug("Pinging server");
 		const response = await this.pingClient(this.getUrl("/ping"), {
 			headers: this.getDefaultHeaders()
 		});
