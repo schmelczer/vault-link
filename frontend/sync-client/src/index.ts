@@ -1,3 +1,4 @@
+import { awaitAll } from "./utils/await-all";
 import { logToConsole } from "./utils/debugging/log-to-console";
 import { slowFetchFactory } from "./utils/debugging/slow-fetch-factory";
 import { slowWebSocketFactory } from "./utils/debugging/slow-web-socket-factory";
@@ -41,5 +42,6 @@ export const debugging = {
 export const utils = {
 	getRandomColor,
 	positionToLineAndColumn,
-	lineAndColumnToPosition
+	lineAndColumnToPosition,
+	awaitAll
 };

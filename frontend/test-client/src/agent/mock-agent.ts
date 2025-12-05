@@ -2,7 +2,7 @@ import { choose } from "../utils/choose";
 import { v4 as uuidv4 } from "uuid";
 import { assert } from "../utils/assert";
 import type { RelativePath, SyncSettings } from "sync-client";
-import { debugging, Logger, LogLevel } from "sync-client";
+import { debugging, Logger, LogLevel, utils } from "sync-client";
 import { MockClient } from "./mock-client";
 import { sleep } from "../utils/sleep";
 import type { LogLine } from "sync-client";
@@ -140,8 +140,7 @@ export class MockAgent extends MockClient {
 		await withTimeout(
 			(async (): Promise<void> => {
 				await this.client.setSetting("isSyncEnabled", true);
-				// eslint-disable-next-line no-restricted-properties
-				await Promise.all(this.pendingActions);
+				await utils.awaitAll(this.pendingActions);
 				await this.client.waitUntilFinished();
 			})(),
 			TIMEOUT_MS,
