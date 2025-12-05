@@ -5,7 +5,10 @@ import type { RelativePath, SyncSettings } from "sync-client";
 import { debugging, Logger, LogLevel } from "sync-client";
 import { MockClient } from "./mock-client";
 import { sleep } from "../utils/sleep";
-import type { LogLine } from "sync-client/dist/types/tracing/logger";
+import type { LogLine } from "sync-client";
+import { withTimeout } from "../utils/with-timeout";
+
+const TIMEOUT_MS = 10 * 60 * 1000;
 
 export class MockAgent extends MockClient {
 	private readonly writtenContents: string[] = [];
@@ -134,15 +137,27 @@ export class MockAgent extends MockClient {
 	}
 
 	public async finish(): Promise<void> {
-		await this.client.setSetting("isSyncEnabled", true);
-		// eslint-disable-next-line no-restricted-properties
-		await Promise.all(this.pendingActions);
-		await this.client.waitUntilFinished();
+		await withTimeout(
+			(async (): Promise<void> => {
+				await this.client.setSetting("isSyncEnabled", true);
+				// eslint-disable-next-line no-restricted-properties
+				await Promise.all(this.pendingActions);
+				await this.client.waitUntilFinished();
+			})(),
+			TIMEOUT_MS,
+			"finish()"
+		);
 	}
 
 	public async destroy(): Promise<void> {
-		await this.client.waitUntilFinished();
-		await this.client.destroy();
+		await withTimeout(
+			(async (): Promise<void> => {
+				await this.client.waitUntilFinished();
+				await this.client.destroy();
+			})(),
+			TIMEOUT_MS,
+			"destroy()"
+		);
 	}
 
 	public assertFileSystemsAreConsistent(otherAgent: MockAgent): void {
@@ -184,14 +199,14 @@ export class MockAgent extends MockClient {
 			);
 			this.client.logger.info(
 				"Local files: " +
-					Array.from(otherAgent.localFiles.keys()).join(", ")
+				Array.from(otherAgent.localFiles.keys()).join(", ")
 			);
 			otherAgent.client.logger.info(
 				"Local data: " + JSON.stringify(otherAgent.data, null, 2)
 			);
 			otherAgent.client.logger.info(
 				"Local files: " +
-					Array.from(otherAgent.localFiles.keys()).join(", ")
+				Array.from(otherAgent.localFiles.keys()).join(", ")
 			);
 
 			throw e;

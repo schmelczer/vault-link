@@ -3,6 +3,9 @@
 set -e
 set -o pipefail
 
+NO_COLOR=1
+FORCE_COLOR=0
+
 node_version=$(node -v | sed 's/^v\([0-9]*\).*/\1/')
 if [ "$node_version" != "22" ]; then
     echo "Error: This script requires Node.js version 22, found: $node_version"
@@ -37,8 +40,18 @@ cd frontend
 
 pids=()
 for i in $(seq 1 $process_count); do
-    node test-client/dist/cli.js > "../logs/log_${i}.log" 2>&1 &
-    pids+=($!)
+    # Create a named pipe for this process
+    pipe="/tmp/vaultlink_pipe_$$_$i"
+    mkfifo "$pipe"
+
+    # Start the node process writing to the pipe
+    node test-client/dist/cli.js > "$pipe" 2>&1 &
+    pid=$!
+    pids+=($pid)
+    echo "Started process $i with PID: $pid"
+
+    # Read from pipe, prefix with PID, and write to log file
+    (sed "s/^/[PID $pid] /" < "$pipe" > "../logs/log_${i}.log"; rm "$pipe") &
 done
 
 cd ..
@@ -52,6 +65,7 @@ print_failed_log() {
 
             # Only consider non-zero exit codes as failures
             if [ $exit_code -ne 0 ]; then
+                echo "----- Log for process ${pids[$i-1]} (log_${i}.log) -----"
                 cat "$(pwd)/logs/log_${i}.log"
                 echo "Process ${pids[$i-1]} failed with exit code $exit_code. Log file: $(pwd)/logs/log_${i}.log"
                 return 0

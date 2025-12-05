@@ -71,6 +71,7 @@ async function runTest({
 		// Each agent can have unpushed changes which might conflict with eachother so each has to resolve the conflicts & push, and
 		for (const client of clients) {
 			try {
+				console.info(`Finishing up ${client.name}`);
 				await client.finish();
 			} catch (err) {
 				if (!slowFileEvents) {
@@ -82,6 +83,7 @@ async function runTest({
 		// then we need a second pass to ensure that all agents pull the same state.
 		for (const client of clients) {
 			try {
+				console.info(`Destroying ${client.name}`);
 				await client.destroy();
 			} catch (err) {
 				if (!slowFileEvents) {
