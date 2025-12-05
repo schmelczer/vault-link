@@ -199,14 +199,14 @@ export class MockAgent extends MockClient {
 			);
 			this.client.logger.info(
 				"Local files: " +
-				Array.from(otherAgent.localFiles.keys()).join(", ")
+					Array.from(otherAgent.localFiles.keys()).join(", ")
 			);
 			otherAgent.client.logger.info(
 				"Local data: " + JSON.stringify(otherAgent.data, null, 2)
 			);
 			otherAgent.client.logger.info(
 				"Local files: " +
-				Array.from(otherAgent.localFiles.keys()).join(", ")
+					Array.from(otherAgent.localFiles.keys()).join(", ")
 			);
 
 			throw e;
