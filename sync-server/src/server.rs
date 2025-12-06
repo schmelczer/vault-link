@@ -125,11 +125,11 @@ fn get_authed_routes(app_state: AppState) -> Router<AppState> {
             put(update_document::update_text),
         )
         .route(
-            "/vaults/:vault_id/documents/:document_id/versions/:version_id",
+            "/vaults/:vault_id/documents/:document_id/versions/:vault_update_id",
             get(fetch_document_version::fetch_document_version),
         )
         .route(
-            "/vaults/:vault_id/documents/:document_id/versions/:version_id/content",
+            "/vaults/:vault_id/documents/:document_id/versions/:vault_update_id/content",
             get(fetch_document_version_content::fetch_document_version_content),
         )
         .route(
