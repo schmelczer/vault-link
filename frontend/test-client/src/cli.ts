@@ -118,22 +118,12 @@ async function runTest({
 
 async function runTests(): Promise<void> {
 	for (let i = 0; i < TEST_ITERATIONS; i++) {
-		await runTest({
-			agentCount: 2,
-			concurrency: 16,
-			iterations: 100,
-			doDeletes: true,
-			doResets: true,
-			useSlowFileEvents: true,
-			jitterScaleInSeconds: 0.75
-		});
-
 		for (const useSlowFileEvents of [false, true]) {
 			for (const concurrency of [
 				16,
 				1 // test with concurrency 1 to check for deadlocks
 			]) {
-				for (const doDeletes of [true, false]) {
+				for (const doDeletes of [false, true]) {
 					await runTest({
 						agentCount: 2,
 						concurrency,
@@ -146,6 +136,16 @@ async function runTests(): Promise<void> {
 				}
 			}
 		}
+
+		await runTest({
+			agentCount: 2,
+			concurrency: 16,
+			iterations: 100,
+			doDeletes: true,
+			doResets: true,
+			useSlowFileEvents: true,
+			jitterScaleInSeconds: 0.75
+		});
 	}
 }
 
