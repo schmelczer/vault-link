@@ -26,7 +26,12 @@ cargo machete --with-metadata
 
 echo "Running checks in frontend"
 cd ../frontend
-npm ci
+
+if [[ "$FIX_MODE" == true ]]; then
+    npm install
+else
+    npm ci
+fi
 npm run build
 npm run test
 npm run lint
@@ -37,7 +42,6 @@ if [[ "$FIX_MODE" == false ]] && [[ $(git status --porcelain) ]]; then
     exit 1
 fi
 
-
 cd ..
 
 if [[ "$FIX_MODE" == true ]]; then
@@ -45,4 +49,3 @@ if [[ "$FIX_MODE" == true ]]; then
 else
     echo "Success"
 fi
-

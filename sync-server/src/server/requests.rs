@@ -1,6 +1,6 @@
 use axum::body::Bytes;
 use axum_typed_multipart::{FieldData, TryFromMultipart};
-use reconcile_text::NumberOrString;
+use reconcile_text::NumberOrText;
 use serde::{self, Deserialize};
 use ts_rs::TS;
 
@@ -40,7 +40,7 @@ pub struct UpdateTextDocumentVersion {
     pub relative_path: String,
 
     #[ts(type = "Array<number | string>")]
-    pub content: Vec<NumberOrString>,
+    pub content: Vec<NumberOrText>,
 }
 
 #[derive(TS, Debug, Deserialize)]

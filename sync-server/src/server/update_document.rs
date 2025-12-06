@@ -19,7 +19,7 @@ use crate::{
         database::models::{DocumentId, StoredDocumentVersion, VaultId, VaultUpdateId},
     },
     config::user_config::User,
-    errors::{SyncServerError, not_found_error, server_error},
+    errors::{SyncServerError, client_error, not_found_error, server_error},
     server::requests::UpdateBinaryDocumentVersion,
     utils::{
         find_first_available_path::find_first_available_path, is_binary::is_binary,
@@ -81,7 +81,9 @@ pub async fn update_text(
             .expect("parent must be valid UTF-8 because it's a text document"),
         request.content,
         &*BuiltinTokenizer::Word,
-    );
+    )
+    .context("Failed to apply given diff to parent document")
+    .map_err(client_error)?;
 
     let content = edited_text.apply().text().into_bytes();
 

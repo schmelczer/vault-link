@@ -16,7 +16,7 @@
         "byte-base64": "^1.1.0",
         "minimatch": "^10.0.1",
         "p-queue": "^8.1.0",
-        "reconcile-text": "^0.7.1",
+        "reconcile-text": "^0.8.0",
         "uuid": "^13.0.0",
         "@types/node": "^24.8.1",
         "ts-loader": "^9.5.2",
