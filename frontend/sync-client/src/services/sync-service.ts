@@ -40,6 +40,21 @@ export class SyncService {
 		this.pingClient = unboundFetch;
 	}
 
+	private static async errorFromResponse(
+		response: Response
+	): Promise<string> {
+		if (
+			response.headers
+				.get("Content-Type")
+				?.includes("application/json") == true
+		) {
+			const result: SerializedError =
+				(await response.json()) as SerializedError; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+			return SyncService.formatError(result);
+		}
+		return `HTTP ${response.status}: ${response.statusText}`;
+	}
+
 	private static formatError(error: SerializedError): string {
 		let result = error.message;
 		if (error.causes.length > 0) {
@@ -80,16 +95,16 @@ export class SyncService {
 				headers: this.getDefaultHeaders()
 			});
 
-			const result: SerializedError | DocumentVersionWithoutContent =
-				(await response.json()) as  // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
-					| SerializedError
-					| DocumentVersionWithoutContent;
-
-			if ("errorType" in result) {
+			if (!response.ok) {
 				throw new Error(
-					`Failed to create document: ${SyncService.formatError(result)}`
+					`Failed to create document: ${await SyncService.errorFromResponse(
+						response
+					)}`
 				);
 			}
+
+			const result: DocumentVersionWithoutContent =
+				(await response.json()) as DocumentVersionWithoutContent; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
 
 			this.logger.debug(`Created document ${JSON.stringify(result)}`);
 
@@ -128,16 +143,16 @@ export class SyncService {
 				}
 			);
 
-			const result: SerializedError | DocumentUpdateResponse =
-				(await response.json()) as  // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
-					| SerializedError
-					| DocumentUpdateResponse;
-
-			if ("errorType" in result) {
+			if (!response.ok) {
 				throw new Error(
-					`Failed to update document: ${SyncService.formatError(result)}`
+					`Failed to update document: ${await SyncService.errorFromResponse(
+						response
+					)}`
 				);
 			}
+
+			const result: DocumentUpdateResponse =
+				(await response.json()) as DocumentUpdateResponse; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
 
 			this.logger.debug(
 				`Updated document ${JSON.stringify(result)} with id ${
@@ -181,16 +196,16 @@ export class SyncService {
 				}
 			);
 
-			const result: SerializedError | DocumentUpdateResponse =
-				(await response.json()) as  // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
-					| SerializedError
-					| DocumentUpdateResponse;
-
-			if ("errorType" in result) {
+			if (!response.ok) {
 				throw new Error(
-					`Failed to update document: ${SyncService.formatError(result)}`
+					`Failed to update document: ${await SyncService.errorFromResponse(
+						response
+					)}`
 				);
 			}
+
+			const result: DocumentUpdateResponse =
+				(await response.json()) as DocumentUpdateResponse; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
 
 			this.logger.debug(
 				`Updated document ${JSON.stringify(result)} with id ${
@@ -227,16 +242,16 @@ export class SyncService {
 				}
 			);
 
-			const result: SerializedError | DocumentVersionWithoutContent =
-				(await response.json()) as  // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
-					| SerializedError
-					| DocumentVersionWithoutContent;
-
-			if ("errorType" in result) {
+			if (!response.ok) {
 				throw new Error(
-					`Failed to delete document: ${SyncService.formatError(result)}`
+					`Failed to delete document: ${await SyncService.errorFromResponse(
+						response
+					)}`
 				);
 			}
+
+			const result: DocumentVersionWithoutContent =
+				(await response.json()) as DocumentVersionWithoutContent; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
 
 			this.logger.debug(
 				`Deleted document ${relativePath} with id ${documentId}`
@@ -261,14 +276,16 @@ export class SyncService {
 				}
 			);
 
-			const result: SerializedError | DocumentVersion =
-				(await response.json()) as SerializedError | DocumentVersion; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
-
-			if ("errorType" in result) {
+			if (!response.ok) {
 				throw new Error(
-					`Failed to get document: ${SyncService.formatError(result)}`
+					`Failed to get document: ${await SyncService.errorFromResponse(
+						response
+					)}`
 				);
 			}
+
+			const result: DocumentVersion =
+				(await response.json()) as DocumentVersion; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
 
 			this.logger.debug(`Got document ${JSON.stringify(result)}`);
 
@@ -297,20 +314,19 @@ export class SyncService {
 				}
 			);
 
-			if (response.ok) {
-				const result = await response.bytes();
-				this.logger.debug(
-					`Got document version content for document ${documentId} version ${vaultUpdateId}`
+			if (!response.ok) {
+				throw new Error(
+					`Failed to get document: ${await SyncService.errorFromResponse(
+						response
+					)}`
 				);
-				return result;
 			}
 
-			const result: SerializedError =
-				(await response.json()) as SerializedError; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
-
-			throw new Error(
-				`Failed to get document: ${SyncService.formatError(result)}`
+			const result = await response.bytes();
+			this.logger.debug(
+				`Got document version content for document ${documentId} version ${vaultUpdateId}`
 			);
+			return result;
 		});
 	}
 
@@ -331,16 +347,16 @@ export class SyncService {
 				headers: this.getDefaultHeaders()
 			});
 
-			const result: SerializedError | FetchLatestDocumentsResponse =
-				(await response.json()) as  // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
-					| SerializedError
-					| FetchLatestDocumentsResponse;
-
-			if ("errorType" in result) {
+			if (!response.ok) {
 				throw new Error(
-					`Failed to get documents: ${SyncService.formatError(result)}`
+					`Failed to get documents: ${await SyncService.errorFromResponse(
+						response
+					)}`
 				);
 			}
+
+			const result: FetchLatestDocumentsResponse =
+				(await response.json()) as FetchLatestDocumentsResponse; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
 
 			this.logger.debug(
 				`Got ${result.latestDocuments.length} document metadata`
@@ -355,14 +371,16 @@ export class SyncService {
 		const response = await this.pingClient(this.getUrl("/ping"), {
 			headers: this.getDefaultHeaders()
 		});
-		const result: PingResponse | SerializedError =
-			(await response.json()) as PingResponse | SerializedError; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
 
-		if ("errorType" in result) {
+		if (!response.ok) {
 			throw new Error(
-				`Failed to ping server: ${SyncService.formatError(result)}`
+				`Failed to ping server: ${await SyncService.errorFromResponse(
+					response
+				)}`
 			);
 		}
+
+		const result: PingResponse = (await response.json()) as PingResponse; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
 
 		this.logger.debug(
 			`Pinged server, got response: ${JSON.stringify(result)}`
