@@ -91,11 +91,7 @@ export class SyncService {
 				);
 			}
 
-			this.logger.debug(
-				`Created document ${JSON.stringify(result)} with id ${
-					result.documentId
-				}`
-			);
+			this.logger.debug(`Created document ${JSON.stringify(result)}`);
 
 			return result;
 		});
@@ -274,9 +270,7 @@ export class SyncService {
 				);
 			}
 
-			this.logger.debug(
-				`Get document ${result.relativePath} with id ${result.documentId}`
-			);
+			this.logger.debug(`Got document ${JSON.stringify(result)}`);
 
 			return result;
 		});
