@@ -413,11 +413,11 @@ export class UnrestrictedSyncer {
 				return;
 			}
 
-			const content = (
-				await this.syncService.get({
-					documentId: remoteVersion.documentId
-				})
-			).contentBase64;
+			const contentBytes =
+				await this.syncService.getDocumentVersionContent({
+					documentId: remoteVersion.documentId,
+					vaultUpdateId: remoteVersion.vaultUpdateId
+				});
 
 			// We're trying to create an entirely new document that didn't exist locally
 			document = this.database.getDocumentByDocumentId(
@@ -430,8 +430,6 @@ export class UnrestrictedSyncer {
 				);
 				return;
 			}
-
-			const contentBytes = base64ToBytes(content);
 
 			await this.operations.ensureClearPath(remoteVersion.relativePath);
 

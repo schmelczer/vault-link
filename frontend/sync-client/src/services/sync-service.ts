@@ -276,6 +276,44 @@ export class SyncService {
 		});
 	}
 
+	public async getDocumentVersionContent({
+		documentId,
+		vaultUpdateId
+	}: {
+		documentId: DocumentId;
+		vaultUpdateId: VaultUpdateId;
+	}): Promise<Uint8Array> {
+		return this.retryForever(async () => {
+			this.logger.debug(
+				`Getting document with id ${documentId} and version ${vaultUpdateId}`
+			);
+
+			const response = await this.client(
+				this.getUrl(
+					`/documents/${documentId}/versions/${vaultUpdateId}/content`
+				),
+				{
+					headers: this.getDefaultHeaders()
+				}
+			);
+
+			if (response.ok) {
+				const result = await response.bytes();
+				this.logger.debug(
+					`Got document version content for document ${documentId} version ${vaultUpdateId}`
+				);
+				return result;
+			}
+
+			const result: SerializedError =
+				(await response.json()) as SerializedError; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+
+			throw new Error(
+				`Failed to get document: ${SyncService.formatError(result)}`
+			);
+		});
+	}
+
 	public async getAll(
 		since?: VaultUpdateId
 	): Promise<FetchLatestDocumentsResponse> {
