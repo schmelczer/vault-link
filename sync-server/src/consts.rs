@@ -9,7 +9,7 @@ pub const DEFAULT_CURSOR_TIMEOUT: Duration = Duration::from_secs(60);
 pub const DEFAULT_HOST: &str = "127.0.0.1";
 pub const DEFAULT_PORT: u16 = 3000;
 pub const DEFAULT_MAX_BODY_SIZE_MB: usize = 4096;
-pub const DEFAULT_RESPONSE_TIMEOUT_SECONDS: u64 = 60;
+pub const DEFAULT_RESPONSE_TIMEOUT_SECONDS: Duration = Duration::from_secs(1800);
 pub const DEFAULT_MAX_CLIENTS_PER_VAULT: usize = 256;
 
 pub const DEFAULT_LOG_DIRECTORY: &str = "logs";

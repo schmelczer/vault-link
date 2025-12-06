@@ -1,5 +1,6 @@
 use log::debug;
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 
 use crate::consts::{
     DEFAULT_HOST, DEFAULT_MAX_BODY_SIZE_MB, DEFAULT_MAX_CLIENTS_PER_VAULT,
@@ -20,8 +21,8 @@ pub struct ServerConfig {
     #[serde(default = "default_max_clients_per_vault")]
     pub max_clients_per_vault: usize,
 
-    #[serde(default = "default_response_timeout_seconds")]
-    pub response_timeout_seconds: u64,
+    #[serde(default = "default_response_timeout", with = "humantime_serde")]
+    pub response_timeout: Duration,
 
     #[serde(default = "default_mergeable_file_extensions")]
     pub mergeable_file_extensions: Vec<String>,
@@ -47,8 +48,8 @@ fn default_max_clients_per_vault() -> usize {
     DEFAULT_MAX_CLIENTS_PER_VAULT
 }
 
-fn default_response_timeout_seconds() -> u64 {
-    debug!("Using default response timeout: {DEFAULT_RESPONSE_TIMEOUT_SECONDS} seconds");
+fn default_response_timeout() -> Duration {
+    debug!("Using default response timeout: {DEFAULT_RESPONSE_TIMEOUT_SECONDS:?}");
     DEFAULT_RESPONSE_TIMEOUT_SECONDS
 }
 

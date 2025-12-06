@@ -13,8 +13,6 @@ mod responses;
 mod update_document;
 mod websocket;
 
-use std::time::Duration;
-
 use anyhow::{Context as _, Result, anyhow};
 use auth::auth_middleware;
 use axum::{
@@ -62,9 +60,7 @@ pub async fn create_server(config: Config) -> Result<()> {
         .layer(RequestBodyLimitLayer::new(
             app_state.config.server.max_body_size_mb * 1024 * 1024,
         ))
-        .layer(TimeoutLayer::new(Duration::from_secs(
-            server_config.response_timeout_seconds,
-        )))
+        .layer(TimeoutLayer::new(server_config.response_timeout))
         .layer(
             CorsLayer::new()
                 .allow_origin("*".parse::<HeaderValue>().expect("Failed to parse origin"))

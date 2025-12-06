@@ -102,11 +102,13 @@ impl Database {
         let connection_options = SqliteConnectOptions::new()
             .filename(file_name.clone())
             .create_if_missing(true)
+            .auto_vacuum(sqlx::sqlite::SqliteAutoVacuum::Full)
             .busy_timeout(Duration::from_secs(3600))
             .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal);
 
         let pool = SqlitePoolOptions::new()
             .max_connections(config.max_connections_per_vault)
+            .acquire_slow_threshold(Duration::from_secs(30))
             .test_before_acquire(true)
             .connect_with(connection_options)
             .await

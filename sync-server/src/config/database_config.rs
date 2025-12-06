@@ -2,13 +2,11 @@ use std::{path::PathBuf, time::Duration};
 
 use log::debug;
 use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
 
 use crate::consts::{
     DEFAULT_CURSOR_TIMEOUT, DEFAULT_DATABASES_DIRECTORY_PATH, DEFAULT_MAX_CONNECTIONS_PER_VAULT,
 };
 
-#[serde_with::serde_as]
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct DatabaseConfig {
     #[serde(default = "default_databases_directory_path")]
@@ -17,8 +15,7 @@ pub struct DatabaseConfig {
     #[serde(default = "default_max_connections_per_vault")]
     pub max_connections_per_vault: u32,
 
-    #[serde(default = "default_cursor_timeout", rename = "cursor_timeout_seconds")]
-    #[serde_as(as = "serde_with::DurationSeconds<u64>")]
+    #[serde(default = "default_cursor_timeout", with = "humantime_serde")]
     pub cursor_timeout: Duration,
 }
 

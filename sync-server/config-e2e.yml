@@ -1,13 +1,13 @@
 database:
   databases_directory_path: databases
   max_connections_per_vault: 12
-  cursor_timeout_seconds: 60
+  cursor_timeout: 1m
 server:
   host: 0.0.0.0
   port: 3000
   max_body_size_mb: 512
   max_clients_per_vault: 256
-  response_timeout_seconds: 60
+  response_timeout: 30m
   mergeable_file_extensions:
   - md
   - txt
