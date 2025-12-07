@@ -10,7 +10,7 @@
     "scripts": {
         "dev": "webpack watch --mode development",
         "build": "webpack --mode production",
-        "test": "tsx --test src/**/*.test.ts"
+        "test": "tsx --test 'src/**/*.test.ts'"
     },
     "devDependencies": {
         "byte-base64": "^1.1.0",
