@@ -20,15 +20,15 @@ export class LogLine {
     public constructor(
         public level: LogLevel,
         public message: string
-    ) { }
+    ) {}
 }
 
 export class Logger {
-    private readonly messages: LogLine[] = [];
     public readonly onLogEmitted = new EventListeners<
         (message: LogLine) => unknown
     >();
 
+    private readonly messages: LogLine[] = [];
 
     public debug(message: string): void {
         this.pushMessage(message, LogLevel.DEBUG);

@@ -26,7 +26,7 @@ import { FixedSizeDocumentCache } from "./utils/data-structures/fix-sized-cache"
 import { setUpTelemetry } from "./utils/set-up-telemetry";
 import { DIFF_CACHE_SIZE_MB } from "./consts";
 import { ServerConfig } from "./services/server-config";
-import { EventListeners } from "./utils/data-structures/event-listeners";
+import type { EventListeners } from "./utils/data-structures/event-listeners";
 
 export class SyncClient {
     private hasStartedOfflineSync = false;
@@ -54,7 +54,7 @@ export class SyncClient {
                 database: Partial<StoredDatabase>;
             }>
         >
-    ) { }
+    ) {}
 
     public get documentCount(): number {
         return this.database.length;
@@ -63,6 +63,42 @@ export class SyncClient {
     public get isWebSocketConnected(): boolean {
         return this.webSocketManager.isWebSocketConnected;
     }
+
+    public get onSyncHistoryUpdated(): EventListeners<
+        (stats: HistoryStats) => unknown
+    > {
+        this.checkIfDestroyed("onSyncHistoryUpdated getter");
+        return this.history.onHistoryUpdated;
+    }
+
+    public get onSettingsChanged(): EventListeners<
+        (newSettings: SyncSettings, oldSettings: SyncSettings) => unknown
+    > {
+        this.checkIfDestroyed("onSettingsChanged getter");
+        return this.settings.onSettingsChanged;
+    }
+
+    public get onRemainingOperationsCountChanged(): EventListeners<
+        (remainingOperationsCount: number) => unknown
+    > {
+        this.checkIfDestroyed("onRemainingOperationsCountChanged getter");
+        return this.syncer.onRemainingOperationsCountChanged;
+    }
+
+    public get onWebSocketStatusChanged(): EventListeners<
+        (isConnected: boolean) => unknown
+    > {
+        this.checkIfDestroyed("onWebSocketStatusChanged getter");
+        return this.webSocketManager.onWebSocketStatusChanged;
+    }
+
+    public get onRemoteCursorsUpdated(): EventListeners<
+        (cursors: MaybeOutdatedClientCursors[]) => unknown
+    > {
+        this.checkIfDestroyed("onRemoteCursorsUpdated getter");
+        return this.cursorTracker.onRemoteCursorsUpdated;
+    }
+
     public static async create({
         fs,
         persistence,
@@ -228,9 +264,7 @@ export class SyncClient {
             }
         });
 
-        this.settings.onSettingsChanged.add(
-            this.onSettingsChange.bind(this)
-        );
+        this.settings.onSettingsChanged.add(this.onSettingsChange.bind(this));
 
         if (this.settings.getSettings().isSyncEnabled) {
             this.logger.info("Starting SyncClient");
@@ -318,37 +352,6 @@ export class SyncClient {
         await this.settings.setSettings(value);
     }
 
-    public get onSyncHistoryUpdated(): EventListeners<
-        (stats: HistoryStats) => unknown
-    > {
-        this.checkIfDestroyed("onSyncHistoryUpdated getter");
-        return this.history.onHistoryUpdated;
-    }
-
-
-
-
-    public get onSettingsChanged(): EventListeners<
-        (newSettings: SyncSettings, oldSettings: SyncSettings) => unknown
-    > {
-        this.checkIfDestroyed("onSettingsChanged getter");
-        return this.settings.onSettingsChanged;
-    }
-
-    public get onRemainingOperationsCountChanged(): EventListeners<
-        (remainingOperationsCount: number) => unknown
-    > {
-        this.checkIfDestroyed("onRemainingOperationsCountChanged getter");
-        return this.syncer.onRemainingOperationsCountChanged;
-    }
-
-    public get onWebSocketStatusChanged(): EventListeners<
-        (isConnected: boolean) => unknown
-    > {
-        this.checkIfDestroyed("onWebSocketStatusChanged getter");
-        return this.webSocketManager.onWebSocketStatusChanged;
-    }
-
     public async syncLocallyCreatedFile(
         relativePath: RelativePath
     ): Promise<void> {
@@ -412,14 +415,6 @@ export class SyncClient {
         this.checkIfDestroyed("updateLocalCursors");
 
         await this.cursorTracker.sendLocalCursorsToServer(documentToCursors);
-    }
-
-
-    public get onRemoteCursorsUpdated(): EventListeners<
-        (cursors: MaybeOutdatedClientCursors[]) => unknown
-    > {
-        this.checkIfDestroyed("onRemoteCursorsUpdated getter");
-        return this.cursorTracker.onRemoteCursorsUpdated;
     }
 
     public async waitUntilFinished(): Promise<void> {

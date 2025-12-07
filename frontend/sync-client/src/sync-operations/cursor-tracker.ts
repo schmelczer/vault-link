@@ -16,13 +16,13 @@ import { EventListeners } from "../utils/data-structures/event-listeners";
 // known remote cursor positions, and for each document, tries to return the latest cursor positions that are
 // not from the future.
 export class CursorTracker {
-    private readonly updateLock = new Lock();
-
     // The returned position may be accurate, if it matches the document version, or outdated, in which case
     // the client has to heuristically guess it's current position based on the local edits.
     public readonly onRemoteCursorsUpdated = new EventListeners<
         (cursors: MaybeOutdatedClientCursors[]) => unknown
     >();
+
+    private readonly updateLock = new Lock();
 
     private knownRemoteCursors: (ClientCursors & {
         upToDateness: DocumentUpToDateness;
@@ -71,7 +71,6 @@ export class CursorTracker {
                 );
             }
         );
-
 
         this.fileChangeNotifier.onFileChanged.add(async (relativePath) =>
             this.updateLock.withLock(async () => {
@@ -155,7 +154,6 @@ export class CursorTracker {
 
         this.webSocketManager.updateLocalCursors({ documentsWithCursors });
     }
-
 
     public reset(): void {
         this.knownRemoteCursors = [];

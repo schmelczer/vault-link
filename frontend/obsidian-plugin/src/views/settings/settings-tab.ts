@@ -41,30 +41,28 @@ export class SyncSettingsTab extends PluginSettingTab {
         this.editedToken = this.syncClient.getSettings().token;
         this.editedVaultName = this.syncClient.getSettings().vaultName;
 
-        this.syncClient.onSettingsChanged.add(
-            (newSettings, oldSettings) => {
-                let hasChanged = false;
+        this.syncClient.onSettingsChanged.add((newSettings, oldSettings) => {
+            let hasChanged = false;
 
-                if (newSettings.remoteUri !== oldSettings.remoteUri) {
-                    this.editedServerUri = newSettings.remoteUri;
-                    hasChanged = true;
-                }
-
-                if (newSettings.token !== oldSettings.token) {
-                    this.editedToken = newSettings.token;
-                    hasChanged = true;
-                }
-
-                if (newSettings.vaultName !== oldSettings.vaultName) {
-                    this.editedVaultName = newSettings.vaultName;
-                    hasChanged = true;
-                }
-
-                if (hasChanged) {
-                    this.display();
-                }
+            if (newSettings.remoteUri !== oldSettings.remoteUri) {
+                this.editedServerUri = newSettings.remoteUri;
+                hasChanged = true;
             }
-        );
+
+            if (newSettings.token !== oldSettings.token) {
+                this.editedToken = newSettings.token;
+                hasChanged = true;
+            }
+
+            if (newSettings.vaultName !== oldSettings.vaultName) {
+                this.editedVaultName = newSettings.vaultName;
+                hasChanged = true;
+            }
+
+            if (hasChanged) {
+                this.display();
+            }
+        });
     }
 
     private get isApplyingChanges(): boolean {

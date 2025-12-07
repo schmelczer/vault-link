@@ -24,16 +24,18 @@ import { awaitAll } from "../utils/await-all";
 import { EventListeners } from "../utils/data-structures/event-listeners";
 
 export class Syncer {
-    private readonly remoteDocumentsLock: Locks<DocumentId>;
     public readonly onRemainingOperationsCountChanged = new EventListeners<
         (remainingOperations: number) => unknown
     >();
+
+    private readonly remoteDocumentsLock: Locks<DocumentId>;
 
     // FIFO to limit the number of concurrent sync operations
     private readonly syncQueue: PQueue;
 
     private _isFirstSyncComplete = false;
     private runningScheduleSyncForOfflineChanges: Promise<void> | undefined;
+    private previousRemainingOperationsCount = 0;
 
     public constructor(
         private readonly deviceId: string,
@@ -58,17 +60,20 @@ export class Syncer {
         });
 
         this.syncQueue.on("active", () => {
-            this.onRemainingOperationsCountChanged.trigger(this.syncQueue.size);
+            if (this.previousRemainingOperationsCount !== this.syncQueue.size) {
+                this.previousRemainingOperationsCount = this.syncQueue.size;
+                this.onRemainingOperationsCountChanged.trigger(
+                    this.syncQueue.size
+                );
+            }
         });
 
-        this.webSocketManager.onWebSocketStatusChanged.add(
-            (isConnected) => {
-                if (isConnected) {
-                    // The JS WebSocket API doesn't support setting headers, so we have to send the token as a message
-                    this.sendHandshakeMessage();
-                }
+        this.webSocketManager.onWebSocketStatusChanged.add((isConnected) => {
+            if (isConnected) {
+                // The JS WebSocket API doesn't support setting headers, so we have to send the token as a message
+                this.sendHandshakeMessage();
             }
-        );
+        });
         this.webSocketManager.onRemoteVaultUpdateReceived.add(
             this.syncRemotelyUpdatedFile.bind(this)
         );
@@ -166,7 +171,7 @@ export class Syncer {
             // in that case, we mustn't move it again.
             if (
                 this.database.getLatestDocumentByRelativePath(relativePath) ===
-                undefined ||
+                    undefined ||
                 this.database.getLatestDocumentByRelativePath(relativePath)
                     ?.isDeleted === true
             ) {

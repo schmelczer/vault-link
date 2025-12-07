@@ -333,7 +333,7 @@ export class UnrestrictedSyncer {
 
             const actualUpdateDetails: SyncUpdateDetails | SyncMovedDetails =
                 oldPath !== undefined ||
-                    response.relativePath != originalRelativePath
+                response.relativePath != originalRelativePath
                     ? {
                         type: SyncType.MOVE,
                         relativePath: response.relativePath,
@@ -540,8 +540,9 @@ export class UnrestrictedSyncer {
                     type: SyncType.SKIPPED,
                     relativePath
                 },
-                message: `File size of ${sizeInMB} MB exceeds the maximum file size limit of ${maxFileSizeMB
-                    } MB`
+                message: `File size of ${sizeInMB} MB exceeds the maximum file size limit of ${
+                    maxFileSizeMB
+                } MB`
             };
         }
     }

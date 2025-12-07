@@ -70,18 +70,18 @@ export interface HistoryStats {
 }
 
 export class SyncHistory {
-    private readonly _entries: HistoryEntry[] = [];
-
     public readonly onHistoryUpdated = new EventListeners<
         (status: HistoryStats) => unknown
     >();
+
+    private readonly _entries: HistoryEntry[] = [];
 
     private status: HistoryStats = {
         success: 0,
         error: 0
     };
 
-    public constructor(private readonly logger: Logger) { }
+    public constructor(private readonly logger: Logger) {}
 
     public get entries(): readonly HistoryEntry[] {
         return this._entries;
@@ -114,8 +114,6 @@ export class SyncHistory {
         this.updateSuccessCount(historyEntry);
     }
 
-
-
     public reset(): void {
         this._entries.length = 0;
         this.status = {
@@ -141,8 +139,8 @@ export class SyncHistory {
             candidate !== undefined &&
             (this._entries[0] === candidate ||
                 candidate.timestamp.getTime() +
-                TIMEOUT_FOR_MERGING_HISTORY_ENTRIES_IN_SECONDS * 1000 >
-                entry.timestamp.getTime())
+                    TIMEOUT_FOR_MERGING_HISTORY_ENTRIES_IN_SECONDS * 1000 >
+                    entry.timestamp.getTime())
         ) {
             return candidate;
         }

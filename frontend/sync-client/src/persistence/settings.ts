@@ -33,12 +33,12 @@ export const DEFAULT_SETTINGS: SyncSettings = {
 };
 
 export class Settings {
-    private settings: SyncSettings;
-    private readonly lock: Lock = new Lock();
-
     public readonly onSettingsChanged = new EventListeners<
         (newSettings: SyncSettings, oldSettings: SyncSettings) => unknown
     >();
+
+    private settings: SyncSettings;
+    private readonly lock: Lock = new Lock();
 
     public constructor(
         private readonly logger: Logger,

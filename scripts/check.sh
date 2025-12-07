@@ -34,17 +34,14 @@ fi
 
 cd ..
 
-# Use git ls-files to only check tracked files, respecting .gitignore
-if [[ "$FIX_MODE" == true ]]; then
-    git ls-files | xargs npx eclint fix
-else
-    git ls-files | xargs npx eclint check
-fi
-
 cd frontend
 npm run build
 npm run test
 npm run lint
+
+# Use git ls-files to only check tracked files, respecting .gitignore
+# We always run in fix mode and then check with git status
+git ls-files | xargs npx eclint fix
 
 if [[ "$FIX_MODE" == false ]] && [[ $(git status --porcelain) ]]; then
     git status --porcelain

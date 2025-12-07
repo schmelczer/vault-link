@@ -2,10 +2,15 @@ import { removeFromArray } from "../remove-from-array";
 import { awaitAll } from "../await-all";
 
 /**
-* A utility class for managing event listeners with type-safe add/remove operations.
-*/
+ * A utility class for managing event listeners with type-safe add/remove operations.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export class EventListeners<TListener extends (...args: any[]) => any> {
     private readonly listeners: TListener[] = [];
+
+    public get count(): number {
+        return this.listeners.length;
+    }
 
     /**
     * Adds a new listener to the collection.
@@ -51,6 +56,7 @@ export class EventListeners<TListener extends (...args: any[]) => any> {
         await awaitAll(
             this.listeners
                 .map((listener) => {
+                    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
                     return listener(...args);
                 })
                 .filter((result): result is Promise<unknown> => {
@@ -62,10 +68,4 @@ export class EventListeners<TListener extends (...args: any[]) => any> {
     public clear(): void {
         this.listeners.length = 0;
     }
-
-    public get count(): number {
-        return this.listeners.length;
-    }
-
-
 }
