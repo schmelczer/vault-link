@@ -57,6 +57,7 @@ impl Database {
 
         let mut connection_pools = std::collections::HashMap::new();
 
+        info!("Applying pending database migrations");
         let mut entries = tokio::fs::read_dir(&config.databases_directory_path).await?;
         while let Some(entry) = entries.next_entry().await? {
             if !entry.file_name().to_string_lossy().ends_with(".sqlite") {
