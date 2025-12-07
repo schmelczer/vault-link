@@ -136,10 +136,7 @@ export default class VaultLinkPlugin extends Plugin {
             ...(IS_DEBUG_BUILD
                 ? {
                     fetch: debugging.slowFetchFactory(1),
-                    webSocket: debugging.slowWebSocketFactory(
-                        1,
-                        new Logger()
-                    )
+                    webSocket: debugging.slowWebSocketFactory(1, new Logger())
                 }
                 : {})
         });
@@ -174,7 +171,7 @@ export default class VaultLinkPlugin extends Plugin {
 
         this.registerEditorExtension([remoteCursorsTheme, remoteCursorsPlugin]);
 
-        client.addRemoteCursorsUpdateListener((cursors) => {
+        client.onRemoteCursorsUpdated.add((cursors) => {
             RemoteCursorsPluginValue.setCursors(cursors, this.app);
             renderCursorsInFileExplorer(cursors, this.app);
         });

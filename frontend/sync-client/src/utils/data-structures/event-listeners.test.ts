@@ -5,7 +5,8 @@ import { EventListeners } from "./event-listeners";
 describe("EventListeners", () => {
     it("should add & remove listeners", () => {
         const listeners = new EventListeners<() => void>();
-        const listener = () => { };
+        // eslint-disable-next-line @typescript-eslint/no-empty-function
+        const listener = (): void => {};
 
         listeners.add(listener);
 
@@ -16,10 +17,10 @@ describe("EventListeners", () => {
         assert.strictEqual(listeners.count, 0);
     });
 
-
     it("should remove listeners using unsubscribe function", () => {
         const listeners = new EventListeners<() => void>();
-        const listener = () => { };
+        // eslint-disable-next-line @typescript-eslint/no-empty-function
+        const listener = (): void => {};
 
         const unsubscribe = listeners.add(listener);
         unsubscribe();
@@ -29,7 +30,8 @@ describe("EventListeners", () => {
 
     it("should return false when removing non-existent listener", () => {
         const listeners = new EventListeners<() => void>();
-        const listener = () => { };
+        // eslint-disable-next-line @typescript-eslint/no-empty-function
+        const listener = (): void => {};
 
         const removed = listeners.remove(listener);
 
@@ -38,9 +40,12 @@ describe("EventListeners", () => {
 
     it("should handle multiple listeners", () => {
         const listeners = new EventListeners<() => void>();
-        const listener1 = () => { };
-        const listener2 = () => { };
-        const listener3 = () => { };
+        // eslint-disable-next-line @typescript-eslint/no-empty-function
+        const listener1 = (): void => {};
+        // eslint-disable-next-line @typescript-eslint/no-empty-function
+        const listener2 = (): void => {};
+        // eslint-disable-next-line @typescript-eslint/no-empty-function
+        const listener3 = (): void => {};
 
         listeners.add(listener1);
         listeners.add(listener2);
@@ -82,10 +87,10 @@ describe("EventListeners", () => {
         let count1 = 0;
         let count2 = 0;
 
-        const listener1 = () => {
+        const listener1 = (): void => {
             count1++;
         };
-        const listener2 = () => {
+        const listener2 = (): void => {
             count2++;
         };
 
@@ -127,12 +132,10 @@ describe("EventListeners", () => {
         assert.strictEqual(results.length, 3);
     });
 
-
-
     it("should not trigger cleared listeners", () => {
         const listeners = new EventListeners<() => void>();
         let called = false;
-        const listener = () => {
+        const listener = (): void => {
             called = true;
         };
 
