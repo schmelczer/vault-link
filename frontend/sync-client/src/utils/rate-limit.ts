@@ -16,48 +16,48 @@ import { sleep } from "./sleep";
  *         Returns the original function's return type when executed, or undefined if the call was superseded by a newer one.
  */
 export function rateLimit<
-	R,
-	T extends (
-		...args: any // eslint-disable-line @typescript-eslint/no-explicit-any
-	) => Promise<R>
+    R,
+    T extends (
+        ...args: any // eslint-disable-line @typescript-eslint/no-explicit-any
+    ) => Promise<R>
 >(
-	fn: T,
-	minIntervalMs: number | (() => number)
+    fn: T,
+    minIntervalMs: number | (() => number)
 ): (...args: Parameters<T>) => Promise<R | undefined> {
-	let newArgs: Parameters<T> | undefined = undefined;
-	let running: Promise<unknown> | undefined = undefined;
+    let newArgs: Parameters<T> | undefined = undefined;
+    let running: Promise<unknown> | undefined = undefined;
 
-	const decoratedFn = async (
-		...args: Parameters<T>
-	): Promise<R | undefined> => {
-		if (running !== undefined) {
-			newArgs = args;
-			await running;
+    const decoratedFn = async (
+        ...args: Parameters<T>
+    ): Promise<R | undefined> => {
+        if (running !== undefined) {
+            newArgs = args;
+            await running;
 
-			// args might have changed while we were waiting
-			// eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-			if (newArgs === undefined) {
-				// we weren't the first one to wake up, that means a newer
-				// invocation is running now, we can just bail
-				return;
-			}
-			args = newArgs;
-			newArgs = undefined;
-		}
+            // args might have changed while we were waiting
+            // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+            if (newArgs === undefined) {
+                // we weren't the first one to wake up, that means a newer
+                // invocation is running now, we can just bail
+                return;
+            }
+            args = newArgs;
+            newArgs = undefined;
+        }
 
-		const [promise, resolve] = createPromise();
-		running = promise;
-		sleep(
-			typeof minIntervalMs === "function"
-				? minIntervalMs()
-				: minIntervalMs
-		)
-			.then(resolve)
-			.catch(() => {
-				// sleep cannot fail
-			});
-		return fn(...args);
-	};
+        const [promise, resolve] = createPromise();
+        running = promise;
+        sleep(
+            typeof minIntervalMs === "function"
+                ? minIntervalMs()
+                : minIntervalMs
+        )
+            .then(resolve)
+            .catch(() => {
+                // sleep cannot fail
+            });
+        return fn(...args);
+    };
 
-	return decoratedFn;
+    return decoratedFn;
 }

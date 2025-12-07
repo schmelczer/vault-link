@@ -1,8 +1,8 @@
 import { describe, it } from "node:test";
 import type {
-	Database,
-	DocumentRecord,
-	RelativePath
+    Database,
+    DocumentRecord,
+    RelativePath
 } from "../persistence/database";
 import { FileOperations } from "./file-operations";
 import { Logger } from "../tracing/logger";
@@ -12,224 +12,224 @@ import type { TextWithCursors } from "reconcile-text";
 import type { ServerConfig, ServerConfigData } from "../services/server-config";
 
 class MockServerConfig implements Pick<ServerConfig, "getConfig"> {
-	public getConfig(): ServerConfigData {
-		return {
-			mergeableFileExtensions: ["md", "txt"],
-			supportedApiVersion: 1,
-			isAuthenticated: true
-		};
-	}
+    public getConfig(): ServerConfigData {
+        return {
+            mergeableFileExtensions: ["md", "txt"],
+            supportedApiVersion: 1,
+            isAuthenticated: true
+        };
+    }
 }
 
 class MockDatabase implements Partial<Database> {
-	public getLatestDocumentByRelativePath(
-		_find: RelativePath
-	): DocumentRecord | undefined {
-		// no-op
-		return undefined;
-	}
+    public getLatestDocumentByRelativePath(
+        _find: RelativePath
+    ): DocumentRecord | undefined {
+        // no-op
+        return undefined;
+    }
 
-	public move(
-		_oldRelativePath: RelativePath,
-		_newRelativePath: RelativePath
-	): void {
-		// no-op
-	}
+    public move(
+        _oldRelativePath: RelativePath,
+        _newRelativePath: RelativePath
+    ): void {
+        // no-op
+    }
 }
 
 class FakeFileSystemOperations implements FileSystemOperations {
-	public readonly names = new Set<string>();
+    public readonly names = new Set<string>();
 
-	public async listFilesRecursively(
-		_root: RelativePath | undefined
-	): Promise<RelativePath[]> {
-		return ["file.md"];
-	}
-	public async read(_path: RelativePath): Promise<Uint8Array> {
-		throw new Error("Method not implemented.");
-	}
-	public async write(
-		path: RelativePath,
-		_content: Uint8Array
-	): Promise<void> {
-		this.names.add(path);
-	}
-	public async atomicUpdateText(
-		_path: RelativePath,
-		_updater: (current: TextWithCursors) => TextWithCursors
-	): Promise<string> {
-		throw new Error("Method not implemented.");
-	}
-	public async getFileSize(_path: RelativePath): Promise<number> {
-		throw new Error("Method not implemented.");
-	}
-	public async getModificationTime(_path: RelativePath): Promise<Date> {
-		throw new Error("Method not implemented.");
-	}
-	public async exists(path: RelativePath): Promise<boolean> {
-		return this.names.has(path);
-	}
-	public async createDirectory(_path: RelativePath): Promise<void> {
-		// this is called but irrelevant for this mock
-	}
-	public async delete(_path: RelativePath): Promise<void> {
-		throw new Error("Method not implemented.");
-	}
-	public async rename(
-		oldPath: RelativePath,
-		newPath: RelativePath
-	): Promise<void> {
-		this.names.delete(oldPath);
-		this.names.add(newPath);
-	}
+    public async listFilesRecursively(
+        _root: RelativePath | undefined
+    ): Promise<RelativePath[]> {
+        return ["file.md"];
+    }
+    public async read(_path: RelativePath): Promise<Uint8Array> {
+        throw new Error("Method not implemented.");
+    }
+    public async write(
+        path: RelativePath,
+        _content: Uint8Array
+    ): Promise<void> {
+        this.names.add(path);
+    }
+    public async atomicUpdateText(
+        _path: RelativePath,
+        _updater: (current: TextWithCursors) => TextWithCursors
+    ): Promise<string> {
+        throw new Error("Method not implemented.");
+    }
+    public async getFileSize(_path: RelativePath): Promise<number> {
+        throw new Error("Method not implemented.");
+    }
+    public async getModificationTime(_path: RelativePath): Promise<Date> {
+        throw new Error("Method not implemented.");
+    }
+    public async exists(path: RelativePath): Promise<boolean> {
+        return this.names.has(path);
+    }
+    public async createDirectory(_path: RelativePath): Promise<void> {
+        // this is called but irrelevant for this mock
+    }
+    public async delete(_path: RelativePath): Promise<void> {
+        throw new Error("Method not implemented.");
+    }
+    public async rename(
+        oldPath: RelativePath,
+        newPath: RelativePath
+    ): Promise<void> {
+        this.names.delete(oldPath);
+        this.names.add(newPath);
+    }
 }
 
 describe("File operations", () => {
-	it("should deconflict renames", async () => {
-		const fileSystemOperations = new FakeFileSystemOperations();
-		const fileOperations = new FileOperations(
-			new Logger(),
-			new MockDatabase() as Database, // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
-			fileSystemOperations,
-			new MockServerConfig() as ServerConfig // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
-		);
+    it("should deconflict renames", async () => {
+        const fileSystemOperations = new FakeFileSystemOperations();
+        const fileOperations = new FileOperations(
+            new Logger(),
+            new MockDatabase() as Database, // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+            fileSystemOperations,
+            new MockServerConfig() as ServerConfig // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+        );
 
-		await fileOperations.create("a", new Uint8Array());
-		assertSetContainsExactly(fileSystemOperations.names, "a");
-		await fileOperations.move("a", "b");
-		assertSetContainsExactly(fileSystemOperations.names, "b");
+        await fileOperations.create("a", new Uint8Array());
+        assertSetContainsExactly(fileSystemOperations.names, "a");
+        await fileOperations.move("a", "b");
+        assertSetContainsExactly(fileSystemOperations.names, "b");
 
-		await fileOperations.create("c", new Uint8Array());
-		assertSetContainsExactly(fileSystemOperations.names, "b", "c");
+        await fileOperations.create("c", new Uint8Array());
+        assertSetContainsExactly(fileSystemOperations.names, "b", "c");
 
-		await fileOperations.move("c", "b");
-		assertSetContainsExactly(fileSystemOperations.names, "b", "b (1)");
+        await fileOperations.move("c", "b");
+        assertSetContainsExactly(fileSystemOperations.names, "b", "b (1)");
 
-		await fileOperations.create("c", new Uint8Array());
-		await fileOperations.move("c", "b");
-		assertSetContainsExactly(
-			fileSystemOperations.names,
-			"b",
-			"b (1)",
-			"b (2)"
-		);
-	});
+        await fileOperations.create("c", new Uint8Array());
+        await fileOperations.move("c", "b");
+        assertSetContainsExactly(
+            fileSystemOperations.names,
+            "b",
+            "b (1)",
+            "b (2)"
+        );
+    });
 
-	it("should deconflict renames with file extension", async () => {
-		const fileSystemOperations = new FakeFileSystemOperations();
-		const fileOperations = new FileOperations(
-			new Logger(),
-			new MockDatabase() as Database, // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
-			fileSystemOperations,
-			new MockServerConfig() as ServerConfig // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
-		);
+    it("should deconflict renames with file extension", async () => {
+        const fileSystemOperations = new FakeFileSystemOperations();
+        const fileOperations = new FileOperations(
+            new Logger(),
+            new MockDatabase() as Database, // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+            fileSystemOperations,
+            new MockServerConfig() as ServerConfig // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+        );
 
-		await fileOperations.create("b.md", new Uint8Array());
-		await fileOperations.create("c.md", new Uint8Array());
-		await fileOperations.move("c.md", "b.md");
-		assertSetContainsExactly(
-			fileSystemOperations.names,
-			"b.md",
-			"b (1).md"
-		);
+        await fileOperations.create("b.md", new Uint8Array());
+        await fileOperations.create("c.md", new Uint8Array());
+        await fileOperations.move("c.md", "b.md");
+        assertSetContainsExactly(
+            fileSystemOperations.names,
+            "b.md",
+            "b (1).md"
+        );
 
-		await fileOperations.create("d.md", new Uint8Array());
-		await fileOperations.move("d.md", "b.md");
-		assertSetContainsExactly(
-			fileSystemOperations.names,
-			"b.md",
-			"b (1).md",
-			"b (2).md"
-		);
+        await fileOperations.create("d.md", new Uint8Array());
+        await fileOperations.move("d.md", "b.md");
+        assertSetContainsExactly(
+            fileSystemOperations.names,
+            "b.md",
+            "b (1).md",
+            "b (2).md"
+        );
 
-		await fileOperations.create("file-23.md", new Uint8Array());
-		await fileOperations.create("file-23 (1).md", new Uint8Array());
-		await fileOperations.move("file-23.md", "file-23 (1).md");
-		assertSetContainsExactly(
-			fileSystemOperations.names,
-			"b.md",
-			"b (1).md",
-			"b (2).md",
-			"file-23 (1).md",
-			"file-23 (2).md"
-		);
-	});
+        await fileOperations.create("file-23.md", new Uint8Array());
+        await fileOperations.create("file-23 (1).md", new Uint8Array());
+        await fileOperations.move("file-23.md", "file-23 (1).md");
+        assertSetContainsExactly(
+            fileSystemOperations.names,
+            "b.md",
+            "b (1).md",
+            "b (2).md",
+            "file-23 (1).md",
+            "file-23 (2).md"
+        );
+    });
 
-	it("should deconflict renames with paths", async () => {
-		const fileSystemOperations = new FakeFileSystemOperations();
-		const fileOperations = new FileOperations(
-			new Logger(),
-			new MockDatabase() as Database, // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
-			fileSystemOperations,
-			new MockServerConfig() as ServerConfig // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
-		);
+    it("should deconflict renames with paths", async () => {
+        const fileSystemOperations = new FakeFileSystemOperations();
+        const fileOperations = new FileOperations(
+            new Logger(),
+            new MockDatabase() as Database, // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+            fileSystemOperations,
+            new MockServerConfig() as ServerConfig // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+        );
 
-		await fileOperations.create("a/b.c/d", new Uint8Array());
-		await fileOperations.create("a/b.c/e", new Uint8Array());
-		await fileOperations.move("a/b.c/d", "a/b.c/e");
-		assertSetContainsExactly(
-			fileSystemOperations.names,
-			"a/b.c/e",
-			"a/b.c/e (1)"
-		);
-	});
+        await fileOperations.create("a/b.c/d", new Uint8Array());
+        await fileOperations.create("a/b.c/e", new Uint8Array());
+        await fileOperations.move("a/b.c/d", "a/b.c/e");
+        assertSetContainsExactly(
+            fileSystemOperations.names,
+            "a/b.c/e",
+            "a/b.c/e (1)"
+        );
+    });
 
-	it("should continue deconfliction from existing number in filename", async () => {
-		const fileSystemOperations = new FakeFileSystemOperations();
-		const fileOperations = new FileOperations(
-			new Logger(),
-			new MockDatabase() as Database, // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
-			fileSystemOperations,
-			new MockServerConfig() as ServerConfig // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
-		);
+    it("should continue deconfliction from existing number in filename", async () => {
+        const fileSystemOperations = new FakeFileSystemOperations();
+        const fileOperations = new FileOperations(
+            new Logger(),
+            new MockDatabase() as Database, // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+            fileSystemOperations,
+            new MockServerConfig() as ServerConfig // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+        );
 
-		await fileOperations.create("document (5).md", new Uint8Array());
-		await fileOperations.create("other.md", new Uint8Array());
+        await fileOperations.create("document (5).md", new Uint8Array());
+        await fileOperations.create("other.md", new Uint8Array());
 
-		await fileOperations.move("other.md", "document (5).md");
-		assertSetContainsExactly(
-			fileSystemOperations.names,
-			"document (5).md",
-			"document (6).md"
-		);
+        await fileOperations.move("other.md", "document (5).md");
+        assertSetContainsExactly(
+            fileSystemOperations.names,
+            "document (5).md",
+            "document (6).md"
+        );
 
-		await fileOperations.create("another.md", new Uint8Array());
-		await fileOperations.move("another.md", "document (5).md");
-		assertSetContainsExactly(
-			fileSystemOperations.names,
-			"document (5).md",
-			"document (6).md",
-			"document (7).md"
-		);
-	});
+        await fileOperations.create("another.md", new Uint8Array());
+        await fileOperations.move("another.md", "document (5).md");
+        assertSetContainsExactly(
+            fileSystemOperations.names,
+            "document (5).md",
+            "document (6).md",
+            "document (7).md"
+        );
+    });
 
-	it("should handle dotfiles correctly", async () => {
-		const fileSystemOperations = new FakeFileSystemOperations();
-		const fileOperations = new FileOperations(
-			new Logger(),
-			new MockDatabase() as Database, // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
-			fileSystemOperations,
-			new MockServerConfig() as ServerConfig // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
-		);
+    it("should handle dotfiles correctly", async () => {
+        const fileSystemOperations = new FakeFileSystemOperations();
+        const fileOperations = new FileOperations(
+            new Logger(),
+            new MockDatabase() as Database, // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+            fileSystemOperations,
+            new MockServerConfig() as ServerConfig // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+        );
 
-		await fileOperations.create(".gitignore", new Uint8Array());
-		await fileOperations.create("temp", new Uint8Array());
-		await fileOperations.move("temp", ".gitignore");
-		assertSetContainsExactly(
-			fileSystemOperations.names,
-			".gitignore",
-			".gitignore (1)"
-		);
+        await fileOperations.create(".gitignore", new Uint8Array());
+        await fileOperations.create("temp", new Uint8Array());
+        await fileOperations.move("temp", ".gitignore");
+        assertSetContainsExactly(
+            fileSystemOperations.names,
+            ".gitignore",
+            ".gitignore (1)"
+        );
 
-		await fileOperations.create(".config.json", new Uint8Array());
-		await fileOperations.create("temp2", new Uint8Array());
-		await fileOperations.move("temp2", ".config.json");
-		assertSetContainsExactly(
-			fileSystemOperations.names,
-			".gitignore",
-			".gitignore (1)",
-			".config.json",
-			".config (1).json"
-		);
-	});
+        await fileOperations.create(".config.json", new Uint8Array());
+        await fileOperations.create("temp2", new Uint8Array());
+        await fileOperations.move("temp2", ".config.json");
+        assertSetContainsExactly(
+            fileSystemOperations.names,
+            ".gitignore",
+            ".gitignore (1)",
+            ".config.json",
+            ".config (1).json"
+        );
+    });
 });

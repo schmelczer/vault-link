@@ -2,6 +2,6 @@
 import type { DocumentVersionWithoutContent } from "./DocumentVersionWithoutContent";
 
 export interface WebSocketVaultUpdate {
-	documents: DocumentVersionWithoutContent[];
-	isInitialSync: boolean;
+    documents: DocumentVersionWithoutContent[];
+    isInitialSync: boolean;
 }

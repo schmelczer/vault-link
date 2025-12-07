@@ -5,9 +5,9 @@ import type { DocumentVersionWithoutContent } from "./DocumentVersionWithoutCont
  * Response to a fetch latest documents request.
  */
 export interface FetchLatestDocumentsResponse {
-	latestDocuments: DocumentVersionWithoutContent[];
-	/**
-	 * The update ID of the latest document in the response.
-	 */
-	lastUpdateId: bigint;
+    latestDocuments: DocumentVersionWithoutContent[];
+    /**
+    * The update ID of the latest document in the response.
+    */
+    lastUpdateId: bigint;
 }

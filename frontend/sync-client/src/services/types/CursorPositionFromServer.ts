@@ -2,5 +2,5 @@
 import type { ClientCursors } from "./ClientCursors";
 
 export interface CursorPositionFromServer {
-	clients: ClientCursors[];
+    clients: ClientCursors[];
 }

@@ -2,8 +2,8 @@
 import type { CursorSpan } from "./CursorSpan";
 
 export interface DocumentWithCursors {
-	vault_update_id: number | null;
-	document_id: string;
-	relative_path: string;
-	cursors: CursorSpan[];
+    vault_update_id: number | null;
+    document_id: string;
+    relative_path: string;
+    cursors: CursorSpan[];
 }

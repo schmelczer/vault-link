@@ -240,10 +240,10 @@ export class SyncClient {
     }
 
     /**
-     * Reload settings from disk overriding current in-memory settings.
-     * Missing values will be filled in from DEFAULT_SETTINGS rather than
-     * retaining current in-memory settings.
-     */
+    * Reload settings from disk overriding current in-memory settings.
+    * Missing values will be filled in from DEFAULT_SETTINGS rather than
+    * retaining current in-memory settings.
+    */
     public async reloadSettings(): Promise<void> {
         this.checkIfDestroyed("reloadSettings");
 
@@ -275,10 +275,10 @@ export class SyncClient {
     }
 
     /**
-     * Wait for the in-flight operations to finish, reset all tracking,
-     * and the local database but retain the settings.
-     * The SyncClient can be used again after calling this method.
-     */
+    * Wait for the in-flight operations to finish, reset all tracking,
+    * and the local database but retain the settings.
+    * The SyncClient can be used again after calling this method.
+    */
     public async reset(): Promise<void> {
         this.checkIfDestroyed("reset");
 
@@ -430,9 +430,9 @@ export class SyncClient {
     }
 
     /**
-     * Completely destroy the SyncClient, cancelling all in-progress operations.
-     * After calling this method, the SyncClient cannot be used again.
-     */
+    * Completely destroy the SyncClient, cancelling all in-progress operations.
+    * After calling this method, the SyncClient cannot be used again.
+    */
     public async destroy(): Promise<void> {
         this.checkIfDestroyed("destroy");
 

@@ -87,7 +87,7 @@ Rust structs generate TypeScript types via ts-rs crate, stored in `sync-server/b
 ## Testing
 
 ### Running Tests
-- Server: `cargo test --verbose` 
+- Server: `cargo test --verbose`
 - Frontend: `npm run test` (runs Jest across all workspaces)
 - E2E: `scripts/e2e.sh`
 

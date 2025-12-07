@@ -7,27 +7,27 @@
  * @throws Will throw an error if the position is negative or exceeds the text length
  */
 export function positionToLineAndColumn(
-	text: string,
-	position: number
+    text: string,
+    position: number
 ): { line: number; column: number } {
-	if (position < 0) {
-		throw new Error("Position cannot be negative");
-	}
+    if (position < 0) {
+        throw new Error("Position cannot be negative");
+    }
 
-	text = text.replaceAll("\r", "");
+    text = text.replaceAll("\r", "");
 
-	if (position > text.length) {
-		// position == text.length accounts for the cursor being after last character
-		throw new Error(
-			`Position ${position} exceeds text length ${text.length}`
-		);
-	}
+    if (position > text.length) {
+        // position == text.length accounts for the cursor being after last character
+        throw new Error(
+            `Position ${position} exceeds text length ${text.length}`
+        );
+    }
 
-	const textUpToPosition = text.substring(0, position);
-	const lines = textUpToPosition.split("\n");
+    const textUpToPosition = text.substring(0, position);
+    const lines = textUpToPosition.split("\n");
 
-	const line = lines.length - 1;
-	const column = lines[lines.length - 1].length;
+    const line = lines.length - 1;
+    const column = lines[lines.length - 1].length;
 
-	return { line, column };
+    return { line, column };
 }

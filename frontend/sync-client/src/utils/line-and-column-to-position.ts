@@ -9,26 +9,26 @@
  * @throws Error if column number is out of range
  */
 export function lineAndColumnToPosition(
-	text: string,
-	line: number,
-	column: number
+    text: string,
+    line: number,
+    column: number
 ): number {
-	const lines = text.replaceAll("\r", "").split("\n");
+    const lines = text.replaceAll("\r", "").split("\n");
 
-	if (line >= lines.length) {
-		throw new Error(`Line number ${line} is out of range.`);
-	}
+    if (line >= lines.length) {
+        throw new Error(`Line number ${line} is out of range.`);
+    }
 
-	if (column > lines[line].length) {
-		throw new Error(`Column number ${column} is out of range.`);
-	}
+    if (column > lines[line].length) {
+        throw new Error(`Column number ${column} is out of range.`);
+    }
 
-	let position = 0;
-	for (let i = 0; i < line; i++) {
-		position += lines[i].length + 1;
-	}
+    let position = 0;
+    for (let i = 0; i < line; i++) {
+        position += lines[i].length + 1;
+    }
 
-	position += column;
+    position += column;
 
-	return position;
+    return position;
 }

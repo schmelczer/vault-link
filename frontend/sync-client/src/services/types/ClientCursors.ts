@@ -2,7 +2,7 @@
 import type { DocumentWithCursors } from "./DocumentWithCursors";
 
 export interface ClientCursors {
-	userName: string;
-	deviceId: string;
-	documentsWithCursors: DocumentWithCursors[];
+    userName: string;
+    deviceId: string;
+    documentsWithCursors: DocumentWithCursors[];
 }
