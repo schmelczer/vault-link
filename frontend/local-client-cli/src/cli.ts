@@ -39,6 +39,10 @@ async function main(): Promise<void> {
     const args = parseArgs(process.argv);
     const absolutePath = path.resolve(args.localPath);
 
+    if (!fsSync.existsSync(absolutePath)) {
+        fsSync.mkdirSync(absolutePath, { recursive: true });
+    }
+
     try {
         const stats = await fs.stat(absolutePath);
         if (!stats.isDirectory()) {
@@ -59,7 +63,7 @@ async function main(): Promise<void> {
 
     console.log(
         styleText("VaultLink Local CLI", "bold", "cyan") +
-        colorize(` v${packageJson.version}`, "dim")
+            colorize(` v${packageJson.version}`, "dim")
     );
     console.log(colorize("=".repeat(50), "dim"));
     console.log(
