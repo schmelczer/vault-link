@@ -32,6 +32,13 @@ if [[ "$FIX_MODE" == true ]]; then
 else
     npm ci
 fi
+
+echo "Checking .editorconfig compliance"
+if [[ "$FIX_MODE" == true ]]; then
+    npx eclint fix '../**/*' '!../node_modules/**' '!../frontend/node_modules/**' '!../sync-server/target/**' '!../frontend/dist/**' '!../.git/**'
+else
+    npx eclint check '../**/*' '!../node_modules/**' '!../frontend/node_modules/**' '!../sync-server/target/**' '!../frontend/dist/**' '!../.git/**'
+fi
 npm run build
 npm run test
 npm run lint
