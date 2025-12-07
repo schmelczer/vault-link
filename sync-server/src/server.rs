@@ -6,10 +6,10 @@ mod fetch_document_version;
 mod fetch_document_version_content;
 mod fetch_latest_document_version;
 mod fetch_latest_documents;
-mod index;
 mod ping;
 mod requests;
 mod responses;
+mod static_files;
 mod update_document;
 mod websocket;
 
@@ -53,9 +53,10 @@ pub async fn create_server(config: Config) -> Result<()> {
 
     let app = Router::new()
         .nest("/", get_authed_routes(app_state.clone()))
-        .route("/", get(index::index))
+        .route("/", get(static_files::serve_index))
         .route("/vaults/:vault_id/ping", get(ping::ping))
         .route("/vaults/:vault_id/ws", get(websocket::websocket_handler))
+        .route("/*path", get(static_files::serve_static_file))
         .layer(DefaultBodyLimit::disable())
         .layer(RequestBodyLimitLayer::new(
             app_state.config.server.max_body_size_mb * 1024 * 1024,

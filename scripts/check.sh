@@ -32,13 +32,24 @@ else
     npm ci
 fi
 
-cd ..
 
-cd frontend
 npm run build
 npm run test
 npm run lint
 
+cd ../docs
+
+if [[ "$FIX_MODE" == true ]]; then
+    npm install
+    npm run format
+    npm run spell
+else
+    npm ci
+    npm run format:check
+    npm run spell:check
+fi
+
+cd ..
 # Use git ls-files to only check tracked files, respecting .gitignore
 # We always run in fix mode and then check with git status
 git ls-files | xargs npx eclint fix
@@ -51,8 +62,4 @@ fi
 
 cd ..
 
-if [[ "$FIX_MODE" == true ]]; then
-    $0
-else
-    echo "Success"
-fi
+echo "Success"

@@ -34,6 +34,8 @@ bimap = "0.6.3"
 ts-rs =  { version = "10.1", features = ["uuid-impl", "chrono-impl"] }
 base64 = "0.22.1"
 reconcile-text = { version = "0.8.0", features = ["serde"] }
+rust-embed = { version = "8.5.0", features = ["compression"] }
+mime_guess = "2.0.5"
 
 [profile.release]
 codegen-units = 1

@@ -3,7 +3,7 @@ import { defineConfig } from "vitepress"
 export default defineConfig({
     title: "VaultLink",
     description: "Self-hosted real-time synchronisation for Obsidian",
-    base: "/vault-link/",
+    base: "/",
     themeConfig: {
         logo: "/logo.svg",
         nav: [
@@ -56,5 +56,5 @@ export default defineConfig({
             provider: "local"
         }
     },
-    head: [["link", { rel: "icon", type: "image/svg+xml", href: "/vault-link/logo.svg" }]]
+    head: [["link", { rel: "icon", type: "image/svg+xml", href: "/logo.svg" }]]
 })
