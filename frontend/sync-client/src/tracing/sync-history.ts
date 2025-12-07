@@ -88,11 +88,11 @@ export class SyncHistory {
     }
 
     /**
-     * Insert the entry at the beginning of the history list. If the entry
-     * already in the list, it will get moved to the beginning and updated.
-     *
-     * If the entry list is too long, the oldest entry will be removed.
-     */
+    * Insert the entry at the beginning of the history list. If the entry
+    * already in the list, it will get moved to the beginning and updated.
+    *
+    * If the entry list is too long, the oldest entry will be removed.
+    */
     public addHistoryEntry(entry: CommonHistoryEntry): void {
         const historyEntry = {
             ...entry,

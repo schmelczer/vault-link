@@ -2,5 +2,5 @@
 import type { DocumentWithCursors } from "./DocumentWithCursors";
 
 export interface CursorPositionFromClient {
-	documentsWithCursors: DocumentWithCursors[];
+    documentsWithCursors: DocumentWithCursors[];
 }

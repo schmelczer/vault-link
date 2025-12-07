@@ -1,32 +1,32 @@
 {
-	"name": "my-workspace",
-	"private": true,
-	"workspaces": [
-		"sync-client",
-		"obsidian-plugin",
-		"test-client",
-		"local-client-cli"
-	],
-	"prettier": {
-		"trailingComma": "none",
-		"tabWidth": 4,
-		"useTabs": true,
-		"endOfLine": "lf"
-	},
-	"scripts": {
-		"build": "npm run build --workspaces",
-		"dev": "concurrently --kill-others \"npm run dev -w sync-client\" \"npm run dev -w obsidian-plugin\"",
-		"test": "npm run test --workspaces",
-		"lint": "eslint --fix sync-client obsidian-plugin test-client local-client-cli && prettier --write \"**/*.ts\"",
-		"update": "ncu -u -ws"
-	},
-	"devDependencies": {
-		"concurrently": "^9.2.1",
-		"eclint": "^2.8.1",
-		"eslint": "9.38.0",
-		"eslint-plugin-unused-imports": "^4.1.4",
-		"npm-check-updates": "^19.1.1",
-		"prettier": "^3.6.2",
-		"typescript-eslint": "8.41.0"
-	}
+    "name": "my-workspace",
+    "private": true,
+    "workspaces": [
+        "sync-client",
+        "obsidian-plugin",
+        "test-client",
+        "local-client-cli"
+    ],
+    "prettier": {
+        "trailingComma": "none",
+        "tabWidth": 4,
+        "useTabs": true,
+        "endOfLine": "lf"
+    },
+    "scripts": {
+        "build": "npm run build --workspaces",
+        "dev": "concurrently --kill-others \"npm run dev -w sync-client\" \"npm run dev -w obsidian-plugin\"",
+        "test": "npm run test --workspaces",
+        "lint": "eslint --fix sync-client obsidian-plugin test-client local-client-cli && prettier --write \"**/*.ts\"",
+        "update": "ncu -u -ws"
+    },
+    "devDependencies": {
+        "concurrently": "^9.2.1",
+        "eclint": "^2.8.1",
+        "eslint": "9.38.0",
+        "eslint-plugin-unused-imports": "^4.1.4",
+        "npm-check-updates": "^19.1.1",
+        "prettier": "^3.6.2",
+        "typescript-eslint": "8.41.0"
+    }
 }

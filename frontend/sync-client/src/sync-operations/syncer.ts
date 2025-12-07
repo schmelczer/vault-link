@@ -479,10 +479,10 @@ export class Syncer {
     }
 
     /**
-     * Create fake documents in the database for all files that are present locally
-     * and also exist remotely. This will stop the subequent syncs from duplicating
-     * the documents by creating the same documents from multiple clients.
-     */
+    * Create fake documents in the database for all files that are present locally
+    * and also exist remotely. This will stop the subequent syncs from duplicating
+    * the documents by creating the same documents from multiple clients.
+    */
     private async createFakeDocumentsFromRemoteState(): Promise<void> {
         if (this.database.getHasInitialSyncCompleted()) {
             return;

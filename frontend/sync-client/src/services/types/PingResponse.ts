@@ -4,22 +4,22 @@
  * Response to a ping request.
  */
 export interface PingResponse {
-	/**
-	 * Semantic version of the server.
-	 */
-	serverVersion: string;
-	/**
-	 * Whether the client is authenticated based on the sent Authorization
-	 * header.
-	 */
-	isAuthenticated: boolean;
-	/**
-	 * List of file extensions that are allowed to be merged.
-	 */
-	mergeableFileExtensions: string[];
-	/**
-	 * API version ensuring backwards & forwards compatibility between the client
-	 * and server.
-	 */
-	supportedApiVersion: number;
+    /**
+    * Semantic version of the server.
+    */
+    serverVersion: string;
+    /**
+    * Whether the client is authenticated based on the sent Authorization
+    * header.
+    */
+    isAuthenticated: boolean;
+    /**
+    * List of file extensions that are allowed to be merged.
+    */
+    mergeableFileExtensions: string[];
+    /**
+    * API version ensuring backwards & forwards compatibility between the client
+    * and server.
+    */
+    supportedApiVersion: number;
 }

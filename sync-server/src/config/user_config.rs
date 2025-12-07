@@ -21,7 +21,7 @@ where
         if let Some(existing_name) = user_token_map.get_by_right(&user.token) {
             return Err(D::Error::custom(format!(
                 "Duplicate user token found: `{}` for users `{}` and `{}`. User tokens must be \
-                 unique.",
+                unique.",
                 user.token, existing_name, user.name
             )));
         }

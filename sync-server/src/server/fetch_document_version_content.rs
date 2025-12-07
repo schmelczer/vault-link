@@ -54,7 +54,7 @@ pub async fn fetch_document_version_content(
     if result.document_id != document_id {
         return Err(not_found_error(anyhow!(
             "Document with document id `{document_id}` does not have a version with id \
-             `{vault_update_id}`",
+            `{vault_update_id}`",
         )));
     }
 

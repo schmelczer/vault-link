@@ -8,15 +8,15 @@ import { positionToLineAndColumn } from "./utils/position-to-line-and-column";
 import { removeFromArray } from "./utils/remove-from-array";
 
 export {
-	SyncType,
-	SyncStatus,
-	type HistoryStats,
-	type HistoryEntry,
-	type SyncDetails,
-	type SyncCreateDetails,
-	type SyncUpdateDetails,
-	type SyncMovedDetails,
-	type SyncDeleteDetails
+    SyncType,
+    SyncStatus,
+    type HistoryStats,
+    type HistoryEntry,
+    type SyncDetails,
+    type SyncCreateDetails,
+    type SyncUpdateDetails,
+    type SyncMovedDetails,
+    type SyncDeleteDetails
 } from "./tracing/sync-history";
 export { Logger, LogLevel, LogLine } from "./tracing/logger";
 export { type SyncSettings, DEFAULT_SETTINGS } from "./persistence/settings";
@@ -35,15 +35,15 @@ export { SyncClient } from "./sync-client";
 export type { TextWithCursors, CursorPosition } from "reconcile-text";
 
 export const debugging = {
-	slowFetchFactory,
-	slowWebSocketFactory,
-	logToConsole
+    slowFetchFactory,
+    slowWebSocketFactory,
+    logToConsole
 };
 
 export const utils = {
-	getRandomColor,
-	positionToLineAndColumn,
-	lineAndColumnToPosition,
-	awaitAll,
-	removeFromArray
+    getRandomColor,
+    positionToLineAndColumn,
+    lineAndColumnToPosition,
+    awaitAll,
+    removeFromArray
 };

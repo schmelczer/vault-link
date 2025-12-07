@@ -1,6 +1,6 @@
 export class ServerVersionMismatchError extends Error {
-	public constructor(message: string) {
-		super(message);
-		this.name = "ServerVersionMismatchError";
-	}
+    public constructor(message: string) {
+        super(message);
+        this.name = "ServerVersionMismatchError";
+    }
 }

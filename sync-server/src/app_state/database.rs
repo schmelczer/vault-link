@@ -321,8 +321,8 @@ impl Database {
             from latest_document_versions
             where relative_path = ? and is_deleted = false
             order by vault_update_id desc  -- `latest_document_versions` only contains a single latest version of each document, however,
-                                           -- multiple documents can have the same `relative_path`, if they have been deleted. That's
-                                           -- why we only care about the latest version of the document with the given relative path.
+                                            -- multiple documents can have the same `relative_path`, if they have been deleted. That's
+                                            -- why we only care about the latest version of the document with the given relative path.
             limit 1
             "#,
             relative_path
