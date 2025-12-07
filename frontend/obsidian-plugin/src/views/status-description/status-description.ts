@@ -17,23 +17,23 @@ export class StatusDescription {
     public constructor(private readonly syncClient: SyncClient) {
         void this.updateConnectionState();
 
-        syncClient.addSyncHistoryUpdateListener((status) => {
+        syncClient.onSyncHistoryUpdated.add((status) => {
             this.lastHistoryStats = status;
             this.updateDescription();
         });
 
-        this.syncClient.addRemainingSyncOperationsListener(
+        this.syncClient.onRemainingOperationsCountChanged.add(
             (remainingOperations) => {
                 this.lastRemaining = remainingOperations;
                 this.updateDescription();
             }
         );
 
-        this.syncClient.addWebSocketStatusChangeListener(async () =>
+        this.syncClient.onWebSocketStatusChanged.add(async () =>
             this.updateConnectionState()
         );
 
-        this.syncClient.addOnSettingsChangeListener(async () =>
+        this.syncClient.onSettingsChanged.add(async () =>
             this.updateConnectionState()
         );
     }

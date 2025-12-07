@@ -24,7 +24,7 @@ export class HistoryView extends ItemView {
         super(leaf);
         this.icon = HistoryView.ICON;
 
-        this.client.addSyncHistoryUpdateListener(async () =>
+        this.client.onSyncHistoryUpdated.add(async () =>
             this.updateView().catch((error: unknown) => {
                 this.client.logger.error(
                     `Failed to update history view: ${error}`

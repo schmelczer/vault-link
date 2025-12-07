@@ -41,7 +41,7 @@ export class SyncSettingsTab extends PluginSettingTab {
         this.editedToken = this.syncClient.getSettings().token;
         this.editedVaultName = this.syncClient.getSettings().vaultName;
 
-        this.syncClient.addOnSettingsChangeListener(
+        this.syncClient.onSettingsChanged.add(
             (newSettings, oldSettings) => {
                 let hasChanged = false;
 

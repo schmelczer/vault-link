@@ -14,19 +14,19 @@ export class StatusBar {
         private readonly syncClient: SyncClient
     ) {
         this.statusBarItem = plugin.addStatusBarItem();
-        this.syncClient.addSyncHistoryUpdateListener((status) => {
+        this.syncClient.onSyncHistoryUpdated.add((status) => {
             this.lastHistoryStats = status;
             this.updateStatus();
         });
 
-        this.syncClient.addRemainingSyncOperationsListener(
+        this.syncClient.onRemainingOperationsCountChanged.add(
             (remainingOperations) => {
                 this.lastRemaining = remainingOperations;
                 this.updateStatus();
             }
         );
 
-        this.syncClient.addOnSettingsChangeListener(() => {
+        this.syncClient.onSettingsChanged.add(() => {
             this.updateStatus();
         });
     }

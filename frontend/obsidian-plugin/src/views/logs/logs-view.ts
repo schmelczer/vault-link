@@ -21,7 +21,7 @@ export class LogsView extends ItemView {
     ) {
         super(leaf);
         this.icon = LogsView.ICON;
-        this.client.logger.addOnMessageListener(() => {
+        this.client.logger.onLogEmitted.add(() => {
             this.updateView();
         });
     }

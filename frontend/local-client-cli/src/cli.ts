@@ -59,7 +59,7 @@ async function main(): Promise<void> {
 
     console.log(
         styleText("VaultLink Local CLI", "bold", "cyan") +
-            colorize(` v${packageJson.version}`, "dim")
+        colorize(` v${packageJson.version}`, "dim")
     );
     console.log(colorize("=".repeat(50), "dim"));
     console.log(
@@ -153,7 +153,7 @@ async function main(): Promise<void> {
     }
 
     // Add colored log formatter with level filtering
-    client.logger.addOnMessageListener((logLine) => {
+    client.logger.onLogEmitted.add((logLine) => {
         // Only show messages at or above the configured log level
         if (LOG_LEVEL_ORDER[logLine.level] >= LOG_LEVEL_ORDER[args.logLevel]) {
             console.log(formatLogLine(logLine));
@@ -164,14 +164,14 @@ async function main(): Promise<void> {
 
     const fileWatcher = new FileWatcher(absolutePath, client);
 
-    client.addWebSocketStatusChangeListener(() => {
+    client.onWebSocketStatusChanged.add(() => {
         const isConnected = client.isWebSocketConnected;
         client.logger.info(
             `WebSocket status changed: ${isConnected ? "connected" : "disconnected"}`
         );
     });
 
-    client.addRemainingSyncOperationsListener((remaining) => {
+    client.onRemainingOperationsCountChanged.add((remaining) => {
         if (remaining === 0) {
             client.logger.info("All sync operations completed");
         } else {

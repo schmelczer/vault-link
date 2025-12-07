@@ -42,7 +42,7 @@ export class MockAgent extends MockClient {
             "Connection check failed"
         );
 
-        this.client.logger.addOnMessageListener((logLine: LogLine) => {
+        this.client.logger.onLogEmitted.add((logLine: LogLine) => {
             const state = this.client.getSettings().isSyncEnabled
                 ? "(online) "
                 : "(offline)";
@@ -198,14 +198,14 @@ export class MockAgent extends MockClient {
             );
             this.client.logger.info(
                 "Local files: " +
-                    Array.from(otherAgent.localFiles.keys()).join(", ")
+                Array.from(otherAgent.localFiles.keys()).join(", ")
             );
             otherAgent.client.logger.info(
                 "Local data: " + JSON.stringify(otherAgent.data, null, 2)
             );
             otherAgent.client.logger.info(
                 "Local files: " +
-                    Array.from(otherAgent.localFiles.keys()).join(", ")
+                Array.from(otherAgent.localFiles.keys()).join(", ")
             );
 
             throw e;
