@@ -4,7 +4,7 @@
         "module": "ESNext",
         "lib": [
             "DOM", // to get `fetch` & `WebSocket`
-			"ES2024"
+            "ES2024"
         ],
         "outDir": "./dist",
         "rootDir": "./src",
@@ -18,5 +18,7 @@
         "declarationMap": true,
         "sourceMap": true
     },
-    "exclude": ["dist"]
+    "exclude": [
+        "dist"
+    ]
 }

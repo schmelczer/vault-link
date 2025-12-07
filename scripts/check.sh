@@ -2,7 +2,6 @@
 
 set -e
 
-# Parse arguments
 FIX_MODE=false
 if [[ "$1" == "--fix" ]]; then
     FIX_MODE=true
@@ -33,12 +32,16 @@ else
     npm ci
 fi
 
-echo "Checking .editorconfig compliance"
+cd ..
+
+# Use git ls-files to only check tracked files, respecting .gitignore
 if [[ "$FIX_MODE" == true ]]; then
-    npx eclint fix '../**/*' '!../node_modules/**' '!../frontend/node_modules/**' '!../sync-server/target/**' '!../frontend/dist/**' '!../.git/**'
+    git ls-files | xargs npx eclint fix
 else
-    npx eclint check '../**/*' '!../node_modules/**' '!../frontend/node_modules/**' '!../sync-server/target/**' '!../frontend/dist/**' '!../.git/**'
+    git ls-files | xargs npx eclint check
 fi
+
+cd frontend
 npm run build
 npm run test
 npm run lint

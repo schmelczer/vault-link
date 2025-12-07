@@ -125,37 +125,37 @@ sequenceDiagram
 ```
 ┌─────────┐
 │ Client  │
-└────┬────┘
-     │ 1. Detect file change
-     │
-     ├─► 2. Read file content
-     │
-     ├─► 3. Create upload message
-     │    {
-     │      type: "upload_file",
-     │      path: "notes/daily.md",
-     │      content: "...",
-     │      version: 42,
-     │      timestamp: "2024-01-01T12:00:00Z"
-     │    }
-     │
-     ▼
+└───┬─-───┘
+    │ 1. Detect file change
+    │
+    ├─► 2. Read file content
+    │
+    ├─► 3. Create upload message
+    │    {
+    │      type: "upload_file",
+    │      path: "notes/daily.md",
+    │      content: "...",
+    │      version: 42,
+    │      timestamp: "2024-01-01T12:00:00Z"
+    │    }
+    │
+    ▼
 ┌─────────┐
 │ Server  │
-└────┬────┘
-     │ 4. Validate message
-     │
-     ├─► 5. Check permissions
-     │
-     ├─► 6. Apply OT (if conflicts)
-     │
-     ├─► 7. Store in database
-     │
-     ├─► 8. Update version
-     │
-     ├─► 9. Broadcast to clients
-     │
-     └─► 10. Send ACK to uploader
+└───┬────-┘
+    │ 4. Validate message
+    │
+    ├─► 5. Check permissions
+    │
+    ├─► 6. Apply OT (if conflicts)
+    │
+    ├─► 7. Store in database
+    │
+    ├─► 8. Update version
+    │
+    ├─► 9. Broadcast to clients
+    │
+    └─► 10. Send ACK to uploader
 ```
 
 ### Download
@@ -163,36 +163,36 @@ sequenceDiagram
 ```
 ┌─────────┐
 │ Server  │
-└────┬────┘
-     │ 1. File updated by another client
-     │
-     ├─► 2. Broadcast notification
-     │    {
-     │      type: "file_updated",
-     │      path: "notes/daily.md",
-     │      version: 43
-     │    }
-     │
-     ▼
+└───┬─-───┘
+    │ 1. File updated by another client
+    │
+    ├─► 2. Broadcast notification
+    │    {
+    │      type: "file_updated",
+    │      path: "notes/daily.md",
+    │      version: 43
+    │    }
+    │
+    ▼
 ┌─────────┐
 │ Client  │
-└────┬────┘
-     │ 3. Receive notification
-     │
-     ├─► 4. Request file download
-     │    {
-     │      type: "download_file",
-     │      path: "notes/daily.md",
-     │      version: 43
-     │    }
-     │
-     ▼
+└───┬─-───┘
+    │ 3. Receive notification
+    │
+    ├─► 4. Request file download
+    │    {
+    │      type: "download_file",
+    │      path: "notes/daily.md",
+    │      version: 43
+    │    }
+    │
+    ▼
 ┌─────────┐
 │ Server  │
-└────┬────┘
-     │ 5. Retrieve from database
-     │
-     └─► 6. Send file content
+└───┬─=───┘
+    │ 5. Retrieve from database
+    │
+    └─► 6. Send file content
           {
             type: "file_content",
             path: "notes/daily.md",
@@ -201,9 +201,9 @@ sequenceDiagram
           }
           │
           ▼
-     ┌─────────┐
-     │ Client  │
-     └────┬────┘
+    ┌─────────┐
+    │ Client  │
+    └───-─┬───┘
           │ 7. Write to filesystem
           │
           └─► 8. Update local metadata
@@ -215,30 +215,30 @@ sequenceDiagram
 ┌─────────┐
 │ Client  │
 └────┬────┘
-     │ 1. File deleted locally
-     │
-     ├─► 2. Send delete message
-     │    {
-     │      type: "delete_file",
-     │      path: "notes/old.md"
-     │    }
-     │
-     ▼
+    │ 1. File deleted locally
+    │
+    ├─► 2. Send delete message
+    │    {
+    │      type: "delete_file",
+    │      path: "notes/old.md"
+    │    }
+    │
+    ▼
 ┌─────────┐
 │ Server  │
 └────┬────┘
-     │ 3. Mark as deleted in DB
-     │    (soft delete for history)
-     │
-     ├─► 4. Broadcast deletion
-     │
-     └─► 5. ACK to sender
+    │ 3. Mark as deleted in DB
+    │    (soft delete for history)
+    │
+    ├─► 4. Broadcast deletion
+    │
+    └─► 5. ACK to sender
           │
           ▼
-     ┌─────────┐
-     │ Other   │
-     │ Clients │
-     └────┬────┘
+    ┌─────────┐
+    │ Other   │
+    │ Clients │
+    └────┬────┘
           │ 6. Delete local file
           │
           └─► 7. Update metadata
@@ -252,32 +252,32 @@ sequenceDiagram
 Time →
 
 Client A                    Server                      Client B
-   │                          │                            │
-   │ Edit file v10            │                            │
-   │ "Add line A"             │                            │ Edit file v10
-   │                          │                            │ "Add line B"
-   │                          │                            │
-   ├─── Upload @ t1 ─────────►│                            │
-   │                          │◄────── Upload @ t2 ────────┤
-   │                          │                            │
-   │                          │ 1. Receive both edits      │
-   │                          │    (based on v10)          │
-   │                          │                            │
-   │                          │ 2. Apply first edit        │
-   │                          │    → v11 (line A added)    │
-   │                          │                            │
-   │                          │ 3. Transform second edit   │
-   │                          │    against first           │
-   │                          │                            │
-   │                          │ 4. Apply transformed edit  │
-   │                          │    → v12 (both lines)      │
-   │                          │                            │
-   │◄──── v12 content ────────┤                            │
-   │                          ├───── v12 content ─────────►│
-   │                          │                            │
-   │ Apply v12                │                            │ Apply v12
-   │ (has both lines)         │                            │ (has both lines)
-   │                          │                            │
+  │                          │                            │
+  │ Edit file v10            │                            │
+  │ "Add line A"             │                            │ Edit file v10
+  │                          │                            │ "Add line B"
+  │                          │                            │
+  ├─── Upload @ t1 ─────────►│                            │
+  │                          │◄────── Upload @ t2 ────────┤
+  │                          │                            │
+  │                          │ 1. Receive both edits      │
+  │                          │    (based on v10)          │
+  │                          │                            │
+  │                          │ 2. Apply first edit        │
+  │                          │    → v11 (line A added)    │
+  │                          │                            │
+  │                          │ 3. Transform second edit   │
+  │                          │    against first           │
+  │                          │                            │
+  │                          │ 4. Apply transformed edit  │
+  │                          │    → v12 (both lines)      │
+  │                          │                            │
+  │◄──── v12 content ────────┤                            │
+  │                          ├───── v12 content ─────────►│
+  │                          │                            │
+  │ Apply v12                │                            │ Apply v12
+  │ (has both lines)         │                            │ (has both lines)
+  │                          │                            │
 ```
 
 ### Conflict Resolution Steps
@@ -361,11 +361,11 @@ VALUES (?, ?, ?);
 
 ```json
 {
-	"type": "upload_file",
-	"path": "notes/example.md",
-	"content": "File content here...",
-	"base_version": 10,
-	"timestamp": "2024-01-01T12:00:00Z"
+  "type": "upload_file",
+  "path": "notes/example.md",
+  "content": "File content here...",
+  "base_version": 10,
+  "timestamp": "2024-01-01T12:00:00Z"
 }
 ```
 
@@ -373,8 +373,8 @@ VALUES (?, ?, ?);
 
 ```json
 {
-	"type": "download_file",
-	"path": "notes/example.md"
+  "type": "download_file",
+  "path": "notes/example.md"
 }
 ```
 
@@ -382,8 +382,8 @@ VALUES (?, ?, ?);
 
 ```json
 {
-	"type": "delete_file",
-	"path": "notes/old.md"
+  "type": "delete_file",
+  "path": "notes/old.md"
 }
 ```
 
@@ -391,8 +391,8 @@ VALUES (?, ?, ?);
 
 ```json
 {
-	"type": "list_files",
-	"since_version": 0
+  "type": "list_files",
+  "since_version": 0
 }
 ```
 
@@ -402,11 +402,11 @@ VALUES (?, ?, ?);
 
 ```json
 {
-	"type": "file_updated",
-	"path": "notes/example.md",
-	"version": 11,
-	"size": 1024,
-	"hash": "abc123..."
+  "type": "file_updated",
+  "path": "notes/example.md",
+  "version": 11,
+  "size": 1024,
+  "hash": "abc123..."
 }
 ```
 
@@ -414,10 +414,10 @@ VALUES (?, ?, ?);
 
 ```json
 {
-	"type": "file_content",
-	"path": "notes/example.md",
-	"content": "Updated content...",
-	"version": 11
+  "type": "file_content",
+  "path": "notes/example.md",
+  "content": "Updated content...",
+  "version": 11
 }
 ```
 
@@ -425,9 +425,9 @@ VALUES (?, ?, ?);
 
 ```json
 {
-	"type": "file_deleted",
-	"path": "notes/old.md",
-	"version": 12
+  "type": "file_deleted",
+  "path": "notes/old.md",
+  "version": 12
 }
 ```
 
@@ -435,9 +435,9 @@ VALUES (?, ?, ?);
 
 ```json
 {
-	"type": "sync_complete",
-	"total_files": 150,
-	"current_version": 200
+  "type": "sync_complete",
+  "total_files": 150,
+  "current_version": 200
 }
 ```
 
@@ -445,9 +445,9 @@ VALUES (?, ?, ?);
 
 ```json
 {
-	"type": "error",
-	"message": "File too large",
-	"code": "FILE_TOO_LARGE"
+  "type": "error",
+  "message": "File too large",
+  "code": "FILE_TOO_LARGE"
 }
 ```
 
