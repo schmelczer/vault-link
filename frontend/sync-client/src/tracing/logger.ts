@@ -1,4 +1,5 @@
 import { MAX_LOG_MESSAGE_COUNT } from "../consts";
+import { removeFromArray } from "../utils/remove-from-array";
 
 export enum LogLevel {
 	DEBUG = "DEBUG",
@@ -63,10 +64,7 @@ export class Logger {
 	public removeOnMessageListener(
 		listener: (message: LogLine) => unknown
 	): void {
-		const index = this.onMessageListeners.indexOf(listener);
-		if (index !== -1) {
-			this.onMessageListeners.splice(index, 1);
-		}
+		removeFromArray(this.onMessageListeners, listener);
 	}
 
 	public reset(): void {

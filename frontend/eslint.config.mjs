@@ -55,6 +55,25 @@ export default [
 					message: "Use replaceAll instead of replace to replace all occurrences of a substring."
 				}
 			],
+			"no-restricted-syntax": [
+				"error",
+				{
+					selector: "CallExpression[callee.property.name='splice'][arguments.length=2][arguments.1.type='Literal'][arguments.1.value=1]",
+					message: "Use `removeFromArray(array, item)` instead of manually using indexOf + splice(index, 1). Import from 'sync-client/src/utils/remove-from-array'."
+				},
+				{
+					selector: "CallExpression[callee.property.name='filter'] > ArrowFunctionExpression[body.type='BinaryExpression'][body.operator='!==']",
+					message: "Use `removeFromArray(array, item)` instead of filter(x => x !== item) for better performance. Import from 'sync-client/src/utils/remove-from-array'."
+				},
+				{
+					selector: "CallExpression[callee.property.name='filter'] > ArrowFunctionExpression > BlockStatement > ReturnStatement > BinaryExpression[operator='!==']",
+					message: "Use `removeFromArray(array, item)` instead of filter(x => { return x !== item }) for better performance. Import from 'sync-client/src/utils/remove-from-array'."
+				},
+				{
+					selector: "CallExpression[callee.property.name='filter'] > FunctionExpression[body.type='BlockStatement'] > BlockStatement > ReturnStatement > BinaryExpression[operator='!==']",
+					message: "Use `removeFromArray(array, item)` instead of filter(function(x) { return x !== item }) for better performance. Import from 'sync-client/src/utils/remove-from-array'."
+				}
+			],
 			"unused-imports/no-unused-vars": [
 				"warn",
 				{

@@ -8,6 +8,7 @@ import { createPromise } from "../utils/create-promise";
 import type { WebSocketVaultUpdate } from "./types/WebSocketVaultUpdate";
 import { awaitAll } from "../utils/await-all";
 import { WEBSOCKET_DISCONNECT_TIMEOUT_IN_S } from "../consts";
+import { removeFromArray } from "../utils/remove-from-array";
 
 export class WebSocketManager {
 	private readonly webSocketStatusChangeListeners: ((
@@ -227,12 +228,10 @@ export class WebSocketManager {
 						);
 					})
 					.finally(() => {
-						const index = this.outstandingPromises.indexOf(
+						removeFromArray(
+							this.outstandingPromises,
 							messageHandlingPromise
 						);
-						if (index !== -1) {
-							void this.outstandingPromises.splice(index, 1); // ignore the returned promise
-						}
 					});
 
 				void this.outstandingPromises.push(messageHandlingPromise); // ignore the returned promise

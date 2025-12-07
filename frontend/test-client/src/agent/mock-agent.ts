@@ -15,7 +15,7 @@ export class MockAgent extends MockClient {
 	private readonly pendingActions: Promise<unknown>[] = [];
 
 	// The renamed file finding algorithm isn't too smart so we can't both update and rename the same file
-	private doNotTouchWhileOffline: string[] = [];
+	private readonly doNotTouchWhileOffline: string[] = [];
 
 	public constructor(
 		initialSettings: Partial<SyncSettings>,
@@ -54,10 +54,10 @@ export class MockAgent extends MockClient {
 			);
 
 			if (historyEntry) {
-				this.doNotTouchWhileOffline =
-					this.doNotTouchWhileOffline.filter(
-						(file) => file !== historyEntry[1]
-					);
+				utils.removeFromArray(
+					this.doNotTouchWhileOffline,
+					historyEntry[1]
+				);
 			}
 			switch (logLine.level) {
 				case LogLevel.ERROR:

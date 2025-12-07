@@ -444,11 +444,13 @@ export class Syncer {
 				);
 				if (originalFile !== undefined) {
 					// `originalFile` hasn't been deleted but it got moved instead
+					/* eslint-disable no-restricted-syntax -- Comparing by property, not direct equality */
 					locallyPossiblyDeletedFiles =
 						locallyPossiblyDeletedFiles.filter(
 							(item) =>
 								item.relativePath !== originalFile.relativePath
 						);
+					/* eslint-enable no-restricted-syntax */
 
 					this.logger.debug(
 						`Document '${originalFile.relativePath}' was not found under its current path in the database but was found under a different path (${relativePath}), scheduling sync to move it`
