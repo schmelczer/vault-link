@@ -122,7 +122,7 @@ describe("WebSocketManager", () => {
 			MockWebSocket as unknown as typeof WebSocket
 		);
 
-		manager.addRemoteVaultUpdateListener(async () => {
+		manager.onRemoteVaultUpdateReceived.add(async () => {
 			await new Promise((resolve) => setTimeout(resolve, 10));
 		});
 		manager.start();
@@ -152,7 +152,7 @@ describe("WebSocketManager", () => {
 			MockWebSocket as unknown as typeof WebSocket
 		);
 
-		manager.addRemoteCursorsUpdateListener(async () => {
+		manager.onRemoteCursorsUpdateReceived.add(async () => {
 			await new Promise((resolve) => setTimeout(resolve, 10));
 		});
 		manager.start();
@@ -227,7 +227,7 @@ describe("WebSocketManager", () => {
 		);
 
 		let statusChangeCount = 0;
-		manager.addWebSocketStatusChangeListener(() => {
+		manager.onWebSocketStatusChanged.add(() => {
 			statusChangeCount++;
 		});
 
@@ -269,7 +269,7 @@ describe("WebSocketManager", () => {
 			resolveListener = resolve;
 		});
 
-		manager.addRemoteVaultUpdateListener(async () => {
+		manager.onRemoteVaultUpdateReceived.add(async () => {
 			await listenerPromise;
 		});
 

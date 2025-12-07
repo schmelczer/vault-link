@@ -1,183 +1,169 @@
 import {
-	MAX_HISTORY_ENTRY_COUNT,
-	TIMEOUT_FOR_MERGING_HISTORY_ENTRIES_IN_SECONDS
+    MAX_HISTORY_ENTRY_COUNT,
+    TIMEOUT_FOR_MERGING_HISTORY_ENTRIES_IN_SECONDS
 } from "../consts";
 import type { RelativePath } from "../persistence/database";
 import type { Logger } from "./logger";
 import { removeFromArray } from "../utils/remove-from-array";
+import { EventListeners } from "../utils/data-structures/event-listeners";
 
 export interface SyncCreateDetails {
-	type: SyncType.CREATE;
-	relativePath: RelativePath;
+    type: SyncType.CREATE;
+    relativePath: RelativePath;
 }
 
 export interface SyncUpdateDetails {
-	type: SyncType.UPDATE;
-	relativePath: RelativePath;
+    type: SyncType.UPDATE;
+    relativePath: RelativePath;
 }
 
 export interface SyncMovedDetails {
-	type: SyncType.MOVE;
-	relativePath: RelativePath;
-	movedFrom: RelativePath;
+    type: SyncType.MOVE;
+    relativePath: RelativePath;
+    movedFrom: RelativePath;
 }
 
 export interface SyncDeleteDetails {
-	type: SyncType.DELETE;
-	relativePath: RelativePath;
+    type: SyncType.DELETE;
+    relativePath: RelativePath;
 }
 
 export interface SyncSkippedDetails {
-	type: SyncType.SKIPPED;
-	relativePath: RelativePath;
+    type: SyncType.SKIPPED;
+    relativePath: RelativePath;
 }
 
 export type SyncDetails =
-	| SyncCreateDetails
-	| SyncUpdateDetails
-	| SyncDeleteDetails
-	| SyncMovedDetails
-	| SyncSkippedDetails;
+    | SyncCreateDetails
+    | SyncUpdateDetails
+    | SyncDeleteDetails
+    | SyncMovedDetails
+    | SyncSkippedDetails;
 
 export interface CommonHistoryEntry {
-	status: SyncStatus;
-	message: string;
-	details: SyncDetails;
-	author?: string;
-	timestamp?: Date;
+    status: SyncStatus;
+    message: string;
+    details: SyncDetails;
+    author?: string;
+    timestamp?: Date;
 }
 
 export enum SyncType {
-	CREATE = "CREATE",
-	UPDATE = "UPDATE",
-	DELETE = "DELETE",
-	MOVE = "MOVE",
-	SKIPPED = "SKIPPED"
+    CREATE = "CREATE",
+    UPDATE = "UPDATE",
+    DELETE = "DELETE",
+    MOVE = "MOVE",
+    SKIPPED = "SKIPPED"
 }
 
 export enum SyncStatus {
-	SUCCESS = "SUCCESS",
-	ERROR = "ERROR",
-	SKIPPED = "SKIPPED"
+    SUCCESS = "SUCCESS",
+    ERROR = "ERROR",
+    SKIPPED = "SKIPPED"
 }
 
 export type HistoryEntry = CommonHistoryEntry & { timestamp: Date };
 
 export interface HistoryStats {
-	success: number;
-	error: number;
+    success: number;
+    error: number;
 }
 
 export class SyncHistory {
-	private readonly _entries: HistoryEntry[] = [];
+    private readonly _entries: HistoryEntry[] = [];
 
-	private readonly syncHistoryUpdateListeners: ((
-		status: HistoryStats
-	) => unknown)[] = [];
+    public readonly onHistoryUpdated = new EventListeners<
+        (status: HistoryStats) => unknown
+    >();
 
-	private status: HistoryStats = {
-		success: 0,
-		error: 0
-	};
+    private status: HistoryStats = {
+        success: 0,
+        error: 0
+    };
 
-	public constructor(private readonly logger: Logger) {}
+    public constructor(private readonly logger: Logger) { }
 
-	public get entries(): readonly HistoryEntry[] {
-		return this._entries;
-	}
+    public get entries(): readonly HistoryEntry[] {
+        return this._entries;
+    }
 
-	/**
-	 * Insert the entry at the beginning of the history list. If the entry
-	 * already in the list, it will get moved to the beginning and updated.
-	 *
-	 * If the entry list is too long, the oldest entry will be removed.
-	 */
-	public addHistoryEntry(entry: CommonHistoryEntry): void {
-		const historyEntry = {
-			...entry,
-			timestamp: entry.timestamp ?? new Date()
-		};
+    /**
+     * Insert the entry at the beginning of the history list. If the entry
+     * already in the list, it will get moved to the beginning and updated.
+     *
+     * If the entry list is too long, the oldest entry will be removed.
+     */
+    public addHistoryEntry(entry: CommonHistoryEntry): void {
+        const historyEntry = {
+            ...entry,
+            timestamp: entry.timestamp ?? new Date()
+        };
 
-		const candidate = this.findSimilarRecentUpdateEntry(historyEntry);
-		if (candidate !== undefined) {
-			removeFromArray(this._entries, candidate);
-		}
+        const candidate = this.findSimilarRecentUpdateEntry(historyEntry);
+        if (candidate !== undefined) {
+            removeFromArray(this._entries, candidate);
+        }
 
-		// Insert the entry at the beginning
-		this._entries.unshift(historyEntry);
+        // Insert the entry at the beginning
+        this._entries.unshift(historyEntry);
 
-		if (this._entries.length > MAX_HISTORY_ENTRY_COUNT) {
-			this._entries.pop();
-		}
+        if (this._entries.length > MAX_HISTORY_ENTRY_COUNT) {
+            this._entries.pop();
+        }
 
-		this.updateSuccessCount(historyEntry);
-	}
+        this.updateSuccessCount(historyEntry);
+    }
 
-	public addSyncHistoryUpdateListener(
-		listener: (stats: HistoryStats) => unknown
-	): void {
-		this.syncHistoryUpdateListeners.push(listener);
-		listener({ ...this.status });
-	}
 
-	public removeSyncHistoryUpdateListener(
-		listener: (stats: HistoryStats) => unknown
-	): void {
-		removeFromArray(this.syncHistoryUpdateListeners, listener);
-	}
 
-	public reset(): void {
-		this._entries.length = 0;
-		this.status = {
-			success: 0,
-			error: 0
-		};
-		this.syncHistoryUpdateListeners.forEach((listener) => {
-			listener(this.status);
-		});
-	}
+    public reset(): void {
+        this._entries.length = 0;
+        this.status = {
+            success: 0,
+            error: 0
+        };
+        this.onHistoryUpdated.trigger(this.status);
+    }
 
-	private findSimilarRecentUpdateEntry(
-		entry: HistoryEntry
-	): HistoryEntry | undefined {
-		if (entry.details.type !== SyncType.UPDATE) {
-			return;
-		}
+    private findSimilarRecentUpdateEntry(
+        entry: HistoryEntry
+    ): HistoryEntry | undefined {
+        if (entry.details.type !== SyncType.UPDATE) {
+            return;
+        }
 
-		const candidate = this._entries.find(
-			(e) =>
-				e.details.type === SyncType.UPDATE &&
-				e.details.relativePath === entry.details.relativePath
-		);
-		if (
-			candidate !== undefined &&
-			(this._entries[0] === candidate ||
-				candidate.timestamp.getTime() +
-					TIMEOUT_FOR_MERGING_HISTORY_ENTRIES_IN_SECONDS * 1000 >
-					entry.timestamp.getTime())
-		) {
-			return candidate;
-		}
-	}
+        const candidate = this._entries.find(
+            (e) =>
+                e.details.type === SyncType.UPDATE &&
+                e.details.relativePath === entry.details.relativePath
+        );
+        if (
+            candidate !== undefined &&
+            (this._entries[0] === candidate ||
+                candidate.timestamp.getTime() +
+                TIMEOUT_FOR_MERGING_HISTORY_ENTRIES_IN_SECONDS * 1000 >
+                entry.timestamp.getTime())
+        ) {
+            return candidate;
+        }
+    }
 
-	private updateSuccessCount(entry: HistoryEntry): void {
-		const message = `${entry.details.relativePath} - ${entry.message} (${entry.details.type.toLocaleLowerCase()})`;
-		switch (entry.status) {
-			case SyncStatus.SUCCESS:
-				this.status.success++;
-				this.logger.info(`History entry: ${message}`);
-				break;
-			case SyncStatus.ERROR:
-				this.status.error++;
-				this.logger.error(`Cannot sync file: ${message}`);
-				break;
-			case SyncStatus.SKIPPED:
-				this.logger.warn(`Skipping file: ${message}`);
-				break;
-		}
+    private updateSuccessCount(entry: HistoryEntry): void {
+        const message = `${entry.details.relativePath} - ${entry.message} (${entry.details.type.toLocaleLowerCase()})`;
+        switch (entry.status) {
+            case SyncStatus.SUCCESS:
+                this.status.success++;
+                this.logger.info(`History entry: ${message}`);
+                break;
+            case SyncStatus.ERROR:
+                this.status.error++;
+                this.logger.error(`Cannot sync file: ${message}`);
+                break;
+            case SyncStatus.SKIPPED:
+                this.logger.warn(`Skipping file: ${message}`);
+                break;
+        }
 
-		this.syncHistoryUpdateListeners.forEach((listener) => {
-			listener(this.status);
-		});
-	}
+        this.onHistoryUpdated.trigger(this.status);
+    }
 }
