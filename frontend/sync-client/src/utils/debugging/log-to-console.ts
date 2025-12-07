@@ -3,7 +3,7 @@ import type { LogLine } from "../../tracing/logger";
 import { LogLevel } from "../../tracing/logger";
 
 export function logToConsole(client: SyncClient): void {
-	client.logger.addOnMessageListener((logLine: LogLine) => {
+	client.logger.onLogEmitted.add((logLine: LogLine) => {
 		const formatted = `${logLine.timestamp.toISOString()} ${logLine.level} ${logLine.message}`;
 
 		switch (logLine.level) {
