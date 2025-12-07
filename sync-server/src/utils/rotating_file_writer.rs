@@ -173,6 +173,7 @@ mod tests {
     #[test]
     fn test_write_creates_log_file_and_directory() {
         let temp_dir = std::env::temp_dir().join("test_write_creates_log_file_and_directory");
+        let _ = fs::remove_dir_all(&temp_dir);
 
         let mut writer =
             RotatingFileWriter::new(&temp_dir, "test", Duration::from_secs(3600)).unwrap();
@@ -195,6 +196,7 @@ mod tests {
     #[test]
     fn test_rotation_after_duration() {
         let temp_dir = std::env::temp_dir().join("test_rotation_after_duration");
+        let _ = fs::remove_dir_all(&temp_dir);
 
         // Use a very short rotation duration
         // Note: We need to wait at least 1 second between rotations since
@@ -227,6 +229,7 @@ mod tests {
     fn test_calculate_next_rotation_time_no_existing_logs() {
         let temp_dir =
             std::env::temp_dir().join("test_calculate_next_rotation_time_no_existing_logs");
+        let _ = fs::remove_dir_all(&temp_dir);
 
         fs::create_dir_all(&temp_dir).unwrap();
 
@@ -248,6 +251,7 @@ mod tests {
     fn test_calculate_next_rotation_time_with_existing_log() {
         let temp_dir =
             std::env::temp_dir().join("test_calculate_next_rotation_time_with_existing_log");
+        let _ = fs::remove_dir_all(&temp_dir);
 
         fs::create_dir_all(&temp_dir).unwrap();
 
@@ -286,6 +290,7 @@ mod tests {
     #[test]
     fn test_picks_latest_log_file() {
         let temp_dir = std::env::temp_dir().join("test_picks_latest_log_file");
+        let _ = fs::remove_dir_all(&temp_dir);
 
         fs::create_dir_all(&temp_dir).unwrap();
 
@@ -320,6 +325,7 @@ mod tests {
     #[test]
     fn test_ignores_malformed_filenames() {
         let temp_dir = std::env::temp_dir().join("test_ignores_malformed_filenames");
+        let _ = fs::remove_dir_all(&temp_dir);
 
         fs::create_dir_all(&temp_dir).unwrap();
 
