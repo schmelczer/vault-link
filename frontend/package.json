@@ -10,7 +10,7 @@
     "prettier": {
         "trailingComma": "none",
         "tabWidth": 4,
-        "useTabs": true,
+        "useTabs": false,
         "endOfLine": "lf"
     },
     "scripts": {
