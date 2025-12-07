@@ -30,3 +30,4 @@ users:
 logging:
   log_directory: logs
   log_rotation: 7days
+  log_level: info

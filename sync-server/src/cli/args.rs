@@ -1,7 +1,6 @@
 use std::ffi::OsString;
 
 use clap::Parser;
-use clap_verbosity_flag::{InfoLevel, Verbosity};
 
 use crate::cli::color_when::ColorWhen;
 
@@ -11,9 +10,6 @@ use crate::cli::color_when::ColorWhen;
 pub struct Args {
     #[arg(index = 1)]
     pub config_path: Option<OsString>,
-
-    #[command(flatten)]
-    pub verbose: Verbosity<InfoLevel>,
 
     #[arg(
             long,
