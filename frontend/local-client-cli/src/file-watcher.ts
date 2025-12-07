@@ -1,102 +1,121 @@
-import * as fs from "fs";
+import Watcher from "watcher";
 import * as path from "path";
 import type { SyncClient, RelativePath } from "sync-client";
 
 export class FileWatcher {
-	private watcher: fs.FSWatcher | undefined;
-	private isRunning = false;
+    private watcher: Watcher | undefined;
+    private isRunning = false;
 
-	public constructor(
-		private readonly basePath: string,
-		private readonly client: SyncClient
-	) {}
+    public constructor(
+        private readonly basePath: string,
+        private readonly client: SyncClient
+    ) {}
 
-	public start(): void {
-		if (this.isRunning) {
-			return;
-		}
+    public start(): void {
+        if (this.isRunning) {
+            return;
+        }
 
-		this.isRunning = true;
+        this.isRunning = true;
 
-		this.watcher = fs.watch(
-			this.basePath,
-			{ recursive: true },
-			(eventType, filename) => {
-				if (filename === null || filename.length === 0) {
-					return;
-				}
+        this.watcher = new Watcher(this.basePath, {
+            recursive: true,
+            renameDetection: true,
+            renameTimeout: 125,
+            ignoreInitial: true
+        });
 
-				// Convert to forward slashes for consistency
-				const relativePath = this.toUnixPath(filename);
+        this.watcher.on("add", (filePath: string) => {
+            this.handleCreate(this.toRelativePath(filePath));
+        });
 
-				if (eventType === "rename") {
-					this.handleRenameOrDelete(relativePath);
-				} else {
-					// Must be "change" event
-					this.handleChange(relativePath);
-				}
-			}
-		);
+        this.watcher.on("change", (filePath: string) => {
+            this.handleChange(this.toRelativePath(filePath));
+        });
 
-		this.client.logger.info("File watcher started");
-	}
+        this.watcher.on("unlink", (filePath: string) => {
+            this.handleDelete(this.toRelativePath(filePath));
+        });
 
-	public stop(): void {
-		if (this.watcher !== undefined) {
-			this.watcher.close();
-			this.watcher = undefined;
-		}
-		this.isRunning = false;
-		this.client.logger.info("File watcher stopped");
-	}
+        this.watcher.on("rename", (oldPath: string, newPath: string) => {
+            this.handleRename(
+                this.toRelativePath(oldPath),
+                this.toRelativePath(newPath)
+            );
+        });
 
-	private handleChange(relativePath: RelativePath): void {
-		this.client
-			.syncLocallyUpdatedFile({ relativePath })
-			.catch((err: unknown) => {
-				this.client.logger.error(
-					`Failed to sync updated file ${relativePath}: ${err instanceof Error ? err.message : String(err)}`
-				);
-			});
-	}
+        this.client.logger.info("File watcher started");
+    }
 
-	private handleRenameOrDelete(relativePath: RelativePath): void {
-		const fullPath = path.join(this.basePath, relativePath);
+    public stop(): void {
+        if (this.watcher !== undefined) {
+            this.watcher.close();
+            this.watcher = undefined;
+        }
+        this.isRunning = false;
+        this.client.logger.info("File watcher stopped");
+    }
 
-		fs.access(fullPath, fs.constants.F_OK, (accessError) => {
-			if (accessError) {
-				this.client
-					.syncLocallyDeletedFile(relativePath)
-					.catch((deleteErr: unknown) => {
-						this.client.logger.error(
-							`Failed to sync deleted file ${relativePath}: ${deleteErr instanceof Error ? deleteErr.message : String(deleteErr)}`
-						);
-					});
-			} else {
-				fs.stat(fullPath, (statErr, stats) => {
-					if (statErr !== null || !stats.isFile()) {
-						return;
-					}
+    private handleCreate(relativePath: RelativePath): void {
+        this.client
+            .syncLocallyCreatedFile(relativePath)
+            .catch((err: unknown) => {
+                this.client.logger.error(
+                    `Failed to sync created file ${relativePath}: ${this.formatError(err)}`
+                );
+            });
+    }
 
-					this.client
-						.syncLocallyCreatedFile(relativePath)
-						.catch((createErr: unknown) => {
-							this.client.logger.error(
-								`Failed to sync created file ${relativePath}: ${createErr instanceof Error ? createErr.message : String(createErr)}`
-							);
-						});
-				});
-			}
-		});
-	}
+    private handleChange(relativePath: RelativePath): void {
+        this.client
+            .syncLocallyUpdatedFile({ relativePath })
+            .catch((err: unknown) => {
+                this.client.logger.error(
+                    `Failed to sync updated file ${relativePath}: ${this.formatError(err)}`
+                );
+            });
+    }
 
-	/**
-	 * Convert a native platform path to forward slashes
-	 */
-	private toUnixPath(nativePath: string): string {
-		if (path.sep === "\\") {
-			return nativePath.replace(/\\/g, "/");
-		}
-		return nativePath;
-	}
+    private handleDelete(relativePath: RelativePath): void {
+        this.client
+            .syncLocallyDeletedFile(relativePath)
+            .catch((err: unknown) => {
+                this.client.logger.error(
+                    `Failed to sync deleted file ${relativePath}: ${this.formatError(err)}`
+                );
+            });
+    }
+
+    private handleRename(oldPath: RelativePath, newPath: RelativePath): void {
+        this.client.logger.info(`File renamed: ${oldPath} -> ${newPath}`);
+        this.client
+            .syncLocallyUpdatedFile({
+                oldPath,
+                relativePath: newPath
+            })
+            .catch((err: unknown) => {
+                this.client.logger.error(
+                    `Failed to sync renamed file ${oldPath} -> ${newPath}: ${this.formatError(err)}`
+                );
+            });
+    }
+
+    private toRelativePath(absolutePath: string): RelativePath {
+        const relative = path.relative(this.basePath, absolutePath);
+        return this.toUnixPath(relative);
+    }
+
+    /**
+    * Convert a native platform path to forward slashes
+    */
+    private toUnixPath(nativePath: string): string {
+        if (path.sep === "\\") {
+            return nativePath.replace(/\\/g, "/");
+        }
+        return nativePath;
+    }
+
+    private formatError(err: unknown): string {
+        return err instanceof Error ? err.message : String(err);
+    }
 }
