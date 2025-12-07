@@ -2,6 +2,7 @@ import type { Logger } from "../tracing/logger";
 import { EMPTY_HASH } from "../utils/hash";
 import { CoveredValues } from "../utils/data-structures/min-covered";
 import { awaitAll } from "../utils/await-all";
+import { removeFromArray } from "../utils/remove-from-array";
 
 export type VaultUpdateId = number;
 export type DocumentId = string;
@@ -93,6 +94,7 @@ export class Database {
 	public get resolvedDocuments(): DocumentRecord[] {
 		const paths = new Map<string, DocumentRecord[]>();
 		this.documents
+			// eslint-disable-next-line no-restricted-syntax -- Type narrowing, not removing a specific item
 			.filter(({ metadata }) => metadata !== undefined)
 			.forEach((record) =>
 				paths.set(record.relativePath, [
@@ -151,12 +153,12 @@ export class Database {
 			return;
 		}
 
-		entry.updates = entry.updates.filter((update) => update !== promise);
+		removeFromArray(entry.updates, promise);
 		// No need to save as Promises don't get serialized
 	}
 
 	public removeDocument(find: DocumentRecord): void {
-		this.documents = this.documents.filter((document) => document !== find);
+		removeFromArray(this.documents, find);
 		this.saveInTheBackground();
 	}
 

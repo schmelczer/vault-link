@@ -4,6 +4,7 @@ import {
 } from "../consts";
 import type { RelativePath } from "../persistence/database";
 import type { Logger } from "./logger";
+import { removeFromArray } from "../utils/remove-from-array";
 
 export interface SyncCreateDetails {
 	type: SyncType.CREATE;
@@ -68,7 +69,7 @@ export interface HistoryStats {
 }
 
 export class SyncHistory {
-	private _entries: HistoryEntry[] = [];
+	private readonly _entries: HistoryEntry[] = [];
 
 	private readonly syncHistoryUpdateListeners: ((
 		status: HistoryStats
@@ -99,7 +100,7 @@ export class SyncHistory {
 
 		const candidate = this.findSimilarRecentUpdateEntry(historyEntry);
 		if (candidate !== undefined) {
-			this._entries = this._entries.filter((e) => e !== candidate);
+			removeFromArray(this._entries, candidate);
 		}
 
 		// Insert the entry at the beginning
@@ -122,10 +123,7 @@ export class SyncHistory {
 	public removeSyncHistoryUpdateListener(
 		listener: (stats: HistoryStats) => unknown
 	): void {
-		const index = this.syncHistoryUpdateListeners.indexOf(listener);
-		if (index !== -1) {
-			this.syncHistoryUpdateListeners.splice(index, 1);
-		}
+		removeFromArray(this.syncHistoryUpdateListeners, listener);
 	}
 
 	public reset(): void {

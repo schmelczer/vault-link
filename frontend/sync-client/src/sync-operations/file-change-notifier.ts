@@ -1,4 +1,5 @@
 import type { RelativePath } from "../persistence/database";
+import { removeFromArray } from "../utils/remove-from-array";
 
 export class FileChangeNotifier {
 	private readonly listeners: ((filePath: RelativePath) => unknown)[] = [];
@@ -12,10 +13,7 @@ export class FileChangeNotifier {
 	public removeFileChangeListener(
 		listener: (filePath: RelativePath) => unknown
 	): void {
-		const index = this.listeners.indexOf(listener);
-		if (index !== -1) {
-			this.listeners.splice(index, 1);
-		}
+		removeFromArray(this.listeners, listener);
 	}
 
 	public notifyOfFileChange(filePath: RelativePath): void {

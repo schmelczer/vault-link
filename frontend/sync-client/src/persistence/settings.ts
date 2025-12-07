@@ -1,6 +1,7 @@
 import type { Logger } from "../tracing/logger";
 import { awaitAll } from "../utils/await-all";
 import { Lock } from "../utils/data-structures/locks";
+import { removeFromArray } from "../utils/remove-from-array";
 
 export interface SyncSettings {
 	remoteUri: string;
@@ -69,10 +70,7 @@ export class Settings {
 	public removeOnSettingsChangeListener(
 		listener: (settings: SyncSettings, oldSettings: SyncSettings) => unknown
 	): void {
-		const index = this.onSettingsChangeHandlers.indexOf(listener);
-		if (index !== -1) {
-			this.onSettingsChangeHandlers.splice(index, 1);
-		}
+		removeFromArray(this.onSettingsChangeHandlers, listener);
 	}
 
 	public async setSetting<T extends keyof SyncSettings>(

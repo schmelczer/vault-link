@@ -5,13 +5,14 @@ import type {
 	NetworkConnectionStatus,
 	SyncClient
 } from "sync-client";
+import { utils } from "sync-client";
 
 export class StatusDescription {
 	private lastHistoryStats: HistoryStats | undefined;
 	private lastRemaining: number | undefined;
 	private lastConnectionState: NetworkConnectionStatus | undefined;
 
-	private statusChangeListeners: (() => unknown)[] = [];
+	private readonly statusChangeListeners: (() => unknown)[] = [];
 
 	public constructor(private readonly syncClient: SyncClient) {
 		void this.updateConnectionState();
@@ -46,9 +47,7 @@ export class StatusDescription {
 		this.statusChangeListeners.push(listener);
 	}
 	public removeStatusChangeListener(listener: () => unknown): void {
-		this.statusChangeListeners = this.statusChangeListeners.filter(
-			(l) => l !== listener
-		);
+		utils.removeFromArray(this.statusChangeListeners, listener);
 	}
 
 	public renderStatusDescription(container: HTMLElement): void {

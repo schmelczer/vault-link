@@ -5,6 +5,7 @@ import { slowWebSocketFactory } from "./utils/debugging/slow-web-socket-factory"
 import { getRandomColor } from "./utils/get-random-color";
 import { lineAndColumnToPosition } from "./utils/line-and-column-to-position";
 import { positionToLineAndColumn } from "./utils/position-to-line-and-column";
+import { removeFromArray } from "./utils/remove-from-array";
 
 export {
 	SyncType,
@@ -43,5 +44,6 @@ export const utils = {
 	getRandomColor,
 	positionToLineAndColumn,
 	lineAndColumnToPosition,
-	awaitAll
+	awaitAll,
+	removeFromArray
 };
