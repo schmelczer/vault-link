@@ -417,6 +417,20 @@ export class SyncClient {
         await this.cursorTracker.sendLocalCursorsToServer(documentToCursors);
     }
 
+    public getTrackedFilePaths(): RelativePath[] {
+        this.checkIfDestroyed("getTrackedFilePaths");
+
+        return this.database.resolvedDocuments
+            .filter((doc) => !doc.isDeleted && doc.metadata !== undefined)
+            .map((doc) => doc.relativePath);
+    }
+
+    public async getAllVaultFiles(): Promise<RelativePath[]> {
+        this.checkIfDestroyed("getAllVaultFiles");
+
+        return this.fileOperations.listFilesRecursively(undefined);
+    }
+
     public async waitUntilFinished(): Promise<void> {
         this.checkIfDestroyed("waitUntilIdle");
         await this.syncer.waitUntilFinished();

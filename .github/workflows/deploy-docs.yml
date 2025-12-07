@@ -42,14 +42,10 @@ jobs:
           cd docs
           npm ci
 
-      - name: Check formatting
+      - name: Check formatting & spelling
         run: |
           cd docs
           npm run format:check
-
-      - name: Check spelling
-        run: |
-          cd docs
           npm run spell:check
 
       - name: Build documentation

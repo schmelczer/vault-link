@@ -40,6 +40,8 @@ export const debugging = {
     logToConsole
 };
 
+export { globsToRegexes } from "./utils/globs-to-regexes";
+
 export const utils = {
     getRandomColor,
     positionToLineAndColumn,

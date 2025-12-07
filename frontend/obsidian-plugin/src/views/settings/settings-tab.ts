@@ -4,6 +4,7 @@ import type { App } from "obsidian";
 import { Notice, PluginSettingTab, Setting } from "obsidian";
 import type VaultLinkPlugin from "src/vault-link-plugin";
 import type { SyncClient, SyncSettings } from "sync-client";
+import { globsToRegexes } from "sync-client";
 import { HistoryView } from "../history/history-view";
 import { LogsView } from "../logs/logs-view";
 import type { StatusDescription } from "../status-description/status-description";
@@ -352,6 +353,55 @@ export class SyncSettingsTab extends PluginSettingTab {
             );
 
         new Setting(containerEl)
+            .setName("Update tracked files")
+            .setDesc(
+                "Apply current ignore patterns to already tracked files. Files that now match ignore patterns will be deleted from sync, and files that no longer match will be added to sync."
+            )
+            .addButton((button) =>
+                button
+                    .setButtonText("Update tracked files")
+                    .setDisabled(this.isApplyingChanges)
+                    .setTooltip(
+                        this.isApplyingChanges
+                            ? "Waiting for applying changes to finish..."
+                            : "Update tracked files based on current ignore patterns"
+                    )
+                    .onClick(() => {
+                        void (async (): Promise<void> => {
+                            await this.updateTrackedFilesBasedOnIgnorePatterns();
+                        })();
+                    })
+            );
+
+        const ignoredFilesContainer = containerEl.createDiv({
+            cls: "ignored-files-container"
+        });
+        let isIgnoredFilesVisible = false;
+
+        new Setting(containerEl)
+            .setName("Show ignored files")
+            .setDesc(
+                "Display a list of all files currently ignored by the patterns above."
+            )
+            .addButton((button) =>
+                button.setButtonText("Show ignored files").onClick(() => {
+                    void (async (): Promise<void> => {
+                        if (isIgnoredFilesVisible) {
+                            ignoredFilesContainer.empty();
+                            isIgnoredFilesVisible = false;
+                            button.setButtonText("Show ignored files");
+                        } else {
+                            await this.displayIgnoredFiles(
+                                ignoredFilesContainer
+                            );
+                            isIgnoredFilesVisible = true;
+                            button.setButtonText("Hide ignored files");
+                        }
+                    })();
+                })
+            );
+
+        new Setting(containerEl)
             .setName("Sync concurrency")
             .setDesc(
                 "How many concurrent sync operations to run. Setting this value higher may increase the overall performance, however, it will require more memory as well. If you notice frequent crashes, especially on mobile, set this to 1."
@@ -561,5 +611,137 @@ export class SyncSettingsTab extends PluginSettingTab {
         };
 
         return [titleContainer, updateTitle];
+    }
+
+    private async updateTrackedFilesBasedOnIgnorePatterns(): Promise<void> {
+        this.isApplyingChanges = true;
+        try {
+            const ignorePatterns: RegExp[] = globsToRegexes(
+                this.syncClient.getSettings().ignorePatterns,
+                this.syncClient.logger
+            );
+
+            const matchesIgnorePattern = (path: string): boolean => {
+                return ignorePatterns.some((pattern) => pattern.test(path));
+            };
+
+            const trackedFiles: string[] =
+                this.syncClient.getTrackedFilePaths();
+            const allVaultFiles: string[] =
+                await this.syncClient.getAllVaultFiles();
+
+            const filesToDelete: string[] = trackedFiles.filter((path) =>
+                matchesIgnorePattern(path)
+            );
+            const filesToCreate: string[] = allVaultFiles.filter(
+                (path) =>
+                    !matchesIgnorePattern(path) && !trackedFiles.includes(path)
+            );
+
+            if (filesToDelete.length === 0 && filesToCreate.length === 0) {
+                new Notice("No files need to be updated");
+                return;
+            }
+
+            const confirmMessageParts: string[] = [
+                `This will update ${filesToDelete.length + filesToCreate.length} file(s):`
+            ];
+
+            if (filesToDelete.length > 0) {
+                confirmMessageParts.push(
+                    `- Delete ${filesToDelete.length} file(s) from sync (now ignored)`
+                );
+            }
+
+            if (filesToCreate.length > 0) {
+                confirmMessageParts.push(
+                    `- Add ${filesToCreate.length} file(s) to sync (no longer ignored)`
+                );
+            }
+
+            confirmMessageParts.push("", "Do you want to continue?");
+
+            const confirmMessage = confirmMessageParts.join("\n");
+
+            const confirmed = confirm(confirmMessage);
+            if (!confirmed) {
+                new Notice("Update cancelled");
+                return;
+            }
+
+            new Notice(
+                `Updating ${filesToDelete.length + filesToCreate.length} file(s)...`
+            );
+
+            for (const path of filesToDelete) {
+                await this.syncClient.syncLocallyDeletedFile(path);
+            }
+
+            for (const path of filesToCreate) {
+                await this.syncClient.syncLocallyCreatedFile(path);
+            }
+
+            new Notice(
+                `Successfully updated ${filesToDelete.length + filesToCreate.length} file(s)`
+            );
+        } catch (error) {
+            new Notice(`Error updating tracked files: ${String(error)}`);
+            this.syncClient.logger.error(
+                `Error updating tracked files: ${String(error)}`
+            );
+        } finally {
+            this.isApplyingChanges = false;
+        }
+    }
+
+    private async displayIgnoredFiles(container: HTMLElement): Promise<void> {
+        container.empty();
+
+        try {
+            const ignorePatterns: RegExp[] = globsToRegexes(
+                this.syncClient.getSettings().ignorePatterns,
+                this.syncClient.logger
+            );
+
+            if (ignorePatterns.length === 0) {
+                container.createEl("p", {
+                    text: "No ignore patterns configured"
+                });
+                return;
+            }
+
+            const allVaultFiles: string[] =
+                await this.syncClient.getAllVaultFiles();
+            const ignoredFiles: string[] = allVaultFiles.filter((path) =>
+                ignorePatterns.some((pattern) => pattern.test(path))
+            );
+
+            if (ignoredFiles.length === 0) {
+                container.createEl("p", {
+                    text: "No files are currently ignored"
+                });
+                return;
+            }
+
+            container.createEl("h4", {
+                text: `Ignored files (${ignoredFiles.length})`
+            });
+
+            const fileList = container.createEl("ul", {
+                cls: "ignored-files-list"
+            });
+
+            const sortedIgnoredFiles = [...ignoredFiles].sort();
+            for (const path of sortedIgnoredFiles) {
+                fileList.createEl("li", { text: path });
+            }
+        } catch (error) {
+            container.createEl("p", {
+                text: `Error loading ignored files: ${String(error)}`
+            });
+            this.syncClient.logger.error(
+                `Error loading ignored files: ${String(error)}`
+            );
+        }
     }
 }
