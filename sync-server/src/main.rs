@@ -60,14 +60,7 @@ fn set_up_logging(
     args: &Args,
     logging_config: &config::logging_config::LoggingConfig,
 ) -> Result<(), SyncServerError> {
-    let level_filter = match args.verbose.log_level_filter() {
-        // We don't want to allow disabling all logging
-        log::LevelFilter::Off | log::LevelFilter::Error => tracing::Level::ERROR,
-        log::LevelFilter::Warn => tracing::Level::WARN,
-        log::LevelFilter::Info => tracing::Level::INFO,
-        log::LevelFilter::Debug => tracing::Level::DEBUG,
-        log::LevelFilter::Trace => tracing::Level::TRACE,
-    };
+    let level_filter = logging_config.log_level.as_tracing_level();
 
     let env_filter = EnvFilter::builder()
         .with_default_directive(level_filter.into())
@@ -77,7 +70,7 @@ fn set_up_logging(
 
     let use_colors = args.color.use_colors();
 
-    let is_debug_mode = args.verbose.log_level_filter() >= log::LevelFilter::Debug;
+    let is_debug_mode = logging_config.log_level.is_debug_or_trace();
 
     let file_appender = RotatingFileWriter::new(
         &logging_config.log_directory,
