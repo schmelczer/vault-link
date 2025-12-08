@@ -35,6 +35,8 @@ cd ..
 
 cp frontend/obsidian-plugin/manifest.json manifest.json  # for BRAT, otherwise it wouldn't update
 
+git ls-files | xargs npx eclint fix
+
 # Commit and tag
 git add .
 TAG=$(node -p "require('./frontend/obsidian-plugin/package.json').version")
