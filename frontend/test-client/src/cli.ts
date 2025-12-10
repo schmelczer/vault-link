@@ -10,12 +10,15 @@ const TEST_ITERATIONS = 5;
 // Simulate async file access by injecting waiting time before returning from file operations.
 let slowFileEvents = false;
 
+// Whether to do resets in the test runs
+let doResets = false;
+
 async function runTest({
     agentCount,
     concurrency,
     iterations,
     doDeletes,
-    doResets,
+    useResets,
     useSlowFileEvents,
     jitterScaleInSeconds
 }: {
@@ -23,13 +26,14 @@ async function runTest({
     concurrency: number;
     iterations: number;
     doDeletes: boolean;
-    doResets: boolean;
+    useResets: boolean;
     useSlowFileEvents: boolean;
     jitterScaleInSeconds: number;
 }): Promise<void> {
     slowFileEvents = useSlowFileEvents;
+    doResets = useResets;
 
-    const settings = `with ${agentCount} agents, concurrency ${concurrency}, iterations ${iterations}, doDeletes ${doDeletes}, doResets ${doResets}, jitterScaleInSeconds ${jitterScaleInSeconds}, useSlowFileEvents ${useSlowFileEvents}`;
+    const settings = `with ${agentCount} agents, concurrency ${concurrency}, iterations ${iterations}, doDeletes ${doDeletes}, doResets ${useResets}, jitterScaleInSeconds ${jitterScaleInSeconds}, useSlowFileEvents ${useSlowFileEvents}`;
     console.info(`Running test ${settings}`);
 
     const vaultName = uuidv4();
@@ -49,7 +53,7 @@ async function runTest({
                 initialSettings,
                 `agent-${i}`,
                 doDeletes,
-                doResets,
+                useResets,
                 useSlowFileEvents,
                 jitterScaleInSeconds
             )
@@ -118,6 +122,16 @@ async function runTest({
 
 async function runTests(): Promise<void> {
     for (let i = 0; i < TEST_ITERATIONS; i++) {
+        await runTest({
+            agentCount: 2,
+            concurrency: 16,
+            iterations: 100,
+            doDeletes: true,
+            useResets: true,
+            useSlowFileEvents: true,
+            jitterScaleInSeconds: 0.75
+        });
+
         for (const useSlowFileEvents of [true, false]) {
             for (const concurrency of [
                 16,
@@ -129,23 +143,13 @@ async function runTests(): Promise<void> {
                         concurrency,
                         iterations: 100,
                         doDeletes,
-                        doResets: false,
+                        useResets: false,
                         useSlowFileEvents,
                         jitterScaleInSeconds: 0.75
                     });
                 }
             }
         }
-
-        await runTest({
-            agentCount: 2,
-            concurrency: 16,
-            iterations: 100,
-            doDeletes: true,
-            doResets: true,
-            useSlowFileEvents: true,
-            jitterScaleInSeconds: 0.75
-        });
     }
 }
 
@@ -173,6 +177,16 @@ process.on("unhandledRejection", (error, _promise) => {
         error instanceof Error &&
         (error.message.includes("Document not found") ||
             error.message.includes("Document already exists at new location"))
+    ) {
+        return;
+    }
+
+    if (
+        doResets &&
+        error instanceof Error &&
+        error.message.includes(
+            "SyncClient has been destroyed and can no longer be used"
+        )
     ) {
         return;
     }

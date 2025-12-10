@@ -90,10 +90,11 @@ export class MockAgent extends MockClient {
             this.createFileAction.bind(this)
         ];
 
-        if (this.client.getSettings().isSyncEnabled) {
-            if (this.doNotTouchWhileOffline.length === 0) {
-                options.push(this.disableSyncAction.bind(this));
-            }
+        if (
+            this.client.getSettings().isSyncEnabled &&
+            this.doNotTouchWhileOffline.length === 0
+        ) {
+            options.push(this.disableSyncAction.bind(this));
         } else {
             options.push(this.enableSyncAction.bind(this));
         }
