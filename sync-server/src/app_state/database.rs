@@ -6,7 +6,7 @@ use log::info;
 use models::{
     DocumentId, DocumentVersionWithoutContent, StoredDocumentVersion, VaultId, VaultUpdateId,
 };
-use sqlx::{sqlite::SqliteConnectOptions, types::chrono::Utc};
+use sqlx::{sqlite::SqliteConnectOptions, types::chrono::Utc, ConnectOptions};
 
 pub mod models;
 use sqlx::{Pool, Sqlite, sqlite::SqlitePoolOptions};
@@ -105,7 +105,8 @@ impl Database {
             .create_if_missing(true)
             .auto_vacuum(sqlx::sqlite::SqliteAutoVacuum::Full)
             .busy_timeout(Duration::from_secs(3600))
-            .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal);
+            .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
+            .log_slow_statements(log::LevelFilter::Warn, Duration::from_secs(30));
 
         let pool = SqlitePoolOptions::new()
             .max_connections(config.max_connections_per_vault)
