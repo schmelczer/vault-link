@@ -6,7 +6,7 @@ use log::info;
 use models::{
     DocumentId, DocumentVersionWithoutContent, StoredDocumentVersion, VaultId, VaultUpdateId,
 };
-use sqlx::{sqlite::SqliteConnectOptions, types::chrono::Utc, ConnectOptions};
+use sqlx::{ConnectOptions, sqlite::SqliteConnectOptions, types::chrono::Utc};
 
 pub mod models;
 use sqlx::{Pool, Sqlite, sqlite::SqlitePoolOptions};
