@@ -118,7 +118,7 @@ async function runTest({
 
 async function runTests(): Promise<void> {
     for (let i = 0; i < TEST_ITERATIONS; i++) {
-        for (const useSlowFileEvents of [false, true]) {
+        for (const useSlowFileEvents of [true, false]) {
             for (const concurrency of [
                 16,
                 1 // test with concurrency 1 to check for deadlocks
@@ -150,10 +150,6 @@ async function runTests(): Promise<void> {
 }
 
 process.on("uncaughtException", (error) => {
-    if (slowFileEvents) {
-        return;
-    }
-
     if (
         error instanceof Error &&
         error.message.includes(
@@ -172,7 +168,12 @@ process.on("unhandledRejection", (error, _promise) => {
         return;
     }
 
-    if (slowFileEvents) {
+    if (
+        slowFileEvents &&
+        error instanceof Error &&
+        (error.message.includes("Document not found") ||
+            error.message.includes("Document already exists at new location"))
+    ) {
         return;
     }
 

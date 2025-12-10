@@ -20,7 +20,8 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -30,32 +31,15 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: docs/package-lock.json
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
-      - name: Install dependencies
-        run: |
-          cd docs
-          npm ci
-
-      - name: Check formatting
-        run: |
-          cd docs
-          npm run format:check
-
-      - name: Check spelling
-        run: |
-          cd docs
-          npm run spell:check
-
-      - name: Build documentation
-        run: |
-          cd docs
-          npm run build
+      - name: Build docs
+        run: scripts/build-docs.sh
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
@@ -67,7 +51,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     name: Deploy
     steps:
       - name: Deploy to GitHub Pages
