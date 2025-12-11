@@ -16,25 +16,27 @@ export class ServerConfig {
 
     public constructor(private readonly syncService: SyncService) {}
 
-    public async initialize(): Promise<void> {
-        this.response = this.syncService.ping();
-        this.config = await this.response;
-
-        if (this.config.supportedApiVersion !== SUPPORTED_API_VERSION) {
+    private static validateConfig(config: ServerConfigData): void {
+        if (config.supportedApiVersion !== SUPPORTED_API_VERSION) {
             const shouldUpgradeClient =
-                this.config.supportedApiVersion > SUPPORTED_API_VERSION;
+                config.supportedApiVersion > SUPPORTED_API_VERSION;
             throw new ServerVersionMismatchError(
-                `Unsupported API version: ${this.config.supportedApiVersion}. Consider upgrading the ${
+                `Unsupported API version: ${config.supportedApiVersion}. Consider upgrading the ${
                     shouldUpgradeClient ? "client" : "sync-server"
-                } to ensure compatibility.`
+                } to ensure compatibility`
             );
         }
 
-        if (!this.config.isAuthenticated) {
+        if (!config.isAuthenticated) {
             throw new AuthenticationError(
-                "Failed to authenticate with the sync-server."
+                "Failed to authenticate with the sync-server"
             );
         }
+    }
+
+    // warm the cache
+    public async initialize(): Promise<void> {
+        await this.getConfig();
     }
 
     public async checkConnection(forceUpdate = false): Promise<{
@@ -43,14 +45,11 @@ export class ServerConfig {
     }> {
         try {
             let { response } = this;
-            if (!response && !forceUpdate) {
-                throw new Error("ServerConfig not initialized");
-            } else if (forceUpdate) {
+            if (!response || forceUpdate) {
                 response = this.response = this.syncService.ping();
             }
 
-            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-            const result: PingResponse = (await response)!; // it must be defined, otherwise we would have thrown above
+            const result: PingResponse = await response; // it must be defined, otherwise we would have thrown above
             this.config = result;
 
             if (result.isAuthenticated) {
@@ -72,10 +71,13 @@ export class ServerConfig {
         }
     }
 
-    public getConfig(): ServerConfigData {
+    public async getConfig(): Promise<ServerConfigData> {
         if (!this.config) {
-            throw new Error("ServerConfig not initialized");
+            this.response ??= this.syncService.ping();
+            this.config = await this.response;
         }
+
+        ServerConfig.validateConfig(this.config);
 
         return this.config;
     }

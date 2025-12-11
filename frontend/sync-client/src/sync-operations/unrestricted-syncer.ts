@@ -108,7 +108,7 @@ export class UnrestrictedSyncer {
             );
 
             this.database.addSeenUpdateId(response.vaultUpdateId);
-            this.updateCache(
+            await this.updateCache(
                 response.vaultUpdateId,
                 contentBytes,
                 response.relativePath
@@ -206,7 +206,8 @@ export class UnrestrictedSyncer {
                     !isBinary(contentBytes) &&
                     isFileTypeMergable(
                         document.relativePath,
-                        this.serverConfig.getConfig().mergeableFileExtensions
+                        (await this.serverConfig.getConfig())
+                            .mergeableFileExtensions
                     );
                 const cachedVersion = this.contentCache.get(
                     document.metadata.parentVersionId
@@ -300,7 +301,7 @@ export class UnrestrictedSyncer {
                     contentBytes,
                     responseBytes
                 );
-                this.updateCache(
+                await this.updateCache(
                     response.vaultUpdateId,
                     responseBytes,
                     actualPath
@@ -322,7 +323,7 @@ export class UnrestrictedSyncer {
                     },
                     document
                 );
-                this.updateCache(
+                await this.updateCache(
                     response.vaultUpdateId,
                     contentBytes,
                     actualPath
@@ -451,7 +452,7 @@ export class UnrestrictedSyncer {
                 remoteVersion.relativePath,
                 contentBytes
             );
-            this.updateCache(
+            await this.updateCache(
                 remoteVersion.vaultUpdateId,
                 contentBytes,
                 remoteVersion.relativePath
@@ -547,15 +548,15 @@ export class UnrestrictedSyncer {
         }
     }
 
-    private updateCache(
+    private async updateCache(
         updateId: number,
         contentBytes: Uint8Array,
         filePath: RelativePath
-    ): void {
+    ): Promise<void> {
         if (
             isFileTypeMergable(
                 filePath,
-                this.serverConfig.getConfig().mergeableFileExtensions
+                (await this.serverConfig.getConfig()).mergeableFileExtensions
             ) &&
             !isBinary(contentBytes)
         ) {

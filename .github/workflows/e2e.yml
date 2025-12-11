@@ -49,7 +49,7 @@ jobs:
           cargo run config-e2e.yml --color never &
           cd ..
 
-          scripts/e2e.sh 16
+          scripts/e2e.sh 8
 
       - name: Cleanup
         if: always()

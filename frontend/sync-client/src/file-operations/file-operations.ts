@@ -97,7 +97,7 @@ export class FileOperations {
         if (
             !isFileTypeMergable(
                 path,
-                this.serverConfig.getConfig().mergeableFileExtensions
+                (await this.serverConfig.getConfig()).mergeableFileExtensions
             ) ||
             isBinary(expectedContent) ||
             isBinary(newContent)

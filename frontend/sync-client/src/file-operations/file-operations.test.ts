@@ -12,7 +12,7 @@ import type { TextWithCursors } from "reconcile-text";
 import type { ServerConfig, ServerConfigData } from "../services/server-config";
 
 class MockServerConfig implements Pick<ServerConfig, "getConfig"> {
-    public getConfig(): ServerConfigData {
+    public async getConfig(): Promise<ServerConfigData> {
         return {
             mergeableFileExtensions: ["md", "txt"],
             supportedApiVersion: 1,
