@@ -35,6 +35,8 @@ const LOG_LEVEL_ORDER = {
     [LogLevel.ERROR]: 3
 };
 
+const HEALTH_CHECK_INTERVAL_MS = 30 * 1000;
+
 async function main(): Promise<void> {
     const args = parseArgs(process.argv);
     const absolutePath = path.resolve(args.localPath);
@@ -147,7 +149,7 @@ async function main(): Promise<void> {
             void client.checkConnection().then((status) => {
                 writeHealthStatus(healthFile, status);
             });
-        }, 30 * 1000); // every 30 seconds
+        }, HEALTH_CHECK_INTERVAL_MS);
         const clearHealthInterval = (): void => {
             clearInterval(healthInterval);
         };
