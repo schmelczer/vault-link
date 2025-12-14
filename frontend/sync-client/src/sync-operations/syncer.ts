@@ -171,7 +171,7 @@ export class Syncer {
             // in that case, we mustn't move it again.
             if (
                 this.database.getLatestDocumentByRelativePath(relativePath) ===
-                    undefined ||
+                undefined ||
                 this.database.getLatestDocumentByRelativePath(relativePath)
                     ?.isDeleted === true
             ) {
@@ -264,7 +264,7 @@ export class Syncer {
 
     public async waitUntilFinished(): Promise<void> {
         await this.runningScheduleSyncForOfflineChanges;
-        await this.syncQueue.onEmpty();
+        await this.syncQueue.onIdle(); // Wait for queue to be empty and running tasks to finish
     }
 
     public async syncRemotelyUpdatedFile(
