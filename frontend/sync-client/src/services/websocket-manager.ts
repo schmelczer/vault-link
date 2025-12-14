@@ -190,7 +190,10 @@ export class WebSocketManager {
         this.webSocket.onopen = (): void => {
             // Check if we've been stopped while connecting
             if (this.isStopped) {
-                this.webSocket?.close(1000, "WebSocketManager was stopped during connection");
+                this.webSocket?.close(
+                    1000,
+                    "WebSocketManager was stopped during connection"
+                );
                 return;
             }
             this.logger.info("WebSocket connection opened");
