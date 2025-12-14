@@ -6,7 +6,7 @@ import type { CursorPositionFromClient } from "./types/CursorPositionFromClient"
 import type { ClientCursors } from "./types/ClientCursors";
 import { createPromise } from "../utils/create-promise";
 import type { WebSocketVaultUpdate } from "./types/WebSocketVaultUpdate";
-import { WEBSOCKET_DISCONNECT_TIMEOUT_IN_S } from "../consts";
+import { WEBSOCKET_DISCONNECT_TIMEOUT_IN_SECONDS } from "../consts";
 import { removeFromArray } from "../utils/remove-from-array";
 import { EventListeners } from "../utils/data-structures/event-listeners";
 import { awaitAll } from "../utils/await-all";
@@ -36,7 +36,7 @@ export class WebSocketManager {
         private readonly logger: Logger,
         private readonly settings: Settings,
         private readonly webSocketFactoryImplementation: typeof globalThis.WebSocket = WebSocket
-    ) {}
+    ) { }
 
     public get isWebSocketConnected(): boolean {
         return (
@@ -69,10 +69,10 @@ export class WebSocketManager {
             timeoutId = setTimeout(() => {
                 reject(
                     new Error(
-                        `Timeout waiting for WebSocket to close after ${WEBSOCKET_DISCONNECT_TIMEOUT_IN_S} seconds`
+                        `Timeout waiting for WebSocket to close after ${WEBSOCKET_DISCONNECT_TIMEOUT_IN_SECONDS} seconds`
                     )
                 );
-            }, WEBSOCKET_DISCONNECT_TIMEOUT_IN_S * 1000);
+            }, WEBSOCKET_DISCONNECT_TIMEOUT_IN_SECONDS * 1000);
         });
 
         try {

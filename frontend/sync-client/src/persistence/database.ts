@@ -9,6 +9,7 @@ export type DocumentId = string;
 export type RelativePath = string;
 
 export interface DocumentMetadata {
+    documentId: DocumentId;
     parentVersionId: VaultUpdateId;
     hash: string;
     remoteRelativePath?: RelativePath;
@@ -36,7 +37,6 @@ export interface StoredDatabase {
  */
 export interface DocumentRecord {
     relativePath: RelativePath;
-    documentId: DocumentId;
     metadata: DocumentMetadata | undefined;
     isDeleted: boolean;
     updates: Promise<unknown>[];
@@ -57,9 +57,8 @@ export class Database {
 
         this.documents =
             initialState.documents?.map(
-                ({ relativePath, documentId, ...metadata }) => ({
+                ({ relativePath, ...metadata }) => ({
                     relativePath,
-                    documentId,
                     metadata,
                     isDeleted: false,
                     updates: [],
@@ -114,7 +113,7 @@ export class Database {
                     i === 0
                         ? false
                         : records[i - 1].parallelVersion ===
-                          current.parallelVersion
+                        current.parallelVersion
                 )
             ) {
                 throw new Error(
@@ -127,6 +126,7 @@ export class Database {
 
     public updateDocumentMetadata(
         metadata: {
+            documentId: DocumentId;
             parentVersionId: VaultUpdateId;
             hash: string;
             remoteRelativePath: RelativePath;
@@ -196,19 +196,18 @@ export class Database {
     }
 
     public createNewPendingDocument(
-        documentId: DocumentId,
         relativePath: RelativePath,
         promise: Promise<unknown>
     ): DocumentRecord {
         this.logger.debug(
-            `Creating new pending document: ${relativePath} (${documentId})`
+            `Creating new pending document: ${relativePath}`
         );
         const previousEntry =
             this.getLatestDocumentByRelativePath(relativePath);
 
         const entry = {
             relativePath,
-            documentId,
+            documentId: undefined,
             metadata: undefined,
             isDeleted: false,
             updates: [promise],
@@ -231,8 +230,8 @@ export class Database {
     ): DocumentRecord {
         const entry = {
             relativePath,
-            documentId,
             metadata: {
+                documentId,
                 parentVersionId,
                 hash: EMPTY_HASH,
                 remoteRelativePath: relativePath
@@ -251,7 +250,7 @@ export class Database {
     public getDocumentByDocumentId(
         find: DocumentId
     ): DocumentRecord | undefined {
-        return this.documents.find(({ documentId }) => documentId === find);
+        return this.documents.find(({ metadata }) => metadata?.documentId === find);
     }
 
     public move(
@@ -331,8 +330,7 @@ export class Database {
     public async save(): Promise<void> {
         return this.saveData({
             documents: this.resolvedDocuments.map(
-                ({ relativePath, documentId, metadata }) => ({
-                    documentId,
+                ({ relativePath, metadata }) => ({
                     relativePath,
                     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
                     ...metadata! // `resolvedDocuments` only returns docs with metadata set
@@ -346,9 +344,12 @@ export class Database {
     private ensureConsistency(): void {
         const idToPath = new Map<string, string[]>();
 
-        this.resolvedDocuments.forEach(({ relativePath, documentId }) => {
-            idToPath.set(documentId, [
-                ...(idToPath.get(documentId) ?? []),
+        this.resolvedDocuments.forEach(({ relativePath, metadata }) => {
+            if (metadata === undefined) {
+                return;
+            }
+            idToPath.set(metadata.documentId, [
+                ...(idToPath.get(metadata.documentId) ?? []),
                 relativePath
             ]);
         });
@@ -360,7 +361,7 @@ export class Database {
         if (duplicates.length > 0) {
             throw new Error(
                 "Document IDs are not unique, found duplicates: " +
-                    duplicates.join("; ")
+                duplicates.join("; ")
             );
         }
     }

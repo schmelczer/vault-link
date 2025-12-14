@@ -82,9 +82,9 @@ export class UnrestrictedSyncer {
             const contentHash = hash(contentBytes);
 
             const response = await this.syncService.create({
-                documentId: document.documentId,
                 relativePath: originalRelativePath,
-                contentBytes
+                contentBytes,
+                forceMerge: !this.database.getHasInitialSyncCompleted() // don't duplicate files on first sync
             });
 
             // In case a document with the same name (but different ID) had existed remotely that we haven't known about
@@ -100,6 +100,7 @@ export class UnrestrictedSyncer {
 
             this.database.updateDocumentMetadata(
                 {
+                    documentId: response.documentId,
                     parentVersionId: response.vaultUpdateId,
                     hash: contentHash,
                     remoteRelativePath: response.relativePath
@@ -131,13 +132,21 @@ export class UnrestrictedSyncer {
         };
 
         await this.executeSync(updateDetails, async () => {
+            if (document.metadata === undefined) {
+                this.logger.debug(
+                    `Document ${document.relativePath} has no metadata, so it was never synced remotely`
+                );
+                return;
+            }
+
             const response = await this.syncService.delete({
-                documentId: document.documentId,
+                documentId: document.metadata.documentId,
                 relativePath: document.relativePath
             });
 
             this.database.updateDocumentMetadata(
                 {
+                    ...document.metadata,
                     parentVersionId: response.vaultUpdateId,
                     hash: EMPTY_HASH,
                     remoteRelativePath: document.relativePath
@@ -170,14 +179,14 @@ export class UnrestrictedSyncer {
         const updateDetails: SyncUpdateDetails | SyncMovedDetails =
             oldPath !== undefined
                 ? {
-                      type: SyncType.MOVE,
-                      relativePath: document.relativePath,
-                      movedFrom: oldPath
-                  }
+                    type: SyncType.MOVE,
+                    relativePath: document.relativePath,
+                    movedFrom: oldPath
+                }
                 : {
-                      type: SyncType.UPDATE,
-                      relativePath: document.relativePath
-                  };
+                    type: SyncType.UPDATE,
+                    relativePath: document.relativePath
+                };
 
         await this.executeSync(updateDetails, async () => {
             const originalRelativePath = document.relativePath;
@@ -216,22 +225,22 @@ export class UnrestrictedSyncer {
                 response =
                     isText && cachedVersion !== undefined
                         ? await this.syncService.putText({
-                              documentId: document.documentId,
-                              parentVersionId:
-                                  document.metadata.parentVersionId,
-                              relativePath: document.relativePath,
-                              content: diff(
-                                  new TextDecoder().decode(cachedVersion),
-                                  new TextDecoder().decode(contentBytes)
-                              )
-                          })
+                            documentId: document.metadata.documentId,
+                            parentVersionId:
+                                document.metadata.parentVersionId,
+                            relativePath: document.relativePath,
+                            content: diff(
+                                new TextDecoder().decode(cachedVersion),
+                                new TextDecoder().decode(contentBytes)
+                            )
+                        })
                         : await this.syncService.putBinary({
-                              documentId: document.documentId,
-                              parentVersionId:
-                                  document.metadata.parentVersionId,
-                              relativePath: document.relativePath,
-                              contentBytes
-                          });
+                            documentId: document.metadata.documentId,
+                            parentVersionId:
+                                document.metadata.parentVersionId,
+                            relativePath: document.relativePath,
+                            contentBytes
+                        });
             } else {
                 if (!force) {
                     this.logger.debug(
@@ -241,7 +250,7 @@ export class UnrestrictedSyncer {
                 }
 
                 response = await this.syncService.get({
-                    documentId: document.documentId
+                    documentId: document.metadata.documentId
                 });
             }
 
@@ -290,6 +299,7 @@ export class UnrestrictedSyncer {
 
                 this.database.updateDocumentMetadata(
                     {
+                        ...document.metadata,
                         parentVersionId: response.vaultUpdateId,
                         hash: contentHash,
                         remoteRelativePath: response.relativePath
@@ -317,6 +327,7 @@ export class UnrestrictedSyncer {
             } else {
                 this.database.updateDocumentMetadata(
                     {
+                        ...document.metadata,
                         parentVersionId: response.vaultUpdateId,
                         hash: contentHash,
                         remoteRelativePath: response.relativePath
@@ -334,16 +345,16 @@ export class UnrestrictedSyncer {
 
             const actualUpdateDetails: SyncUpdateDetails | SyncMovedDetails =
                 oldPath !== undefined ||
-                response.relativePath != originalRelativePath
+                    response.relativePath != originalRelativePath
                     ? {
-                          type: SyncType.MOVE,
-                          relativePath: response.relativePath,
-                          movedFrom: originalRelativePath
-                      }
+                        type: SyncType.MOVE,
+                        relativePath: response.relativePath,
+                        movedFrom: originalRelativePath
+                    }
                     : {
-                          type: SyncType.UPDATE,
-                          relativePath: response.relativePath
-                      };
+                        type: SyncType.UPDATE,
+                        relativePath: response.relativePath
+                    };
 
             if (areThereLocalChanges) {
                 this.history.addHistoryEntry({
@@ -437,12 +448,12 @@ export class UnrestrictedSyncer {
             const [promise, resolve] = createPromise();
             this.database.updateDocumentMetadata(
                 {
+                    documentId: remoteVersion.documentId,
                     parentVersionId: remoteVersion.vaultUpdateId,
                     hash: hash(contentBytes),
                     remoteRelativePath: remoteVersion.relativePath
                 },
                 this.database.createNewPendingDocument(
-                    remoteVersion.documentId,
                     remoteVersion.relativePath,
                     promise
                 )
@@ -541,9 +552,8 @@ export class UnrestrictedSyncer {
                     type: SyncType.SKIPPED,
                     relativePath
                 },
-                message: `File size of ${sizeInMB} MB exceeds the maximum file size limit of ${
-                    maxFileSizeMB
-                } MB`
+                message: `File size of ${sizeInMB} MB exceeds the maximum file size limit of ${maxFileSizeMB
+                    } MB`
             };
         }
     }
@@ -582,6 +592,7 @@ export class UnrestrictedSyncer {
         this.database.delete(document.relativePath);
         this.database.updateDocumentMetadata(
             {
+                documentId: response.documentId,
                 parentVersionId: response.vaultUpdateId,
                 hash: EMPTY_HASH,
                 remoteRelativePath: response.relativePath

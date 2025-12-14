@@ -16,7 +16,10 @@ use super::{
 use crate::{
     app_state::{
         AppState,
-        database::models::{DocumentId, StoredDocumentVersion, VaultId, VaultUpdateId},
+        database::{
+            Transaction,
+            models::{DocumentId, StoredDocumentVersion, VaultId, VaultUpdateId},
+        },
     },
     config::user_config::User,
     errors::{SyncServerError, client_error, not_found_error, server_error},
@@ -141,12 +144,6 @@ async fn update_document(
         .await
         .map_err(server_error)?;
 
-    let last_update_id = state
-        .database
-        .get_max_update_id_in_vault(&vault_id, Some(&mut transaction))
-        .await
-        .map_err(server_error)?;
-
     let latest_version = state
         .database
         .get_latest_document(&vault_id, &document_id, Some(&mut transaction))
@@ -174,12 +171,39 @@ async fn update_document(
         )));
     }
 
+    merge_with_stored_version(
+        parent_document,
+        latest_version,
+        vault_id,
+        user,
+        device_id,
+        state,
+        &sanitized_relative_path,
+        content,
+        transaction,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn merge_with_stored_version(
+    parent_document: StoredDocumentVersion,
+    latest_version: StoredDocumentVersion,
+    vault_id: VaultId,
+    user: User,
+    device_id: DeviceIdHeader,
+    state: AppState,
+    sanitized_relative_path: &str,
+    content: Vec<u8>,
+    mut transaction: Transaction<'_>,
+) -> Result<Json<DocumentUpdateResponse>, SyncServerError> {
     // Return the latest version if the content and path are the same as the latest
     // version
     if content == latest_version.content && sanitized_relative_path == latest_version.relative_path
     {
         info!(
-            "Document content is the same as the latest version for `{document_id}`, skipping update"
+            "Document content is the same as the latest version for `{}`, skipping update",
+            parent_document.document_id
         );
         transaction
             .rollback()
@@ -193,14 +217,17 @@ async fn update_document(
     }
 
     let are_all_participants_mergable = is_file_type_mergable(
-        &sanitized_relative_path,
+        sanitized_relative_path,
         &state.config.server.mergeable_file_extensions,
     ) && !is_binary(&parent_document.content)
         && !is_binary(&latest_version.content)
         && !is_binary(&content);
 
     let merged_content = if are_all_participants_mergable {
-        info!("Merging changes for document `{document_id}` in vault `{vault_id}`");
+        info!(
+            "Merging changes for document `{}` in vault `{vault_id}`",
+            parent_document.document_id
+        );
         reconcile(
             str::from_utf8(&parent_document.content)
                 .expect("parent must be valid UTF-8 because it's not binary"),
@@ -227,7 +254,7 @@ async fn update_document(
     {
         let new_path = find_first_available_path(
             &vault_id,
-            &sanitized_relative_path,
+            sanitized_relative_path,
             &state.database,
             &mut transaction,
         )
@@ -245,8 +272,14 @@ async fn update_document(
         latest_version.relative_path.clone()
     };
 
+    let last_update_id = state
+        .database
+        .get_max_update_id_in_vault(&vault_id, Some(&mut transaction))
+        .await
+        .map_err(server_error)?;
+
     let new_version = StoredDocumentVersion {
-        document_id,
+        document_id: parent_document.document_id,
         vault_update_id: last_update_id + 1,
         relative_path: new_relative_path,
         content: merged_content,

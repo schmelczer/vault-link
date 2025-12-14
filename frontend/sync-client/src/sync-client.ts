@@ -56,7 +56,7 @@ export class SyncClient {
                 database: Partial<StoredDatabase>;
             }>
         >
-    ) {}
+    ) { }
 
     public get documentCount(): number {
         return this.database.length;
@@ -472,7 +472,8 @@ export class SyncClient {
         this.checkIfDestroyed("startSyncing");
         this.fetchController.finishReset();
 
-        await this.serverConfig.initialize();
+        // warm the cache
+        await this.serverConfig.getConfig();
         this.webSocketManager.start();
 
         if (!this.hasStartedOfflineSync) {

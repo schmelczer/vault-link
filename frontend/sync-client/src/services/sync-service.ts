@@ -66,27 +66,29 @@ export class SyncService {
     }
 
     public async create({
-        documentId,
         relativePath,
-        contentBytes
+        contentBytes,
+        forceMerge
     }: {
-        documentId?: DocumentId;
         relativePath: RelativePath;
         contentBytes: Uint8Array;
+        forceMerge?: boolean;
     }): Promise<DocumentVersionWithoutContent> {
         return this.retryForever(async () => {
             const formData = new FormData();
-            if (documentId !== undefined) {
-                formData.append("document_id", documentId);
-            }
+
             formData.append("relative_path", relativePath);
+            if (forceMerge === true) {
+                formData.append("force_merge", "true");
+            }
+
             formData.append(
                 "content",
                 new Blob([new Uint8Array(contentBytes)])
             );
 
             this.logger.debug(
-                `Creating document with id ${documentId} and relative path ${relativePath}`
+                `Creating document with relative path ${relativePath} (forceMerge: ${forceMerge})`
             );
 
             const response = await this.client(this.getUrl("/documents"), {
@@ -155,8 +157,7 @@ export class SyncService {
                 (await response.json()) as DocumentUpdateResponse; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
 
             this.logger.debug(
-                `Updated document ${JSON.stringify(result)} with id ${
-                    result.documentId
+                `Updated document ${JSON.stringify(result)} with id ${result.documentId
                 }}`
             );
 
@@ -208,8 +209,7 @@ export class SyncService {
                 (await response.json()) as DocumentUpdateResponse; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
 
             this.logger.debug(
-                `Updated document ${JSON.stringify(result)} with id ${
-                    result.documentId
+                `Updated document ${JSON.stringify(result)} with id ${result.documentId
                 }}`
             );
 
@@ -336,7 +336,7 @@ export class SyncService {
         return this.retryForever(async () => {
             this.logger.debug(
                 "Getting all documents" +
-                    (since != null ? ` since ${since}` : "")
+                (since != null ? ` since ${since}` : "")
             );
 
             const url = new URL(this.getUrl("/documents"));

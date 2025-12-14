@@ -45,17 +45,16 @@ cd frontend
 npm run build
 npm run test
 npm run lint
+cd ..
 
-# Use git ls-files to only check tracked files, respecting .gitignore
-# We always run in fix mode and then check with git status
-git ls-files | xargs npx eclint fix
+# Format all files across the project (frontend and backend)
+# Prettier respects .gitignore by default
+npx -C frontend prettier --write "**/*.{ts,js,json,md,yml,yaml}"
 
 if [[ "$FIX_MODE" == false ]] && [[ $(git status --porcelain) ]]; then
     git status --porcelain
     echo "Failing CI because the working directory is not clean after linting"
     exit 1
 fi
-
-cd ..
 
 echo "Success"

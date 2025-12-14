@@ -113,7 +113,7 @@ export class CursorTracker {
 
             documentsWithCursors.push({
                 relative_path: relativePath,
-                document_id: record.documentId,
+                document_id: record.metadata.documentId,
                 vault_update_id: record.metadata.parentVersionId,
                 cursors: cursors.map(({ start, end }) => ({
                     start: Math.min(start, end),

@@ -169,9 +169,9 @@ export class FileOperations {
         }
 
         await this.ensureClearPath(newPath);
-
         this.database.move(oldPath, newPath);
         await this.fs.rename(oldPath, newPath);
+
         await this.deletingEmptyParentDirectoriesOfDeletedFile(oldPath);
     }
 

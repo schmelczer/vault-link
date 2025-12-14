@@ -5,7 +5,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use log::{debug, error};
+use log::debug;
 use serde::Serialize;
 use thiserror::Error;
 use ts_rs::TS;

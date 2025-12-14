@@ -8,13 +8,12 @@ import type { SyncService } from "../services/sync-service";
 import type { Logger } from "../tracing/logger";
 import PQueue from "p-queue";
 import { hash } from "../utils/hash";
-import { v4 as uuidv4 } from "uuid";
 import type { Settings } from "../persistence/settings";
 import type { FileOperations } from "../file-operations/file-operations";
 import { findMatchingFile } from "../utils/find-matching-file";
 import type { UnrestrictedSyncer } from "./unrestricted-syncer";
 import { createPromise } from "../utils/create-promise";
-import { SyncResetError } from "../services/sync-reset-error";
+import { SyncResetError } from "../errors/sync-reset-error";
 import { Locks } from "../utils/data-structures/locks";
 import type { DocumentVersionWithoutContent } from "../services/types/DocumentVersionWithoutContent";
 import type { WebSocketVaultUpdate } from "../services/types/WebSocketVaultUpdate";
@@ -98,9 +97,7 @@ export class Syncer {
 
         const [promise, resolve, reject] = createPromise();
 
-        const id = uuidv4();
         const document = this.database.createNewPendingDocument(
-            id,
             relativePath,
             promise
         );
@@ -171,7 +168,7 @@ export class Syncer {
             // in that case, we mustn't move it again.
             if (
                 this.database.getLatestDocumentByRelativePath(relativePath) ===
-                    undefined ||
+                undefined ||
                 this.database.getLatestDocumentByRelativePath(relativePath)
                     ?.isDeleted === true
             ) {
@@ -391,8 +388,6 @@ export class Syncer {
     }
 
     private async internalScheduleSyncForOfflineChanges(): Promise<void> {
-        await this.createFakeDocumentsFromRemoteState();
-
         const allLocalFiles = await this.operations.listFilesRecursively();
         this.logger.info(
             `Scheduling sync for ${allLocalFiles.length} local files`
@@ -426,9 +421,19 @@ export class Syncer {
 
                 // Perhaps the file has been moved; let's check by looking at the deleted files
                 const contentHash = await this.syncQueue.add(async () => {
-                    const contentBytes =
-                        await this.operations.read(relativePath); // this can throw FileNotFoundError
-                    return hash(contentBytes);
+                    try {
+                        const contentBytes =
+                            await this.operations.read(relativePath); // this can throw FileNotFoundError
+                        return hash(contentBytes);
+                    } catch (e) {
+                        if (
+                            e instanceof Error &&
+                            e.name === "FileNotFoundError"
+                        ) {
+                            return undefined;
+                        }
+                        throw e;
+                    }
                 });
 
                 if (contentHash == undefined) {
@@ -481,42 +486,9 @@ export class Syncer {
                 return this.syncLocallyDeletedFile(relativePath);
             })
         );
-    }
-
-    /**
-     * Create fake documents in the database for all files that are present locally
-     * and also exist remotely. This will stop the subequent syncs from duplicating
-     * the documents by creating the same documents from multiple clients.
-     */
-    private async createFakeDocumentsFromRemoteState(): Promise<void> {
-        if (this.database.getHasInitialSyncCompleted()) {
-            return;
-        }
-
-        const [allLocalFiles, remote] = await awaitAll([
-            this.operations.listFilesRecursively(),
-            this.syncQueue.add(async () => this.syncService.getAll())
-        ]);
-
-        if (remote !== undefined) {
-            remote.latestDocuments
-                .filter(
-                    (remoteDocument) =>
-                        allLocalFiles.includes(remoteDocument.relativePath) &&
-                        !remoteDocument.isDeleted &&
-                        this.database.getDocumentByDocumentId(
-                            remoteDocument.documentId
-                        ) === undefined
-                )
-                .forEach((remoteDocument) => {
-                    this.database.createNewEmptyDocument(
-                        remoteDocument.documentId,
-                        remoteDocument.vaultUpdateId,
-                        remoteDocument.relativePath
-                    );
-                });
-        }
 
         this.database.setHasInitialSyncCompleted(true);
     }
+
+
 }
