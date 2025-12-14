@@ -13,9 +13,12 @@ export class Locks<T> {
     private readonly locked = new Set<T>();
 
     /** Queue of resolve functions waiting for each key */
-    private readonly waiters = new Map<T, ([() => unknown, (err: unknown) => unknown])[]>();
+    private readonly waiters = new Map<
+        T,
+        [() => unknown, (err: unknown) => unknown][]
+    >();
 
-    public constructor(private readonly logger?: Logger) { }
+    public constructor(private readonly logger?: Logger) {}
 
     /**
     * Executes a function while holding exclusive locks on one or more keys.

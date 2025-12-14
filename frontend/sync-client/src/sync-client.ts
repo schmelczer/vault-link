@@ -55,9 +55,8 @@ export class SyncClient {
                 settings: Partial<SyncSettings>;
                 database: Partial<StoredDatabase>;
             }>
-        >,
-    ) {
-    }
+        >
+    ) {}
 
     public get documentCount(): number {
         return this.database.length;
@@ -256,11 +255,13 @@ export class SyncClient {
             this.unloadTelemetry = setUpTelemetry();
         }
 
-        this.eventUnsubscribers.push(this.settings.onSettingsChanged.add((newSettings, oldSettings) => {
-            if (oldSettings.isSyncEnabled != newSettings.isSyncEnabled) {
-                this.fetchController.canFetch = newSettings.isSyncEnabled;
-            }
-        }));
+        this.eventUnsubscribers.push(
+            this.settings.onSettingsChanged.add((newSettings, oldSettings) => {
+                if (oldSettings.isSyncEnabled != newSettings.isSyncEnabled) {
+                    this.fetchController.canFetch = newSettings.isSyncEnabled;
+                }
+            })
+        );
 
         this.eventUnsubscribers.push(
             this.logger.onLogEmitted.add((log): void => {
@@ -271,7 +272,9 @@ export class SyncClient {
         );
 
         this.eventUnsubscribers.push(
-            this.settings.onSettingsChanged.add(this.onSettingsChange.bind(this))
+            this.settings.onSettingsChanged.add(
+                this.onSettingsChange.bind(this)
+            )
         );
 
         if (this.settings.getSettings().isSyncEnabled) {
@@ -441,7 +444,9 @@ export class SyncClient {
 
         // Prevent concurrent destroy calls
         if (this.isDestroying) {
-            this.logger.warn("destroy() called while already destroying, ignoring");
+            this.logger.warn(
+                "destroy() called while already destroying, ignoring"
+            );
             return;
         }
         this.isDestroying = true;
@@ -454,7 +459,9 @@ export class SyncClient {
         this.resetInMemoryState();
 
         // Clean up event listeners to prevent memory leaks
-        this.eventUnsubscribers.forEach((unsubscribe) => unsubscribe());
+        this.eventUnsubscribers.forEach((unsubscribe) => {
+            unsubscribe();
+        });
         this.eventUnsubscribers.length = 0;
 
         this.logger.info("SyncClient has been successfully disposed");
