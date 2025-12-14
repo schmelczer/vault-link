@@ -3,8 +3,6 @@ name: Publish Obsidian plugin
 on:
   push:
     tags: ["*"]
-  pull_request:
-    branches: ["main"]
 
 env:
   CARGO_TERM_COLOR: always
