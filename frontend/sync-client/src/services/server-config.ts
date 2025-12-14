@@ -1,6 +1,6 @@
 import { SUPPORTED_API_VERSION } from "../consts";
-import { AuthenticationError } from "./authentication-error";
-import { ServerVersionMismatchError } from "./server-version-mismatch-error";
+import { AuthenticationError } from "../errors/authentication-error";
+import { ServerVersionMismatchError } from "../errors/server-version-mismatch-error";
 import type { SyncService } from "./sync-service";
 import type { PingResponse } from "./types/PingResponse";
 
