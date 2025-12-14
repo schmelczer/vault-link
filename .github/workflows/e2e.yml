@@ -47,9 +47,16 @@ jobs:
         run: |
           cd sync-server
           cargo run config-e2e.yml --color never &
+          SERVER_PID=$!
           cd ..
 
           scripts/e2e.sh 8
+          EXIT_CODE=$?
+
+          kill $SERVER_PID 2>/dev/null || true
+          wait $SERVER_PID 2>/dev/null || true
+
+          exit $EXIT_CODE
 
       - name: Cleanup
         if: always()
