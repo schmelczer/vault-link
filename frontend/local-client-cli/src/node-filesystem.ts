@@ -185,8 +185,8 @@ export class NodeFileSystemOperations implements FileSystemOperations {
     }
 
     /**
-    * Convert a forward-slash path to native platform path separators
-    */
+     * Convert a forward-slash path to native platform path separators
+     */
     private toNativePath(relativePath: string): string {
         if (path.sep === "\\") {
             return relativePath.replace(/\//g, "\\");
@@ -195,8 +195,8 @@ export class NodeFileSystemOperations implements FileSystemOperations {
     }
 
     /**
-    * Convert a native platform path to forward slashes
-    */
+     * Convert a native platform path to forward slashes
+     */
     private toUnixPath(nativePath: string): string {
         if (path.sep === "\\") {
             return nativePath.replace(/\\/g, "/");

@@ -170,14 +170,14 @@ export class UnrestrictedSyncer {
         const updateDetails: SyncUpdateDetails | SyncMovedDetails =
             oldPath !== undefined
                 ? {
-                    type: SyncType.MOVE,
-                    relativePath: document.relativePath,
-                    movedFrom: oldPath
-                }
+                      type: SyncType.MOVE,
+                      relativePath: document.relativePath,
+                      movedFrom: oldPath
+                  }
                 : {
-                    type: SyncType.UPDATE,
-                    relativePath: document.relativePath
-                };
+                      type: SyncType.UPDATE,
+                      relativePath: document.relativePath
+                  };
 
         await this.executeSync(updateDetails, async () => {
             const originalRelativePath = document.relativePath;
@@ -216,22 +216,22 @@ export class UnrestrictedSyncer {
                 response =
                     isText && cachedVersion !== undefined
                         ? await this.syncService.putText({
-                            documentId: document.documentId,
-                            parentVersionId:
-                                document.metadata.parentVersionId,
-                            relativePath: document.relativePath,
-                            content: diff(
-                                new TextDecoder().decode(cachedVersion),
-                                new TextDecoder().decode(contentBytes)
-                            )
-                        })
+                              documentId: document.documentId,
+                              parentVersionId:
+                                  document.metadata.parentVersionId,
+                              relativePath: document.relativePath,
+                              content: diff(
+                                  new TextDecoder().decode(cachedVersion),
+                                  new TextDecoder().decode(contentBytes)
+                              )
+                          })
                         : await this.syncService.putBinary({
-                            documentId: document.documentId,
-                            parentVersionId:
-                                document.metadata.parentVersionId,
-                            relativePath: document.relativePath,
-                            contentBytes
-                        });
+                              documentId: document.documentId,
+                              parentVersionId:
+                                  document.metadata.parentVersionId,
+                              relativePath: document.relativePath,
+                              contentBytes
+                          });
             } else {
                 if (!force) {
                     this.logger.debug(
@@ -336,14 +336,14 @@ export class UnrestrictedSyncer {
                 oldPath !== undefined ||
                 response.relativePath != originalRelativePath
                     ? {
-                        type: SyncType.MOVE,
-                        relativePath: response.relativePath,
-                        movedFrom: originalRelativePath
-                    }
+                          type: SyncType.MOVE,
+                          relativePath: response.relativePath,
+                          movedFrom: originalRelativePath
+                      }
                     : {
-                        type: SyncType.UPDATE,
-                        relativePath: response.relativePath
-                    };
+                          type: SyncType.UPDATE,
+                          relativePath: response.relativePath
+                      };
 
             if (areThereLocalChanges) {
                 this.history.addHistoryEntry({

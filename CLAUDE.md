@@ -24,6 +24,7 @@ VaultLink is a self-hosted Obsidian plugin for real-time collaborative file sync
 ## Development Commands
 
 ### Server Development
+
 ```bash
 cd sync-server
 cargo run config-e2e.yml  # Start development server
@@ -36,6 +37,7 @@ cargo machete --with-metadata  # Detect unused dependencies
 ```
 
 ### Frontend Development
+
 ```bash
 cd frontend
 npm run dev      # Start development mode (watches sync-client and obsidian-plugin)
@@ -45,6 +47,7 @@ npm run lint     # Lint and format TypeScript code
 ```
 
 ### Database Setup (Development)
+
 ```bash
 cd sync-server
 sqlx database create --database-url sqlite://db.sqlite3
@@ -53,12 +56,14 @@ cargo sqlx prepare --workspace
 ```
 
 ### Initial Setup
+
 ```bash
 # Install required cargo tools
 cargo install sqlx-cli cargo-machete cargo-edit
 ```
 
 ### Scripts
+
 - `scripts/check.sh`: Full CI check (builds, lints, tests both server and frontend)
 - `scripts/check.sh --fix`: Same as above but auto-fixes linting and formatting issues
 - `scripts/e2e.sh`: End-to-end testing
@@ -69,16 +74,20 @@ cargo install sqlx-cli cargo-machete cargo-edit
 ## Code Structure
 
 ### Workspace Configuration
+
 The frontend uses npm workspaces with four packages:
+
 - `sync-client`: Core synchronization logic
 - `obsidian-plugin`: Obsidian-specific integration
 - `test-client`: Testing utilities
 - `local-client-cli`: Standalone CLI for VaultLink sync client
 
 ### Type Generation
+
 Rust structs generate TypeScript types via ts-rs crate, stored in `sync-server/bindings/` and used by frontend packages.
 
 ### Key Files
+
 - `sync-server/src/`: Rust server implementation with WebSocket handlers
 - `frontend/sync-client/src/sync-client.ts`: Main sync client entry point
 - `frontend/obsidian-plugin/src/vault-link-plugin.ts`: Main Obsidian plugin class
@@ -87,11 +96,13 @@ Rust structs generate TypeScript types via ts-rs crate, stored in `sync-server/b
 ## Testing
 
 ### Running Tests
+
 - Server: `cargo test --verbose`
 - Frontend: `npm run test` (runs Jest across all workspaces)
 - E2E: `scripts/e2e.sh`
 
 ### Test Structure
+
 - Rust: Unit tests alongside source files
 - TypeScript: `.test.ts` files using Jest
 - E2E: Uses test-client to simulate multiple concurrent users
@@ -99,12 +110,14 @@ Rust structs generate TypeScript types via ts-rs crate, stored in `sync-server/b
 ## Code Style
 
 ### Rust
+
 - Uses extensive Clippy lints (see Cargo.toml)
 - Follows pedantic linting rules
 - Forbids unsafe code
 - Uses cargo fmt with default settings
 
 ### TypeScript
+
 - Prettier configuration: 4-space tabs, trailing commas removed, LF line endings
 - ESLint with unused imports plugin
 - Consistent across all three frontend packages

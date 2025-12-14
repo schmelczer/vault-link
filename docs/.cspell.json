@@ -2,12 +2,7 @@
     "version": "0.2",
     "language": "en-GB",
     "dictionaries": ["en-gb"],
-    "ignorePaths": [
-        "node_modules",
-        ".vitepress/dist",
-        ".vitepress/cache",
-        "package-lock.json"
-    ],
+    "ignorePaths": ["node_modules", ".vitepress/dist", ".vitepress/cache", "package-lock.json"],
     "words": [
         "VaultLink",
         "Obsidian",

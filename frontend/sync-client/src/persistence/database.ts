@@ -114,7 +114,7 @@ export class Database {
                     i === 0
                         ? false
                         : records[i - 1].parallelVersion ===
-                        current.parallelVersion
+                          current.parallelVersion
                 )
             ) {
                 throw new Error(

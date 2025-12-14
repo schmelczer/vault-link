@@ -266,9 +266,8 @@ export class SyncSettingsTab extends PluginSettingTab {
 
                             new Notice("Checking connection to the server...");
                             new Notice(
-                                (
-                                    await this.syncClient.checkConnection()
-                                ).serverMessage
+                                (await this.syncClient.checkConnection())
+                                    .serverMessage
                             );
                             await this.statusDescription.updateConnectionState();
                         } else {

@@ -2,11 +2,11 @@
 
 export interface CreateDocumentVersion {
     /**
-    * The client can decide the document id (if it wishes to) in order
-    * to help with syncing. If the client does not provide a document id,
-    * the server will generate one. If the client provides a document id
-    * it must not already exist in the database.
-    */
+     * The client can decide the document id (if it wishes to) in order
+     * to help with syncing. If the client does not provide a document id,
+     * the server will generate one. If the client provides a document id
+     * it must not already exist in the database.
+     */
     document_id: string | null;
     relative_path: string;
     content: number[];

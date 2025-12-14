@@ -135,9 +135,9 @@ export default class VaultLinkPlugin extends Plugin {
             nativeLineEndings: Platform.isWin ? "\r\n" : "\n",
             ...(IS_DEBUG_BUILD
                 ? {
-                    fetch: debugging.slowFetchFactory(1),
-                    webSocket: debugging.slowWebSocketFactory(1, new Logger())
-                }
+                      fetch: debugging.slowFetchFactory(1),
+                      webSocket: debugging.slowWebSocketFactory(1, new Logger())
+                  }
                 : {})
         });
 
