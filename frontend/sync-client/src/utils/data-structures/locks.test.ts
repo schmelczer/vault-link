@@ -5,6 +5,7 @@ import type { RelativePath } from "../../persistence/database";
 import { Locks } from "./locks";
 import { awaitAll } from "../await-all";
 import { sleep } from "../sleep";
+import { SyncResetError } from "../../services/sync-reset-error";
 
 describe("withLock", () => {
     const testPath: RelativePath = "test/document/path";
@@ -228,5 +229,64 @@ describe("withLock", () => {
             "third-start",
             "third-end"
         ]);
+    });
+});
+
+describe("reset", () => {
+    const testPath: RelativePath = "test/document/path";
+    const logger = new Logger();
+
+    // eslint-disable-next-line @typescript-eslint/init-declarations
+    let locks: Locks<RelativePath>;
+
+    beforeEach(() => {
+        locks = new Locks<RelativePath>(logger);
+    });
+
+    it("should reject pending waiters with SyncResetError while running operation completes", async () => {
+        const firstPromise = locks.withLock(testPath, async () => {
+            await sleep(2);
+            return "first";
+        });
+
+        await sleep(1);
+
+        const secondPromise = locks.withLock(testPath, async () => "second");
+        void secondPromise.catch(() => { });
+
+        locks.reset();
+
+        assert.strictEqual(await firstPromise, "first");
+
+        await assert.rejects(secondPromise, (err: Error) => {
+            assert.ok(err instanceof SyncResetError);
+            return true;
+        });
+    });
+
+    it("should allow locks to work normally after reset", async () => {
+        const firstPromise = locks.withLock(testPath, async () => {
+            await sleep(1);
+            return "first";
+        });
+
+        await sleep(1);
+
+        const secondPromise = locks.withLock(testPath, async () => "second");
+        void secondPromise.catch(() => { });
+
+        locks.reset();
+
+        await firstPromise;
+
+        const result = await locks.withLock(testPath, () => "after-reset");
+        assert.strictEqual(result, "after-reset");
+    });
+
+    it("should handle reset with no pending operations", async () => {
+        locks.reset();
+
+        const result = await locks.withLock(testPath, () => "success");
+        assert.strictEqual(result, "success");
     });
 });
