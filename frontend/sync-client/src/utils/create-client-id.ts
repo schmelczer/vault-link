@@ -1,4 +1,4 @@
-import { v4 as uuidv4 } from "uuid";
+
 
 export function createClientId(): string {
     // @ts-expect-error, injected by webpack
@@ -8,8 +8,8 @@ export function createClientId(): string {
         typeof navigator !== "undefined"
             ? navigator.platform // eslint-disable-line @typescript-eslint/no-deprecated
             : typeof process !== "undefined"
-              ? process.platform
-              : "unknown";
+                ? process.platform
+                : "unknown";
 
-    return `vault-link/${packageVersion} (${uuidv4()}; ${platform})`;
+    return `vault-link/${packageVersion} (${Math.round(Math.random() * 1e10)}; ${platform})`;
 }
