@@ -34,6 +34,8 @@ export class SyncClient {
     private hasStarted = false;
     private hasBeenDestroyed = false;
     private unloadTelemetry?: () => void;
+    private isDestroying = false;
+    private readonly eventUnsubscribers: (() => void)[] = [];
 
     private constructor(
         private readonly history: SyncHistory,
@@ -53,8 +55,9 @@ export class SyncClient {
                 settings: Partial<SyncSettings>;
                 database: Partial<StoredDatabase>;
             }>
-        >
-    ) {}
+        >,
+    ) {
+    }
 
     public get documentCount(): number {
         return this.database.length;
@@ -159,11 +162,6 @@ export class SyncClient {
             settings.getSettings().isSyncEnabled,
             logger
         );
-        settings.onSettingsChanged.add((newSettings, oldSettings) => {
-            if (oldSettings.isSyncEnabled != newSettings.isSyncEnabled) {
-                fetchController.canFetch = newSettings.isSyncEnabled;
-            }
-        });
 
         const syncService = new SyncService(
             deviceId,
@@ -258,13 +256,23 @@ export class SyncClient {
             this.unloadTelemetry = setUpTelemetry();
         }
 
-        this.logger.onLogEmitted.add((log): void => {
-            if (log.level === LogLevel.ERROR && Sentry.isInitialized()) {
-                Sentry.captureMessage(log.message);
+        this.eventUnsubscribers.push(this.settings.onSettingsChanged.add((newSettings, oldSettings) => {
+            if (oldSettings.isSyncEnabled != newSettings.isSyncEnabled) {
+                this.fetchController.canFetch = newSettings.isSyncEnabled;
             }
-        });
+        }));
 
-        this.settings.onSettingsChanged.add(this.onSettingsChange.bind(this));
+        this.eventUnsubscribers.push(
+            this.logger.onLogEmitted.add((log): void => {
+                if (log.level === LogLevel.ERROR && Sentry.isInitialized()) {
+                    Sentry.captureMessage(log.message);
+                }
+            })
+        );
+
+        this.eventUnsubscribers.push(
+            this.settings.onSettingsChanged.add(this.onSettingsChange.bind(this))
+        );
 
         if (this.settings.getSettings().isSyncEnabled) {
             this.logger.info("Starting SyncClient");
@@ -431,12 +439,23 @@ export class SyncClient {
     public async destroy(): Promise<void> {
         this.checkIfDestroyed("destroy");
 
+        // Prevent concurrent destroy calls
+        if (this.isDestroying) {
+            this.logger.warn("destroy() called while already destroying, ignoring");
+            return;
+        }
+        this.isDestroying = true;
+
         // cancel everything that's in progress
         await this.pause();
 
         this.hasBeenDestroyed = true;
 
         this.resetInMemoryState();
+
+        // Clean up event listeners to prevent memory leaks
+        this.eventUnsubscribers.forEach((unsubscribe) => unsubscribe());
+        this.eventUnsubscribers.length = 0;
 
         this.logger.info("SyncClient has been successfully disposed");
 
