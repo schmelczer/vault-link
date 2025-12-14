@@ -195,7 +195,6 @@ export class SyncClient {
         );
 
         const webSocketManager = new WebSocketManager(
-            deviceId,
             logger,
             settings,
             webSocket

@@ -31,28 +31,12 @@ export class WebSocketManager {
     private readonly outstandingPromises: Promise<unknown>[] = [];
 
     private webSocket: WebSocket | undefined;
-    private readonly webSocketFactoryImplementation: typeof globalThis.WebSocket;
 
     public constructor(
-        private readonly deviceId: string,
         private readonly logger: Logger,
         private readonly settings: Settings,
-        webSocketImplementation?: typeof globalThis.WebSocket
-    ) {
-        if (webSocketImplementation) {
-            this.webSocketFactoryImplementation = webSocketImplementation;
-        } else {
-            if (
-                typeof globalThis !== "undefined" &&
-                typeof globalThis.WebSocket === "undefined"
-            ) {
-                // eslint-disable-next-line
-                this.webSocketFactoryImplementation = require("ws"); // polyfill for WebSocket in Node.js
-            } else {
-                this.webSocketFactoryImplementation = WebSocket;
-            }
-        }
-    }
+        private readonly webSocketFactoryImplementation: typeof globalThis.WebSocket = WebSocket
+    ) {}
 
     public get isWebSocketConnected(): boolean {
         return (

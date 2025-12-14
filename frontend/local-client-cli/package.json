@@ -11,11 +11,9 @@
         "build": "webpack --mode production",
         "test": "tsx --test 'src/**/*.test.ts'"
     },
-    "dependencies": {
-        "commander": "^14.0.2",
-        "watcher": "^2.3.1"
-    },
     "devDependencies": {
+        "commander": "^14.0.2",
+        "watcher": "^2.3.1",
         "@types/node": "^25.0.2",
         "sync-client": "file:../sync-client",
         "ts-loader": "^9.5.4",
