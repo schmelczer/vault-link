@@ -19,7 +19,7 @@ jobs:
       - name: Setup Node.js environment
         uses: actions/setup-node@v4.2.0
         with:
-          node-version: "22.x"
+          node-version: "25.x"
           check-latest: true
 
       - name: Build plugin
