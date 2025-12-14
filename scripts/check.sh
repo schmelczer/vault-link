@@ -8,8 +8,15 @@ if [[ "$1" == "--fix" ]]; then
     echo "Running in fix mode - will automatically fix linting and formatting issues"
 fi
 
+./scripts/utils/check-node.sh
+
 echo "Running checks in sync-server"
+
 cd sync-server
+which sqlx || cargo install sqlx-cli
+sqlx database create --database-url sqlite://db.sqlite3
+sqlx migrate run --source src/app_state/database/migrations --database-url sqlite://db.sqlite3
+
 cargo test --verbose
 
 if [[ "$FIX_MODE" == true ]]; then
