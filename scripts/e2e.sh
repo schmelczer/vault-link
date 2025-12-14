@@ -51,7 +51,7 @@ for i in $(seq 1 $process_count); do
     echo "Started process $i with PID: $pid"
 
     # Read from pipe, prefix with PID
-    (sed "s/^/[PID $pid] /" < "$pipe" | tee "../logs/log_${i}.log"; rm "$pipe") &
+    (sed "s/^/[PID $pid] /" < "$pipe" > "../logs/log_${i}.log"; rm "$pipe") &
 done
 
 cd ..

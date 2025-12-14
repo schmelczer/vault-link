@@ -58,6 +58,14 @@ jobs:
 
           exit $EXIT_CODE
 
+      - name: Upload e2e logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-logs
+          path: logs/
+          retention-days: 30
+
       - name: Cleanup
         if: always()
         run: scripts/clean-up.sh
