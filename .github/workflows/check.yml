@@ -5,6 +5,7 @@ on:
     branches: ["main"]
   pull_request:
     branches: ["main"]
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -30,13 +31,6 @@ jobs:
         with:
           toolchain: "1.89.0"
           components: clippy, rustfmt
-
-      - name: Setup rust
-        run: |
-          which sqlx || cargo install sqlx-cli
-          cd sync-server
-          sqlx database create --database-url sqlite://db.sqlite3
-          sqlx migrate run --source src/app_state/database/migrations --database-url sqlite://db.sqlite3
 
       - name: Lint & test
         run: scripts/check.sh

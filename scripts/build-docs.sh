@@ -2,6 +2,8 @@
 
 set -e
 
+./scripts/utils/check-node.sh
+
 cd docs
 
 npm ci
