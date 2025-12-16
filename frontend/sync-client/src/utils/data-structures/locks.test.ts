@@ -252,7 +252,7 @@ describe("reset", () => {
         await sleep(1);
 
         const secondPromise = locks.withLock(testPath, async () => "second");
-        void secondPromise.catch(() => {}); // eslint-disable-line @typescript-eslint/no-empty-function
+        void secondPromise.catch(() => { }); // eslint-disable-line @typescript-eslint/no-empty-function
 
         locks.reset();
 
@@ -273,7 +273,7 @@ describe("reset", () => {
         await sleep(1);
 
         const secondPromise = locks.withLock(testPath, async () => "second");
-        void secondPromise.catch(() => {}); // eslint-disable-line @typescript-eslint/no-empty-function
+        void secondPromise.catch(() => { }); // eslint-disable-line @typescript-eslint/no-empty-function
 
         locks.reset();
 

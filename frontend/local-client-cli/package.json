@@ -1,6 +1,6 @@
 {
     "name": "local-client-cli",
-    "version": "0.13.1",
+    "version": "0.14.0",
     "description": "Standalone CLI for VaultLink sync client",
     "private": false,
     "bin": {
