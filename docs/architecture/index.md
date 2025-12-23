@@ -9,12 +9,12 @@ Central sync server with multiple clients. High-level architecture and design de
 │                        Clients                              │
 ├─────────────────────┬───────────────────┬───────────────────┤
 │  Obsidian Plugin    │  Obsidian Plugin  │   CLI Client      │
-│  (User A - Device1) │  (User A - Device2│   (Server/Backup) │
+│ (User A - Device1)  │ (User A - Device2)│   (Server/Backup) │
 └──────────┬──────────┴─────────┬─────────┴──────────┬────────┘
-          │                    │                    │
-          │    WebSocket       │   WebSocket        │   WebSocket
-          │                    │                    │
-          └────────────────────┼────────────────────┘
+           │                    │                    │
+           │    WebSocket       │   WebSocket        │   WebSocket
+           │                    │                    │
+           └────────────────────┼────────────────────┘
                                 │
                     ┌───────────▼───────────┐
                     │   Sync Server         │

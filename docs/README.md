@@ -4,11 +4,6 @@ This directory contains the VaultLink documentation site built with [VitePress](
 
 ## Development
 
-### Prerequisites
-
-- Node.js 18+
-- npm
-
 ### Setup
 
 ```bash

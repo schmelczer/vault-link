@@ -2,6 +2,86 @@
 
 VaultLink is one of several solutions for synchronising Obsidian vaults. This page compares VaultLink with popular alternatives to help you choose the right tool.
 
+## Universal sync alternatives
+
+syncthing
+
+## VaultLink Obsidian plugin alternatives
+
+There are already numerious ways to sync an Obsidian vault.
+
+
+
+- LiveSync - 300k - https://github.com/vrtmrz/obsidian-livesync
+- Relay - 24k downloads https://github.com/No-Instructions/Relay
+	- Sync server isn't open source
+	- Has to maintain separate CRDT per file, no out-of-band updates
+- Remotely Save 1.1M downloads https://github.com/remotely-save/remotely-save
+	- conflict resolution is paid pro feature
+	- no tests & trash code
+- Remotely Sync - 38k downloads https://github.com/sboesen/remotely-sync 
+	- Same as remotely save
+- Self-hosted LiveSync - 300k downloads
+- SyncFTP 5k - downloads https://github.com/alex-donnan/SyncFTP - ridiculously simple
+- Syncthing Integration - 22.6k downloads https://github.com/LBF38/obsidian-syncthing-integration
+	- Unfinished
+	- Manual conflict resolution
+- Git - 1.4M downloads
+- https://github.com/conql/obsidian-seafile - cool file change indicators
+
+
+## Obsidian alternatives
+
+
+- https://anytype.io/
+- https://github.com/gamosoft/NoteDiscovery?ref=selfh.st
+- https://github.com/timothepoznanski/poznote?ref=selfh.st
+- https://appflowy.com/ - could steal editor
+- https://demo.flatnotes.io/
+- https://etherpad.org/
+- https://kitemaker.co/ - discontinued after sale of company
+- https://b3log.org/siyuan/en/
+- https://apps.apple.com/us/app/standard-notes/id1285392450
+- https://affine.pro/
+- Notion plugin https://developers.notion.com/reference/intro
+- https://www.xda-developers.com/self-hosted-markdown-editors-that-sync-without-the-cloud/
+- https://simplenote.com/
+- https://github.com/fccview/rwMarkable?ref=selfh.st
+- https://notesnook.com/
+- https://apps.apple.com/us/app/logseq/id1601013908
+- blinko
+- Zen notes https://www.sheshbabu.com/zen/
+- https://www.getdnote.com/ - CLI only
+- https://juretriglav.si/open-source-collaborative-text-editors/
+- https://logseq.com/
+- https://github.com/suitenumerique/docs - French goverment project
+- https://silverbullet.md/ - pretty simplistic but nice editor (can't change font though)
+- https://joplinapp.org/
+- https://github.com/outline/outline
+- https://github.com/TriliumNext/Trilium obsidian but worse
+- https://github.com/suitenumerique/docs
+- https://livebook.dev/ - collaborative jupyter
+- https://www.blocknotejs.org/docs/editor-basics for online editor
+- https://github.com/colanode/colanode - notion like
+- Blinko
+- https://www.reddit.com/r/selfhosted/comments/1kswy2n/many_notes_v090_markdown_notetaking_app_designed/#lightbox online editor https://github.com/brufdev/many-notes
+- https://www.sheshbabu.com/zen/ text editor and database
+- https://github.com/ekzhang/rustpad
+	- VS Code-eque vibes, single markdown editor based on OT, self-hostable, long 
+- rwmarkable 
+
+Bad ones:
+- https://cryptpad.org/instances/
+- https://hedgedoc.org/ - only has split editor
+- https://www.usememos.com/ - twitter notes
+- https://alextselegidis.com/get/plainpad/ - too simple
+- https://standardnotes.com/ - have to pay for folders
+- https://turtlapp.com/
+
+
+
+
+
 ## Key Differentiator: Editor Agnostic
 
 **VaultLink is not tied to Obsidian.** While it includes an Obsidian plugin for convenience, VaultLink synchronises plain text files and works with any editor:
