@@ -74,7 +74,6 @@ export class Database {
         this.documents.forEach((doc) => {
             this.lastSeenUpdateIds.add(doc.metadata?.parentVersionId);
         });
-
     }
 
     public get length(): number {
@@ -104,7 +103,7 @@ export class Database {
                     i === 0
                         ? false
                         : records[i - 1].parallelVersion ===
-                        current.parallelVersion
+                          current.parallelVersion
                 )
             ) {
                 throw new Error(
@@ -282,7 +281,6 @@ export class Database {
         candidate.isDeleted = true;
     }
 
-
     public getLastSeenUpdateId(): VaultUpdateId {
         return this.lastSeenUpdateIds.min;
     }
@@ -317,7 +315,7 @@ export class Database {
                     ...metadata! // `resolvedDocuments` only returns docs with metadata set
                 })
             ),
-            lastSeenUpdateId: this.lastSeenUpdateIds.min,
+            lastSeenUpdateId: this.lastSeenUpdateIds.min
         });
     }
 
@@ -341,7 +339,7 @@ export class Database {
         if (duplicates.length > 0) {
             throw new Error(
                 "Document IDs are not unique, found duplicates: " +
-                duplicates.join("; ")
+                    duplicates.join("; ")
             );
         }
     }

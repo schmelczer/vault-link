@@ -249,7 +249,7 @@ pub async fn merge_with_stored_version(
     };
 
     // We can only update the relative path if we're the first one to do so
-    let new_relative_path = if parent_document_path == &latest_version.relative_path
+    let new_relative_path = if parent_document_path == latest_version.relative_path
         && latest_version.relative_path != sanitized_relative_path
     {
         let new_path = find_first_available_path(

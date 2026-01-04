@@ -40,7 +40,7 @@ export class WebSocketManager {
         private readonly logger: Logger,
         private readonly settings: Settings,
         private readonly webSocketFactoryImplementation: typeof globalThis.WebSocket = WebSocket
-    ) { }
+    ) {}
 
     public get isWebSocketConnected(): boolean {
         return (
@@ -260,10 +260,9 @@ export class WebSocketManager {
                 this.resolveDisconnectingPromise?.();
                 this.resolveDisconnectingPromise = null;
             } else {
-                const delay = this.settings.getSettings().webSocketRetryIntervalMs;
-                this.logger.info(
-                    `Reconnecting to WebSocket in ${delay}ms...`
-                );
+                const delay =
+                    this.settings.getSettings().webSocketRetryIntervalMs;
+                this.logger.info(`Reconnecting to WebSocket in ${delay}ms...`);
                 this.reconnectTimeoutId = setTimeout(() => {
                     this.reconnectTimeoutId = undefined;
                     this.initializeWebSocket();

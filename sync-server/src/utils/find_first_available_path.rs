@@ -1,7 +1,7 @@
 use crate::app_state::database::models::VaultId;
 use crate::{app_state::database::Transaction, utils::dedup_paths::dedup_paths};
 use anyhow::Result;
-use log::{debug, info};
+use log::info;
 
 pub async fn find_first_available_path(
     vault_id: &VaultId,

@@ -87,7 +87,7 @@ export class UnrestrictedSyncer {
                 forceMerge: true
             });
 
-            this.handleMaybeMergingResponse({
+            await this.handleMaybeMergingResponse({
                 document,
                 response,
                 contentHash,
@@ -159,14 +159,14 @@ export class UnrestrictedSyncer {
         const updateDetails: SyncUpdateDetails | SyncMovedDetails =
             oldPath !== undefined
                 ? {
-                    type: SyncType.MOVE,
-                    relativePath: document.relativePath,
-                    movedFrom: oldPath
-                }
+                      type: SyncType.MOVE,
+                      relativePath: document.relativePath,
+                      movedFrom: oldPath
+                  }
                 : {
-                    type: SyncType.UPDATE,
-                    relativePath: document.relativePath
-                };
+                      type: SyncType.UPDATE,
+                      relativePath: document.relativePath
+                  };
 
         await this.executeSync(updateDetails, async () => {
             const originalRelativePath = document.relativePath;
@@ -181,7 +181,7 @@ export class UnrestrictedSyncer {
             const contentBytes = await this.operations.read(
                 document.relativePath
             ); // this can throw FileNotFoundError
-            let contentHash = hash(contentBytes);
+            const contentHash = hash(contentBytes);
 
             const areThereLocalChanges = !(
                 document.metadata.hash === contentHash && oldPath === undefined
@@ -205,22 +205,22 @@ export class UnrestrictedSyncer {
                 response =
                     isText && cachedVersion !== undefined
                         ? await this.syncService.putText({
-                            documentId: document.metadata.documentId,
-                            parentVersionId:
-                                document.metadata.parentVersionId,
-                            relativePath: document.relativePath,
-                            content: diff(
-                                new TextDecoder().decode(cachedVersion),
-                                new TextDecoder().decode(contentBytes)
-                            )
-                        })
+                              documentId: document.metadata.documentId,
+                              parentVersionId:
+                                  document.metadata.parentVersionId,
+                              relativePath: document.relativePath,
+                              content: diff(
+                                  new TextDecoder().decode(cachedVersion),
+                                  new TextDecoder().decode(contentBytes)
+                              )
+                          })
                         : await this.syncService.putBinary({
-                            documentId: document.metadata.documentId,
-                            parentVersionId:
-                                document.metadata.parentVersionId,
-                            relativePath: document.relativePath,
-                            contentBytes
-                        });
+                              documentId: document.metadata.documentId,
+                              parentVersionId:
+                                  document.metadata.parentVersionId,
+                              relativePath: document.relativePath,
+                              contentBytes
+                          });
             } else {
                 if (!force) {
                     this.logger.debug(
@@ -234,10 +234,9 @@ export class UnrestrictedSyncer {
                 });
             }
 
-
-            this.handleMaybeMergingResponse({
+            await this.handleMaybeMergingResponse({
                 document,
-                response: response!,
+                response: response,
                 contentHash,
                 originalRelativePath,
                 originalContentBytes: contentBytes
@@ -255,16 +254,16 @@ export class UnrestrictedSyncer {
 
             const actualUpdateDetails: SyncUpdateDetails | SyncMovedDetails =
                 oldPath !== undefined ||
-                    response.relativePath != originalRelativePath
+                response.relativePath != originalRelativePath
                     ? {
-                        type: SyncType.MOVE,
-                        relativePath: response.relativePath,
-                        movedFrom: oldPath ?? originalRelativePath
-                    }
+                          type: SyncType.MOVE,
+                          relativePath: response.relativePath,
+                          movedFrom: oldPath ?? originalRelativePath
+                      }
                     : {
-                        type: SyncType.UPDATE,
-                        relativePath: response.relativePath
-                    };
+                          type: SyncType.UPDATE,
+                          relativePath: response.relativePath
+                      };
 
             if (areThereLocalChanges) {
                 this.history.addHistoryEntry({
@@ -288,7 +287,8 @@ export class UnrestrictedSyncer {
                         type: SyncType.DELETE,
                         relativePath: document.relativePath
                     },
-                    message: "File has been deleted remotely, so we deleted it locally",
+                    message:
+                        "File has been deleted remotely, so we deleted it locally",
                     author: response.userId,
                     timestamp: new Date(response.updatedDate)
                 });
@@ -460,24 +460,21 @@ export class UnrestrictedSyncer {
         }
     }
 
-    private async handleMaybeMergingResponse(
-        {
-            document,
-            response,
-            contentHash,
-            originalRelativePath,
-            originalContentBytes
-        }: {
-            document: DocumentRecord;
-            response: DocumentVersion | DocumentUpdateResponse,
-            contentHash: string,
-            originalRelativePath: string,
-            originalContentBytes: Uint8Array
-        }
-    ): Promise<void> {
-
+    private async handleMaybeMergingResponse({
+        document,
+        response,
+        contentHash,
+        originalRelativePath,
+        originalContentBytes
+    }: {
+        document: DocumentRecord;
+        response: DocumentVersion | DocumentUpdateResponse;
+        contentHash: string;
+        originalRelativePath: string;
+        originalContentBytes: Uint8Array;
+    }): Promise<void> {
         // `document` is mutable and reflects the latest state in the local database
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+
         if (document.isDeleted) {
             this.logger.info(
                 `Document ${document.relativePath} has been deleted before we could finish updating it`
@@ -572,8 +569,9 @@ export class UnrestrictedSyncer {
                     type: SyncType.SKIPPED,
                     relativePath
                 },
-                message: `File size of ${sizeInMB} MB exceeds the maximum file size limit of ${maxFileSizeMB
-                    } MB`
+                message: `File size of ${sizeInMB} MB exceeds the maximum file size limit of ${
+                    maxFileSizeMB
+                } MB`
             };
         }
     }
@@ -598,8 +596,6 @@ export class UnrestrictedSyncer {
         document: DocumentRecord,
         response: DocumentVersion | DocumentUpdateResponse
     ): Promise<void> {
-
-
         this.database.delete(document.relativePath);
         this.database.updateDocumentMetadata(
             {
