@@ -26,7 +26,6 @@ export interface StoredDocumentMetadata {
 export interface StoredDatabase {
     documents: StoredDocumentMetadata[];
     lastSeenUpdateId: VaultUpdateId | undefined;
-    hasInitialSyncCompleted: boolean;
 }
 
 /**
@@ -46,7 +45,6 @@ export interface DocumentRecord {
 export class Database {
     private documents: DocumentRecord[];
     private lastSeenUpdateIds: CoveredValues;
-    private hasInitialSyncCompleted: boolean;
 
     public constructor(
         private readonly logger: Logger,
@@ -56,15 +54,13 @@ export class Database {
         initialState ??= {};
 
         this.documents =
-            initialState.documents?.map(
-                ({ relativePath, ...metadata }) => ({
-                    relativePath,
-                    metadata,
-                    isDeleted: false,
-                    updates: [],
-                    parallelVersion: 0
-                })
-            ) ?? [];
+            initialState.documents?.map(({ relativePath, ...metadata }) => ({
+                relativePath,
+                metadata,
+                isDeleted: false,
+                updates: [],
+                parallelVersion: 0
+            })) ?? [];
 
         this.ensureConsistency();
         this.logger.debug(`Loaded ${this.documents.length} documents`);
@@ -79,11 +75,6 @@ export class Database {
             this.lastSeenUpdateIds.add(doc.metadata?.parentVersionId);
         });
 
-        this.hasInitialSyncCompleted =
-            initialState.hasInitialSyncCompleted ?? false;
-        this.logger.debug(
-            `Loaded hasInitialSyncCompleted: ${this.hasInitialSyncCompleted}`
-        );
     }
 
     public get length(): number {
@@ -199,15 +190,12 @@ export class Database {
         relativePath: RelativePath,
         promise: Promise<unknown>
     ): DocumentRecord {
-        this.logger.debug(
-            `Creating new pending document: ${relativePath}`
-        );
+        this.logger.debug(`Creating new pending document: ${relativePath}`);
         const previousEntry =
             this.getLatestDocumentByRelativePath(relativePath);
 
         const entry = {
             relativePath,
-            documentId: undefined,
             metadata: undefined,
             isDeleted: false,
             updates: [promise],
@@ -250,7 +238,9 @@ export class Database {
     public getDocumentByDocumentId(
         find: DocumentId
     ): DocumentRecord | undefined {
-        return this.documents.find(({ metadata }) => metadata?.documentId === find);
+        return this.documents.find(
+            ({ metadata }) => metadata?.documentId === find
+        );
     }
 
     public move(
@@ -292,14 +282,6 @@ export class Database {
         candidate.isDeleted = true;
     }
 
-    public getHasInitialSyncCompleted(): boolean {
-        return this.hasInitialSyncCompleted;
-    }
-
-    public setHasInitialSyncCompleted(value: boolean): void {
-        this.hasInitialSyncCompleted = value;
-        this.saveInTheBackground();
-    }
 
     public getLastSeenUpdateId(): VaultUpdateId {
         return this.lastSeenUpdateIds.min;
@@ -323,7 +305,6 @@ export class Database {
         this.lastSeenUpdateIds = new CoveredValues(
             0 // the first updateId will be 1 which is the first integer after -1
         );
-        this.hasInitialSyncCompleted = false;
         this.saveInTheBackground();
     }
 
@@ -337,7 +318,6 @@ export class Database {
                 })
             ),
             lastSeenUpdateId: this.lastSeenUpdateIds.min,
-            hasInitialSyncCompleted: this.hasInitialSyncCompleted
         });
     }
 

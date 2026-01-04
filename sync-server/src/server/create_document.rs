@@ -52,7 +52,7 @@ pub async fn create_document(
     if request.force_merge.unwrap_or_default() {
         let latest_version = state
             .database
-            .get_latest_document_by_path(
+            .get_latest_non_deleted_document_by_path(
                 &vault_id,
                 &sanitized_relative_path,
                 Some(&mut transaction),
@@ -65,7 +65,8 @@ pub async fn create_document(
             );
 
             return merge_with_stored_version(
-                latest_version.clone(),
+                &sanitized_relative_path,
+                &Vec::new(),
                 latest_version,
                 vault_id,
                 user,

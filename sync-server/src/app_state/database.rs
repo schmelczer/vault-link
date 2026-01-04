@@ -79,6 +79,7 @@ impl Database {
                 },
             );
         }
+        info!("Database migrations applied");
 
         let database = Self {
             config: config.clone(),
@@ -301,7 +302,7 @@ impl Database {
         .context("Cannot fetch max update id in vault")
     }
 
-    pub async fn get_latest_document_by_path(
+    pub async fn get_latest_non_deleted_document_by_path(
         &self,
         vault: &VaultId,
         relative_path: &str,

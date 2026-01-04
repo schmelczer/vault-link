@@ -172,7 +172,8 @@ async fn update_document(
     }
 
     merge_with_stored_version(
-        parent_document,
+        &parent_document.relative_path,
+        &parent_document.content,
         latest_version,
         vault_id,
         user,
@@ -187,7 +188,8 @@ async fn update_document(
 
 #[allow(clippy::too_many_arguments)]
 pub async fn merge_with_stored_version(
-    parent_document: StoredDocumentVersion,
+    parent_document_path: &str,
+    parent_document_content: &[u8],
     latest_version: StoredDocumentVersion,
     vault_id: VaultId,
     user: User,
@@ -203,7 +205,7 @@ pub async fn merge_with_stored_version(
     {
         info!(
             "Document content is the same as the latest version for `{}`, skipping update",
-            parent_document.document_id
+            latest_version.document_id
         );
         transaction
             .rollback()
@@ -219,17 +221,17 @@ pub async fn merge_with_stored_version(
     let are_all_participants_mergable = is_file_type_mergable(
         sanitized_relative_path,
         &state.config.server.mergeable_file_extensions,
-    ) && !is_binary(&parent_document.content)
+    ) && !is_binary(parent_document_content)
         && !is_binary(&latest_version.content)
         && !is_binary(&content);
 
     let merged_content = if are_all_participants_mergable {
         info!(
             "Merging changes for document `{}` in vault `{vault_id}`",
-            parent_document.document_id
+            latest_version.document_id
         );
         reconcile(
-            str::from_utf8(&parent_document.content)
+            str::from_utf8(parent_document_content)
                 .expect("parent must be valid UTF-8 because it's not binary"),
             &str::from_utf8(&latest_version.content)
                 .expect("latest_version must be valid UTF-8 because it's not binary")
@@ -247,7 +249,7 @@ pub async fn merge_with_stored_version(
     };
 
     // We can only update the relative path if we're the first one to do so
-    let new_relative_path = if parent_document.relative_path == latest_version.relative_path
+    let new_relative_path = if parent_document_path == &latest_version.relative_path
         && latest_version.relative_path != sanitized_relative_path
     {
         let new_path = find_first_available_path(
@@ -279,7 +281,7 @@ pub async fn merge_with_stored_version(
     let is_different_from_request_content = merged_content != content;
 
     let new_version = StoredDocumentVersion {
-        document_id: parent_document.document_id,
+        document_id: latest_version.document_id,
         vault_update_id: last_update_id + 1,
         relative_path: new_relative_path,
         content: merged_content,
