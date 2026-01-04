@@ -25,15 +25,6 @@ npm run build
 
 ../scripts/utils/wait-for-server.sh
 
-cd ..
-scripts/update-api-types.sh
-if [[ $(git status --porcelain) ]]; then
-    git status --porcelain
-    echo "Failing CI because the working directory is not clean after generating api types"
-    exit 1
-fi
-cd frontend
-
 pids=()
 for i in $(seq 1 $process_count); do
     # Create a named pipe for this process

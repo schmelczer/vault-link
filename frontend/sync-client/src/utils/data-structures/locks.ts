@@ -18,7 +18,7 @@ export class Locks<T> {
         [() => unknown, (err: unknown) => unknown][]
     >();
 
-    public constructor(private readonly logger?: Logger) { }
+    public constructor(private readonly logger?: Logger) {}
 
     /**
      * Executes a function while holding exclusive locks on one or more keys.

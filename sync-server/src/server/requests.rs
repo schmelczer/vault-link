@@ -11,7 +11,7 @@ use crate::app_state::database::models::VaultUpdateId;
 pub struct CreateDocumentVersion {
     pub relative_path: String,
 
-    // whether to merge with existing document at the same path if it exists
+    // whether to merge with existing document at the same path if it already exists
     pub force_merge: Option<bool>,
 
     #[ts(as = "Vec<u8>")]

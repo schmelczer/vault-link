@@ -56,7 +56,7 @@ export class SyncClient {
                 database: Partial<StoredDatabase>;
             }>
         >
-    ) { }
+    ) {}
 
     public get documentCount(): number {
         return this.database.length;
@@ -205,7 +205,6 @@ export class SyncClient {
             logger,
             database,
             settings,
-            syncService,
             webSocketManager,
             fileOperations,
             unrestrictedSyncer

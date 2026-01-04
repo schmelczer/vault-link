@@ -36,7 +36,7 @@ export class WebSocketManager {
         private readonly logger: Logger,
         private readonly settings: Settings,
         private readonly webSocketFactoryImplementation: typeof globalThis.WebSocket = WebSocket
-    ) { }
+    ) {}
 
     public get isWebSocketConnected(): boolean {
         return (

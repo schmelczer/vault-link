@@ -246,8 +246,6 @@ pub async fn merge_with_stored_version(
         content.clone()
     };
 
-    let is_different_from_request_content = merged_content != content;
-
     // We can only update the relative path if we're the first one to do so
     let new_relative_path = if parent_document.relative_path == latest_version.relative_path
         && latest_version.relative_path != sanitized_relative_path
@@ -277,6 +275,8 @@ pub async fn merge_with_stored_version(
         .get_max_update_id_in_vault(&vault_id, Some(&mut transaction))
         .await
         .map_err(server_error)?;
+
+    let is_different_from_request_content = merged_content != content;
 
     let new_version = StoredDocumentVersion {
         document_id: parent_document.document_id,

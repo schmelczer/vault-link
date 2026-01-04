@@ -73,7 +73,7 @@ export class SyncService {
         relativePath: RelativePath;
         contentBytes: Uint8Array;
         forceMerge?: boolean;
-    }): Promise<DocumentVersionWithoutContent> {
+    }): Promise<DocumentUpdateResponse> {
         return this.retryForever(async () => {
             const formData = new FormData();
 
@@ -105,8 +105,8 @@ export class SyncService {
                 );
             }
 
-            const result: DocumentVersionWithoutContent =
-                (await response.json()) as DocumentVersionWithoutContent; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+            const result: DocumentUpdateResponse =
+                (await response.json()) as DocumentUpdateResponse; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
 
             this.logger.debug(`Created document ${JSON.stringify(result)}`);
 

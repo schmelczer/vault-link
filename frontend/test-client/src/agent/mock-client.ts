@@ -14,13 +14,7 @@ export class MockClient implements FileSystemOperations {
     protected data: Partial<{
         settings: Partial<SyncSettings>;
         database: Partial<StoredDatabase>;
-    }> = {
-        database: {
-            // Assume all clients start at the same time so there's no need to fetch
-            // any shared state.
-            hasInitialSyncCompleted: true
-        }
-    };
+    }> = {};
 
     public constructor(
         initialSettings: Partial<SyncSettings>,
@@ -108,13 +102,13 @@ export class MockClient implements FileSystemOperations {
                 .map((part) => part.trim());
             const newParts = newContent.split(" ").map((part) => part.trim());
             existingParts.forEach((part) =>
-                // all changes should be additive
-                {
-                    assert(
-                        newParts.includes(part),
-                        `Part ${part} not found in new content: ${newContent}`
-                    );
-                }
+            // all changes should be additive
+            {
+                assert(
+                    newParts.includes(part),
+                    `Part ${part} not found in new content: ${newContent}`
+                );
+            }
             );
         }
 

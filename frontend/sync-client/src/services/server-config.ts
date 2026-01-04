@@ -14,14 +14,15 @@ export class ServerConfig {
     private response: Promise<PingResponse> | undefined;
     private config: ServerConfigData | undefined;
 
-    public constructor(private readonly syncService: SyncService) { }
+    public constructor(private readonly syncService: SyncService) {}
 
     private static validateConfig(config: ServerConfigData): void {
         if (config.supportedApiVersion !== SUPPORTED_API_VERSION) {
             const shouldUpgradeClient =
                 config.supportedApiVersion > SUPPORTED_API_VERSION;
             throw new ServerVersionMismatchError(
-                `Unsupported API version: ${config.supportedApiVersion}. Consider upgrading the ${shouldUpgradeClient ? "client" : "sync-server"
+                `Unsupported API version: ${config.supportedApiVersion}. Consider upgrading the ${
+                    shouldUpgradeClient ? "client" : "sync-server"
                 } to ensure compatibility`
             );
         }

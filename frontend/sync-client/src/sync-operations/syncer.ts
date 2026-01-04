@@ -4,7 +4,6 @@ import type {
     DocumentRecord,
     RelativePath
 } from "../persistence/database";
-import type { SyncService } from "../services/sync-service";
 import type { Logger } from "../tracing/logger";
 import PQueue from "p-queue";
 import { hash } from "../utils/hash";
@@ -41,7 +40,6 @@ export class Syncer {
         private readonly logger: Logger,
         private readonly database: Database,
         private readonly settings: Settings,
-        private readonly syncService: SyncService,
         private readonly webSocketManager: WebSocketManager,
         private readonly operations: FileOperations,
         private readonly internalSyncer: UnrestrictedSyncer
@@ -487,8 +485,5 @@ export class Syncer {
             })
         );
 
-        this.database.setHasInitialSyncCompleted(true);
     }
-
-
 }
