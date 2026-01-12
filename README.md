@@ -77,3 +77,10 @@ And to clean up the logs & database files, run `scripts/clean-up.sh`
 ## Projects
 
 - [Sync server](./sync-server/README.md)
+
+
+
+
+
+
+a create that has been processed by the server but got lost on the way back will create a 2nd doc if it gets edited

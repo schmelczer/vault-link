@@ -103,7 +103,7 @@ export class Database {
                     i === 0
                         ? false
                         : records[i - 1].parallelVersion ===
-                          current.parallelVersion
+                        current.parallelVersion
                 )
             ) {
                 throw new Error(
@@ -170,7 +170,7 @@ export class Database {
 
         if (entry === undefined) {
             throw new Error(
-                `Document not found by relative path: ${relativePath}, ${JSON.stringify(
+                `Document not found by relative path in getResolvedDocumentByRelativePath: ${relativePath}, ${JSON.stringify(
                     this.documents,
                     null,
                     2
@@ -262,7 +262,7 @@ export class Database {
         }
 
         oldDocument.relativePath = newRelativePath;
-        // We're in a strange state where the target of the move has just got deleted,
+        // We might be in a strange state where the target of the move has just got deleted,
         // however, its metadata might already have a bunch of updates queued up for
         // the document at the new location. We need to keep these updates.
         oldDocument.parallelVersion =
@@ -275,7 +275,11 @@ export class Database {
         const candidate = this.getLatestDocumentByRelativePath(relativePath);
         if (candidate === undefined) {
             throw new Error(
-                `Document not found by relative path: ${relativePath}`
+                `Document not found by relative path in delete: ${relativePath}, ${JSON.stringify(
+                    this.documents,
+                    null,
+                    2
+                )}`
             );
         }
         candidate.isDeleted = true;
@@ -334,12 +338,19 @@ export class Database {
 
         const duplicates = Array.from(idToPath.entries())
             .filter(([_, paths]) => paths.length > 1)
-            .map(([id, paths]) => `${id} (${paths.join(", ")})`);
+            .map(([id, paths]) => {
+                let details = "";
+                for (const path of paths) {
+                    const doc = this.getLatestDocumentByRelativePath(path);
+                    details += `\n- ${JSON.stringify(doc, null, 2)}`;
+                }
+                return `${id} (${paths.join(", ")}): ${details}`;
+            });
 
         if (duplicates.length > 0) {
             throw new Error(
                 "Document IDs are not unique, found duplicates: " +
-                    duplicates.join("; ")
+                duplicates.join("; ")
             );
         }
     }

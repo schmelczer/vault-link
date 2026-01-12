@@ -164,7 +164,10 @@ export class WebSocketManager {
                 this.webSocket.onclose = null;
                 this.webSocket.onmessage = null;
                 this.webSocket.onerror = null;
-                this.webSocket.close();
+                this.webSocket.close(
+                    1000,
+                    "Closing previous WebSocket connection"
+                );
             } catch (e) {
                 this.logger.error(
                     `Failed to close previous WebSocket connection: ${e}`
@@ -187,7 +190,7 @@ export class WebSocketManager {
                 `WebSocket connection timeout after ${WEBSOCKET_CONNECTION_TIMEOUT_IN_SECONDS} seconds`
             );
             // Force close to trigger onclose handler which will schedule reconnection
-            this.webSocket?.close();
+            this.webSocket?.close(1000, "Connection timeout");
         }, WEBSOCKET_CONNECTION_TIMEOUT_IN_SECONDS * 1000);
 
         this.webSocket.onopen = (): void => {
@@ -240,7 +243,7 @@ export class WebSocketManager {
         };
 
         this.webSocket.onerror = (error): void => {
-            this.logger.error(
+            this.logger.warn(
                 `WebSocket error occurred: ${error instanceof ErrorEvent ? error.message : "Unknown error"}`
             );
         };

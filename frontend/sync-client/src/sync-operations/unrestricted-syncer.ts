@@ -33,9 +33,12 @@ import type { FixedSizeDocumentCache } from "../utils/data-structures/fix-sized-
 import { isFileTypeMergable } from "../utils/is-file-type-mergable";
 import { isBinary } from "../utils/is-binary";
 import type { ServerConfig } from "../services/server-config";
+import { Locks } from "../utils/data-structures/locks";
 
 export class UnrestrictedSyncer {
     private ignorePatterns: RegExp[];
+    public readonly fileCreationLock: Locks<RelativePath> = new Locks<RelativePath>();
+
 
     public constructor(
         private readonly logger: Logger,
@@ -60,118 +63,50 @@ export class UnrestrictedSyncer {
         });
     }
 
-    public async unrestrictedSyncLocallyCreatedFile(
-        document: DocumentRecord
-    ): Promise<void> {
-        const updateDetails: SyncCreateDetails = {
-            type: SyncType.CREATE,
-            relativePath: document.relativePath
-        };
-
-        return this.executeSync(updateDetails, async () => {
-            const originalRelativePath = document.relativePath;
-            if (document.isDeleted) {
-                this.logger.debug(
-                    `Document ${originalRelativePath} has been already deleted, no need to create it`
-                );
-                return;
-            }
-
-            const contentBytes =
-                await this.operations.read(originalRelativePath); // this can throw FileNotFoundError
-            const contentHash = hash(contentBytes);
-
-            const response = await this.syncService.create({
-                relativePath: originalRelativePath,
-                contentBytes,
-                forceMerge: true
-            });
-
-            await this.handleMaybeMergingResponse({
-                document,
-                response,
-                contentHash,
-                originalRelativePath,
-                originalContentBytes: contentBytes
-            });
-
-            this.history.addHistoryEntry({
-                status: SyncStatus.SUCCESS,
-                details: updateDetails,
-                message: `Successfully uploaded locally created file`
-            });
-        });
-    }
-
-    public async unrestrictedSyncLocallyDeletedFile(
-        document: DocumentRecord
-    ): Promise<void> {
-        const updateDetails: SyncDeleteDetails = {
-            type: SyncType.DELETE,
-            relativePath: document.relativePath
-        };
-
-        await this.executeSync(updateDetails, async () => {
-            if (document.metadata === undefined) {
-                this.logger.debug(
-                    `Document ${document.relativePath} has no metadata, so it has never got synced remotely; no need to delete it remotely`
-                );
-                return;
-            }
-
-            const response = await this.syncService.delete({
-                documentId: document.metadata.documentId,
-                relativePath: document.relativePath
-            });
-
-            this.database.updateDocumentMetadata(
-                {
-                    ...document.metadata,
-                    parentVersionId: response.vaultUpdateId,
-                    hash: EMPTY_HASH,
-                    remoteRelativePath: document.relativePath
-                },
-                document
-            );
-
-            this.database.addSeenUpdateId(response.vaultUpdateId);
-
-            this.history.addHistoryEntry({
-                status: SyncStatus.SUCCESS,
-                details: updateDetails,
-                message: `Successfully deleted locally deleted file on the server`,
-                author: response.userId
-            });
-        });
-    }
-
-    public async unrestrictedSyncLocallyUpdatedFile({
+    public async unrestrictedSyncLocallyCreatedOrUpdatedFile({
         oldPath,
         document,
+        forceMerge,
         // We use the same code path for both local and remote updates. We need to force the update
         // if there are no local changes but we know that the remote version is newer.
         force = false
     }: {
         oldPath?: RelativePath;
         force?: boolean;
+        forceMerge?: boolean
         document: DocumentRecord;
     }): Promise<void> {
-        const updateDetails: SyncUpdateDetails | SyncMovedDetails =
-            oldPath !== undefined
-                ? {
-                      type: SyncType.MOVE,
-                      relativePath: document.relativePath,
-                      movedFrom: oldPath
-                  }
-                : {
-                      type: SyncType.UPDATE,
-                      relativePath: document.relativePath
-                  };
+
+        // this.history.addHistoryEntry({
+        //     status: SyncStatus.SUCCESS,
+        //     details: updateDetails,
+        //     message: `Successfully uploaded locally created file`
+        // });
+
+        let updateDetails: SyncCreateDetails | SyncUpdateDetails | SyncMovedDetails;
+        if (document.metadata === undefined) {
+            updateDetails = {
+                type: SyncType.CREATE,
+                relativePath: document.relativePath
+            };
+        }
+        else if (oldPath !== undefined) {
+            updateDetails = {
+                type: SyncType.MOVE,
+                relativePath: document.relativePath,
+                movedFrom: oldPath
+            };
+        } else {
+            updateDetails = {
+                type: SyncType.UPDATE,
+                relativePath: document.relativePath
+            };
+        }
 
         await this.executeSync(updateDetails, async () => {
             const originalRelativePath = document.relativePath;
 
-            if (document.isDeleted || document.metadata === undefined) {
+            if (document.isDeleted) {
                 this.logger.debug(
                     `Document ${document.relativePath} has been already deleted, no need to update it`
                 );
@@ -183,64 +118,88 @@ export class UnrestrictedSyncer {
             ); // this can throw FileNotFoundError
             const contentHash = hash(contentBytes);
 
-            const areThereLocalChanges = !(
-                document.metadata.hash === contentHash && oldPath === undefined
-            );
+            this.logger.warn(`updating ${document.relativePath} locally, inner`);
 
             let response: DocumentVersion | DocumentUpdateResponse | undefined =
                 undefined;
 
-            if (areThereLocalChanges) {
-                const isText =
-                    !isBinary(contentBytes) &&
-                    isFileTypeMergable(
-                        document.relativePath,
-                        (await this.serverConfig.getConfig())
-                            .mergeableFileExtensions
-                    );
-                const cachedVersion = this.contentCache.get(
-                    document.metadata.parentVersionId
-                );
+            if (document.metadata === undefined) {
+                response = await this.fileCreationLock.withLock(document.relativePath, async () => {
+                    const response = await this.syncService.create({
+                        relativePath: originalRelativePath,
+                        contentBytes,
+                        forceMerge
+                    });
 
-                response =
-                    isText && cachedVersion !== undefined
-                        ? await this.syncService.putText({
-                              documentId: document.metadata.documentId,
-                              parentVersionId:
-                                  document.metadata.parentVersionId,
-                              relativePath: document.relativePath,
-                              content: diff(
-                                  new TextDecoder().decode(cachedVersion),
-                                  new TextDecoder().decode(contentBytes)
-                              )
-                          })
-                        : await this.syncService.putBinary({
-                              documentId: document.metadata.documentId,
-                              parentVersionId:
-                                  document.metadata.parentVersionId,
-                              relativePath: document.relativePath,
-                              contentBytes
-                          });
+                    await this.handleMaybeMergingResponse({
+                        document,
+                        response,
+                        contentHash,
+                        originalRelativePath,
+                        originalContentBytes: contentBytes
+                    });
+
+                    return response;
+                });
             } else {
-                if (!force) {
-                    this.logger.debug(
-                        `File hash of ${document.relativePath} matches with last synced version and the path hasn't changed; no need to sync`
+                const areThereLocalChanges =
+                    document.metadata.hash !== contentHash || oldPath !== undefined;
+
+                if (areThereLocalChanges) {
+                    const isText =
+                        !isBinary(contentBytes) &&
+                        isFileTypeMergable(
+                            document.relativePath,
+                            (await this.serverConfig.getConfig())
+                                .mergeableFileExtensions
+                        );
+                    const cachedVersion = this.contentCache.get(
+                        document.metadata.parentVersionId
                     );
-                    return;
+
+                    response =
+                        isText && cachedVersion !== undefined
+                            ? await this.syncService.putText({
+                                documentId: document.metadata.documentId,
+                                parentVersionId:
+                                    document.metadata.parentVersionId,
+                                relativePath: document.relativePath,
+                                content: diff(
+                                    new TextDecoder().decode(cachedVersion),
+                                    new TextDecoder().decode(contentBytes)
+                                )
+                            })
+                            : await this.syncService.putBinary({
+                                documentId: document.metadata.documentId,
+                                parentVersionId:
+                                    document.metadata.parentVersionId,
+                                relativePath: document.relativePath,
+                                contentBytes
+                            });
+                } else {
+                    if (!force) {
+                        this.logger.debug(
+                            `File hash of ${document.relativePath} matches with last synced version and the path hasn't changed; no need to sync`
+                        );
+                        return;
+                    }
+
+                    // we use this code path (force == true) to sync remotely updated files which have no local changes
+                    response = await this.syncService.get({
+                        documentId: document.metadata.documentId
+                    });
                 }
 
-                response = await this.syncService.get({
-                    documentId: document.metadata.documentId
+                await this.handleMaybeMergingResponse({
+                    document,
+                    response,
+                    contentHash,
+                    originalRelativePath,
+                    originalContentBytes: contentBytes
                 });
             }
 
-            await this.handleMaybeMergingResponse({
-                document,
-                response: response,
-                contentHash,
-                originalRelativePath,
-                originalContentBytes: contentBytes
-            });
+
 
             if (!("type" in response) || response.type === "MergingUpdate") {
                 if (!force) {
@@ -249,30 +208,33 @@ export class UnrestrictedSyncer {
                         details: updateDetails,
                         message: `The file we updated had been updated remotely, so we downloaded the merged version`
                     });
+                    return;
                 }
             }
 
             const actualUpdateDetails: SyncUpdateDetails | SyncMovedDetails =
                 oldPath !== undefined ||
-                response.relativePath != originalRelativePath
+                    response.relativePath != originalRelativePath
                     ? {
-                          type: SyncType.MOVE,
-                          relativePath: response.relativePath,
-                          movedFrom: oldPath ?? originalRelativePath
-                      }
+                        type: SyncType.MOVE,
+                        relativePath: response.relativePath,
+                        movedFrom: originalRelativePath
+                    }
                     : {
-                          type: SyncType.UPDATE,
-                          relativePath: response.relativePath
-                      };
+                        type: SyncType.UPDATE,
+                        relativePath: response.relativePath
+                    };
 
-            if (areThereLocalChanges) {
-                this.history.addHistoryEntry({
-                    status: SyncStatus.SUCCESS,
-                    details: actualUpdateDetails,
-                    message: `Successfully uploaded locally updated file to the server`,
-                    author: response.userId
-                });
-            } else if (!response.isDeleted) {
+            // if (areThereLocalChanges) {
+            //     this.history.addHistoryEntry({
+            //         status: SyncStatus.SUCCESS,
+            //         details: actualUpdateDetails,
+            //         message: `Successfully uploaded locally updated file to the server`,
+            //         author: response.userId
+            //     });
+            // } else 
+
+            if (!response.isDeleted) {
                 this.history.addHistoryEntry({
                     status: SyncStatus.SUCCESS,
                     details: actualUpdateDetails,
@@ -296,6 +258,49 @@ export class UnrestrictedSyncer {
         });
     }
 
+
+    public async unrestrictedSyncLocallyDeletedFile(
+        document: DocumentRecord
+    ): Promise<void> {
+        const updateDetails: SyncDeleteDetails = {
+            type: SyncType.DELETE,
+            relativePath: document.relativePath
+        };
+
+        await this.executeSync(updateDetails, async () => {
+            if (document.metadata === undefined) {
+                this.logger.debug(
+                    `Document ${document.relativePath} has never been synced, no need to delete it remotely`
+                );
+                return;
+            }
+
+            const response = await this.syncService.delete({
+                documentId: document.metadata.documentId,
+                relativePath: document.relativePath
+            });
+
+            this.database.updateDocumentMetadata(
+                {
+                    documentId: response.documentId,
+                    parentVersionId: response.vaultUpdateId,
+                    hash: EMPTY_HASH,
+                    remoteRelativePath: document.relativePath
+                },
+                document
+            );
+
+            this.database.addSeenUpdateId(response.vaultUpdateId);
+
+            this.history.addHistoryEntry({
+                status: SyncStatus.SUCCESS,
+                details: updateDetails,
+                message: `Successfully deleted locally deleted file on the server`,
+                author: response.userId
+            });
+        });
+    }
+
     public async unrestrictedSyncRemotelyUpdatedFile(
         remoteVersion: DocumentVersionWithoutContent,
         document?: DocumentRecord
@@ -304,6 +309,7 @@ export class UnrestrictedSyncer {
             type: SyncType.CREATE,
             relativePath: remoteVersion.relativePath
         };
+
 
         await this.executeSync(updateDetails, async () => {
             if (document?.metadata !== undefined) {
@@ -320,7 +326,7 @@ export class UnrestrictedSyncer {
                     return;
                 }
 
-                return this.unrestrictedSyncLocallyUpdatedFile({
+                return this.unrestrictedSyncLocallyCreatedOrUpdatedFile({
                     document,
                     force: true
                 });
@@ -403,10 +409,21 @@ export class UnrestrictedSyncer {
         });
     }
 
-    public async executeSync<T>(
+    public reset(): void {
+        this.fileCreationLock.reset();
+    }
+
+    private async executeSync<T>(
         details: SyncDetails,
         fn: () => Promise<T>
     ): Promise<T | undefined> {
+        if (!this.settings.getSettings().isSyncEnabled) {
+            this.logger.info(
+                `Skipping sync operation for file '${details.relativePath}' because sync is disabled`
+            );
+            return;
+        }
+
         for (const pattern of this.ignorePatterns) {
             if (pattern.test(details.relativePath)) {
                 this.logger.debug(
@@ -460,6 +477,8 @@ export class UnrestrictedSyncer {
         }
     }
 
+
+
     private async handleMaybeMergingResponse({
         document,
         response,
@@ -474,7 +493,6 @@ export class UnrestrictedSyncer {
         originalContentBytes: Uint8Array;
     }): Promise<void> {
         // `document` is mutable and reflects the latest state in the local database
-
         if (document.isDeleted) {
             this.logger.info(
                 `Document ${document.relativePath} has been deleted before we could finish updating it`
@@ -569,9 +587,8 @@ export class UnrestrictedSyncer {
                     type: SyncType.SKIPPED,
                     relativePath
                 },
-                message: `File size of ${sizeInMB} MB exceeds the maximum file size limit of ${
-                    maxFileSizeMB
-                } MB`
+                message: `File size of ${sizeInMB} MB exceeds the maximum file size limit of ${maxFileSizeMB
+                    } MB`
             };
         }
     }

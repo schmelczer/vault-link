@@ -29,7 +29,6 @@ import { ServerConfig } from "./services/server-config";
 import type { EventListeners } from "./utils/data-structures/event-listeners";
 
 export class SyncClient {
-    private hasStartedOfflineSync = false;
     private hasFinishedOfflineSync = false;
     private hasStarted = false;
     private hasBeenDestroyed = false;
@@ -41,6 +40,7 @@ export class SyncClient {
         private readonly history: SyncHistory,
         private readonly settings: Settings,
         private readonly database: Database,
+        private readonly unrestrictedSyncer: UnrestrictedSyncer,
         private readonly syncer: Syncer,
         private readonly webSocketManager: WebSocketManager,
         public readonly logger: Logger,
@@ -56,7 +56,7 @@ export class SyncClient {
                 database: Partial<StoredDatabase>;
             }>
         >
-    ) {}
+    ) { }
 
     public get documentCount(): number {
         return this.database.length;
@@ -221,6 +221,7 @@ export class SyncClient {
             history,
             settings,
             database,
+            unrestrictedSyncer,
             syncer,
             webSocketManager,
             logger,
@@ -335,7 +336,6 @@ export class SyncClient {
         this.database.reset();
         await this.database.save(); // ensure the new database reads as empty
         this.resetInMemoryState();
-        this.hasStartedOfflineSync = false;
         this.hasFinishedOfflineSync = false;
         this.serverConfig.reset();
 
@@ -369,7 +369,9 @@ export class SyncClient {
         this.checkIfDestroyed("syncLocallyCreatedFile");
 
         this.fileChangeNotifier.notifyOfFileChange(relativePath);
-        return this.syncer.syncLocallyCreatedFile(relativePath);
+        return this.syncer.syncLocallyCreatedFile(relativePath, {
+            forceMerge: false
+        });
     }
 
     public async syncLocallyDeletedFile(
@@ -475,17 +477,15 @@ export class SyncClient {
 
         // warm the cache
         await this.serverConfig.getConfig();
-        this.webSocketManager.start();
 
-        if (!this.hasStartedOfflineSync) {
-            this.hasStartedOfflineSync = true;
-            await this.syncer.scheduleSyncForOfflineChanges();
-        }
+        await this.syncer.scheduleSyncForOfflineChanges();
+        this.webSocketManager.start();
 
         this.hasFinishedOfflineSync = true;
     }
 
     private async pause(): Promise<void> {
+        this.hasFinishedOfflineSync = false;
         this.fetchController.startReset();
         await this.webSocketManager.stop();
         await this.waitUntilFinished();
@@ -497,6 +497,7 @@ export class SyncClient {
         // don't reset the logger
         this.cursorTracker.reset();
         this.syncer.reset();
+        this.unrestrictedSyncer.reset();
         this.fileOperations.reset();
     }
 

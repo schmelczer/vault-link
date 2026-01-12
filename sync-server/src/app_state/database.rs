@@ -104,8 +104,8 @@ impl Database {
         let connection_options = SqliteConnectOptions::new()
             .filename(file_name.clone())
             .create_if_missing(true)
-            .auto_vacuum(sqlx::sqlite::SqliteAutoVacuum::Full)
-            .busy_timeout(Duration::from_secs(3600))
+            .auto_vacuum(sqlx::sqlite::SqliteAutoVacuum::Incremental)
+            .busy_timeout(Duration::from_secs(30))
             .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
             .log_slow_statements(log::LevelFilter::Warn, Duration::from_secs(30));
 
@@ -130,26 +130,30 @@ impl Database {
     }
 
     async fn get_connection_pool(&self, vault: &VaultId) -> Result<Pool<Sqlite>> {
-        let mut pools = self.connection_pools.lock().await;
-
-        if !pools.contains_key(vault) {
-            let pool = Self::create_vault_database(&self.config, vault).await?;
-            pools.insert(
-                vault.clone(),
-                PoolWithTimestamp {
-                    pool,
-                    last_accessed: Instant::now(),
-                },
-            );
+        // First, check if the pool exists without holding the lock during creation
+        {
+            let mut pools = self.connection_pools.lock().await;
+            if let Some(pool_with_timestamp) = pools.get_mut(vault) {
+                pool_with_timestamp.last_accessed = Instant::now();
+                return Ok(pool_with_timestamp.pool.clone());
+            }
         }
 
+        // Create the pool outside of the lock to avoid blocking other vaults
+        // Note: This may result in multiple pools being created for the same vault
+        // under high concurrency, but only one will be kept
+        let new_pool = Self::create_vault_database(&self.config, vault).await?;
+
+        // Re-acquire lock and insert (or use existing if another task created it)
+        let mut pools = self.connection_pools.lock().await;
         let pool_with_timestamp = pools
-            .get_mut(vault)
-            .expect("Pool was just inserted or already exists");
+            .entry(vault.clone())
+            .or_insert_with(|| PoolWithTimestamp {
+                pool: new_pool.clone(),
+                last_accessed: Instant::now(),
+            });
 
-        // Update last accessed time
         pool_with_timestamp.last_accessed = Instant::now();
-
         Ok(pool_with_timestamp.pool.clone())
     }
 

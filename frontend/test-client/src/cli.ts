@@ -1,5 +1,5 @@
 import type { SyncSettings } from "sync-client";
-import { utils } from "sync-client";
+import { utils, debugging, Logger } from "sync-client";
 import { MockAgent } from "./agent/mock-agent";
 import { sleep } from "./utils/sleep";
 import { v4 as uuidv4 } from "uuid";
@@ -12,6 +12,9 @@ let slowFileEvents = false;
 
 // Whether to do resets in the test runs
 let doResets = false;
+
+const logger = new Logger();
+debugging.logToConsole(logger);
 
 async function runTest({
     agentCount,
@@ -33,11 +36,13 @@ async function runTest({
     slowFileEvents = useSlowFileEvents;
     doResets = useResets;
 
+
+
     const settings = `with ${agentCount} agents, concurrency ${concurrency}, iterations ${iterations}, doDeletes ${doDeletes}, doResets ${useResets}, jitterScaleInSeconds ${jitterScaleInSeconds}, useSlowFileEvents ${useSlowFileEvents}`;
-    console.info(`Running test ${settings}`);
+    logger.info(`Running test ${settings}`);
 
     const vaultName = uuidv4();
-    console.info(`Using vault name: ${vaultName}`);
+    logger.info(`Using vault name: ${vaultName}`);
     const initialSettings: Partial<SyncSettings> = {
         isSyncEnabled: true,
         token: "   test-token-change-me     ", // same as in sync-server/config-e2e.yml with spaces
@@ -64,17 +69,17 @@ async function runTest({
         await utils.awaitAll(clients.map(async (client) => client.init()));
 
         for (let i = 0; i < iterations; i++) {
-            console.info(`Iteration ${i + 1}/${iterations}`);
+            logger.info(`Iteration ${i + 1}/${iterations}`);
             await utils.awaitAll(clients.map(async (client) => client.act()));
             await sleep(Math.random() * 200);
         }
 
-        console.info("Stopping agents");
+        logger.info("Stopping agents");
 
         // Each agent can have unpushed changes which might conflict with eachother so each has to resolve the conflicts & push, and
         for (const client of clients) {
             try {
-                console.info(`Finishing up ${client.name}`);
+                logger.info(`Finishing up ${client.name}`);
                 await client.finish();
             } catch (err) {
                 if (!slowFileEvents) {
@@ -86,7 +91,7 @@ async function runTest({
         // then we need a second pass to ensure that all agents pull the same state.
         for (const client of clients) {
             try {
-                console.info(`Destroying ${client.name}`);
+                logger.info(`Destroying ${client.name}`);
                 await client.destroy();
             } catch (err) {
                 if (!slowFileEvents) {
@@ -95,27 +100,27 @@ async function runTest({
             }
         }
 
-        console.info("Agents finished successfully");
+        logger.info("Agents finished successfully");
 
         clients.slice(0, -1).forEach((client, i) => {
-            console.info(
+            logger.info(
                 `Checking consistency between ${client.name} and ${clients[i + 1].name}`
             );
             client.assertFileSystemsAreConsistent(clients[i]);
-            console.info(`Consistency check for ${client.name} passed`);
+            logger.info(`Consistency check for ${client.name} passed`);
         });
 
-        console.info("File systems found to be consistent");
+        logger.info("File systems found to be consistent");
 
         clients.forEach((client) => {
-            console.info(`Checking content for ${client.name}`);
+            logger.info(`Checking content for ${client.name}`);
             client.assertAllContentIsPresentOnce();
-            console.info(`Content check for ${client.name} passed`);
+            logger.info(`Content check for ${client.name} passed`);
         });
 
-        console.info(`Test passed ${settings}`);
+        logger.info(`Test passed ${settings}`);
     } catch (err) {
-        console.error(`Test failed ${settings}`);
+        logger.error(`Test failed ${settings}`);
         throw err;
     }
 }
@@ -163,7 +168,7 @@ process.on("uncaughtException", (error) => {
         return;
     }
 
-    console.error("Uncaught exception:", error);
+    logger.error(`Error - uncaught exception: ${error}`);
     process.exit(1);
 });
 
@@ -191,7 +196,7 @@ process.on("unhandledRejection", (error, _promise) => {
         return;
     }
 
-    console.error("Unhandled rejection:", error);
+    logger.error(`Error - unhandled rejection: ${error}`);
     process.exit(1);
 });
 
@@ -199,7 +204,7 @@ runTests()
     .then(() => {
         process.exit(0);
     })
-    .catch((err: unknown) => {
-        console.error(err);
+    .catch((error: unknown) => {
+        logger.error(`Error - tests failed with ${error}`);
         process.exit(1);
     });

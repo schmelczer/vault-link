@@ -18,7 +18,7 @@ export class Locks<T> {
         [() => unknown, (err: unknown) => unknown][]
     >();
 
-    public constructor(private readonly logger?: Logger) {}
+    public constructor(private readonly logger?: Logger) { }
 
     /**
      * Executes a function while holding exclusive locks on one or more keys.
@@ -123,6 +123,18 @@ export class Locks<T> {
 
             waiting.push([resolve, reject]);
         });
+    }
+
+    /**
+     * Waits until a lock is released without acquiring it.
+     * Operations are queued in FIFO order.
+     *
+     * @param key The key to wait for
+     * @returns Promise that resolves when lock is released
+     */
+    public async waitForLockWithoutAcquiringLock(key: T): Promise<void> {
+        await this.waitForLock(key);
+        this.unlock(key);
     }
 
     /**
