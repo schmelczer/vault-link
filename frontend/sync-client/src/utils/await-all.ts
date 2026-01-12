@@ -9,7 +9,7 @@ type ResolvedTuple<T extends readonly unknown[]> = {
 export const awaitAll = async <T extends readonly unknown[]>(
     promises: PromiseTuple<T>
 ): Promise<ResolvedTuple<T>> => {
-    // eslint-disable-next-line no-restricted-properties
+    // eslint-disable-next-line no-restricted-properties, @typescript-eslint/await-thenable
     const result = await Promise.allSettled(promises);
     for (const res of result) {
         if (res.status === "rejected") {

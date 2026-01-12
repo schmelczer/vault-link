@@ -10,7 +10,7 @@ use sqlx::{ConnectOptions, sqlite::SqliteConnectOptions, types::chrono::Utc};
 
 pub mod models;
 use sqlx::{Pool, Sqlite, sqlite::SqlitePoolOptions};
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 use tokio::time::Instant;
 use uuid::fmt::Hyphenated;
 
@@ -39,7 +39,7 @@ impl std::fmt::Debug for PoolWithTimestamp {
 pub struct Database {
     config: DatabaseConfig,
     broadcasts: Broadcasts,
-    connection_pools: Arc<Mutex<HashMap<VaultId, PoolWithTimestamp>>>,
+    connection_pools: Arc<RwLock<HashMap<VaultId, PoolWithTimestamp>>>,
 }
 
 pub type Transaction<'a> = sqlx::Transaction<'a, Sqlite>;
@@ -79,10 +79,11 @@ impl Database {
                 },
             );
         }
+        info!("Database migrations applied");
 
         let database = Self {
             config: config.clone(),
-            connection_pools: Arc::new(Mutex::new(connection_pools)),
+            connection_pools: Arc::new(RwLock::new(connection_pools)),
             broadcasts: broadcasts.clone(),
         };
 
@@ -103,8 +104,8 @@ impl Database {
         let connection_options = SqliteConnectOptions::new()
             .filename(file_name.clone())
             .create_if_missing(true)
-            .auto_vacuum(sqlx::sqlite::SqliteAutoVacuum::Full)
-            .busy_timeout(Duration::from_secs(3600))
+            .auto_vacuum(sqlx::sqlite::SqliteAutoVacuum::Incremental)
+            .busy_timeout(Duration::from_secs(30))
             .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
             .log_slow_statements(log::LevelFilter::Warn, Duration::from_secs(30));
 
@@ -129,26 +130,31 @@ impl Database {
     }
 
     async fn get_connection_pool(&self, vault: &VaultId) -> Result<Pool<Sqlite>> {
-        let mut pools = self.connection_pools.lock().await;
-
-        if !pools.contains_key(vault) {
-            let pool = Self::create_vault_database(&self.config, vault).await?;
-            pools.insert(
-                vault.clone(),
-                PoolWithTimestamp {
-                    pool,
-                    last_accessed: Instant::now(),
-                },
-            );
+        // Fast path: check if pool exists with a read lock (no blocking other readers)
+        {
+            let pools = self.connection_pools.read().await;
+            if let Some(pool_with_timestamp) = pools.get(vault) {
+                // Skip updating last_accessed here - it's only used for idle cleanup
+                // and will be updated when the pool is created or reused after recreation
+                return Ok(pool_with_timestamp.pool.clone());
+            }
         }
 
+        // Create the pool outside of the lock to avoid blocking other vaults
+        // Note: This may result in multiple pools being created for the same vault
+        // under high concurrency, but only one will be kept
+        let new_pool = Self::create_vault_database(&self.config, vault).await?;
+
+        // Re-acquire lock (write) and insert (or use existing if another task created it)
+        let mut pools = self.connection_pools.write().await;
         let pool_with_timestamp = pools
-            .get_mut(vault)
-            .expect("Pool was just inserted or already exists");
+            .entry(vault.clone())
+            .or_insert_with(|| PoolWithTimestamp {
+                pool: new_pool.clone(),
+                last_accessed: Instant::now(),
+            });
 
-        // Update last accessed time
         pool_with_timestamp.last_accessed = Instant::now();
-
         Ok(pool_with_timestamp.pool.clone())
     }
 
@@ -301,7 +307,7 @@ impl Database {
         .context("Cannot fetch max update id in vault")
     }
 
-    pub async fn get_latest_document_by_path(
+    pub async fn get_latest_non_deleted_document_by_path(
         &self,
         vault: &VaultId,
         relative_path: &str,
@@ -475,22 +481,19 @@ impl Database {
         Ok(())
     }
 
-    /// Cleanup idle connection pools that haven't been accessed in more than 5 minutes
     async fn cleanup_idle_pools(&self) {
-        let mut pools = self.connection_pools.lock().await;
-        let now = Instant::now();
-        let idle_timeout = Duration::from_secs(5 * 60); // 5 minutes
+        use crate::consts::IDLE_POOL_TIMEOUT;
 
-        // Collect vaults to remove
+        let mut pools = self.connection_pools.write().await;
+        let now = Instant::now();
         let vaults_to_remove: Vec<VaultId> = pools
             .iter()
             .filter(|(_, pool_with_timestamp)| {
-                now.duration_since(pool_with_timestamp.last_accessed) > idle_timeout
+                now.duration_since(pool_with_timestamp.last_accessed) > IDLE_POOL_TIMEOUT
             })
             .map(|(vault_id, _)| vault_id.clone())
             .collect();
 
-        // Close and remove idle pools
         for vault_id in &vaults_to_remove {
             if let Some(pool_with_timestamp) = pools.remove(vault_id) {
                 info!("Closing idle database connection pool for vault `{vault_id}`");

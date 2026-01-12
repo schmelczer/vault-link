@@ -11,10 +11,11 @@ use super::{device_id_header::DeviceIdHeader, requests::CreateDocumentVersion};
 use crate::{
     app_state::{
         AppState,
-        database::models::{DocumentVersionWithoutContent, StoredDocumentVersion, VaultId},
+        database::models::{StoredDocumentVersion, VaultId},
     },
     config::user_config::User,
-    errors::{SyncServerError, client_error, server_error},
+    errors::{SyncServerError, server_error},
+    server::{responses::DocumentUpdateResponse, update_document::merge_with_stored_version},
     utils::{
         find_first_available_path::find_first_available_path, normalize::normalize,
         sanitize_path::sanitize_path,
@@ -37,7 +38,7 @@ pub async fn create_document(
     TypedHeader(device_id): TypedHeader<DeviceIdHeader>,
     State(state): State<AppState>,
     TypedMultipart(request): TypedMultipart<CreateDocumentVersion>,
-) -> Result<Json<DocumentVersionWithoutContent>, SyncServerError> {
+) -> Result<Json<DocumentUpdateResponse>, SyncServerError> {
     debug!("Creating document in vault `{vault_id}`");
 
     let mut transaction = state
@@ -46,24 +47,40 @@ pub async fn create_document(
         .await
         .map_err(server_error)?;
 
-    let document_id = match request.document_id {
-        Some(document_id) => {
-            let existing_version = state
-                .database
-                .get_latest_document(&vault_id, &document_id, Some(&mut transaction))
-                .await
-                .map_err(server_error)?;
+    let sanitized_relative_path = sanitize_path(&request.relative_path);
 
-            if existing_version.is_some() {
-                return Err(client_error(anyhow::anyhow!(
-                    "Document with the same ID `{document_id}` already exists"
-                )));
-            }
+    if request.force_merge.unwrap_or_default() {
+        let latest_version = state
+            .database
+            .get_latest_non_deleted_document_by_path(
+                &vault_id,
+                &sanitized_relative_path,
+                Some(&mut transaction),
+            )
+            .await
+            .map_err(server_error)?;
+        if let Some(latest_version) = latest_version {
+            info!(
+                "Document already exists at new location: `{sanitized_relative_path}` when trying to create it in vault `{vault_id}`, merging into existing document"
+            );
 
-            document_id
+            return merge_with_stored_version(
+                &sanitized_relative_path,
+                &Vec::new(),
+                latest_version,
+                vault_id,
+                user,
+                device_id,
+                state,
+                &sanitized_relative_path,
+                request.content.contents.to_vec(),
+                transaction,
+            )
+            .await;
         }
-        None => uuid::Uuid::new_v4(),
-    };
+    }
+
+    let document_id = uuid::Uuid::new_v4();
 
     let last_update_id = state
         .database
@@ -71,7 +88,6 @@ pub async fn create_document(
         .await
         .map_err(server_error)?;
 
-    let sanitized_relative_path = sanitize_path(&request.relative_path);
     let deduped_path = find_first_available_path(
         &vault_id,
         &sanitized_relative_path,
@@ -105,5 +121,7 @@ pub async fn create_document(
         .await
         .map_err(server_error)?;
 
-    Ok(Json(new_version.into()))
+    Ok(Json(DocumentUpdateResponse::FastForwardUpdate(
+        new_version.into(),
+    )))
 }

@@ -6,7 +6,10 @@ import type { CursorPositionFromClient } from "./types/CursorPositionFromClient"
 import type { ClientCursors } from "./types/ClientCursors";
 import { createPromise } from "../utils/create-promise";
 import type { WebSocketVaultUpdate } from "./types/WebSocketVaultUpdate";
-import { WEBSOCKET_DISCONNECT_TIMEOUT_IN_S } from "../consts";
+import {
+    WEBSOCKET_DISCONNECT_TIMEOUT_IN_SECONDS,
+    WEBSOCKET_CONNECTION_TIMEOUT_IN_SECONDS
+} from "../consts";
 import { removeFromArray } from "../utils/remove-from-array";
 import { EventListeners } from "../utils/data-structures/event-listeners";
 import { awaitAll } from "../utils/await-all";
@@ -27,32 +30,17 @@ export class WebSocketManager {
     private isStopped = true;
     private resolveDisconnectingPromise: null | (() => unknown) = null;
     private reconnectTimeoutId: ReturnType<typeof setTimeout> | undefined;
+    private connectionTimeoutId: ReturnType<typeof setTimeout> | undefined;
 
     private readonly outstandingPromises: Promise<unknown>[] = [];
 
     private webSocket: WebSocket | undefined;
-    private readonly webSocketFactoryImplementation: typeof globalThis.WebSocket;
 
     public constructor(
-        private readonly deviceId: string,
         private readonly logger: Logger,
         private readonly settings: Settings,
-        webSocketImplementation?: typeof globalThis.WebSocket
-    ) {
-        if (webSocketImplementation) {
-            this.webSocketFactoryImplementation = webSocketImplementation;
-        } else {
-            if (
-                typeof globalThis !== "undefined" &&
-                typeof globalThis.WebSocket === "undefined"
-            ) {
-                // eslint-disable-next-line
-                this.webSocketFactoryImplementation = require("ws"); // polyfill for WebSocket in Node.js
-            } else {
-                this.webSocketFactoryImplementation = WebSocket;
-            }
-        }
-    }
+        private readonly webSocketFactoryImplementation: typeof globalThis.WebSocket = WebSocket
+    ) {}
 
     public get isWebSocketConnected(): boolean {
         return (
@@ -77,6 +65,11 @@ export class WebSocketManager {
             this.reconnectTimeoutId = undefined;
         }
 
+        if (this.connectionTimeoutId !== undefined) {
+            clearTimeout(this.connectionTimeoutId);
+            this.connectionTimeoutId = undefined;
+        }
+
         this.webSocket?.close(1000, "WebSocketManager has been stopped");
 
         // eslint-disable-next-line @typescript-eslint/init-declarations
@@ -85,10 +78,10 @@ export class WebSocketManager {
             timeoutId = setTimeout(() => {
                 reject(
                     new Error(
-                        `Timeout waiting for WebSocket to close after ${WEBSOCKET_DISCONNECT_TIMEOUT_IN_S} seconds`
+                        `Timeout waiting for WebSocket to close after ${WEBSOCKET_DISCONNECT_TIMEOUT_IN_SECONDS} seconds`
                     )
                 );
-            }, WEBSOCKET_DISCONNECT_TIMEOUT_IN_S * 1000);
+            }, WEBSOCKET_DISCONNECT_TIMEOUT_IN_SECONDS * 1000);
         });
 
         try {
@@ -171,7 +164,10 @@ export class WebSocketManager {
                 this.webSocket.onclose = null;
                 this.webSocket.onmessage = null;
                 this.webSocket.onerror = null;
-                this.webSocket.close();
+                this.webSocket.close(
+                    1000,
+                    "Closing previous WebSocket connection"
+                );
             } catch (e) {
                 this.logger.error(
                     `Failed to close previous WebSocket connection: ${e}`
@@ -187,7 +183,22 @@ export class WebSocketManager {
 
         this.webSocket = new this.webSocketFactoryImplementation(wsUri);
 
+        // Set connection timeout to handle cases where server is down and the WebSocket connection won't open
+        this.connectionTimeoutId = setTimeout(() => {
+            this.connectionTimeoutId = undefined;
+            this.logger.warn(
+                `WebSocket connection timeout after ${WEBSOCKET_CONNECTION_TIMEOUT_IN_SECONDS} seconds`
+            );
+            // Force close to trigger onclose handler which will schedule reconnection
+            this.webSocket?.close(1000, "Connection timeout");
+        }, WEBSOCKET_CONNECTION_TIMEOUT_IN_SECONDS * 1000);
+
         this.webSocket.onopen = (): void => {
+            if (this.connectionTimeoutId !== undefined) {
+                clearTimeout(this.connectionTimeoutId);
+                this.connectionTimeoutId = undefined;
+            }
+
             // Check if we've been stopped while connecting
             if (this.isStopped) {
                 this.webSocket?.close(
@@ -231,7 +242,18 @@ export class WebSocketManager {
             }
         };
 
+        this.webSocket.onerror = (error): void => {
+            this.logger.warn(
+                `WebSocket error occurred: ${error instanceof ErrorEvent ? error.message : "Unknown error"}`
+            );
+        };
+
         this.webSocket.onclose = (event): void => {
+            if (this.connectionTimeoutId !== undefined) {
+                clearTimeout(this.connectionTimeoutId);
+                this.connectionTimeoutId = undefined;
+            }
+
             this.logger.warn(
                 `WebSocket closed with code ${event.code} (${event.reason == "" ? "unknown reason" : event.reason})`
             );
@@ -241,10 +263,13 @@ export class WebSocketManager {
                 this.resolveDisconnectingPromise?.();
                 this.resolveDisconnectingPromise = null;
             } else {
+                const delay =
+                    this.settings.getSettings().webSocketRetryIntervalMs;
+                this.logger.info(`Reconnecting to WebSocket in ${delay}ms...`);
                 this.reconnectTimeoutId = setTimeout(() => {
                     this.reconnectTimeoutId = undefined;
                     this.initializeWebSocket();
-                }, this.settings.getSettings().webSocketRetryIntervalMs);
+                }, delay);
             }
         };
     }

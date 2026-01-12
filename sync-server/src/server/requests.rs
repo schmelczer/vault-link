@@ -4,17 +4,15 @@ use reconcile_text::NumberOrText;
 use serde::{self, Deserialize};
 use ts_rs::TS;
 
-use crate::app_state::database::models::{DocumentId, VaultUpdateId};
+use crate::app_state::database::models::VaultUpdateId;
 
 #[derive(TS, Debug, TryFromMultipart)]
 #[ts(export)]
 pub struct CreateDocumentVersion {
-    /// The client can decide the document id (if it wishes to) in order
-    /// to help with syncing. If the client does not provide a document id,
-    /// the server will generate one. If the client provides a document id
-    /// it must not already exist in the database.
-    pub document_id: Option<DocumentId>,
     pub relative_path: String,
+
+    // whether to merge with existing document at the same path if it already exists
+    pub force_merge: Option<bool>,
 
     #[ts(as = "Vec<u8>")]
     #[form_data(limit = "unlimited")]

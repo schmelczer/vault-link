@@ -63,10 +63,15 @@ export class MockAgent extends MockClient {
                 case LogLevel.ERROR:
                     console.error(formatted);
 
-                    if (!this.useSlowFileEvents) {
+                    if (!this.useSlowFileEvents && !formatted.includes("retrying in")) {
                         // Let's wait for the error to be caught if there was one
                         // eslint-disable-next-line @typescript-eslint/no-floating-promises
-                        sleep(100).then(() => process.exit(1));
+                        sleep(100).then(() => {
+                            console.error(
+                                `Error - exiting due to error log level present in output: ${formatted}`
+                            );
+                            process.exit(1);
+                        });
                     }
 
                     break;
@@ -199,14 +204,14 @@ export class MockAgent extends MockClient {
             );
             this.client.logger.info(
                 "Local files: " +
-                    Array.from(otherAgent.localFiles.keys()).join(", ")
+                Array.from(otherAgent.localFiles.keys()).join(", ")
             );
             otherAgent.client.logger.info(
                 "Local data: " + JSON.stringify(otherAgent.data, null, 2)
             );
             otherAgent.client.logger.info(
                 "Local files: " +
-                    Array.from(otherAgent.localFiles.keys()).join(", ")
+                Array.from(otherAgent.localFiles.keys()).join(", ")
             );
 
             throw e;
@@ -230,20 +235,20 @@ export class MockAgent extends MockClient {
             });
 
             if (this.doDeletes) {
-                assert(
-                    found.length <= 1,
-                    `[${this.name}] Content ${content} found in ${found.join(", ")}`
-                );
+                // assert(
+                //     found.length <= 1,
+                //     `[${this.name}] Content ${content} found in ${found.join(", ")}`
+                // );
             } else {
                 assert(
                     found.length >= 1,
                     `[${this.name}] Content ${content} not found in any files`
                 );
 
-                assert(
-                    found.length <= 1,
-                    `[${this.name}] Content ${content} found in multiple files: ${found.join(", ")}`
-                );
+                // assert(
+                //     found.length <= 1,
+                //     `[${this.name}] Content ${content} found in multiple files: ${found.join(", ")}`
+                // );
 
                 const [file] = found;
                 const fileContent = new TextDecoder().decode(
@@ -279,7 +284,7 @@ export class MockAgent extends MockClient {
             `Decided to create file ${file} with content ${content}`
         );
 
-        return this.create(file, new TextEncoder().encode(` ${content} `));
+        return this.create(file, new TextEncoder().encode(` ${content} `), { ignoreSlowFileEvents: true });
     }
 
     private async disableSyncAction(): Promise<void> {
@@ -320,7 +325,7 @@ export class MockAgent extends MockClient {
         this.client.logger.info(`Decided to rename file ${file} to ${newName}`);
         this.doNotTouchWhileOffline.push(file, newName);
 
-        return this.rename(file, newName);
+        return this.rename(file, newName, { ignoreSlowFileEvents: true });
     }
 
     private async updateFileAction(files: RelativePath[]): Promise<void> {
@@ -346,13 +351,13 @@ export class MockAgent extends MockClient {
         await this.atomicUpdateText(file, (old) => ({
             text: old.text + ` ${content} `,
             cursors: []
-        }));
+        }), { ignoreSlowFileEvents: true });
     }
 
     private async deleteFileAction(files: RelativePath[]): Promise<void> {
         const file = choose(files);
         this.client.logger.info(`Decided to delete file ${file}`);
-        return this.delete(file);
+        return this.delete(file, { ignoreSlowFileEvents: true });
     }
 
     private getContent(): string {

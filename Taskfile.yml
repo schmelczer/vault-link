@@ -1,0 +1,96 @@
+version: "3"
+
+vars:
+  NODE_VERSION: "25"
+
+includes:
+  rust:
+    taskfile: ./taskfiles/rust.yml
+    dir: ./sync-server
+  frontend:
+    taskfile: ./taskfiles/frontend.yml
+    dir: ./frontend
+  db:
+    taskfile: ./taskfiles/database.yml
+    dir: ./sync-server
+  e2e:
+    taskfile: ./taskfiles/e2e.yml
+  docs:
+    taskfile: ./taskfiles/docs.yml
+    dir: ./docs
+  release:
+    taskfile: ./taskfiles/release.yml
+
+tasks:
+  check:
+    desc: Run all checks (lint, test, format)
+    cmds:
+      - task: check-node
+      - task: db:setup
+      - task: rust:test
+      - task: rust:lint
+      - task: update-api-types
+      - task: frontend:install
+      - task: frontend:build
+      - task: frontend:test
+      - task: frontend:lint
+      - task: format
+      - task: check-clean
+
+  check:fix:
+    desc: Run all checks with auto-fix enabled
+    cmds:
+      - task: check-node
+      - task: db:setup
+      - task: rust:test
+      - task: rust:lint-fix
+      - task: update-api-types
+      - task: frontend:install
+      - task: frontend:build
+      - task: frontend:test
+      - task: frontend:lint
+      - task: format
+
+  check-node:
+    internal: true
+    silent: true
+    preconditions:
+      - sh: node -v | grep -q "^v{{.NODE_VERSION}}"
+        msg: "Node.js {{.NODE_VERSION}} required (found: $(node -v))"
+    cmds:
+      - echo "Node.js {{.NODE_VERSION}} confirmed"
+
+  check-clean:
+    internal: true
+    preconditions:
+      - sh: test -z "$(git status --porcelain)"
+        msg: |
+          Working directory not clean after linting:
+          $(git status --porcelain)
+
+  format:
+    desc: Format all files with Prettier
+    dir: "{{.ROOT_DIR}}"
+    cmds:
+      - npx -C frontend prettier --write "**/*.{ts,js,json,md,yml,yaml}"
+
+  update-api-types:
+    desc: Update TypeScript bindings from Rust types
+    cmds:
+      - rm -rf sync-server/bindings
+      - task: rust:export-bindings
+      - cp -r sync-server/bindings/* frontend/sync-client/src/services/types/
+      - cd frontend && npm run lint
+      - task: format
+
+  clean:
+    desc: Clean up logs and databases
+    cmds:
+      - rm -rf sync-server/databases logs
+
+  e2e:
+    desc: Run E2E tests (usage - task e2e -- 8)
+    cmds:
+      - task: e2e:run
+        vars:
+          PROCESS_COUNT: "{{.CLI_ARGS}}"

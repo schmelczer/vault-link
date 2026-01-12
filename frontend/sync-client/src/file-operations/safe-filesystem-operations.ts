@@ -2,7 +2,7 @@ import type { RelativePath } from "../persistence/database";
 import type { FileSystemOperations } from "./filesystem-operations";
 import type { Logger } from "../tracing/logger";
 import { Locks } from "../utils/data-structures/locks";
-import { FileNotFoundError } from "./file-not-found-error";
+import { FileNotFoundError } from "../errors/file-not-found-error";
 import type { TextWithCursors } from "reconcile-text";
 
 /**
@@ -135,10 +135,10 @@ export class SafeFileSystemOperations implements FileSystemOperations {
     }
 
     /**
-    * Decorate an operation to ensure that the file exists before running it.
-    * If the operation fails, it will check if the file still exists and throw
-    * a FileNotFoundError if it doesn't.
-    */
+     * Decorate an operation to ensure that the file exists before running it.
+     * If the operation fails, it will check if the file still exists and throw
+     * a FileNotFoundError if it doesn't.
+     */
     private async safeOperation<T>(
         path: RelativePath,
         operation: () => Promise<T>,

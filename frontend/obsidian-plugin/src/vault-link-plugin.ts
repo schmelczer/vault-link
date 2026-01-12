@@ -142,7 +142,7 @@ export default class VaultLinkPlugin extends Plugin {
         });
 
         if (IS_DEBUG_BUILD) {
-            debugging.logToConsole(client);
+            debugging.logToConsole(client.logger);
         }
 
         return client;

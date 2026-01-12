@@ -8,12 +8,12 @@
 
 ## Develop
 
-### Install [nvm](https://github.com/nvm-sh/nvm)
+### Set up Node.JS 25 with [nvm](https://github.com/nvm-sh/nvm)
 
 - `curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash`
-- `nvm install 22`
-- `nvm use 22`
-- Optionally set the system-wide default: `nvm alias default 22`
+- `nvm install 25`
+- `nvm use 25`
+- Optionally, set the system-wide default: `nvm alias default 25`
 
 ### Set up Rust
 
@@ -77,3 +77,10 @@ And to clean up the logs & database files, run `scripts/clean-up.sh`
 ## Projects
 
 - [Sync server](./sync-server/README.md)
+
+
+
+
+
+
+a create that has been processed by the server but got lost on the way back will create a 2nd doc if it gets edited

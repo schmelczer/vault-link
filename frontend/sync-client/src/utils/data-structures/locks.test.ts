@@ -5,7 +5,7 @@ import type { RelativePath } from "../../persistence/database";
 import { Locks } from "./locks";
 import { awaitAll } from "../await-all";
 import { sleep } from "../sleep";
-import { SyncResetError } from "../../services/sync-reset-error";
+import { SyncResetError } from "../../errors/sync-reset-error";
 
 describe("withLock", () => {
     const testPath: RelativePath = "test/document/path";

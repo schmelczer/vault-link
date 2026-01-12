@@ -47,24 +47,24 @@ vaultlink \
 
 ### Required
 
-| Option | Description |
-|--------|-------------|
-| `-l, --local-path <path>` | Local directory to sync |
-| `-r, --remote-uri <uri>` | Remote server WebSocket URI (ws:// or wss://) |
-| `-t, --token <token>` | Authentication token |
-| `-v, --vault-name <name>` | Vault name on server |
+| Option                    | Description                                   |
+| ------------------------- | --------------------------------------------- |
+| `-l, --local-path <path>` | Local directory to sync                       |
+| `-r, --remote-uri <uri>`  | Remote server WebSocket URI (ws:// or wss://) |
+| `-t, --token <token>`     | Authentication token                          |
+| `-v, --vault-name <name>` | Vault name on server                          |
 
 ### Optional
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--sync-concurrency <number>` | `1` | Concurrent sync operations |
-| `--max-file-size-mb <number>` | `10` | Maximum file size in MB |
-| `--ignore-pattern <pattern>` | - | Glob pattern to ignore (repeatable) |
-| `--websocket-retry-interval-ms <ms>` | `3500` | WebSocket reconnection interval |
-| `--log-level <level>` | `INFO` | Log level: DEBUG, INFO, WARNING, ERROR |
-| `-h, --help` | - | Show help |
-| `-V, --version` | - | Show version |
+| Option                               | Default | Description                            |
+| ------------------------------------ | ------- | -------------------------------------- |
+| `--sync-concurrency <number>`        | `1`     | Concurrent sync operations             |
+| `--max-file-size-mb <number>`        | `10`    | Maximum file size in MB                |
+| `--ignore-pattern <pattern>`         | -       | Glob pattern to ignore (repeatable)    |
+| `--websocket-retry-interval-ms <ms>` | `3500`  | WebSocket reconnection interval        |
+| `--log-level <level>`                | `INFO`  | Log level: DEBUG, INFO, WARNING, ERROR |
+| `-h, --help`                         | -       | Show help                              |
+| `-V, --version`                      | -       | Show version                           |
 
 ### Auto-Ignored Patterns
 
@@ -74,11 +74,13 @@ vaultlink \
 ### Examples
 
 Basic usage:
+
 ```bash
 vaultlink -l ./vault -r wss://sync.example.com -t token123 -v default
 ```
 
 With ignore patterns:
+
 ```bash
 vaultlink -l ./vault -r wss://sync.example.com -t token123 -v default \
   --ignore-pattern "*.tmp" \
@@ -87,6 +89,7 @@ vaultlink -l ./vault -r wss://sync.example.com -t token123 -v default \
 ```
 
 With debug logging:
+
 ```bash
 vaultlink -l ./vault -r wss://sync.example.com -t token123 -v default \
   --log-level DEBUG
@@ -176,6 +179,7 @@ services:
 ## Development
 
 Build:
+
 ```bash
 npm run build
 # or from the parent folder, run
@@ -183,11 +187,13 @@ docker build -f local-client-cli/Dockerfile  .
 ```
 
 Test:
+
 ```bash
 npm test
 ```
 
 Docker build:
+
 ```bash
 cd frontend
 docker build -f local-client-cli/Dockerfile -t vault-link-cli:test .

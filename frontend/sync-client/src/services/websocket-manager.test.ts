@@ -4,8 +4,6 @@ import assert from "node:assert";
 import { WebSocketManager } from "./websocket-manager";
 import type { Logger } from "../tracing/logger";
 import type { Settings } from "../persistence/settings";
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const WebSocket = require("ws") as typeof globalThis.WebSocket;
 
 class MockCloseEvent extends Event {
     public code: number;
@@ -91,10 +89,8 @@ function createMockFn<T extends (...args: unknown[]) => unknown>(
 describe("WebSocketManager", () => {
     let mockLogger: Logger = undefined as unknown as Logger;
     let mockSettings: Settings = undefined as unknown as Settings;
-    let deviceId = "test-device-123";
 
     beforeEach(() => {
-        deviceId = "test-device-123";
         const noop = (): void => {
             // Intentionally empty for mock
         };
@@ -116,7 +112,6 @@ describe("WebSocketManager", () => {
 
     it("cleans up promises after message handling", async () => {
         const manager = new WebSocketManager(
-            deviceId,
             mockLogger,
             mockSettings,
             MockWebSocket as unknown as typeof WebSocket
@@ -146,7 +141,6 @@ describe("WebSocketManager", () => {
 
     it("cleans up cursor position promises", async () => {
         const manager = new WebSocketManager(
-            deviceId,
             mockLogger,
             mockSettings,
             MockWebSocket as unknown as typeof WebSocket
@@ -176,7 +170,6 @@ describe("WebSocketManager", () => {
 
     it("logs handshake send errors", async () => {
         const manager = new WebSocketManager(
-            deviceId,
             mockLogger,
             mockSettings,
             MockWebSocket as unknown as typeof WebSocket
@@ -205,7 +198,6 @@ describe("WebSocketManager", () => {
 
     it("completes stop with timeout protection", async () => {
         const manager = new WebSocketManager(
-            deviceId,
             mockLogger,
             mockSettings,
             MockWebSocket as unknown as typeof WebSocket
@@ -220,7 +212,6 @@ describe("WebSocketManager", () => {
 
     it("clears old handlers on reconnection", async () => {
         const manager = new WebSocketManager(
-            deviceId,
             mockLogger,
             mockSettings,
             MockWebSocket as unknown as typeof WebSocket
@@ -257,7 +248,6 @@ describe("WebSocketManager", () => {
 
     it("tracks message handling promises", async () => {
         const manager = new WebSocketManager(
-            deviceId,
             mockLogger,
             mockSettings,
             MockWebSocket as unknown as typeof WebSocket

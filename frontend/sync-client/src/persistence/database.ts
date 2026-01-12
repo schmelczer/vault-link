@@ -9,6 +9,7 @@ export type DocumentId = string;
 export type RelativePath = string;
 
 export interface DocumentMetadata {
+    documentId: DocumentId;
     parentVersionId: VaultUpdateId;
     hash: string;
     remoteRelativePath?: RelativePath;
@@ -25,7 +26,6 @@ export interface StoredDocumentMetadata {
 export interface StoredDatabase {
     documents: StoredDocumentMetadata[];
     lastSeenUpdateId: VaultUpdateId | undefined;
-    hasInitialSyncCompleted: boolean;
 }
 
 /**
@@ -36,7 +36,6 @@ export interface StoredDatabase {
  */
 export interface DocumentRecord {
     relativePath: RelativePath;
-    documentId: DocumentId;
     metadata: DocumentMetadata | undefined;
     isDeleted: boolean;
     updates: Promise<unknown>[];
@@ -46,7 +45,6 @@ export interface DocumentRecord {
 export class Database {
     private documents: DocumentRecord[];
     private lastSeenUpdateIds: CoveredValues;
-    private hasInitialSyncCompleted: boolean;
 
     public constructor(
         private readonly logger: Logger,
@@ -56,16 +54,13 @@ export class Database {
         initialState ??= {};
 
         this.documents =
-            initialState.documents?.map(
-                ({ relativePath, documentId, ...metadata }) => ({
-                    relativePath,
-                    documentId,
-                    metadata,
-                    isDeleted: false,
-                    updates: [],
-                    parallelVersion: 0
-                })
-            ) ?? [];
+            initialState.documents?.map(({ relativePath, ...metadata }) => ({
+                relativePath,
+                metadata,
+                isDeleted: false,
+                updates: [],
+                parallelVersion: 0
+            })) ?? [];
 
         this.ensureConsistency();
         this.logger.debug(`Loaded ${this.documents.length} documents`);
@@ -79,12 +74,6 @@ export class Database {
         this.documents.forEach((doc) => {
             this.lastSeenUpdateIds.add(doc.metadata?.parentVersionId);
         });
-
-        this.hasInitialSyncCompleted =
-            initialState.hasInitialSyncCompleted ?? false;
-        this.logger.debug(
-            `Loaded hasInitialSyncCompleted: ${this.hasInitialSyncCompleted}`
-        );
     }
 
     public get length(): number {
@@ -127,6 +116,7 @@ export class Database {
 
     public updateDocumentMetadata(
         metadata: {
+            documentId: DocumentId;
             parentVersionId: VaultUpdateId;
             hash: string;
             remoteRelativePath: RelativePath;
@@ -180,7 +170,7 @@ export class Database {
 
         if (entry === undefined) {
             throw new Error(
-                `Document not found by relative path: ${relativePath}, ${JSON.stringify(
+                `Document not found by relative path in getResolvedDocumentByRelativePath: ${relativePath}, ${JSON.stringify(
                     this.documents,
                     null,
                     2
@@ -196,19 +186,15 @@ export class Database {
     }
 
     public createNewPendingDocument(
-        documentId: DocumentId,
         relativePath: RelativePath,
         promise: Promise<unknown>
     ): DocumentRecord {
-        this.logger.debug(
-            `Creating new pending document: ${relativePath} (${documentId})`
-        );
+        this.logger.debug(`Creating new pending document: ${relativePath}`);
         const previousEntry =
             this.getLatestDocumentByRelativePath(relativePath);
 
         const entry = {
             relativePath,
-            documentId,
             metadata: undefined,
             isDeleted: false,
             updates: [promise],
@@ -231,8 +217,8 @@ export class Database {
     ): DocumentRecord {
         const entry = {
             relativePath,
-            documentId,
             metadata: {
+                documentId,
                 parentVersionId,
                 hash: EMPTY_HASH,
                 remoteRelativePath: relativePath
@@ -251,7 +237,9 @@ export class Database {
     public getDocumentByDocumentId(
         find: DocumentId
     ): DocumentRecord | undefined {
-        return this.documents.find(({ documentId }) => documentId === find);
+        return this.documents.find(
+            ({ metadata }) => metadata?.documentId === find
+        );
     }
 
     public move(
@@ -274,7 +262,7 @@ export class Database {
         }
 
         oldDocument.relativePath = newRelativePath;
-        // We're in a strange state where the target of the move has just got deleted,
+        // We might be in a strange state where the target of the move has just got deleted,
         // however, its metadata might already have a bunch of updates queued up for
         // the document at the new location. We need to keep these updates.
         oldDocument.parallelVersion =
@@ -287,19 +275,14 @@ export class Database {
         const candidate = this.getLatestDocumentByRelativePath(relativePath);
         if (candidate === undefined) {
             throw new Error(
-                `Document not found by relative path: ${relativePath}`
+                `Document not found by relative path in delete: ${relativePath}, ${JSON.stringify(
+                    this.documents,
+                    null,
+                    2
+                )}`
             );
         }
         candidate.isDeleted = true;
-    }
-
-    public getHasInitialSyncCompleted(): boolean {
-        return this.hasInitialSyncCompleted;
-    }
-
-    public setHasInitialSyncCompleted(value: boolean): void {
-        this.hasInitialSyncCompleted = value;
-        this.saveInTheBackground();
     }
 
     public getLastSeenUpdateId(): VaultUpdateId {
@@ -324,43 +307,50 @@ export class Database {
         this.lastSeenUpdateIds = new CoveredValues(
             0 // the first updateId will be 1 which is the first integer after -1
         );
-        this.hasInitialSyncCompleted = false;
         this.saveInTheBackground();
     }
 
     public async save(): Promise<void> {
         return this.saveData({
             documents: this.resolvedDocuments.map(
-                ({ relativePath, documentId, metadata }) => ({
-                    documentId,
+                ({ relativePath, metadata }) => ({
                     relativePath,
                     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
                     ...metadata! // `resolvedDocuments` only returns docs with metadata set
                 })
             ),
-            lastSeenUpdateId: this.lastSeenUpdateIds.min,
-            hasInitialSyncCompleted: this.hasInitialSyncCompleted
+            lastSeenUpdateId: this.lastSeenUpdateIds.min
         });
     }
 
     private ensureConsistency(): void {
         const idToPath = new Map<string, string[]>();
 
-        this.resolvedDocuments.forEach(({ relativePath, documentId }) => {
-            idToPath.set(documentId, [
-                ...(idToPath.get(documentId) ?? []),
+        this.resolvedDocuments.forEach(({ relativePath, metadata }) => {
+            if (metadata === undefined) {
+                return;
+            }
+            idToPath.set(metadata.documentId, [
+                ...(idToPath.get(metadata.documentId) ?? []),
                 relativePath
             ]);
         });
 
         const duplicates = Array.from(idToPath.entries())
             .filter(([_, paths]) => paths.length > 1)
-            .map(([id, paths]) => `${id} (${paths.join(", ")})`);
+            .map(([id, paths]) => {
+                let details = "";
+                for (const path of paths) {
+                    const doc = this.getLatestDocumentByRelativePath(path);
+                    details += `\n- ${JSON.stringify(doc, null, 2)}`;
+                }
+                return `${id} (${paths.join(", ")}): ${details}`;
+            });
 
         if (duplicates.length > 0) {
             throw new Error(
                 "Document IDs are not unique, found duplicates: " +
-                    duplicates.join("; ")
+                duplicates.join("; ")
             );
         }
     }

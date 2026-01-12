@@ -46,7 +46,7 @@ module.exports = (env, argv) => ({
                     const source = path.resolve(__dirname, "dist");
                     const destinations = [
                         "/volumes/syncthing/Desktop/test/test/.obsidian/plugins/vault-link",
-                        "/volumes/syncthing/Desktop/test/test2/.obsidian/plugins/vault-link",
+                        "/volumes/syncthing/Desktop/test/test2/.obsidian/plugins/vault-link"
                         // "/home/andras/obsidian-test/.obsidian/plugins/vault-link"
                     ];
                     destinations.forEach((destination) => {

@@ -361,11 +361,11 @@ VALUES (?, ?, ?);
 
 ```json
 {
-  "type": "upload_file",
-  "path": "notes/example.md",
-  "content": "File content here...",
-  "base_version": 10,
-  "timestamp": "2024-01-01T12:00:00Z"
+    "type": "upload_file",
+    "path": "notes/example.md",
+    "content": "File content here...",
+    "base_version": 10,
+    "timestamp": "2024-01-01T12:00:00Z"
 }
 ```
 
@@ -373,8 +373,8 @@ VALUES (?, ?, ?);
 
 ```json
 {
-  "type": "download_file",
-  "path": "notes/example.md"
+    "type": "download_file",
+    "path": "notes/example.md"
 }
 ```
 
@@ -382,8 +382,8 @@ VALUES (?, ?, ?);
 
 ```json
 {
-  "type": "delete_file",
-  "path": "notes/old.md"
+    "type": "delete_file",
+    "path": "notes/old.md"
 }
 ```
 
@@ -391,8 +391,8 @@ VALUES (?, ?, ?);
 
 ```json
 {
-  "type": "list_files",
-  "since_version": 0
+    "type": "list_files",
+    "since_version": 0
 }
 ```
 
@@ -402,11 +402,11 @@ VALUES (?, ?, ?);
 
 ```json
 {
-  "type": "file_updated",
-  "path": "notes/example.md",
-  "version": 11,
-  "size": 1024,
-  "hash": "abc123..."
+    "type": "file_updated",
+    "path": "notes/example.md",
+    "version": 11,
+    "size": 1024,
+    "hash": "abc123..."
 }
 ```
 
@@ -414,10 +414,10 @@ VALUES (?, ?, ?);
 
 ```json
 {
-  "type": "file_content",
-  "path": "notes/example.md",
-  "content": "Updated content...",
-  "version": 11
+    "type": "file_content",
+    "path": "notes/example.md",
+    "content": "Updated content...",
+    "version": 11
 }
 ```
 
@@ -425,9 +425,9 @@ VALUES (?, ?, ?);
 
 ```json
 {
-  "type": "file_deleted",
-  "path": "notes/old.md",
-  "version": 12
+    "type": "file_deleted",
+    "path": "notes/old.md",
+    "version": 12
 }
 ```
 
@@ -435,9 +435,9 @@ VALUES (?, ?, ?);
 
 ```json
 {
-  "type": "sync_complete",
-  "total_files": 150,
-  "current_version": 200
+    "type": "sync_complete",
+    "total_files": 150,
+    "current_version": 200
 }
 ```
 
@@ -445,9 +445,9 @@ VALUES (?, ?, ?);
 
 ```json
 {
-  "type": "error",
-  "message": "File too large",
-  "code": "FILE_TOO_LARGE"
+    "type": "error",
+    "message": "File too large",
+    "code": "FILE_TOO_LARGE"
 }
 ```
 

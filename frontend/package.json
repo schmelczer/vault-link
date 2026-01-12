@@ -11,7 +11,19 @@
         "trailingComma": "none",
         "tabWidth": 4,
         "useTabs": false,
-        "endOfLine": "lf"
+        "endOfLine": "lf",
+        "overrides": [
+            {
+                "files": [
+                    "*.yml",
+                    "*.yaml",
+                    "*.md"
+                ],
+                "options": {
+                    "tabWidth": 2
+                }
+            }
+        ]
     },
     "scripts": {
         "build": "npm run build --workspaces",
@@ -22,11 +34,10 @@
     },
     "devDependencies": {
         "concurrently": "^9.2.1",
-        "eclint": "^2.8.1",
-        "eslint": "9.38.0",
-        "eslint-plugin-unused-imports": "^4.1.4",
-        "npm-check-updates": "^19.1.1",
-        "prettier": "^3.6.2",
-        "typescript-eslint": "8.41.0"
+        "eslint": "9.39.2",
+        "eslint-plugin-unused-imports": "^4.3.0",
+        "npm-check-updates": "^19.2.0",
+        "prettier": "^3.7.4",
+        "typescript-eslint": "8.49.0"
     }
 }
