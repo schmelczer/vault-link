@@ -1,0 +1,41 @@
+version: "3"
+
+tasks:
+  install:
+    desc: Install frontend dependencies
+    run: once
+    cmds:
+      - npm ci
+
+  build:
+    desc: Build all frontend workspaces
+    deps: [install]
+    cmds:
+      - npm run build
+
+  test:
+    desc: Run all frontend tests
+    cmds:
+      - npm run test
+
+  lint:
+    desc: Lint and format TypeScript code
+    cmds:
+      - npm run lint
+
+  dev:
+    desc: Start development mode
+    cmds:
+      - npm run dev
+
+  workspace:
+    desc: Run npm script in specific workspace
+    summary: |
+      Run any npm script in a specific workspace.
+
+      Usage: task frontend:workspace WORKSPACE=<name> SCRIPT=<script>
+      Example: task frontend:workspace WORKSPACE=sync-client SCRIPT=build
+    requires:
+      vars: [WORKSPACE, SCRIPT]
+    cmds:
+      - npm run {{.SCRIPT}} -w {{.WORKSPACE}}

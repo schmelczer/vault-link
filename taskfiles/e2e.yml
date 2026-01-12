@@ -1,0 +1,134 @@
+version: "3"
+
+vars:
+  SERVER_URL: "http://localhost:3000"
+  MAX_RETRIES: 30
+  RETRY_INTERVAL: 5
+  LOG_DIR: "{{.ROOT_DIR}}/logs"
+
+tasks:
+  run:
+    desc: Run E2E tests with specified number of processes
+    summary: |
+      Runs multiple concurrent test clients against the sync server.
+      Each client performs random file operations to test synchronization.
+
+      Usage: task e2e -- <process_count>
+      Example: task e2e -- 8
+    deps: [prepare]
+    requires:
+      vars: [PROCESS_COUNT]
+    preconditions:
+      - sh: test "{{.PROCESS_COUNT}}" -ge 1 2>/dev/null
+        msg: "PROCESS_COUNT must be a positive integer (got: {{.PROCESS_COUNT}})"
+    dir: "{{.ROOT_DIR}}"
+    env:
+      NO_COLOR: "1"
+      FORCE_COLOR: "0"
+    cmds:
+      - task: wait-for-server
+      - task: setup-logs
+      - defer: { task: cleanup-pipes }
+      - task: spawn-clients
+
+  prepare:
+    desc: Build frontend for E2E tests
+    internal: true
+    dir: "{{.ROOT_DIR}}"
+    cmds:
+      - task: :check-node
+      - task: :frontend:build
+
+  wait-for-server:
+    desc: Wait for server to become available
+    internal: true
+    silent: true
+    cmds:
+      - for: { var: ATTEMPTS, split: "\n" }
+        cmd: |
+          if curl -s -f -o /dev/null {{.SERVER_URL}}; then
+            echo "Server available at {{.SERVER_URL}}"
+            exit 0
+          fi
+          echo "Attempt {{.ITEM}}/{{.MAX_RETRIES}}: waiting {{.RETRY_INTERVAL}}s..."
+          sleep {{.RETRY_INTERVAL}}
+          if [ "{{.ITEM}}" = "{{.MAX_RETRIES}}" ]; then
+            echo "Error: Server not available after {{.MAX_RETRIES}} attempts"
+            exit 1
+          fi
+    vars:
+      ATTEMPTS:
+        sh: seq 1 {{.MAX_RETRIES}}
+
+  setup-logs:
+    internal: true
+    status:
+      - test -d {{.LOG_DIR}}
+    cmds:
+      - mkdir -p {{.LOG_DIR}}
+
+  cleanup-pipes:
+    internal: true
+    cmds:
+      - rm -f /tmp/vaultlink_pipe_* 2>/dev/null || true
+
+  spawn-clients:
+    internal: true
+    dir: "{{.ROOT_DIR}}/frontend"
+    set: [errexit, pipefail]
+    cmds:
+      - |
+        pids=()
+
+        # Start all client processes
+        for i in $(seq 1 {{.PROCESS_COUNT}}); do
+          pipe="/tmp/vaultlink_pipe_$$_$i"
+          mkfifo "$pipe"
+          node test-client/dist/cli.js > "$pipe" 2>&1 &
+          pid=$!
+          pids+=($pid)
+          echo "Started client $i (PID: $pid)"
+          (sed "s/^/[PID $pid] /" < "$pipe" > "{{.LOG_DIR}}/log_${i}.log"; rm "$pipe") &
+        done
+
+        echo "Monitoring {{.PROCESS_COUNT}} client processes..."
+
+        # Monitor loop
+        while true; do
+          # Check for failures
+          for i in $(seq 1 {{.PROCESS_COUNT}}); do
+            idx=$((i-1))
+            pid=${pids[$idx]}
+            [ -z "$pid" ] && continue
+
+            if ! kill -0 $pid 2>/dev/null; then
+              wait $pid
+              code=$?
+              if [ $code -ne 0 ]; then
+                echo "Client $i (PID $pid) failed with exit code $code"
+                echo "===== Log: {{.LOG_DIR}}/log_${i}.log ====="
+                cat "{{.LOG_DIR}}/log_${i}.log"
+                # Kill remaining processes
+                for p in "${pids[@]}"; do
+                  [ -n "$p" ] && kill $p 2>/dev/null || true
+                done
+                exit 1
+              fi
+              echo "Client $i (PID $pid) completed successfully"
+              pids[$idx]=""
+            fi
+          done
+
+          # Check if all done
+          all_done=true
+          for pid in "${pids[@]}"; do
+            [ -n "$pid" ] && kill -0 $pid 2>/dev/null && all_done=false && break
+          done
+
+          if $all_done; then
+            echo "All {{.PROCESS_COUNT}} clients completed successfully"
+            exit 0
+          fi
+
+          sleep 0.2
+        done

@@ -49,7 +49,23 @@ The sync-client builds two separate bundles:
 
 ## Development Commands
 
+This project uses [Taskfile](https://taskfile.dev/) for task automation. Run `task --list` to see all available tasks.
+
 ### Initial Setup
+
+**Taskfile:**
+
+```bash
+# Install Task (https://taskfile.dev/installation/)
+# macOS
+brew install go-task
+
+# Linux
+sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b ~/.local/bin
+
+# Or via npm
+npm install -g @go-task/cli
+```
 
 **Node.js (requires version 25):**
 
@@ -71,59 +87,88 @@ cargo install sqlx-cli cargo-machete cargo-edit cargo-insta
 **Frontend:**
 
 ```bash
-cd frontend
-npm install
+task frontend:install
 ```
 
-### Server Development
+### Common Tasks (Taskfile)
+
+```bash
+task check           # Full CI check (lint, test, format). Run before pushing.
+task check:fix       # Same as above but auto-fixes issues
+task e2e -- 8        # E2E tests with 8 concurrent clients
+task clean           # Clean logs and database files
+task update-api-types  # Update TypeScript bindings from Rust types
+task release:bump -- patch  # Bump version (patch|minor|major)
+```
+
+### Server Tasks
+
+```bash
+task rust:run        # Start development server
+task rust:test       # Run all Rust tests
+task rust:clippy     # Lint Rust code
+task rust:clippy-fix # Auto-fix clippy warnings
+task rust:fmt        # Format Rust code
+task rust:fmt-check  # Check Rust formatting
+task rust:machete    # Detect unused dependencies
+```
+
+### Frontend Tasks
+
+```bash
+task frontend:dev    # Start development mode
+task frontend:build  # Build all workspaces
+task frontend:test   # Run all frontend tests
+task frontend:lint   # Lint and format TypeScript
+```
+
+### Database Tasks
+
+```bash
+task db:setup        # Create and migrate database
+task db:reset        # Reset database (delete and recreate)
+task db:prepare      # Prepare SQLx offline data
+task db:add-migration NAME=<migration_name>  # Add new migration
+```
+
+### Documentation Tasks
+
+```bash
+task docs:check      # Build and check documentation
+task docs:dev        # Start documentation dev server
+```
+
+### Direct Commands (Alternative)
+
+If you prefer not to use Taskfile, these commands work directly:
+
+**Server:**
 
 ```bash
 cd sync-server
 cargo run config-e2e.yml  # Start development server
 cargo test --verbose      # Run all Rust tests
-cargo test <test_name>    # Run specific test
-cargo clippy --all-targets --all-features  # Lint Rust code
-cargo clippy --all-targets --all-features --fix --allow-dirty --allow-staged  # Auto-fix clippy warnings
-cargo fmt --all -- --check  # Check Rust formatting
-cargo fmt --all            # Auto-format Rust code
-cargo machete --with-metadata  # Detect unused dependencies
+cargo clippy --all-targets --all-features  # Lint
+cargo fmt --all           # Format
 ```
 
-### Frontend Development
+**Frontend:**
 
 ```bash
 cd frontend
-npm run dev      # Start development mode (watches sync-client and obsidian-plugin)
+npm run dev      # Development mode
 npm run build    # Build all workspaces
-npm run build -w sync-client     # Build specific workspace
-npm run test     # Run all tests across all workspaces
-npm run test -w sync-client      # Run tests for specific workspace
-npm run lint     # Lint and format TypeScript code with ESLint + Prettier
+npm run test     # Run tests
+npm run lint     # Lint and format
 ```
 
-### Database Operations
+**Database:**
 
 ```bash
 cd sync-server
-# Create/reset database for development
-rm -rf db.sqlite*
 sqlx database create --database-url sqlite://db.sqlite3
 sqlx migrate run --source src/app_state/database/migrations --database-url sqlite://db.sqlite3
-cargo sqlx prepare --workspace
-
-# Add new migration
-sqlx migrate add --source src/app_state/database/migrations <migration_name>
-sqlx migrate run --source src/app_state/database/migrations --database-url sqlite://db.sqlite3
 ```
-
-### Project Scripts
-
-- `scripts/check.sh`: Full CI check (builds, lints, tests both server and frontend). **Run before pushing.**
-- `scripts/check.sh --fix`: Same as above but auto-fixes linting and formatting issues
-- `scripts/e2e.sh`: End-to-end testing (e.g., `scripts/e2e.sh 8` for 8 concurrent clients)
-- `scripts/clean-up.sh`: Clean logs and database files
-- `scripts/bump-version.sh patch`: Publish new version (options: patch, minor, major)
-- `scripts/update-api-types.sh`: Update TypeScript bindings from Rust types (uses ts-rs)
 
 ## Code Structure
 
@@ -141,7 +186,7 @@ The frontend uses npm workspaces with four packages:
 Rust structs generate TypeScript types via ts-rs crate:
 
 1. Rust structs annotated with `#[derive(TS)]` export to `sync-server/bindings/`
-2. Run `scripts/update-api-types.sh` to copy bindings to `frontend/sync-client/src/services/types/`
+2. Run `task update-api-types` to copy bindings to `frontend/sync-client/src/services/types/`
 3. Frontend imports these types for type-safe API communication
 
 ### Important Implementation Details
@@ -156,25 +201,18 @@ Rust structs generate TypeScript types via ts-rs crate:
 
 ### Running Tests
 
-**Server:**
-
 ```bash
-cargo test --verbose           # All tests
-cargo test <test_name>         # Specific test
+task rust:test         # All Rust tests
+task frontend:test     # All frontend tests
+task e2e -- 8          # E2E with 8 concurrent clients
+task clean             # Clean up after tests
 ```
 
-**Frontend:**
+Or use direct commands:
 
 ```bash
-npm run test                   # All workspaces
-npm run test -w sync-client    # Specific workspace
-```
-
-**E2E:**
-
-```bash
-scripts/e2e.sh 8               # 8 concurrent clients
-scripts/clean-up.sh            # Clean up after tests
+cd sync-server && cargo test --verbose    # Rust tests
+cd frontend && npm run test               # Frontend tests
 ```
 
 ### Test Structure

@@ -32,5 +32,10 @@ jobs:
           toolchain: "1.92.0"
           components: clippy, rustfmt
 
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+
       - name: Lint & test
-        run: scripts/check.sh
+        run: task check

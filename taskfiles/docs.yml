@@ -1,0 +1,35 @@
+version: "3"
+
+tasks:
+  install:
+    desc: Install docs dependencies
+    run: once
+    cmds:
+      - npm ci
+
+  build:
+    desc: Build documentation
+    deps: [install]
+    cmds:
+      - npm run build
+
+  lint:
+    desc: Check formatting and spelling
+    deps: [install]
+    cmds:
+      - npm run format:check
+      - npm run spell:check
+
+  check:
+    desc: Run all documentation checks
+    cmds:
+      - task: :check-node
+      - task: install
+      - task: lint
+      - task: build
+
+  dev:
+    desc: Start documentation dev server
+    deps: [install]
+    cmds:
+      - npm run dev

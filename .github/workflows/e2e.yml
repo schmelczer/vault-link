@@ -37,12 +37,13 @@ jobs:
           toolchain: "1.92.0"
           components: clippy, rustfmt
 
-      - name: Setup rust
-        run: |
-          which sqlx || cargo install sqlx-cli
-          cd sync-server
-          sqlx database create --database-url sqlite://db.sqlite3
-          sqlx migrate run --source src/app_state/database/migrations --database-url sqlite://db.sqlite3
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+
+      - name: Setup database
+        run: task db:setup
 
       - name: E2E tests
         run: |
@@ -51,7 +52,7 @@ jobs:
           SERVER_PID=$!
           cd ..
 
-          scripts/e2e.sh 8
+          task e2e -- 8
           EXIT_CODE=$?
 
           kill $SERVER_PID 2>/dev/null || true
@@ -69,4 +70,4 @@ jobs:
 
       - name: Cleanup
         if: always()
-        run: scripts/clean-up.sh
+        run: task clean

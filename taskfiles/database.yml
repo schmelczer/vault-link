@@ -1,0 +1,25 @@
+version: "3"
+
+vars:
+  DATABASE_URL: "sqlite://db.sqlite3"
+  MIGRATIONS_PATH: "src/app_state/database/migrations"
+
+tasks:
+  setup:
+    desc: Create and migrate database
+    sources:
+      - "{{.MIGRATIONS_PATH}}/**/*.sql"
+    generates:
+      - "db.sqlite3"
+    cmds:
+      - which sqlx || cargo install sqlx-cli
+      - sqlx database create --database-url {{.DATABASE_URL}} 2>/dev/null || true
+      - sqlx migrate run --source {{.MIGRATIONS_PATH}} --database-url {{.DATABASE_URL}}
+      - cargo sqlx prepare --workspace
+
+  add-migration:
+    desc: Add a new migration
+    requires:
+      vars: [NAME]
+    cmds:
+      - sqlx migrate add --source {{.MIGRATIONS_PATH}} {{.NAME}}

@@ -1,0 +1,73 @@
+version: "3"
+
+tasks:
+  build:
+    desc: Build sync-server
+    cmds:
+      - cargo build {{if .RELEASE}}--release{{end}}
+
+  test:
+    desc: Run Rust tests
+    cmds:
+      - cargo test --verbose
+
+  lint:
+    desc: Run all linters (clippy, fmt check, machete)
+    cmds:
+      - cargo fmt --all -- --check
+      - cargo clippy --all-targets --all-features
+      - cargo machete --with-metadata
+
+  lint-fix:
+    desc: Auto-fix linting issues (fmt, clippy)
+    cmds:
+      - cargo fmt --all
+      - cargo clippy --all-targets --all-features --fix --allow-dirty --allow-staged
+
+  run:
+    desc: Run the sync server
+    cmds:
+      - cargo run {{.CONFIG | default "config-e2e.yml"}} {{if .NO_COLOR}}--color never{{end}}
+
+  export-bindings:
+    desc: Export TypeScript bindings
+    cmds:
+      - cargo test export_bindings
+
+  build-binaries:
+    desc: Build cross-platform release binaries
+    summary: |
+      Builds release binaries for multiple platforms.
+      Default targets: linux-x86_64, linux-x86_64-musl, linux-aarch64, windows-x86_64
+
+      Override with: task rust:build-binaries TARGETS="x86_64-unknown-linux-gnu"
+    vars:
+      TARGETS: '{{.TARGETS | default "x86_64-unknown-linux-gnu x86_64-unknown-linux-musl aarch64-unknown-linux-gnu x86_64-pc-windows-gnu"}}'
+    cmds:
+      - mkdir -p artifacts
+      - rm -f artifacts/sync-server-*
+      - for: { var: TARGETS }
+        task: build-target
+        vars:
+          TARGET: "{{.ITEM}}"
+
+  build-target:
+    internal: true
+    label: "build-{{.TARGET}}"
+    vars:
+      EXT: '{{if contains "windows" .TARGET}}.exe{{end}}'
+      LINKER_VAR: >-
+        {{if eq .TARGET "aarch64-unknown-linux-gnu"}}CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+        {{else if eq .TARGET "x86_64-unknown-linux-musl"}}CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc
+        {{else if eq .TARGET "x86_64-pc-windows-gnu"}}CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=x86_64-w64-mingw32-gcc
+        {{end}}
+      OUTPUT_NAME: >-
+        {{.TARGET | replace "x86_64-unknown-linux-gnu" "linux-x86_64"
+                  | replace "x86_64-unknown-linux-musl" "linux-x86_64-musl"
+                  | replace "aarch64-unknown-linux-gnu" "linux-aarch64"
+                  | replace "x86_64-pc-windows-gnu" "windows-x86_64"}}
+    cmds:
+      - rustup target add {{.TARGET}} 2>/dev/null || true
+      - '{{.LINKER_VAR}} cargo build --release --target {{.TARGET}}'
+      - cp target/{{.TARGET}}/release/sync_server{{.EXT}} artifacts/sync-server-{{.OUTPUT_NAME}}{{.EXT}}
+      - echo "Built sync-server-{{.OUTPUT_NAME}}{{.EXT}}"

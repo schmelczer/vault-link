@@ -22,25 +22,27 @@ jobs:
           node-version: "25.x"
           check-latest: true
 
-      - name: Build plugin
-        run: |
-          cd frontend
-          npm ci
-          npm run build
-
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: "1.92.0"
           components: clippy, rustfmt
 
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+
       - name: Install cross-compilation tools
         run: |
           apt update
           apt install -y gcc-aarch64-linux-gnu musl-tools gcc-mingw-w64-x86-64
 
-      - name: Build Linux and Windows binaries
-        run: ./scripts/build-sync-server-binaries.sh
+      - name: Build frontend
+        run: task frontend:build
+
+      - name: Build binaries
+        run: task release:build-binaries
 
       - name: Create release
         env:
