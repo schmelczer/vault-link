@@ -2,6 +2,5 @@
 
 export interface CreateDocumentVersion {
     relative_path: string;
-    force_merge: boolean | null;
     content: number[];
 }

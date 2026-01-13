@@ -67,7 +67,7 @@ export class SyncService {
 
     public async create({
         relativePath,
-        contentBytes,
+        contentBytes
     }: {
         relativePath: RelativePath;
         contentBytes: Uint8Array;
@@ -151,7 +151,8 @@ export class SyncService {
                 (await response.json()) as DocumentUpdateResponse; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
 
             this.logger.debug(
-                `Updated document ${JSON.stringify(result)} with id ${result.documentId
+                `Updated document ${JSON.stringify(result)} with id ${
+                    result.documentId
                 }}`
             );
 
@@ -203,7 +204,8 @@ export class SyncService {
                 (await response.json()) as DocumentUpdateResponse; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
 
             this.logger.debug(
-                `Updated document ${JSON.stringify(result)} with id ${result.documentId
+                `Updated document ${JSON.stringify(result)} with id ${
+                    result.documentId
                 }}`
             );
 
@@ -330,7 +332,7 @@ export class SyncService {
         return this.retryForever(async () => {
             this.logger.debug(
                 "Getting all documents" +
-                (since != null ? ` since ${since}` : "")
+                    (since != null ? ` since ${since}` : "")
             );
 
             const url = new URL(this.getUrl("/documents"));

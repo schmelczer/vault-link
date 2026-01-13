@@ -81,7 +81,7 @@ export class Syncer {
     }
 
     public async syncLocallyCreatedFile(
-        relativePath: RelativePath,
+        relativePath: RelativePath
     ): Promise<void> {
         if (
             this.database.getLatestDocumentByRelativePath(relativePath)
@@ -96,7 +96,6 @@ export class Syncer {
         }
 
         const [promise, resolve, reject] = createPromise();
-        this.logger.warn(`creating ${relativePath} locally`);
 
         const document = this.database.createNewPendingDocument(
             relativePath,
@@ -106,12 +105,9 @@ export class Syncer {
         try {
             await this.syncQueue.add(async () =>
                 this.unrestrictedSyncer.unrestrictedSyncLocallyCreatedOrUpdatedFile(
-                    { document, forceMerge }
+                    { document }
                 )
-            )
-
-            this.logger.warn(`done creating ${relativePath} locally`);
-
+            );
 
             resolve();
         } catch (e) {
@@ -149,7 +145,9 @@ export class Syncer {
 
         try {
             await this.syncQueue.add(async () =>
-                this.unrestrictedSyncer.unrestrictedSyncLocallyDeletedFile(document)
+                this.unrestrictedSyncer.unrestrictedSyncLocallyDeletedFile(
+                    document
+                )
             );
 
             resolve();
@@ -174,7 +172,7 @@ export class Syncer {
             // in that case, we mustn't move it again.
             if (
                 this.database.getLatestDocumentByRelativePath(relativePath) ===
-                undefined ||
+                    undefined ||
                 this.database.getLatestDocumentByRelativePath(relativePath)
                     ?.isDeleted === true
             ) {
@@ -190,8 +188,6 @@ export class Syncer {
 
         let document =
             this.database.getLatestDocumentByRelativePath(relativePath);
-
-        this.logger.warn(`sync doc ${JSON.stringify(document)} for path ${relativePath} (old path: ${oldPath}), len docs: ${document?.updates.length}`);
 
         if (
             oldPath !== undefined &&
@@ -224,14 +220,15 @@ export class Syncer {
             relativePath,
             promise
         );
-        this.logger.warn(`updating ${document.relativePath} locally`);
 
         try {
             await this.syncQueue.add(async () =>
-                this.unrestrictedSyncer.unrestrictedSyncLocallyCreatedOrUpdatedFile({
-                    oldPath,
-                    document
-                })
+                this.unrestrictedSyncer.unrestrictedSyncLocallyCreatedOrUpdatedFile(
+                    {
+                        oldPath,
+                        document
+                    }
+                )
             );
 
             resolve();
@@ -324,45 +321,37 @@ export class Syncer {
             remoteVersion.documentId
         );
 
-        this.logger.warn(`${remoteVersion.documentId} got remote update  ${JSON.stringify(remoteVersion)}`);
-
         if (document === undefined) {
-            this.logger.warn(`${remoteVersion.documentId} but document doesn't exist`)
-
-
             return this.remoteDocumentsLock.withLock(
                 // Avoid the same documents getting created in parallel multiple times through fetching multiple updates of the same
                 // new remote document concurrently.
                 // There might be multiple tasks waiting for the lock
                 remoteVersion.documentId,
                 async () => {
-
                     // We have to wait for any ongoing creates sent for this file to finish,
                     // This is to avoid fetching one's own creates before the corresponding local create has finished syncing. This is a concern because
-                    // documents being created don't yet have a document id in the local database and we could be notified of the remote create 
-                    // before the local create has finished syncing, so we can't just ignore the update based on the local DB content as we 
-                    // can't find the corresponding document yet. 
+                    // documents being created don't yet have a document id in the local database and we could be notified of the remote create
+                    // before the local create has finished syncing, so we can't just ignore the update based on the local DB content as we
+                    // can't find the corresponding document yet.
                     if (document?.metadata === undefined) {
-                        await this.unrestrictedSyncer.fileCreationLock.waitForLockWithoutAcquiringLock(remoteVersion.relativePath);
+                        await this.unrestrictedSyncer.fileCreationLock.waitForLockWithoutAcquiringLock(
+                            remoteVersion.relativePath
+                        );
                     }
 
                     document = this.database.getDocumentByDocumentId(
                         remoteVersion.documentId
                     );
 
-                    this.logger.warn(`${remoteVersion.documentId} rechecking, document is now ${JSON.stringify(document)}`)
-
                     // We're the first one to get the lock, so we have to create the document in `unrestrictedSyncRemotelyUpdatedFile`
                     if (document === undefined) {
-                        this.logger.warn(`${remoteVersion.documentId} document is undefined, creating new document`)
                         await this.syncQueue.add(async () =>
                             this.unrestrictedSyncer.unrestrictedSyncRemotelyUpdatedFile(
                                 remoteVersion
                             )
                         );
                     } else {
-                        const [promise, resolve, reject] =
-                            createPromise();
+                        const [promise, resolve, reject] = createPromise();
 
                         document =
                             await this.database.getResolvedDocumentByRelativePath(
@@ -382,19 +371,13 @@ export class Syncer {
                         } catch (e) {
                             reject(e);
                         } finally {
-                            this.database.removeDocumentPromise(
-                                promise
-                            );
+                            this.database.removeDocumentPromise(promise);
                         }
                     }
 
-                    this.database.addSeenUpdateId(
-                        remoteVersion.vaultUpdateId
-                    );
+                    this.database.addSeenUpdateId(remoteVersion.vaultUpdateId);
                 }
-            )
-        } else {
-            this.logger.warn(`${remoteVersion.documentId} and document exists (path: ${JSON.stringify(document)})`);
+            );
         }
 
         // We're either the first one to get the lock, so we have to create the document in `unrestrictedSyncRemotelyUpdatedFile`
@@ -440,7 +423,11 @@ export class Syncer {
             }
         }
 
-        interface Instruction { "type": "update" | "create", relativePath: string, oldPath?: string }
+        interface Instruction {
+            type: "update" | "create";
+            relativePath: string;
+            oldPath?: string;
+        }
         const instructions: (Instruction | undefined)[] = await awaitAll(
             allLocalFiles.map(async (relativePath) => {
                 if (
@@ -499,7 +486,6 @@ export class Syncer {
                         oldPath: originalFile.relativePath,
                         relativePath
                     } as Instruction;
-
                 }
 
                 this.logger.debug(
@@ -512,7 +498,6 @@ export class Syncer {
                 } as Instruction;
             })
         );
-
 
         // this has to happen strictly after the previous awaitAll, as that one
         // might have removed some of the documents from the list
@@ -527,35 +512,38 @@ export class Syncer {
             })
         );
 
+        await awaitAll(
+            instructions.map(async (instruction) => {
+                if (instruction === undefined) {
+                    return;
+                }
 
-        await awaitAll(instructions.map(async (instruction) => {
-            if (instruction === undefined) {
-                return;
-            }
-
-            if (instruction.type === "update") {
-                // We're outside of the pqueue, so we need to call the public wrapper
-                await this.syncLocallyUpdatedFile({
-                    oldPath: instruction.oldPath,
-                    relativePath: instruction.relativePath
-                }); return;
-            }
-        }));
+                if (instruction.type === "update") {
+                    // We're outside of the pqueue, so we need to call the public wrapper
+                    await this.syncLocallyUpdatedFile({
+                        oldPath: instruction.oldPath,
+                        relativePath: instruction.relativePath
+                    });
+                    return;
+                }
+            })
+        );
 
         // we have to ensure the deletes & updates have finished before starting creates,
         // otherwise the server might return an existing document (that we're about to delete)
         // instead of actually creating a new one
-        await awaitAll(instructions.map(async (instruction) => {
-            if (instruction === undefined) {
-                return;
-            }
+        await awaitAll(
+            instructions.map(async (instruction) => {
+                if (instruction === undefined) {
+                    return;
+                }
 
-            if (instruction.type === "create") {
-                // We're outside of the pqueue, so we need to call the public wrapper
-                await this.syncLocallyCreatedFile(instruction.relativePath,); return;
-            }
-        }));
-
-
+                if (instruction.type === "create") {
+                    // We're outside of the pqueue, so we need to call the public wrapper
+                    await this.syncLocallyCreatedFile(instruction.relativePath);
+                    return;
+                }
+            })
+        );
     }
 }

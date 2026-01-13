@@ -37,8 +37,6 @@ async function runTest({
     slowFileEvents = useSlowFileEvents;
     doResets = useResets;
 
-
-
     const settings = `with ${agentCount} agents, concurrency ${concurrency}, iterations ${iterations}, doDeletes ${doDeletes}, doResets ${useResets}, jitterScaleInSeconds ${jitterScaleInSeconds}, useSlowFileEvents ${useSlowFileEvents}`;
     logger.info(`Running test ${settings}`);
 
@@ -70,7 +68,9 @@ async function runTest({
         await utils.awaitAll(clients.map(async (client) => client.init()));
 
         for (const client of clients) {
-            const initialDocCount = Math.floor(Math.random() * MAX_INITIAL_DOCS);
+            const initialDocCount = Math.floor(
+                Math.random() * MAX_INITIAL_DOCS
+            );
             if (initialDocCount > 0) {
                 logger.info(
                     `Creating ${initialDocCount} initial documents for ${client.name}`

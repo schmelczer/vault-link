@@ -103,7 +103,7 @@ export class Database {
                     i === 0
                         ? false
                         : records[i - 1].parallelVersion ===
-                        current.parallelVersion
+                          current.parallelVersion
                 )
             ) {
                 throw new Error(
@@ -350,7 +350,7 @@ export class Database {
         if (duplicates.length > 0) {
             throw new Error(
                 "Document IDs are not unique, found duplicates: " +
-                duplicates.join("; ")
+                    duplicates.join("; ")
             );
         }
     }

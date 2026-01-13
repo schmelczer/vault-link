@@ -65,7 +65,9 @@ export class MockClient implements FileSystemOperations {
     public async create(
         path: RelativePath,
         newContent: Uint8Array,
-        { ignoreSlowFileEvents }: { ignoreSlowFileEvents: boolean } = { ignoreSlowFileEvents: false }
+        { ignoreSlowFileEvents }: { ignoreSlowFileEvents: boolean } = {
+            ignoreSlowFileEvents: false
+        }
     ): Promise<void> {
         if (this.localFiles.has(path)) {
             throw new Error(`File ${path} already exists`);
@@ -75,9 +77,10 @@ export class MockClient implements FileSystemOperations {
         );
         this.localFiles.set(path, newContent);
 
-        this.executeFileOperation((async () =>
-            this.client.syncLocallyCreatedFile(path)
-        ), ignoreSlowFileEvents);
+        this.executeFileOperation(
+            async () => this.client.syncLocallyCreatedFile(path),
+            ignoreSlowFileEvents
+        );
     }
 
     public async createDirectory(_path: RelativePath): Promise<void> {
@@ -87,7 +90,9 @@ export class MockClient implements FileSystemOperations {
     public async atomicUpdateText(
         path: RelativePath,
         updater: (currentContent: TextWithCursors) => TextWithCursors,
-        { ignoreSlowFileEvents }: { ignoreSlowFileEvents: boolean } = { ignoreSlowFileEvents: false }
+        { ignoreSlowFileEvents }: { ignoreSlowFileEvents: boolean } = {
+            ignoreSlowFileEvents: false
+        }
     ): Promise<string> {
         const file = this.localFiles.get(path);
         if (!file) {
@@ -104,13 +109,13 @@ export class MockClient implements FileSystemOperations {
                 .map((part) => part.trim());
             const newParts = newContent.split(" ").map((part) => part.trim());
             existingParts.forEach((part) =>
-            // all changes should be additive
-            {
-                assert(
-                    newParts.includes(part),
-                    `Part ${part} not found in new content: ${newContent}`
-                );
-            }
+                // all changes should be additive
+                {
+                    assert(
+                        newParts.includes(part),
+                        `Part ${part} not found in new content: ${newContent}`
+                    );
+                }
             );
         }
 
@@ -118,11 +123,13 @@ export class MockClient implements FileSystemOperations {
             `Updated file ${path} with:\n  current content: ${currentContent}\n  new content: ${newContent}`
         );
 
-        this.executeFileOperation((async () =>
-            this.client.syncLocallyUpdatedFile({
-                relativePath: path
-            })
-        ), ignoreSlowFileEvents);
+        this.executeFileOperation(
+            async () =>
+                this.client.syncLocallyUpdatedFile({
+                    relativePath: path
+                }),
+            ignoreSlowFileEvents
+        );
 
         return newContent;
     }
@@ -146,21 +153,29 @@ export class MockClient implements FileSystemOperations {
         });
     }
 
-    public async delete(path: RelativePath, { ignoreSlowFileEvents }: { ignoreSlowFileEvents: boolean } = { ignoreSlowFileEvents: false }): Promise<void> {
+    public async delete(
+        path: RelativePath,
+        { ignoreSlowFileEvents }: { ignoreSlowFileEvents: boolean } = {
+            ignoreSlowFileEvents: false
+        }
+    ): Promise<void> {
         this.client.logger.info(
             `Deleting file: ${path} with:\n  content ${new TextDecoder().decode(this.localFiles.get(path))}`
         );
         this.localFiles.delete(path);
 
-        this.executeFileOperation((async () =>
-            this.client.syncLocallyDeletedFile(path)
-        ), ignoreSlowFileEvents);
+        this.executeFileOperation(
+            async () => this.client.syncLocallyDeletedFile(path),
+            ignoreSlowFileEvents
+        );
     }
 
     public async rename(
         oldPath: RelativePath,
         newPath: RelativePath,
-        { ignoreSlowFileEvents }: { ignoreSlowFileEvents: boolean } = { ignoreSlowFileEvents: false }
+        { ignoreSlowFileEvents }: { ignoreSlowFileEvents: boolean } = {
+            ignoreSlowFileEvents: false
+        }
     ): Promise<void> {
         const file = this.localFiles.get(oldPath);
         if (!file) {
@@ -175,15 +190,20 @@ export class MockClient implements FileSystemOperations {
             `Renamed file: ${oldPath} -> ${newPath} with:\n  content ${new TextDecoder().decode(file)}`
         );
 
-        this.executeFileOperation((async () =>
-            this.client.syncLocallyUpdatedFile({
-                oldPath,
-                relativePath: newPath
-            })
-        ), ignoreSlowFileEvents);
+        this.executeFileOperation(
+            async () =>
+                this.client.syncLocallyUpdatedFile({
+                    oldPath,
+                    relativePath: newPath
+                }),
+            ignoreSlowFileEvents
+        );
     }
 
-    private executeFileOperation(callback: () => unknown, ignoreSlowFileEvents = false): void {
+    private executeFileOperation(
+        callback: () => unknown,
+        ignoreSlowFileEvents = false
+    ): void {
         if (this.useSlowFileEvents && !ignoreSlowFileEvents) {
             // we aren't the best client and it takes some time to notice changes
             setTimeout(callback, Math.random() * 100);

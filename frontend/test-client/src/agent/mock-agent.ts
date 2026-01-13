@@ -63,7 +63,10 @@ export class MockAgent extends MockClient {
                 case LogLevel.ERROR:
                     console.error(formatted);
 
-                    if (!this.useSlowFileEvents && !formatted.includes("retrying in")) {
+                    if (
+                        !this.useSlowFileEvents &&
+                        !formatted.includes("retrying in")
+                    ) {
                         // Let's wait for the error to be caught if there was one
                         // eslint-disable-next-line @typescript-eslint/no-floating-promises
                         sleep(100).then(() => {
@@ -227,14 +230,14 @@ export class MockAgent extends MockClient {
             );
             this.client.logger.info(
                 "Local files: " +
-                Array.from(otherAgent.localFiles.keys()).join(", ")
+                    Array.from(otherAgent.localFiles.keys()).join(", ")
             );
             otherAgent.client.logger.info(
                 "Local data: " + JSON.stringify(otherAgent.data, null, 2)
             );
             otherAgent.client.logger.info(
                 "Local files: " +
-                Array.from(otherAgent.localFiles.keys()).join(", ")
+                    Array.from(otherAgent.localFiles.keys()).join(", ")
             );
 
             throw e;
@@ -307,7 +310,9 @@ export class MockAgent extends MockClient {
             `Decided to create file ${file} with content ${content}`
         );
 
-        return this.create(file, new TextEncoder().encode(` ${content} `), { ignoreSlowFileEvents: true });
+        return this.create(file, new TextEncoder().encode(` ${content} `), {
+            ignoreSlowFileEvents: true
+        });
     }
 
     private async disableSyncAction(): Promise<void> {
@@ -371,10 +376,14 @@ export class MockAgent extends MockClient {
             `Decided to update file ${file} with ${content}`
         );
         this.doNotTouchWhileOffline.push(file);
-        await this.atomicUpdateText(file, (old) => ({
-            text: old.text + ` ${content} `,
-            cursors: []
-        }), { ignoreSlowFileEvents: true });
+        await this.atomicUpdateText(
+            file,
+            (old) => ({
+                text: old.text + ` ${content} `,
+                cursors: []
+            }),
+            { ignoreSlowFileEvents: true }
+        );
     }
 
     private async deleteFileAction(files: RelativePath[]): Promise<void> {
