@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from "uuid";
 import { randomCasing } from "./utils/random-casing";
 
 const TEST_ITERATIONS = 5;
+const MAX_INITIAL_DOCS = 5;
 
 // Simulate async file access by injecting waiting time before returning from file operations.
 let slowFileEvents = false;
@@ -67,6 +68,16 @@ async function runTest({
 
     try {
         await utils.awaitAll(clients.map(async (client) => client.init()));
+
+        for (const client of clients) {
+            const initialDocCount = Math.floor(Math.random() * MAX_INITIAL_DOCS);
+            if (initialDocCount > 0) {
+                logger.info(
+                    `Creating ${initialDocCount} initial documents for ${client.name}`
+                );
+                await client.createInitialDocuments(initialDocCount);
+            }
+        }
 
         for (let i = 0; i < iterations; i++) {
             logger.info(`Iteration ${i + 1}/${iterations}`);

@@ -90,6 +90,29 @@ export class MockAgent extends MockClient {
         this.client.logger.info("Agent initialized");
     }
 
+    public async createInitialDocuments(count: number): Promise<void> {
+        this.client.logger.info(`Creating ${count} initial documents`);
+
+        for (let i = 0; i < count; i++) {
+            const file = `initial-${i}.md`;
+            const content = this.getContent();
+            this.client.logger.info(
+                `Creating initial file ${file} with content ${content}`
+            );
+            await this.create(file, new TextEncoder().encode(` ${content} `), {
+                ignoreSlowFileEvents: true
+            });
+        }
+
+        // Wait for all initial documents to sync
+        await this.client.waitUntilFinished();
+        this.client.logger.info(`Initial documents created and synced`);
+    }
+
+    public async waitUntilSynced(): Promise<void> {
+        await this.client.waitUntilFinished();
+    }
+
     public async act(): Promise<void> {
         const options: (() => Promise<unknown>)[] = [
             this.createFileAction.bind(this)

@@ -183,7 +183,7 @@ export class MockClient implements FileSystemOperations {
         ), ignoreSlowFileEvents);
     }
 
-    private executeFileOperation(callback: () => unknown, ignoreSlowFileEvents: boolean = false): void {
+    private executeFileOperation(callback: () => unknown, ignoreSlowFileEvents = false): void {
         if (this.useSlowFileEvents && !ignoreSlowFileEvents) {
             // we aren't the best client and it takes some time to notice changes
             setTimeout(callback, Math.random() * 100);
