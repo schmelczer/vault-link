@@ -66,14 +66,12 @@ export class UnrestrictedSyncer {
     public async unrestrictedSyncLocallyCreatedOrUpdatedFile({
         oldPath,
         document,
-        forceMerge,
         // We use the same code path for both local and remote updates. We need to force the update
         // if there are no local changes but we know that the remote version is newer.
         force = false
     }: {
         oldPath?: RelativePath;
         force?: boolean;
-        forceMerge?: boolean
         document: DocumentRecord;
     }): Promise<void> {
 
@@ -128,7 +126,6 @@ export class UnrestrictedSyncer {
                     const response = await this.syncService.create({
                         relativePath: originalRelativePath,
                         contentBytes,
-                        forceMerge
                     });
 
                     await this.handleMaybeMergingResponse({

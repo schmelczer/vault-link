@@ -49,35 +49,33 @@ pub async fn create_document(
 
     let sanitized_relative_path = sanitize_path(&request.relative_path);
 
-    if request.force_merge.unwrap_or_default() {
-        let latest_version = state
-            .database
-            .get_latest_non_deleted_document_by_path(
-                &vault_id,
-                &sanitized_relative_path,
-                Some(&mut transaction),
-            )
-            .await
-            .map_err(server_error)?;
-        if let Some(latest_version) = latest_version {
-            info!(
-                "Document already exists at new location: `{sanitized_relative_path}` when trying to create it in vault `{vault_id}`, merging into existing document"
-            );
+    let latest_version = state
+        .database
+        .get_latest_non_deleted_document_by_path(
+            &vault_id,
+            &sanitized_relative_path,
+            Some(&mut transaction),
+        )
+        .await
+        .map_err(server_error)?;
+    if let Some(latest_version) = latest_version {
+        info!(
+            "Document already exists at new location: `{sanitized_relative_path}` when trying to create it in vault `{vault_id}`, merging into existing document"
+        );
 
-            return merge_with_stored_version(
-                &sanitized_relative_path,
-                &Vec::new(),
-                latest_version,
-                vault_id,
-                user,
-                device_id,
-                state,
-                &sanitized_relative_path,
-                request.content.contents.to_vec(),
-                transaction,
-            )
-            .await;
-        }
+        return merge_with_stored_version(
+            &sanitized_relative_path,
+            &Vec::new(),
+            latest_version,
+            vault_id,
+            user,
+            device_id,
+            state,
+            &sanitized_relative_path,
+            request.content.contents.to_vec(),
+            transaction,
+        )
+        .await;
     }
 
     let document_id = uuid::Uuid::new_v4();

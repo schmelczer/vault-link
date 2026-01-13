@@ -369,9 +369,7 @@ export class SyncClient {
         this.checkIfDestroyed("syncLocallyCreatedFile");
 
         this.fileChangeNotifier.notifyOfFileChange(relativePath);
-        return this.syncer.syncLocallyCreatedFile(relativePath, {
-            forceMerge: false
-        });
+        return this.syncer.syncLocallyCreatedFile(relativePath,);
     }
 
     public async syncLocallyDeletedFile(

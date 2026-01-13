@@ -82,7 +82,6 @@ export class Syncer {
 
     public async syncLocallyCreatedFile(
         relativePath: RelativePath,
-        { forceMerge }: { forceMerge: boolean }
     ): Promise<void> {
         if (
             this.database.getLatestDocumentByRelativePath(relativePath)
@@ -231,7 +230,7 @@ export class Syncer {
             await this.syncQueue.add(async () =>
                 this.unrestrictedSyncer.unrestrictedSyncLocallyCreatedOrUpdatedFile({
                     oldPath,
-                    document: document!
+                    document
                 })
             );
 
@@ -441,7 +440,7 @@ export class Syncer {
             }
         }
 
-        type Instruction = { "type": "update" | "create", relativePath: string, oldPath?: string };
+        interface Instruction { "type": "update" | "create", relativePath: string, oldPath?: string }
         const instructions: (Instruction | undefined)[] = await awaitAll(
             allLocalFiles.map(async (relativePath) => {
                 if (
@@ -536,10 +535,10 @@ export class Syncer {
 
             if (instruction.type === "update") {
                 // We're outside of the pqueue, so we need to call the public wrapper
-                return await this.syncLocallyUpdatedFile({
+                await this.syncLocallyUpdatedFile({
                     oldPath: instruction.oldPath,
                     relativePath: instruction.relativePath
-                });
+                }); return;
             }
         }));
 
@@ -553,7 +552,7 @@ export class Syncer {
 
             if (instruction.type === "create") {
                 // We're outside of the pqueue, so we need to call the public wrapper
-                return await this.syncLocallyCreatedFile(instruction.relativePath, { forceMerge: true });
+                await this.syncLocallyCreatedFile(instruction.relativePath,); return;
             }
         }));
 

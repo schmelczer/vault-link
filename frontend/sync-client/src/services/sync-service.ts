@@ -68,27 +68,21 @@ export class SyncService {
     public async create({
         relativePath,
         contentBytes,
-        forceMerge
     }: {
         relativePath: RelativePath;
         contentBytes: Uint8Array;
-        forceMerge?: boolean;
     }): Promise<DocumentUpdateResponse> {
         return this.retryForever(async () => {
             const formData = new FormData();
 
             formData.append("relative_path", relativePath);
-            if (forceMerge === true) {
-                formData.append("force_merge", "true");
-            }
-
             formData.append(
                 "content",
                 new Blob([new Uint8Array(contentBytes)])
             );
 
             this.logger.debug(
-                `Creating document with relative path ${relativePath} (forceMerge: ${forceMerge})`
+                `Creating document with relative path ${relativePath}`
             );
 
             const response = await this.client(this.getUrl("/documents"), {
