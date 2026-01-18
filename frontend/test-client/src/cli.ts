@@ -4,6 +4,7 @@ import { MockAgent } from "./agent/mock-agent";
 import { sleep } from "./utils/sleep";
 import { v4 as uuidv4 } from "uuid";
 import { randomCasing } from "./utils/random-casing";
+import { TimeoutError } from "./utils/with-timeout";
 
 const TEST_ITERATIONS = 5;
 const MAX_INITIAL_DOCS = 0;
@@ -95,7 +96,7 @@ async function runTest({
                 logger.info(`Finishing up ${client.name}`);
                 await client.finish();
             } catch (err) {
-                if (!slowFileEvents) {
+                if (err instanceof TimeoutError || !slowFileEvents) {
                     throw err;
                 }
             }
@@ -107,7 +108,7 @@ async function runTest({
                 logger.info(`Destroying ${client.name}`);
                 await client.destroy();
             } catch (err) {
-                if (!slowFileEvents) {
+                if (err instanceof TimeoutError || !slowFileEvents) {
                     throw err;
                 }
             }
