@@ -299,7 +299,7 @@ export class UnrestrictedSyncer {
                     remoteVersion.vaultUpdateId
                 ) {
                     this.logger.debug(
-                        `Document ${remoteVersion.relativePath} is already at least as up to date as the fetched version`
+                        `Document ${document.relativePath} is already at least as up-to-date as the fetched version`
                     );
 
                     return;

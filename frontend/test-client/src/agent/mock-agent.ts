@@ -17,6 +17,7 @@ export class MockAgent extends MockClient {
 
     // The renamed file finding algorithm isn't too smart so we can't both update and rename the same file
     private readonly doNotTouchWhileOffline: string[] = [];
+    private lastSyncEnabledState: boolean = true;
 
     public constructor(
         initialSettings: Partial<SyncSettings>,
@@ -113,7 +114,7 @@ export class MockAgent extends MockClient {
         ];
 
         if (
-            this.client.getSettings().isSyncEnabled &&
+            this.lastSyncEnabledState &&
             this.doNotTouchWhileOffline.length === 0
         ) {
             options.push(this.disableSyncAction.bind(this));
@@ -287,7 +288,7 @@ export class MockAgent extends MockClient {
         const file = this.getFileName();
 
         if (
-            (!this.client.getSettings().isSyncEnabled &&
+            (!this.lastSyncEnabledState &&
                 this.doNotTouchWhileOffline.includes(file)) ||
             (await this.exists(file))
         ) {
@@ -306,12 +307,14 @@ export class MockAgent extends MockClient {
 
     private async disableSyncAction(): Promise<void> {
         this.client.logger.info(`Decided to disable sync`);
+        this.lastSyncEnabledState = false;
         await this.client.setSetting("isSyncEnabled", false);
     }
 
     private async enableSyncAction(): Promise<void> {
         this.client.logger.info(`Decided to enable sync`);
         await this.client.setSetting("isSyncEnabled", true);
+        this.lastSyncEnabledState = true;
     }
 
     private async renameFileAction(files: RelativePath[]): Promise<void> {
@@ -320,7 +323,7 @@ export class MockAgent extends MockClient {
         // We can't edit files offline that have been updated while offline.
         // Otherwise, the resolution logic couldn't handle it.
         if (
-            !this.client.getSettings().isSyncEnabled &&
+            !this.lastSyncEnabledState &&
             this.doNotTouchWhileOffline.includes(file)
         ) {
             this.client.logger.info(
@@ -332,7 +335,7 @@ export class MockAgent extends MockClient {
         const newName = this.getFileName();
 
         if (
-            (!this.client.getSettings().isSyncEnabled &&
+            (!this.lastSyncEnabledState &&
                 this.doNotTouchWhileOffline.includes(newName)) ||
             (await this.exists(newName))
         ) {
@@ -351,7 +354,7 @@ export class MockAgent extends MockClient {
         // We can't edit files offline that have been updated while offline.
         // Otherwise, the resolution logic couldn't handle it.
         if (
-            !this.client.getSettings().isSyncEnabled &&
+            !this.lastSyncEnabledState &&
             this.doNotTouchWhileOffline.includes(file)
         ) {
             this.client.logger.info(
