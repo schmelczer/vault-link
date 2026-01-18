@@ -7,7 +7,6 @@ pub const DEFAULT_CONFIG_PATH: &str = "config.yml";
 pub const DEFAULT_DATABASES_DIRECTORY_PATH: &str = "databases";
 pub const DEFAULT_MAX_CONNECTIONS_PER_VAULT: u32 = 12;
 pub const DEFAULT_CURSOR_TIMEOUT: Duration = Duration::from_secs(60);
-pub const IDLE_POOL_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 
 pub const DEFAULT_HOST: &str = "127.0.0.1";
 pub const DEFAULT_PORT: u16 = 3000;
