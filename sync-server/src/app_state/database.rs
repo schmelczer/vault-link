@@ -19,6 +19,7 @@ use super::websocket::{
     models::{WebSocketServerMessage, WebSocketServerMessageWithOrigin, WebSocketVaultUpdate},
 };
 use crate::config::database_config::DatabaseConfig;
+use crate::consts::IDLE_POOL_TIMEOUT;
 
 #[derive(Clone)]
 struct PoolWithTimestamp {
@@ -484,13 +485,12 @@ impl Database {
     async fn cleanup_idle_pools(&self) {
         let mut pools = self.connection_pools.lock().await;
         let now = Instant::now();
-        let idle_timeout = Duration::from_secs(5 * 60); // 5 minutes
 
         // Collect vaults to remove
         let vaults_to_remove: Vec<VaultId> = pools
             .iter()
             .filter(|(_, pool_with_timestamp)| {
-                now.duration_since(pool_with_timestamp.last_accessed) > idle_timeout
+                now.duration_since(pool_with_timestamp.last_accessed) > IDLE_POOL_TIMEOUT
             })
             .map(|(vault_id, _)| vault_id.clone())
             .collect();
