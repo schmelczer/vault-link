@@ -31,7 +31,7 @@
         "dev": "concurrently --kill-others \"npm run dev -w sync-client\" \"npm run dev -w obsidian-plugin\"",
         "test": "npm run test --workspaces",
         "lint": "eslint --fix sync-client obsidian-plugin test-client deterministic-tests local-client-cli && prettier --write \"**/*.ts\"",
-        "update": "ncu -u -ws"
+        "update": "ncu -u"
     },
     "devDependencies": {
         "concurrently": "^9.2.1",

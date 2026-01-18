@@ -12,13 +12,11 @@
     },
     "devDependencies": {
         "@types/node": "^25.0.2",
-        "@types/ws": "^8.5.13",
         "sync-client": "file:../sync-client",
         "ts-loader": "^9.5.4",
         "tslib": "2.8.1",
         "typescript": "5.9.3",
         "webpack": "^5.103.0",
-        "webpack-cli": "^6.0.1",
-        "ws": "^8.18.0"
+        "webpack-cli": "^6.0.1"
     }
 }
