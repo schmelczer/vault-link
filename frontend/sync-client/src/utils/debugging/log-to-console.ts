@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 import type { Logger, LogLine } from "../../tracing/logger";
 import { LogLevel } from "../../tracing/logger";
 

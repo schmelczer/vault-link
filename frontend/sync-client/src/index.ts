@@ -2,6 +2,7 @@ import { awaitAll } from "./utils/await-all";
 import { logToConsole } from "./utils/debugging/log-to-console";
 import { slowFetchFactory } from "./utils/debugging/slow-fetch-factory";
 import { slowWebSocketFactory } from "./utils/debugging/slow-web-socket-factory";
+import { InMemoryFileSystem } from "./utils/debugging/in-memory-file-system";
 import { getRandomColor } from "./utils/get-random-color";
 import { lineAndColumnToPosition } from "./utils/line-and-column-to-position";
 import { positionToLineAndColumn } from "./utils/position-to-line-and-column";
@@ -37,7 +38,8 @@ export type { TextWithCursors, CursorPosition } from "reconcile-text";
 export const debugging = {
     slowFetchFactory,
     slowWebSocketFactory,
-    logToConsole
+    logToConsole,
+    InMemoryFileSystem
 };
 
 export const utils = {

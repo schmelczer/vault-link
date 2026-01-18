@@ -1,9 +1,12 @@
-import type { TestDefinition, TestResult, TestStep } from "./test-definition";
+import type {
+    TestDefinition,
+    TestResult,
+    TestStep,
+    ClientState
+} from "./test-definition";
 import { DeterministicAgent } from "./deterministic-agent";
 import type { ServerControl } from "./server-control";
-import type { SyncSettings } from "sync-client";
-import { utils } from "sync-client";
-import { sleep } from "./utils/sleep";
+import type { SyncSettings, Logger } from "sync-client";
 import { assert } from "./utils/assert";
 import WebSocket from "ws";
 import { randomUUID } from "node:crypto";
@@ -13,30 +16,28 @@ export class TestRunner {
     private readonly serverControl: ServerControl;
     private readonly token: string;
     private readonly remoteUri: string;
-    private readonly logBuffer: string[] = [];
+    private readonly logger: Logger;
 
     public constructor(
         serverControl: ServerControl,
-        options: {
-            token?: string;
-            remoteUri?: string;
-        } = {}
+        logger: Logger,
+        token: string,
+        remoteUri: string
     ) {
         this.serverControl = serverControl;
-        this.token = options.token ?? "test-token-change-me     ";
-        this.remoteUri = options.remoteUri ?? "http://localhost:3000";
+        this.logger = logger;
+        this.token = token;
+        this.remoteUri = remoteUri;
     }
 
     public async runTest(test: TestDefinition): Promise<TestResult> {
         const startTime = Date.now();
-        this.log(`\n${"=".repeat(80)}`);
-        this.log(`Running test: ${test.name}`);
+        this.logger.info(`Running test: ${test.name}`);
         if (test.description !== undefined && test.description !== "") {
-            this.log(`Description: ${test.description}`);
+            this.logger.info(`Description: ${test.description}`);
         }
-        this.log(`Clients: ${test.clients}`);
-        this.log(`Steps: ${test.steps.length}`);
-        this.log("=".repeat(80));
+        this.logger.info(`Clients: ${test.clients}`);
+        this.logger.info(`Steps: ${test.steps.length}`);
 
         try {
             // Initialize agents
@@ -45,7 +46,7 @@ export class TestRunner {
             // Execute steps
             for (let i = 0; i < test.steps.length; i++) {
                 const step = test.steps[i];
-                this.log(
+                this.logger.info(
                     `\nStep ${i + 1}/${test.steps.length}: ${JSON.stringify(step)}`
                 );
                 await this.executeStep(step);
@@ -55,7 +56,7 @@ export class TestRunner {
             await this.cleanup();
 
             const duration = Date.now() - startTime;
-            this.log(`\n✓ Test passed: ${test.name} (${duration}ms)`);
+            this.logger.info(`\n✓ Test passed: ${test.name} (${duration}ms)`);
 
             return {
                 success: true,
@@ -65,8 +66,8 @@ export class TestRunner {
             const duration = Date.now() - startTime;
             const errorMessage =
                 error instanceof Error ? error.message : String(error);
-            this.log(`\n✗ Test failed: ${test.name}`);
-            this.log(`Error: ${errorMessage}`);
+            this.logger.info(`\n✗ Test failed: ${test.name}`);
+            this.logger.info(`Error: ${errorMessage}`);
 
             await this.cleanup();
 
@@ -78,25 +79,13 @@ export class TestRunner {
         }
     }
 
-    public getLog(): string {
-        return this.logBuffer.join("\n");
-    }
-
-    private log(message: string): void {
-        const timestamp = new Date().toISOString();
-        const logLine = `[${timestamp}] ${message}`;
-        console.log(logLine);
-        this.logBuffer.push(logLine);
-    }
-
     private async initializeAgents(count: number): Promise<void> {
-        // Use unique vault name for each test run to avoid data interference
         const vaultName = `test-${randomUUID()}`;
-        this.log(`\nInitializing ${count} agents with vault: ${vaultName}`);
+        this.logger.info(
+            `Initializing ${count} agents with vault: ${vaultName}`
+        );
 
         const settings: Partial<SyncSettings> = {
-            // Start with sync disabled to avoid scheduleSyncForOfflineChanges running
-            // before we've created our test files. Tests must explicitly enable sync.
             isSyncEnabled: false,
             token: this.token,
             vaultName,
@@ -106,9 +95,8 @@ export class TestRunner {
 
         for (let i = 0; i < count; i++) {
             const agent = new DeterministicAgent(i, settings, (msg) => {
-                this.log(msg);
+                this.logger.info(msg);
             });
-            // WebSocket from 'ws' package needs type assertion for browser WebSocket interface
 
             await agent.init(
                 fetch,
@@ -116,13 +104,10 @@ export class TestRunner {
                 WebSocket as unknown as typeof globalThis.WebSocket
             );
             this.agents.push(agent);
-            this.log(`Initialized client ${i}`);
+            this.logger.info(`Initialized client ${i}`);
         }
 
-        // Wait for WebSocket connections to fully establish
-        await sleep(100);
-        this.log("All agents initialized and connected");
-        // Note: Sync is disabled on all agents. Tests must explicitly enable sync.
+        this.logger.info("All agents initialized");
     }
 
     private async executeStep(step: TestStep): Promise<void> {
@@ -156,7 +141,6 @@ export class TestRunner {
                 if (step.client !== undefined) {
                     await this.agents[step.client].waitForSync();
                 } else {
-                    // Wait for all clients
                     for (const agent of this.agents) {
                         await agent.waitForSync();
                     }
@@ -171,11 +155,6 @@ export class TestRunner {
                 await this.agents[step.client].enableSync();
                 break;
 
-            case "wait":
-                this.log(`Waiting ${step.duration}ms...`);
-                await sleep(step.duration);
-                break;
-
             case "pause-server":
                 this.serverControl.pause();
                 break;
@@ -185,22 +164,7 @@ export class TestRunner {
                 break;
 
             case "barrier":
-                this.log(
-                    "Barrier: waiting for all clients to finish pending operations..."
-                );
-                // First, wait for all local pending operations to complete
-                for (const agent of this.agents) {
-                    await agent.waitForSync();
-                }
-
-                // Wait for network propagation
-                await sleep(500);
-
-                // Then sync again to ensure all clients have received updates from others
-                for (const agent of this.agents) {
-                    await agent.waitForSync();
-                }
-                this.log("Barrier complete");
+                await this.waitForConvergence();
                 break;
 
             case "assert-content":
@@ -219,7 +183,7 @@ export class TestRunner {
                 break;
 
             case "assert-consistent":
-                await this.assertConsistent();
+                await this.assertConsistent(step.verify);
                 break;
 
             default: {
@@ -229,18 +193,80 @@ export class TestRunner {
         }
     }
 
-    private async assertConsistent(): Promise<void> {
-        this.log("Asserting all clients are consistent...");
+    private async waitForConvergence(maxAttempts = 50): Promise<void> {
+        this.logger.info("Barrier: waiting for convergence...");
 
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            for (const agent of this.agents) {
+                await agent.waitForSync();
+            }
+
+            if (await this.checkConsistency()) {
+                this.logger.info("Barrier complete: all clients converged");
+                return;
+            }
+
+            this.logger.info(
+                `Convergence attempt ${attempt + 1}/${maxAttempts}: not yet consistent, syncing again...`
+            );
+        }
+
+        throw new Error(
+            `Clients did not converge after ${maxAttempts} attempts`
+        );
+    }
+
+    private async checkConsistency(): Promise<boolean> {
         if (this.agents.length < 2) {
-            this.log("Only one client, skipping consistency check");
-            return;
+            return true;
         }
 
         const [referenceAgent] = this.agents;
         const referenceFiles = (await referenceAgent.getFiles()).sort();
 
-        this.log(
+        for (let i = 1; i < this.agents.length; i++) {
+            const agent = this.agents[i];
+            const files = (await agent.getFiles()).sort();
+
+            if (files.length !== referenceFiles.length) {
+                return false;
+            }
+
+            for (let j = 0; j < files.length; j++) {
+                if (files[j] !== referenceFiles[j]) {
+                    return false;
+                }
+            }
+
+            for (const file of referenceFiles) {
+                const referenceContent =
+                    await referenceAgent.getFileContent(file);
+                const agentContent = await agent.getFileContent(file);
+
+                if (referenceContent !== agentContent) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    private async assertConsistent(
+        verify?: (state: ClientState) => void
+    ): Promise<void> {
+        this.logger.info("Asserting all clients are consistent...");
+
+        const [referenceAgent] = this.agents;
+        const referenceFiles = (await referenceAgent.getFiles()).sort();
+        const referenceState: ClientState = { files: new Map() };
+
+        for (const file of referenceFiles) {
+            const content = await referenceAgent.getFileContent(file);
+            referenceState.files.set(file, content);
+        }
+
+        this.logger.info(
             `Reference client has ${referenceFiles.length} files: ${referenceFiles.join(", ")}`
         );
 
@@ -248,11 +274,10 @@ export class TestRunner {
             const agent = this.agents[i];
             const files = (await agent.getFiles()).sort();
 
-            this.log(
+            this.logger.info(
                 `Client ${i} has ${files.length} files: ${files.join(", ")}`
             );
 
-            // Check file lists match
             assert(
                 files.length === referenceFiles.length,
                 `File count mismatch: client 0 has ${referenceFiles.length} files, client ${i} has ${files.length} files`
@@ -265,10 +290,8 @@ export class TestRunner {
                 );
             }
 
-            // Check file contents match
             for (const file of referenceFiles) {
-                const referenceContent =
-                    await referenceAgent.getFileContent(file);
+                const referenceContent = referenceState.files.get(file);
                 const agentContent = await agent.getFileContent(file);
 
                 assert(
@@ -278,15 +301,21 @@ export class TestRunner {
             }
         }
 
-        this.log("✓ All clients are consistent");
+        this.logger.info("✓ All clients are consistent");
+
+        if (verify) {
+            this.logger.info("Running custom verification...");
+            verify(referenceState);
+            this.logger.info("✓ Custom verification passed");
+        }
     }
 
     private async cleanup(): Promise<void> {
-        this.log("\nCleaning up agents...");
+        this.logger.info("\nCleaning up agents...");
         for (const agent of this.agents) {
             await agent.cleanup();
         }
         this.agents = [];
-        this.log("Cleanup complete");
+        this.logger.info("Cleanup complete");
     }
 }

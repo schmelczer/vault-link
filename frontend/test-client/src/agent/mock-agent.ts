@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 import { choose } from "../utils/choose";
 import { v4 as uuidv4 } from "uuid";
 import { assert } from "../utils/assert";
@@ -94,22 +95,12 @@ export class MockAgent extends MockClient {
     }
 
     public async createInitialDocuments(count: number): Promise<void> {
-        this.client.logger.info(`Creating ${count} initial documents`);
-
         for (let i = 0; i < count; i++) {
             const file = `initial-${i}.md`;
+            this.doNotTouchWhileOffline.push(file);
             const content = this.getContent();
-            this.client.logger.info(
-                `Creating initial file ${file} with content ${content}`
-            );
-            await this.create(file, new TextEncoder().encode(` ${content} `), {
-                ignoreSlowFileEvents: true
-            });
+            this.files.set(file, new TextEncoder().encode(` ${content} `));
         }
-
-        // Wait for all initial documents to sync
-        await this.client.waitUntilFinished();
-        this.client.logger.info(`Initial documents created and synced`);
     }
 
     public async waitUntilSynced(): Promise<void> {
@@ -159,7 +150,7 @@ export class MockAgent extends MockClient {
                             JSON.stringify(this.data, null, 2)
                         );
                         this.client.logger.info(
-                            JSON.stringify(this.localFiles, null, 2)
+                            JSON.stringify(this.files, null, 2)
                         );
                         throw error;
                     }
@@ -192,14 +183,14 @@ export class MockAgent extends MockClient {
     }
 
     public assertFileSystemsAreConsistent(otherAgent: MockAgent): void {
-        const globalFiles = Array.from(otherAgent.localFiles.keys());
-        const localFiles = Array.from(this.localFiles.keys());
+        const globalFiles = Array.from(otherAgent.files.keys());
+        const localFiles = Array.from(this.files.keys());
 
         const missingInOther = localFiles.filter(
-            (file) => !otherAgent.localFiles.has(file)
+            (file) => !otherAgent.files.has(file)
         );
         const missingInLocal = globalFiles.filter(
-            (file) => !this.localFiles.has(file)
+            (file) => !this.files.has(file)
         );
 
         try {
@@ -214,10 +205,10 @@ export class MockAgent extends MockClient {
 
             for (const file of globalFiles) {
                 const localContent = new TextDecoder().decode(
-                    this.localFiles.get(file)
+                    this.files.get(file)
                 );
                 const otherContent = new TextDecoder().decode(
-                    otherAgent.localFiles.get(file)
+                    otherAgent.files.get(file)
                 );
                 assert(
                     localContent === otherContent,
@@ -229,15 +220,13 @@ export class MockAgent extends MockClient {
                 "Local data: " + JSON.stringify(this.data, null, 2)
             );
             this.client.logger.info(
-                "Local files: " +
-                    Array.from(otherAgent.localFiles.keys()).join(", ")
+                "Local files: " + Array.from(otherAgent.files.keys()).join(", ")
             );
             otherAgent.client.logger.info(
                 "Local data: " + JSON.stringify(otherAgent.data, null, 2)
             );
             otherAgent.client.logger.info(
-                "Local files: " +
-                    Array.from(otherAgent.localFiles.keys()).join(", ")
+                "Local files: " + Array.from(otherAgent.files.keys()).join(", ")
             );
 
             throw e;
@@ -254,9 +243,9 @@ export class MockAgent extends MockClient {
         }
 
         for (const content of this.writtenContents) {
-            const found = Array.from(this.localFiles.keys()).filter((key) => {
+            const found = Array.from(this.files.keys()).filter((key) => {
                 return new TextDecoder()
-                    .decode(this.localFiles.get(key))
+                    .decode(this.files.get(key))
                     .includes(content);
             });
 
@@ -278,7 +267,7 @@ export class MockAgent extends MockClient {
 
                 const [file] = found;
                 const fileContent = new TextDecoder().decode(
-                    this.localFiles.get(file)
+                    this.files.get(file)
                 );
                 assert(
                     fileContent.split(content).length == 2,

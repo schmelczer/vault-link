@@ -9,24 +9,24 @@ server:
   max_clients_per_vault: 256
   response_timeout: 30m
   mergeable_file_extensions:
-    - md
-    - txt
+  - md
+  - txt
 users:
   user_configs:
-    - name: admin
-      token: test-token-change-me
-      vault_access:
-        type: allow_access_to_all
-    - name: other-admin
-      token: test-token-change-me2
-      vault_access:
-        type: allow_access_to_all
-    - name: test
-      token: other-test-token
-      vault_access:
-        type: allow_list
-        allowed:
-          - default
+  - name: admin
+    token: test-token-change-me
+    vault_access:
+      type: allow_access_to_all
+  - name: other-admin
+    token: test-token-change-me2
+    vault_access:
+      type: allow_access_to_all
+  - name: test
+    token: other-test-token
+    vault_access:
+      type: allow_list
+      allowed:
+      - default
 logging:
   log_directory: logs
   log_rotation: 7days

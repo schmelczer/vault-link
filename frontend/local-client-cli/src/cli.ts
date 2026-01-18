@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 import * as path from "path";
 import * as fs from "fs/promises";
 import * as fsSync from "fs";
@@ -65,7 +66,7 @@ async function main(): Promise<void> {
 
     console.log(
         styleText("VaultLink Local CLI", "bold", "cyan") +
-            colorize(` v${packageJson.version}`, "dim")
+        colorize(` v${packageJson.version}`, "dim")
     );
     console.log(colorize("=".repeat(50), "dim"));
     console.log(

@@ -1,18 +1,16 @@
-import type { TestDefinition } from "../test-definition";
+import type { ClientState, TestDefinition } from "../test-definition";
+import { assert } from "../utils/assert";
 
-/**
- * Write/Write Conflict Test
- *
- * Scenario:
- * - Client 0 creates file A with content "hello"
- * - Client 1 creates file A with content "world"
- * - Both clients sync
- * - The system must resolve the conflict deterministically
- *
- * Expected behavior:
- * - One version wins (typically last-write-wins or version-based)
- * - Both clients converge to the same final state
- */
+function verifyMergedContent(state: ClientState): void {
+    assert(state.files.size === 1, `Expected 1 file, got ${state.files.size}`);
+    assert(state.files.has("A.md"), "Expected A.md to exist");
+    const content = state.files.get("A.md") ?? "";
+    assert(
+        content.includes("hello") && content.includes("world"),
+        `Expected A.md to contain both "hello" and "world", got: "${content}"`
+    );
+}
+
 export const writeWriteConflictTest: TestDefinition = {
     name: "Write/Write Conflict",
     description:
@@ -20,27 +18,13 @@ export const writeWriteConflictTest: TestDefinition = {
         "The system should resolve the conflict and both clients should converge.",
     clients: 2,
     steps: [
-        // Both clients go offline
         { type: "disable-sync", client: 0 },
         { type: "disable-sync", client: 1 },
-
-        // Both clients create the same file with different content
         { type: "create", client: 0, path: "A.md", content: "hello" },
         { type: "create", client: 1, path: "A.md", content: "world" },
-
-        // Enable sync and wait for conflict resolution
         { type: "enable-sync", client: 0 },
         { type: "enable-sync", client: 1 },
-
-        // Wait for sync to complete and propagate
         { type: "barrier" },
-
-        // Extra time for any conflict resolution
-        { type: "wait", duration: 300 },
-
-        { type: "barrier" },
-
-        // Verify both clients have the same file(s) and content
-        { type: "assert-consistent" }
+        { type: "assert-consistent", verify: verifyMergedContent }
     ]
 };

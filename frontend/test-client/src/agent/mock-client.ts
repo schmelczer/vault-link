@@ -2,13 +2,12 @@ import type { StoredDatabase, TextWithCursors } from "sync-client";
 import { assert } from "../utils/assert";
 import {
     type RelativePath,
-    type FileSystemOperations,
     type SyncSettings,
-    SyncClient
+    SyncClient,
+    debugging
 } from "sync-client";
 
-export class MockClient implements FileSystemOperations {
-    protected readonly localFiles = new Map<string, Uint8Array>();
+export class MockClient extends debugging.InMemoryFileSystem {
     protected client!: SyncClient;
 
     protected data: Partial<{
@@ -20,6 +19,7 @@ export class MockClient implements FileSystemOperations {
         initialSettings: Partial<SyncSettings>,
         protected readonly useSlowFileEvents: boolean
     ) {
+        super();
         this.data.settings = initialSettings;
     }
 
@@ -40,28 +40,6 @@ export class MockClient implements FileSystemOperations {
         await this.client.start();
     }
 
-    public async listFilesRecursively(
-        _root: RelativePath | undefined = undefined // we don't use multi-level paths during tests
-    ): Promise<RelativePath[]> {
-        return Array.from(this.localFiles.keys());
-    }
-
-    public async read(path: RelativePath): Promise<Uint8Array> {
-        const file = this.localFiles.get(path);
-        if (!file) {
-            throw new Error(`File ${path} does not exist`);
-        }
-        return file;
-    }
-
-    public async getFileSize(path: RelativePath): Promise<number> {
-        return (await this.read(path)).length;
-    }
-
-    public async exists(path: RelativePath): Promise<boolean> {
-        return this.localFiles.has(path);
-    }
-
     public async create(
         path: RelativePath,
         newContent: Uint8Array,
@@ -69,13 +47,13 @@ export class MockClient implements FileSystemOperations {
             ignoreSlowFileEvents: false
         }
     ): Promise<void> {
-        if (this.localFiles.has(path)) {
+        if (this.files.has(path)) {
             throw new Error(`File ${path} already exists`);
         }
         this.client.logger.info(
             `Creating file ${path} with content ${new TextDecoder().decode(newContent)}`
         );
-        this.localFiles.set(path, newContent);
+        this.files.set(path, newContent);
 
         this.executeFileOperation(
             async () => this.client.syncLocallyCreatedFile(path),
@@ -83,25 +61,21 @@ export class MockClient implements FileSystemOperations {
         );
     }
 
-    public async createDirectory(_path: RelativePath): Promise<void> {
-        // This doesn't mean anything in our virtual FS representation
-    }
-
-    public async atomicUpdateText(
+    public override async atomicUpdateText(
         path: RelativePath,
         updater: (currentContent: TextWithCursors) => TextWithCursors,
         { ignoreSlowFileEvents }: { ignoreSlowFileEvents: boolean } = {
             ignoreSlowFileEvents: false
         }
     ): Promise<string> {
-        const file = this.localFiles.get(path);
+        const file = this.files.get(path);
         if (!file) {
             throw new Error(`File ${path} does not exist`);
         }
         const currentContent = new TextDecoder().decode(file);
         const newContent = updater({ text: currentContent, cursors: [] }).text;
         const newContentUint8Array = new TextEncoder().encode(newContent);
-        this.localFiles.set(path, newContentUint8Array);
+        this.files.set(path, newContentUint8Array);
 
         if (!this.useSlowFileEvents) {
             const existingParts = currentContent
@@ -109,13 +83,13 @@ export class MockClient implements FileSystemOperations {
                 .map((part) => part.trim());
             const newParts = newContent.split(" ").map((part) => part.trim());
             existingParts.forEach((part) =>
-                // all changes should be additive
-                {
-                    assert(
-                        newParts.includes(part),
-                        `Part ${part} not found in new content: ${newContent}`
-                    );
-                }
+            // all changes should be additive
+            {
+                assert(
+                    newParts.includes(part),
+                    `Part ${part} not found in new content: ${newContent}`
+                );
+            }
             );
         }
 
@@ -134,9 +108,12 @@ export class MockClient implements FileSystemOperations {
         return newContent;
     }
 
-    public async write(path: RelativePath, content: Uint8Array): Promise<void> {
-        const hasExisted = this.localFiles.has(path);
-        this.localFiles.set(path, content);
+    public override async write(
+        path: RelativePath,
+        content: Uint8Array
+    ): Promise<void> {
+        const hasExisted = this.files.has(path);
+        this.files.set(path, content);
 
         this.client.logger.info(
             `Updated file ${path} with:\n  new content: ${new TextDecoder().decode(content)}`
@@ -153,16 +130,16 @@ export class MockClient implements FileSystemOperations {
         });
     }
 
-    public async delete(
+    public override async delete(
         path: RelativePath,
         { ignoreSlowFileEvents }: { ignoreSlowFileEvents: boolean } = {
             ignoreSlowFileEvents: false
         }
     ): Promise<void> {
         this.client.logger.info(
-            `Deleting file: ${path} with:\n  content ${new TextDecoder().decode(this.localFiles.get(path))}`
+            `Deleting file: ${path} with:\n  content ${new TextDecoder().decode(this.files.get(path))}`
         );
-        this.localFiles.delete(path);
+        this.files.delete(path);
 
         this.executeFileOperation(
             async () => this.client.syncLocallyDeletedFile(path),
@@ -170,20 +147,20 @@ export class MockClient implements FileSystemOperations {
         );
     }
 
-    public async rename(
+    public override async rename(
         oldPath: RelativePath,
         newPath: RelativePath,
         { ignoreSlowFileEvents }: { ignoreSlowFileEvents: boolean } = {
             ignoreSlowFileEvents: false
         }
     ): Promise<void> {
-        const file = this.localFiles.get(oldPath);
+        const file = this.files.get(oldPath);
         if (!file) {
             throw new Error(`File ${oldPath} does not exist`);
         }
-        this.localFiles.set(newPath, file);
+        this.files.set(newPath, file);
         if (oldPath !== newPath) {
-            this.localFiles.delete(oldPath);
+            this.files.delete(oldPath);
         }
 
         this.client.logger.info(

@@ -1,28 +1,15 @@
-import type { StoredDatabase, TextWithCursors } from "sync-client";
-import type {
-    RelativePath,
-    FileSystemOperations,
-    SyncSettings
-} from "sync-client";
-import { SyncClient } from "sync-client";
+import type { StoredDatabase, SyncSettings, RelativePath } from "sync-client";
+import { SyncClient, debugging } from "sync-client";
 import { assert } from "./utils/assert";
 
-/**
- * DeterministicAgent - A test agent that properly awaits all sync operations.
- *
- * Unlike MockClient which fires-and-forgets sync operations, this class
- * ensures each operation is fully registered with SyncClient before returning.
- */
-export class DeterministicAgent implements FileSystemOperations {
+export class DeterministicAgent extends debugging.InMemoryFileSystem {
     public readonly clientId: number;
     private readonly logger: (msg: string) => void;
-    private readonly localFiles = new Map<string, Uint8Array>();
     private client!: SyncClient;
     private data: Partial<{
         settings: Partial<SyncSettings>;
         database: Partial<StoredDatabase>;
     }> = {};
-    // Track sync state locally to avoid calling sync methods when disabled
     private isSyncEnabled = true;
 
     public constructor(
@@ -30,6 +17,7 @@ export class DeterministicAgent implements FileSystemOperations {
         initialSettings: Partial<SyncSettings>,
         logger: (msg: string) => void
     ) {
+        super();
         this.clientId = clientId;
         this.logger = logger;
         this.data.settings = initialSettings;
@@ -52,7 +40,6 @@ export class DeterministicAgent implements FileSystemOperations {
 
         await this.client.start();
 
-        // Verify connection is working
         const connectionCheck = await this.client.checkConnection();
         assert(
             connectionCheck.isSuccessful,
@@ -60,87 +47,14 @@ export class DeterministicAgent implements FileSystemOperations {
         );
     }
 
-    // FileSystemOperations implementation
-    public async listFilesRecursively(
-        _root?: RelativePath
-    ): Promise<RelativePath[]> {
-        return Array.from(this.localFiles.keys());
-    }
-
-    public async read(path: RelativePath): Promise<Uint8Array> {
-        const file = this.localFiles.get(path);
-        if (!file) {
-            throw new Error(`File ${path} does not exist`);
-        }
-        return file;
-    }
-
-    public async getFileSize(path: RelativePath): Promise<number> {
-        return (await this.read(path)).length;
-    }
-
-    public async exists(path: RelativePath): Promise<boolean> {
-        return this.localFiles.has(path);
-    }
-
-    public async write(path: RelativePath, content: Uint8Array): Promise<void> {
-        // This is called by SyncClient to write files received from the server.
-        // Do NOT call sync methods here - that would create a feedback loop.
-        this.localFiles.set(path, content);
-    }
-
-    public async createDirectory(_path: RelativePath): Promise<void> {
-        // Virtual FS doesn't need directories
-    }
-
-    public async atomicUpdateText(
-        path: RelativePath,
-        updater: (currentContent: TextWithCursors) => TextWithCursors
-    ): Promise<string> {
-        // This is called by SyncClient (via FileOperations.write) during merge handling.
-        // Do NOT call sync methods here - that would create a deadlock.
-        const file = this.localFiles.get(path);
-        if (!file) {
-            throw new Error(`File ${path} does not exist`);
-        }
-        const currentContent = new TextDecoder().decode(file);
-        const newContent = updater({ text: currentContent, cursors: [] }).text;
-        this.localFiles.set(path, new TextEncoder().encode(newContent));
-        return newContent;
-    }
-
-    public async delete(path: RelativePath): Promise<void> {
-        // This is called by SyncClient to delete files.
-        // Do NOT call sync methods here - that would create a feedback loop.
-        this.localFiles.delete(path);
-    }
-
-    public async rename(
-        oldPath: RelativePath,
-        newPath: RelativePath
-    ): Promise<void> {
-        // This is called by SyncClient to rename files.
-        // Do NOT call sync methods here - that would create a feedback loop.
-        const file = this.localFiles.get(oldPath);
-        if (!file) {
-            throw new Error(`File ${oldPath} does not exist`);
-        }
-        this.localFiles.set(newPath, file);
-        if (oldPath !== newPath) {
-            this.localFiles.delete(oldPath);
-        }
-    }
-
-    // Test operations
     public async createFile(path: string, content: string): Promise<void> {
         this.log(`Creating file ${path} with content: ${content}`);
-        if (this.localFiles.has(path)) {
+        if (this.files.has(path)) {
             throw new Error(`File ${path} already exists`);
         }
         const contentBytes = new TextEncoder().encode(content);
-        this.localFiles.set(path, contentBytes);
+        this.files.set(path, contentBytes);
 
-        // Only sync if enabled - otherwise scheduleSyncForOfflineChanges will pick it up
         if (this.isSyncEnabled) {
             await this.client.syncLocallyCreatedFile(path);
         }
@@ -149,9 +63,8 @@ export class DeterministicAgent implements FileSystemOperations {
     public async updateFile(path: string, content: string): Promise<void> {
         this.log(`Updating file ${path} with content: ${content}`);
         const contentBytes = new TextEncoder().encode(content);
-        this.localFiles.set(path, contentBytes);
+        this.files.set(path, contentBytes);
 
-        // Only sync if enabled
         if (this.isSyncEnabled) {
             await this.client.syncLocallyUpdatedFile({ relativePath: path });
         }
@@ -159,16 +72,14 @@ export class DeterministicAgent implements FileSystemOperations {
 
     public async renameFile(oldPath: string, newPath: string): Promise<void> {
         this.log(`Renaming file ${oldPath} to ${newPath}`);
-        // Update local state
-        const file = this.localFiles.get(oldPath);
+        const file = this.files.get(oldPath);
         if (!file) {
             throw new Error(`File ${oldPath} does not exist`);
         }
-        this.localFiles.set(newPath, file);
+        this.files.set(newPath, file);
         if (oldPath !== newPath) {
-            this.localFiles.delete(oldPath);
+            this.files.delete(oldPath);
         }
-        // Only sync if enabled
         if (this.isSyncEnabled) {
             await this.client.syncLocallyUpdatedFile({
                 oldPath,
@@ -179,9 +90,7 @@ export class DeterministicAgent implements FileSystemOperations {
 
     public async deleteFile(path: string): Promise<void> {
         this.log(`Deleting file ${path}`);
-        // Update local state
-        this.localFiles.delete(path);
-        // Only sync if enabled
+        this.files.delete(path);
         if (this.isSyncEnabled) {
             await this.client.syncLocallyDeletedFile(path);
         }

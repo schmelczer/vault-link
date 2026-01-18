@@ -1,14 +1,18 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { sleep } from "./utils/sleep";
+import type { Logger } from "sync-client";
+import { PING_URL } from "./consts";
 
 export class ServerControl {
     private process: ChildProcess | null = null;
     private readonly serverPath: string;
     private readonly configPath: string;
+    private readonly logger: Logger;
 
-    public constructor(serverPath: string, configPath: string) {
+    public constructor(serverPath: string, configPath: string, logger: Logger) {
         this.serverPath = serverPath;
         this.configPath = configPath;
+        this.logger = logger;
     }
 
     public async start(): Promise<void> {
@@ -16,7 +20,9 @@ export class ServerControl {
             throw new Error("Server is already running");
         }
 
-        console.log(`Starting server: ${this.serverPath} ${this.configPath}`);
+        this.logger.info(
+            `Starting server: ${this.serverPath} ${this.configPath}`
+        );
 
         let startupError: string | null = null;
 
@@ -26,53 +32,45 @@ export class ServerControl {
         });
 
         this.process.stdout?.on("data", (data: Buffer) => {
-            console.log(`[SERVER] ${data.toString().trim()}`);
+            this.logger.info(`[SERVER] ${data.toString().trim()}`);
         });
 
         this.process.stderr?.on("data", (data: Buffer) => {
             const msg = data.toString().trim();
-            console.error(`[SERVER ERROR] ${msg}`);
-            // Capture startup errors
+            this.logger.error(`[SERVER ERROR] ${msg}`);
             if (msg.includes("Failed to") || msg.includes("Error")) {
                 startupError = msg;
             }
         });
 
         this.process.on("error", (err) => {
-            console.error("[SERVER] Process error:", err);
+            this.logger.error(`[SERVER] Process error: ${err.message}`);
             startupError = err.message;
         });
 
         this.process.on("exit", (code, signal) => {
-            console.log(`[SERVER] Exited with code ${code}, signal ${signal}`);
+            this.logger.info(
+                `Server exited with code ${code}, signal ${signal}`
+            );
             this.process = null;
         });
 
-        // Give the process a moment to fail if it's going to
         await sleep(100);
-
-        // Check if process died during startup (exit handler sets this.process to null)
         this.checkProcessAlive(startupError, "startup");
-
-        // Wait for server to be ready
         await this.waitForReady();
-
-        // Final check that our process is still the one running
         this.checkProcessAlive(startupError, "after startup");
     }
 
     public async waitForReady(maxAttempts = 30): Promise<void> {
         for (let i = 0; i < maxAttempts; i++) {
             try {
-                const response = await fetch(
-                    "http://localhost:3000/vaults/test/ping"
-                );
+                const response = await fetch(PING_URL);
                 if (response.ok) {
-                    console.log("[SERVER] Ready");
+                    this.logger.info("[SERVER] Ready");
                     return;
                 }
             } catch {
-                // Server not ready yet
+                // Server not ready yet, continue polling
             }
             await sleep(100);
         }
@@ -83,7 +81,7 @@ export class ServerControl {
         if (this.process?.pid === undefined) {
             throw new Error("Server is not running");
         }
-        console.log("[SERVER] Pausing...");
+        this.logger.info("Server pausing...");
         process.kill(this.process.pid, "SIGSTOP");
     }
 
@@ -91,7 +89,7 @@ export class ServerControl {
         if (this.process?.pid === undefined) {
             throw new Error("Server is not running");
         }
-        console.log("[SERVER] Resuming...");
+        this.logger.info("Server resuming...");
         process.kill(this.process.pid, "SIGCONT");
     }
 
@@ -100,7 +98,7 @@ export class ServerControl {
             return;
         }
 
-        console.log("[SERVER] Stopping...");
+        this.logger.info("Server stopping...");
         const { pid } = this.process;
 
         return new Promise((resolve) => {
@@ -113,10 +111,8 @@ export class ServerControl {
                 resolve();
             });
 
-            // Try graceful shutdown first
             process.kill(pid, "SIGTERM");
 
-            // Force kill after 5 seconds
             setTimeout(() => {
                 if (this.process?.pid !== undefined) {
                     process.kill(this.process.pid, "SIGKILL");

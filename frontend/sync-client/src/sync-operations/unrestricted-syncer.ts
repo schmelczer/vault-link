@@ -74,12 +74,6 @@ export class UnrestrictedSyncer {
         force?: boolean;
         document: DocumentRecord;
     }): Promise<void> {
-        // this.history.addHistoryEntry({
-        //     status: SyncStatus.SUCCESS,
-        //     details: updateDetails,
-        //     message: `Successfully uploaded locally created file`
-        // });
-
         const updateDetails:
             | SyncCreateDetails
             | SyncUpdateDetails
@@ -221,15 +215,6 @@ export class UnrestrictedSyncer {
                           relativePath: response.relativePath
                       };
 
-            // if (areThereLocalChanges) {
-            //     this.history.addHistoryEntry({
-            //         status: SyncStatus.SUCCESS,
-            //         details: actualUpdateDetails,
-            //         message: `Successfully uploaded locally updated file to the server`,
-            //         author: response.userId
-            //     });
-            // } else
-
             if (!response.isDeleted) {
                 this.history.addHistoryEntry({
                     status: SyncStatus.SUCCESS,
@@ -246,7 +231,7 @@ export class UnrestrictedSyncer {
                         relativePath: document.relativePath
                     },
                     message:
-                        "File has been deleted remotely, so we deleted it locally",
+                        "Successfully deleted file which had been deleted remotely",
                     author: response.userId,
                     timestamp: new Date(response.updatedDate)
                 });
