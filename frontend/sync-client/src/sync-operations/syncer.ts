@@ -21,12 +21,14 @@ import type { WebSocketClientMessage } from "../services/types/WebSocketClientMe
 import { awaitAll } from "../utils/await-all";
 import { EventListeners } from "../utils/data-structures/event-listeners";
 
+export const __debug_locks: Locks<any>[] = []; // Used only for debugging timeouts
+
 export class Syncer {
     public readonly onRemainingOperationsCountChanged = new EventListeners<
         (remainingOperations: number) => unknown
     >();
 
-    private readonly remoteDocumentsLock: Locks<DocumentId>;
+    public readonly updatedDocumentsByPathAndKeysLock: Locks<DocumentId | RelativePath>;
 
     // FIFO to limit the number of concurrent sync operations
     private readonly syncQueue: PQueue;
@@ -48,7 +50,8 @@ export class Syncer {
             concurrency: settings.getSettings().syncConcurrency
         });
 
-        this.remoteDocumentsLock = new Locks<DocumentId>(this.logger);
+        this.updatedDocumentsByPathAndKeysLock = new Locks<DocumentId>(this.logger);
+        __debug_locks.push(this.updatedDocumentsByPathAndKeysLock); // Used only for debugging timeouts
 
         settings.onSettingsChanged.add((newSettings, oldSettings) => {
             if (newSettings.syncConcurrency !== oldSettings.syncConcurrency) {
@@ -80,6 +83,10 @@ export class Syncer {
         return this._isFirstSyncComplete;
     }
 
+    public hasPendingOperationsForDocument(relativePath: string): boolean {
+        return this.updatedDocumentsByPathAndKeysLock.isLocked(relativePath);
+    }
+
     public async syncLocallyCreatedFile(
         relativePath: RelativePath
     ): Promise<void> {
@@ -95,33 +102,27 @@ export class Syncer {
             return;
         }
 
-        const [promise, resolve, reject] = createPromise();
-
         const document = this.database.createNewPendingDocument(
-            relativePath,
-            promise
+            relativePath
         );
 
-        try {
-            await this.syncQueue.add(async () =>
-                this.unrestrictedSyncer.unrestrictedSyncLocallyCreatedOrUpdatedFile(
-                    { document }
-                )
-            );
-
-            resolve();
-        } catch (e) {
-            reject(e);
-        } finally {
-            this.database.removeDocumentPromise(promise);
-        }
+        await this.enqueueSyncOperation(async () =>
+            this.unrestrictedSyncer.unrestrictedSyncLocallyCreatedOrUpdatedFile(
+                {
+                    document
+                }
+            ), [relativePath]
+        );
     }
 
     public async syncLocallyDeletedFile(
         relativePath: RelativePath
     ): Promise<void> {
+        const document = this.database.getLatestDocumentByRelativePath(relativePath);
+
+
         if (
-            this.database.getLatestDocumentByRelativePath(relativePath)
+            document
                 ?.isDeleted === true
         ) {
             // This is must be a consequence of us deleting a file because of a remote update
@@ -136,28 +137,25 @@ export class Syncer {
         // document which finishes after the delete has succeeded and would introduce a phantom metadata record.
         this.database.delete(relativePath);
 
-        const [promise, resolve, reject] = createPromise();
 
-        const document = await this.database.getResolvedDocumentByRelativePath(
-            relativePath,
-            promise
-        );
 
-        try {
-            await this.syncQueue.add(async () =>
-                this.unrestrictedSyncer.unrestrictedSyncLocallyDeletedFile(
-                    document
-                )
+        await this.enqueueSyncOperation(async () => {
+            const document = this.database.getLatestDocumentByRelativePath(relativePath);
+
+            if (document === undefined) {
+                this.logger.debug(
+                    `Cannot find document ${relativePath} in the database, must have been deleted already, skipping`
+                );
+                return;
+            }
+
+            await this.unrestrictedSyncer.unrestrictedSyncLocallyDeletedFile(
+                document
             );
 
-            resolve();
-
             this.database.removeDocument(document);
-        } catch (e) {
-            reject(e);
-        } finally {
-            this.database.removeDocumentPromise(promise);
-        }
+        }, [document?.metadata?.documentId, relativePath]
+        );
     }
 
     public async syncLocallyUpdatedFile({
@@ -167,13 +165,17 @@ export class Syncer {
         oldPath?: RelativePath;
         relativePath: RelativePath;
     }): Promise<void> {
+        const documentAtNewPath = this.database.getLatestDocumentByRelativePath(
+            relativePath
+        );
+
         if (oldPath !== undefined) {
             // We might have moved the document in the database before calling this method,
             // in that case, we mustn't move it again.
             if (
-                this.database.getLatestDocumentByRelativePath(relativePath) ===
-                    undefined ||
-                this.database.getLatestDocumentByRelativePath(relativePath)
+                documentAtNewPath ===
+                undefined ||
+                documentAtNewPath
                     ?.isDeleted === true
             ) {
                 if (oldPath === relativePath) {
@@ -214,29 +216,17 @@ export class Syncer {
             return;
         }
 
-        const [promise, resolve, reject] = createPromise();
 
-        document = await this.database.getResolvedDocumentByRelativePath(
-            relativePath,
-            promise
+        await this.enqueueSyncOperation(async () =>
+            this.unrestrictedSyncer.unrestrictedSyncLocallyCreatedOrUpdatedFile(
+                {
+                    oldPath,
+                    document
+                }
+            ), [document.metadata?.documentId, relativePath, oldPath]
         );
 
-        try {
-            await this.syncQueue.add(async () =>
-                this.unrestrictedSyncer.unrestrictedSyncLocallyCreatedOrUpdatedFile(
-                    {
-                        oldPath,
-                        document
-                    }
-                )
-            );
 
-            resolve();
-        } catch (e) {
-            reject(e);
-        } finally {
-            this.database.removeDocumentPromise(promise);
-        }
     }
 
     public async scheduleSyncForOfflineChanges(): Promise<void> {
@@ -300,7 +290,7 @@ export class Syncer {
     public reset(): void {
         this._isFirstSyncComplete = false;
         this.syncQueue.clear();
-        this.remoteDocumentsLock.reset();
+        this.updatedDocumentsByPathAndKeysLock.reset();
         this.runningScheduleSyncForOfflineChanges = undefined;
     }
 
@@ -317,91 +307,17 @@ export class Syncer {
     private async internalSyncRemotelyUpdatedFile(
         remoteVersion: DocumentVersionWithoutContent
     ): Promise<void> {
-        let document = this.database.getDocumentByDocumentId(
+        const document = this.database.getDocumentByDocumentId(
             remoteVersion.documentId
         );
-
-        if (document === undefined) {
-            return this.remoteDocumentsLock.withLock(
-                // Avoid the same documents getting created in parallel multiple times through fetching multiple updates of the same
-                // new remote document concurrently.
-                // There might be multiple tasks waiting for the lock
-                remoteVersion.documentId,
-                async () => {
-                    // We have to wait for any ongoing creates sent for this file to finish,
-                    // This is to avoid fetching one's own creates before the corresponding local create has finished syncing. This is a concern because
-                    // documents being created don't yet have a document id in the local database and we could be notified of the remote create
-                    // before the local create has finished syncing, so we can't just ignore the update based on the local DB content as we
-                    // can't find the corresponding document yet.
-                    if (document?.metadata === undefined) {
-                        await this.unrestrictedSyncer.fileCreationLock.waitForLockWithoutAcquiringLock(
-                            remoteVersion.relativePath
-                        );
-                    }
-
-                    document = this.database.getDocumentByDocumentId(
-                        remoteVersion.documentId
-                    );
-
-                    // We're the first one to get the lock, so we have to create the document in `unrestrictedSyncRemotelyUpdatedFile`
-                    if (document === undefined) {
-                        await this.syncQueue.add(async () =>
-                            this.unrestrictedSyncer.unrestrictedSyncRemotelyUpdatedFile(
-                                remoteVersion
-                            )
-                        );
-                    } else {
-                        const [promise, resolve, reject] = createPromise();
-
-                        document =
-                            await this.database.getResolvedDocumentByRelativePath(
-                                document.relativePath,
-                                promise
-                            );
-
-                        try {
-                            await this.syncQueue.add(async () =>
-                                this.unrestrictedSyncer.unrestrictedSyncRemotelyUpdatedFile(
-                                    remoteVersion,
-                                    document
-                                )
-                            );
-
-                            resolve();
-                        } catch (e) {
-                            reject(e);
-                        } finally {
-                            this.database.removeDocumentPromise(promise);
-                        }
-                    }
-
-                    this.database.addSeenUpdateId(remoteVersion.vaultUpdateId);
-                }
-            );
-        }
-
-        // We're either the first one to get the lock, so we have to create the document in `unrestrictedSyncRemotelyUpdatedFile`
-        const [promise, resolve, reject] = createPromise();
-
-        document = await this.database.getResolvedDocumentByRelativePath(
-            document.relativePath,
-            promise
-        );
-
-        try {
+        this.enqueueSyncOperation(async () =>
             await this.syncQueue.add(async () =>
                 this.unrestrictedSyncer.unrestrictedSyncRemotelyUpdatedFile(
                     remoteVersion,
                     document
                 )
-            );
-
-            resolve();
-        } catch (e) {
-            reject(e);
-        } finally {
-            this.database.removeDocumentPromise(promise);
-        }
+            ), [document?.relativePath, remoteVersion.relativePath, remoteVersion.documentId]
+        );
 
         this.database.addSeenUpdateId(remoteVersion.vaultUpdateId);
     }
@@ -544,6 +460,15 @@ export class Syncer {
                     return;
                 }
             })
+        );
+    }
+
+    private async enqueueSyncOperation<T>(
+        operation: () => Promise<T>,
+        keys: Array<DocumentId | RelativePath | undefined | null>
+    ): Promise<T> {
+        return this.updatedDocumentsByPathAndKeysLock.withLock(keys.filter(k => k !== undefined && k !== null), async () =>
+            this.syncQueue.add(operation)
         );
     }
 }

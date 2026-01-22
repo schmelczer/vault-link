@@ -36,8 +36,6 @@ import type { ServerConfig } from "../services/server-config";
 import { Locks } from "../utils/data-structures/locks";
 
 export class UnrestrictedSyncer {
-    public readonly fileCreationLock: Locks<RelativePath> =
-        new Locks<RelativePath>();
     private ignorePatterns: RegExp[];
 
     public constructor(
@@ -65,10 +63,10 @@ export class UnrestrictedSyncer {
 
     public async unrestrictedSyncLocallyCreatedOrUpdatedFile({
         oldPath,
-        document,
         // We use the same code path for both local and remote updates. We need to force the update
         // if there are no local changes but we know that the remote version is newer.
-        force = false
+        force = false,
+        document,
     }: {
         oldPath?: RelativePath;
         force?: boolean;
@@ -80,16 +78,16 @@ export class UnrestrictedSyncer {
             | SyncMovedDetails =
             document.metadata === undefined
                 ? {
-                      type: SyncType.CREATE,
-                      relativePath: document.relativePath
-                  }
+                    type: SyncType.CREATE,
+                    relativePath: document.relativePath
+                }
                 : oldPath !== undefined
-                  ? {
+                    ? {
                         type: SyncType.MOVE,
                         relativePath: document.relativePath,
                         movedFrom: oldPath
                     }
-                  : {
+                    : {
                         type: SyncType.UPDATE,
                         relativePath: document.relativePath
                     };
@@ -111,27 +109,21 @@ export class UnrestrictedSyncer {
 
             let response: DocumentVersion | DocumentUpdateResponse | undefined =
                 undefined;
-
             if (document.metadata === undefined) {
-                response = await this.fileCreationLock.withLock(
-                    document.relativePath,
-                    async () => {
-                        const createResponse = await this.syncService.create({
-                            relativePath: originalRelativePath,
-                            contentBytes
-                        });
+                response = await this.syncService.create({
+                    relativePath: originalRelativePath,
+                    contentBytes
+                });
 
-                        await this.handleMaybeMergingResponse({
-                            document,
-                            response: createResponse,
-                            contentHash,
-                            originalRelativePath,
-                            originalContentBytes: contentBytes
-                        });
+                await this.handleMaybeMergingResponse({
+                    document,
+                    response,
+                    contentHash,
+                    originalRelativePath,
+                    originalContentBytes: contentBytes,
+                    isCreate: true
+                });
 
-                        return createResponse;
-                    }
-                );
             } else {
                 const areThereLocalChanges =
                     document.metadata.hash !== contentHash ||
@@ -152,22 +144,22 @@ export class UnrestrictedSyncer {
                     response =
                         isText && cachedVersion !== undefined
                             ? await this.syncService.putText({
-                                  documentId: document.metadata.documentId,
-                                  parentVersionId:
-                                      document.metadata.parentVersionId,
-                                  relativePath: document.relativePath,
-                                  content: diff(
-                                      new TextDecoder().decode(cachedVersion),
-                                      new TextDecoder().decode(contentBytes)
-                                  )
-                              })
+                                documentId: document.metadata.documentId,
+                                parentVersionId:
+                                    document.metadata.parentVersionId,
+                                relativePath: document.relativePath,
+                                content: diff(
+                                    new TextDecoder().decode(cachedVersion),
+                                    new TextDecoder().decode(contentBytes)
+                                )
+                            })
                             : await this.syncService.putBinary({
-                                  documentId: document.metadata.documentId,
-                                  parentVersionId:
-                                      document.metadata.parentVersionId,
-                                  relativePath: document.relativePath,
-                                  contentBytes
-                              });
+                                documentId: document.metadata.documentId,
+                                parentVersionId:
+                                    document.metadata.parentVersionId,
+                                relativePath: document.relativePath,
+                                contentBytes
+                            });
                 } else {
                     if (!force) {
                         this.logger.debug(
@@ -204,16 +196,16 @@ export class UnrestrictedSyncer {
 
             const actualUpdateDetails: SyncUpdateDetails | SyncMovedDetails =
                 oldPath !== undefined ||
-                response.relativePath != originalRelativePath
+                    response.relativePath != originalRelativePath
                     ? {
-                          type: SyncType.MOVE,
-                          relativePath: response.relativePath,
-                          movedFrom: originalRelativePath
-                      }
+                        type: SyncType.MOVE,
+                        relativePath: response.relativePath,
+                        movedFrom: originalRelativePath
+                    }
                     : {
-                          type: SyncType.UPDATE,
-                          relativePath: response.relativePath
-                      };
+                        type: SyncType.UPDATE,
+                        relativePath: response.relativePath
+                    };
 
             if (!response.isDeleted) {
                 this.history.addHistoryEntry({
@@ -351,7 +343,6 @@ export class UnrestrictedSyncer {
 
             await this.operations.ensureClearPath(remoteVersion.relativePath);
 
-            const [promise, resolve] = createPromise();
             this.database.updateDocumentMetadata(
                 {
                     documentId: remoteVersion.documentId,
@@ -361,7 +352,6 @@ export class UnrestrictedSyncer {
                 },
                 this.database.createNewPendingDocument(
                     remoteVersion.relativePath,
-                    promise
                 )
             );
 
@@ -375,8 +365,6 @@ export class UnrestrictedSyncer {
                 remoteVersion.relativePath
             );
 
-            resolve();
-            this.database.removeDocumentPromise(promise);
 
             this.history.addHistoryEntry({
                 status: SyncStatus.SUCCESS,
@@ -388,9 +376,7 @@ export class UnrestrictedSyncer {
         });
     }
 
-    public reset(): void {
-        this.fileCreationLock.reset();
-    }
+
 
     private async executeSync<T>(
         details: SyncDetails,
@@ -461,13 +447,15 @@ export class UnrestrictedSyncer {
         response,
         contentHash,
         originalRelativePath,
-        originalContentBytes
+        originalContentBytes,
+        isCreate
     }: {
         document: DocumentRecord;
         response: DocumentVersion | DocumentUpdateResponse;
         contentHash: string;
         originalRelativePath: string;
         originalContentBytes: Uint8Array;
+        isCreate?: boolean;
     }): Promise<void> {
         // `document` is mutable and reflects the latest state in the local database
         if (document.isDeleted) {
@@ -494,6 +482,26 @@ export class UnrestrictedSyncer {
 
         let actualPath = document.relativePath;
 
+
+        if (isCreate === true) {
+            // We have a file locally that got moved by another client to the same path as the one we're trying to create.
+            // The server returns a merging update for the document ID that already exists locally (but at another path).
+            // We have to merge these two documents by extending the provenance of the existing document and deleting
+            // the old document that the new document already contains the content for.
+            const existingDocument = this.database.getDocumentByDocumentId(
+                response.documentId
+            );
+            if (existingDocument !== undefined) {
+                this.logger.info(`Merging document ${existingDocument.relativePath} into existing document ${document.relativePath} after concurrent move & creation`);
+                this.database.removeDocument(document); // this was a (fake) pending document
+                if (!existingDocument.isDeleted) {
+                    this.operations.delete(document.relativePath);
+                }
+                document = existingDocument;
+            }
+
+        }
+
         // this can't happen on the creation path as we can only get a merging response if a document already exists remotely on the same path
         if (response.relativePath != originalRelativePath) {
             actualPath = response.relativePath;
@@ -508,9 +516,11 @@ export class UnrestrictedSyncer {
             ); // this can throw FileNotFoundError
         }
 
+
         if (!("type" in response) || response.type === "MergingUpdate") {
             const responseBytes = base64ToBytes(response.contentBase64);
             contentHash = hash(responseBytes);
+
 
             this.database.updateDocumentMetadata(
                 {
@@ -564,9 +574,8 @@ export class UnrestrictedSyncer {
                     type: SyncType.SKIPPED,
                     relativePath
                 },
-                message: `File size of ${sizeInMB} MB exceeds the maximum file size limit of ${
-                    maxFileSizeMB
-                } MB`
+                message: `File size of ${sizeInMB} MB exceeds the maximum file size limit of ${maxFileSizeMB
+                    } MB`
             };
         }
     }

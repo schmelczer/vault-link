@@ -56,7 +56,7 @@ export class SyncClient {
                 database: Partial<StoredDatabase>;
             }>
         >
-    ) {}
+    ) { }
 
     public get documentCount(): number {
         return this.database.length;
@@ -410,12 +410,8 @@ export class SyncClient {
             return DocumentSyncStatus.SYNCING;
         }
 
-        const document =
-            this.database.getLatestDocumentByRelativePath(relativePath);
-        if (document === undefined) {
-            return DocumentSyncStatus.SYNCING;
-        }
-        return document.updates.length > 0
+
+        return this.syncer.hasPendingOperationsForDocument(relativePath)
             ? DocumentSyncStatus.SYNCING
             : DocumentSyncStatus.UP_TO_DATE;
     }
@@ -495,7 +491,6 @@ export class SyncClient {
         // don't reset the logger
         this.cursorTracker.reset();
         this.syncer.reset();
-        this.unrestrictedSyncer.reset();
         this.fileOperations.reset();
     }
 

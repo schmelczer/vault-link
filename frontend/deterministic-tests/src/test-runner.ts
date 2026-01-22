@@ -8,7 +8,6 @@ import { DeterministicAgent } from "./deterministic-agent";
 import type { ServerControl } from "./server-control";
 import type { SyncSettings, Logger } from "sync-client";
 import { assert } from "./utils/assert";
-import WebSocket from "ws";
 import { randomUUID } from "node:crypto";
 
 export class TestRunner {

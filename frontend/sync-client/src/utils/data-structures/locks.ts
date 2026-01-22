@@ -18,7 +18,7 @@ export class Locks<T> {
         [() => unknown, (err: unknown) => unknown][]
     >();
 
-    public constructor(private readonly logger?: Logger) {}
+    public constructor(private readonly logger?: Logger) { }
 
     /**
      * Executes a function while holding exclusive locks on one or more keys.
@@ -59,7 +59,10 @@ export class Locks<T> {
         const uniqueKeys = Array.from(new Set(keys));
         uniqueKeys.sort((a, b) => String(a).localeCompare(String(b))); // Ensure consistent order to prevent deadlocks
 
-        await awaitAll(uniqueKeys.map(async (key) => this.waitForLock(key)));
+        for (const key of uniqueKeys) {
+            // Must acquire locks in-order (not concurrently) to prevent deadlocks
+            await this.waitForLock(key);
+        }
 
         try {
             return await fn();
@@ -80,6 +83,44 @@ export class Locks<T> {
         }
         this.locked.clear();
         this.waiters.clear();
+    }
+
+    public isLocked(key: T): boolean {
+        return this.locked.has(key);
+    }
+
+    public getDebugString(): string {
+        const lockedKeys = Array.from(this.locked).map((key) => String(key));
+        const waiterEntries = Array.from(this.waiters.entries()).filter(
+            ([_, waiting]) => waiting.length > 0
+        );
+
+        const lines: string[] = [];
+        lines.push("=== Locks Debug ===");
+        lines.push(`Locked keys (${lockedKeys.length}):`);
+        if (lockedKeys.length === 0) {
+            lines.push("  (none)");
+        } else {
+            for (const key of lockedKeys) {
+                const waiterCount =
+                    this.waiters.get(key as T)?.length ?? 0;
+                lines.push(
+                    `  - ${key}${waiterCount > 0 ? ` (${waiterCount} waiting)` : ""}`
+                );
+            }
+        }
+
+        lines.push(`Waiters (${waiterEntries.length} keys):`);
+        if (waiterEntries.length === 0) {
+            lines.push("  (none)");
+        } else {
+            for (const [key, waiting] of waiterEntries) {
+                lines.push(`  - ${String(key)}: ${waiting.length} waiting`);
+            }
+        }
+        lines.push("===================");
+
+        return lines.join("\n");
     }
 
     /**
@@ -125,17 +166,6 @@ export class Locks<T> {
         });
     }
 
-    /**
-     * Waits until a lock is released without acquiring it.
-     * Operations are queued in FIFO order.
-     *
-     * @param key The key to wait for
-     * @returns Promise that resolves when lock is released
-     */
-    public async waitForLockWithoutAcquiringLock(key: T): Promise<void> {
-        await this.waitForLock(key);
-        this.unlock(key);
-    }
 
     /**
      * Releases a lock and grants access to the next waiting operation in FIFO order.

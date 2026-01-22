@@ -7,7 +7,7 @@ import { randomCasing } from "./utils/random-casing";
 import { TimeoutError } from "./utils/with-timeout";
 
 const TEST_ITERATIONS = 5;
-const MAX_INITIAL_DOCS = 0;
+const MAX_INITIAL_DOCS = 10;
 
 // Simulate async file access by injecting waiting time before returning from file operations.
 let slowFileEvents = false;
@@ -90,10 +90,11 @@ async function runTest({
 
         logger.info("Stopping agents");
 
-        // Each agent can have unpushed changes which might conflict with eachother so each has to resolve the conflicts & push, and
+        // Each agent can have unpushed changes which might conflict with eachother so each has to resolve the conflicts & push, and pull
         for (const client of clients) {
             try {
                 logger.info(`Finishing up ${client.name}`);
+                await client.waitUntilSynced();
                 await client.finish();
             } catch (err) {
                 if (err instanceof TimeoutError || !slowFileEvents) {
@@ -102,7 +103,7 @@ async function runTest({
             }
         }
 
-        // then we need a second pass to ensure that all agents pull the same state.
+        // then we need a second pass to ensure that all agents pull the same state
         for (const client of clients) {
             try {
                 logger.info(`Destroying ${client.name}`);
@@ -183,6 +184,9 @@ process.on("uncaughtException", (error) => {
     }
 
     logger.error(`Error - uncaught exception: ${error}`);
+    if (error instanceof Error && error.stack) {
+        logger.error(error.stack);
+    }
     process.exit(1);
 });
 
@@ -211,6 +215,9 @@ process.on("unhandledRejection", (error, _promise) => {
     }
 
     logger.error(`Error - unhandled rejection: ${error}`);
+    if (error instanceof Error && error.stack) {
+        logger.error(error.stack);
+    }
     process.exit(1);
 });
 

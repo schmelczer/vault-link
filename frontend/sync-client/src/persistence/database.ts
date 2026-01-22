@@ -38,7 +38,6 @@ export interface DocumentRecord {
     relativePath: RelativePath;
     metadata: DocumentMetadata | undefined;
     isDeleted: boolean;
-    updates: Promise<unknown>[];
     parallelVersion: number;
 }
 
@@ -58,7 +57,6 @@ export class Database {
                 relativePath,
                 metadata,
                 isDeleted: false,
-                updates: [],
                 parallelVersion: 0
             })) ?? [];
 
@@ -103,7 +101,7 @@ export class Database {
                     i === 0
                         ? false
                         : records[i - 1].parallelVersion ===
-                          current.parallelVersion
+                        current.parallelVersion
                 )
             ) {
                 throw new Error(
@@ -121,36 +119,29 @@ export class Database {
             hash: string;
             remoteRelativePath: RelativePath;
         },
-        toUpdate: DocumentRecord
+        target: DocumentRecord
     ): void {
-        if (!this.documents.includes(toUpdate)) {
+        if (!this.documents.includes(target)) {
             throw new Error("Document not found in database");
         }
 
-        toUpdate.metadata = metadata;
-
-        this.saveInTheBackground();
-    }
-
-    public removeDocumentPromise(promise: Promise<unknown>): void {
-        const entry = this.documents.find(({ updates }) =>
-            updates.includes(promise)
+        this.logger.debug(
+            `Updating document metadata for ${target.relativePath} from ${JSON.stringify(
+                target.metadata,
+                null,
+                2
+            )} to ${JSON.stringify(
+                metadata,
+                null,
+                2
+            )}`
         );
 
-        if (entry === undefined) {
-            // This method should be idempotent and tolerant of
-            // stragglers calling it after the databse has been reset.
-            return;
-        }
+        target.metadata = metadata;
 
-        removeFromArray(entry.updates, promise);
-        // No need to save as Promises don't get serialized
-    }
-
-    public removeDocument(find: DocumentRecord): void {
-        removeFromArray(this.documents, find);
         this.saveInTheBackground();
     }
+
 
     public getLatestDocumentByRelativePath(
         find: RelativePath
@@ -162,32 +153,9 @@ export class Database {
         return candidates[0];
     }
 
-    public async getResolvedDocumentByRelativePath(
-        relativePath: RelativePath,
-        promise: Promise<unknown>
-    ): Promise<DocumentRecord> {
-        const entry = this.getLatestDocumentByRelativePath(relativePath);
-
-        if (entry === undefined) {
-            throw new Error(
-                `Document not found by relative path in getResolvedDocumentByRelativePath: ${relativePath}, ${JSON.stringify(
-                    this.documents,
-                    null,
-                    2
-                )}`
-            );
-        }
-
-        const currentPromises = entry.updates;
-        entry.updates = [...currentPromises, promise];
-        await awaitAll(currentPromises);
-
-        return entry;
-    }
 
     public createNewPendingDocument(
         relativePath: RelativePath,
-        promise: Promise<unknown>
     ): DocumentRecord {
         this.logger.debug(`Creating new pending document: ${relativePath}`);
         const previousEntry =
@@ -197,7 +165,6 @@ export class Database {
             relativePath,
             metadata: undefined,
             isDeleted: false,
-            updates: [promise],
             parallelVersion:
                 previousEntry?.parallelVersion === undefined
                     ? 0
@@ -205,31 +172,8 @@ export class Database {
         };
 
         this.documents.push(entry);
-        this.saveInTheBackground();
 
-        return entry;
-    }
-
-    public createNewEmptyDocument(
-        documentId: DocumentId,
-        parentVersionId: VaultUpdateId,
-        relativePath: RelativePath
-    ): DocumentRecord {
-        const entry = {
-            relativePath,
-            metadata: {
-                documentId,
-                parentVersionId,
-                hash: EMPTY_HASH,
-                remoteRelativePath: relativePath
-            },
-            isDeleted: false,
-            updates: [],
-            parallelVersion: 0
-        };
-
-        this.documents.push(entry);
-        this.saveInTheBackground();
+        // no need to save as we only save documents which have metadata
 
         return entry;
     }
@@ -274,15 +218,15 @@ export class Database {
     public delete(relativePath: RelativePath): void {
         const candidate = this.getLatestDocumentByRelativePath(relativePath);
         if (candidate === undefined) {
-            throw new Error(
-                `Document not found by relative path in delete: ${relativePath}, ${JSON.stringify(
-                    this.documents,
-                    null,
-                    2
-                )}`
-            );
+            return;
         }
         candidate.isDeleted = true;
+    }
+
+
+    public removeDocument(find: DocumentRecord): void {
+        removeFromArray(this.documents, find);
+        this.saveInTheBackground();
     }
 
     public getLastSeenUpdateId(): VaultUpdateId {
@@ -350,7 +294,7 @@ export class Database {
         if (duplicates.length > 0) {
             throw new Error(
                 "Document IDs are not unique, found duplicates: " +
-                    duplicates.join("; ")
+                duplicates.join("; ")
             );
         }
     }

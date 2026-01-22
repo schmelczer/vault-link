@@ -10,6 +10,8 @@ import { SyncResetError } from "../../errors/sync-reset-error";
 describe("withLock", () => {
     const testPath: RelativePath = "test/document/path";
     const testPath2: RelativePath = "test/document/path2";
+    const testPath3: RelativePath = "test/document/path3";
+
     const logger = new Logger();
 
     // eslint-disable-next-line @typescript-eslint/init-declarations
@@ -56,22 +58,29 @@ describe("withLock", () => {
     it("should sort multiple keys to prevent deadlocks", async () => {
         const executionOrder: string[] = [];
 
-        // Start two concurrent operations with keys in different orders
-        const promise1 = locks.withLock([testPath2, testPath], async () => {
+        await locks.waitForLock(testPath);
+
+        const promise = awaitAll([locks.withLock([testPath2, testPath3, testPath], async () => {
             executionOrder.push("operation1-start");
-            await sleep(50);
             executionOrder.push("operation1-end");
             return "result1";
-        });
+        }),
 
-        const promise2 = locks.withLock([testPath, testPath2], async () => {
+        locks.withLock([testPath3, testPath, testPath2], async () => {
             executionOrder.push("operation2-start");
-            await sleep(50);
             executionOrder.push("operation2-end");
             return "result2";
-        });
+        })]);
 
-        const [result1, result2] = await awaitAll([promise1, promise2]);
+
+        locks.unlock(testPath);
+
+        const [result1, result2] = await Promise.race([promise, new Promise<never>((_, reject) => {
+            setTimeout(() => {
+                reject(new Error("Deadlock detected"));
+            }, 1000);
+        })]);
+
 
         assert.strictEqual(result1, "result1");
         assert.strictEqual(result2, "result2");
@@ -252,7 +261,7 @@ describe("reset", () => {
         await sleep(1);
 
         const secondPromise = locks.withLock(testPath, async () => "second");
-        void secondPromise.catch(() => {}); // eslint-disable-line @typescript-eslint/no-empty-function
+        void secondPromise.catch(() => { }); // eslint-disable-line @typescript-eslint/no-empty-function
 
         locks.reset();
 
@@ -273,7 +282,7 @@ describe("reset", () => {
         await sleep(1);
 
         const secondPromise = locks.withLock(testPath, async () => "second");
-        void secondPromise.catch(() => {}); // eslint-disable-line @typescript-eslint/no-empty-function
+        void secondPromise.catch(() => { }); // eslint-disable-line @typescript-eslint/no-empty-function
 
         locks.reset();
 
