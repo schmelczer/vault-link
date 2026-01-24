@@ -48,6 +48,7 @@ export class Syncer {
         });
 
         this.updatedDocumentsByPathAndKeysLocks = new Locks<DocumentId>(
+            Syncer.name,
             this.logger
         );
 
@@ -88,6 +89,7 @@ export class Syncer {
     public async syncLocallyCreatedFile(
         relativePath: RelativePath
     ): Promise<void> {
+        // check whether someone else has already created the document in the database
         if (
             this.database.getLatestDocumentByRelativePath(relativePath)
                 ?.isDeleted === false
@@ -148,6 +150,24 @@ export class Syncer {
         oldPath?: RelativePath;
         relativePath: RelativePath;
     }): Promise<void> {
+        const document =
+            this.database.getLatestDocumentByRelativePath(oldPath ?? relativePath);
+
+        // must have been removed after a successful delete
+        if (document === undefined) {
+            this.logger.debug(
+                `Cannot find document ${relativePath} in the database, skipping`
+            );
+            return;
+        }
+
+        if (document.isDeleted) {
+            this.logger.debug(
+                `Document ${relativePath} has been deleted locally, skipping`
+            );
+            return;
+        }
+
         const documentAtNewPath =
             this.database.getLatestDocumentByRelativePath(relativePath);
 
@@ -168,8 +188,6 @@ export class Syncer {
             }
         }
 
-        const document =
-            this.database.getLatestDocumentByRelativePath(relativePath);
 
         if (
             oldPath !== undefined &&
@@ -177,21 +195,6 @@ export class Syncer {
         ) {
             this.logger.debug(
                 `Document ${relativePath} has been moved as a result of a remote update, skipping sync`
-            );
-            return;
-        }
-
-        // must have been removed after a successful delete
-        if (document === undefined) {
-            this.logger.debug(
-                `Cannot find document ${relativePath} in the database, skipping`
-            );
-            return;
-        }
-
-        if (document.isDeleted) {
-            this.logger.debug(
-                `Document ${relativePath} has been deleted locally, skipping`
             );
             return;
         }
@@ -448,7 +451,7 @@ export class Syncer {
 
     private async enqueueSyncOperation<T>(
         operation: () => Promise<T>,
-        keys: (DocumentId | undefined | null)[]
+        keys: (string | undefined | null)[]
     ): Promise<T> {
         return this.updatedDocumentsByPathAndKeysLocks.withLock(
             keys.filter((k) => k !== undefined && k !== null),

@@ -37,7 +37,7 @@ export class ServerControl {
 
         this.process.stderr?.on("data", (data: Buffer) => {
             const msg = data.toString().trim();
-            this.logger.error(`[SERVER ERROR] ${msg}`);
+            this.logger.info(`[SERVER] ${msg}`);
             if (msg.includes("Failed to") || msg.includes("Error")) {
                 startupError = msg;
             }

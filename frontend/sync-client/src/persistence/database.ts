@@ -101,7 +101,7 @@ export class Database {
                     i === 0
                         ? false
                         : records[i - 1].parallelVersion ===
-                          current.parallelVersion
+                        current.parallelVersion
                 )
             ) {
                 throw new Error(
@@ -139,10 +139,10 @@ export class Database {
     }
 
     public getLatestDocumentByRelativePath(
-        find: RelativePath
+        target: RelativePath
     ): DocumentRecord | undefined {
         const candidates = this.documents.filter(
-            ({ relativePath }) => relativePath === find
+            ({ relativePath }) => relativePath === target
         );
         candidates.sort((a, b) => b.parallelVersion - a.parallelVersion); // descending
         return candidates[0];
@@ -173,10 +173,10 @@ export class Database {
     }
 
     public getDocumentByDocumentId(
-        find: DocumentId
+        target: DocumentId
     ): DocumentRecord | undefined {
         return this.documents.find(
-            ({ metadata }) => metadata?.documentId === find
+            ({ metadata }) => metadata?.documentId === target
         );
     }
 
@@ -217,8 +217,8 @@ export class Database {
         candidate.isDeleted = true;
     }
 
-    public removeDocument(find: DocumentRecord): void {
-        removeFromArray(this.documents, find);
+    public removeDocument(target: DocumentRecord): void {
+        removeFromArray(this.documents, target);
         this.saveInTheBackground();
     }
 
@@ -287,7 +287,7 @@ export class Database {
         if (duplicates.length > 0) {
             throw new Error(
                 "Document IDs are not unique, found duplicates: " +
-                    duplicates.join("; ")
+                duplicates.join("; ")
             );
         }
     }

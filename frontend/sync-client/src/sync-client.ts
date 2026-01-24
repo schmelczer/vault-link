@@ -37,12 +37,12 @@ export class SyncClient {
     private readonly eventUnsubscribers: (() => void)[] = [];
 
     private constructor(
+        public readonly logger: Logger,
         private readonly history: SyncHistory,
         private readonly settings: Settings,
         private readonly database: Database,
         private readonly syncer: Syncer,
         private readonly webSocketManager: WebSocketManager,
-        public readonly logger: Logger,
         private readonly fetchController: FetchController,
         private readonly cursorTracker: CursorTracker,
         private readonly fileChangeNotifier: FileChangeNotifier,
@@ -55,7 +55,7 @@ export class SyncClient {
                 database: Partial<StoredDatabase>;
             }>
         >
-    ) {}
+    ) { }
 
     public get documentCount(): number {
         return this.database.length;
@@ -211,18 +211,19 @@ export class SyncClient {
 
         const fileChangeNotifier = new FileChangeNotifier();
         const cursorTracker = new CursorTracker(
+            logger,
             database,
             webSocketManager,
             fileOperations,
             fileChangeNotifier
         );
         const client = new SyncClient(
+            logger,
             history,
             settings,
             database,
             syncer,
             webSocketManager,
-            logger,
             fetchController,
             cursorTracker,
             fileChangeNotifier,

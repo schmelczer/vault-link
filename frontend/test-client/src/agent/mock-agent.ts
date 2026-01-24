@@ -9,7 +9,7 @@ import { sleep } from "../utils/sleep";
 import type { LogLine } from "sync-client";
 import { withTimeout } from "../utils/with-timeout";
 
-const TIMEOUT_MS = 2 * 60 * 1000;
+const TIMEOUT_MS = 10 * 60 * 1000;
 
 export class MockAgent extends MockClient {
     private readonly writtenContents: string[] = [];

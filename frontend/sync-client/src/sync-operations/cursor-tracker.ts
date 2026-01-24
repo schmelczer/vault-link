@@ -10,6 +10,7 @@ import { hash } from "../utils/hash";
 import type { FileChangeNotifier } from "./file-change-notifier";
 import { Lock } from "../utils/data-structures/locks";
 import { EventListeners } from "../utils/data-structures/event-listeners";
+import { Logger } from "../tracing/logger";
 
 // Cursor positions are updated separately from documents. However, a given cursor position is only
 // valid within a certain version of the document it belongs to. This class tracks previous and the latest
@@ -22,7 +23,7 @@ export class CursorTracker {
         (cursors: MaybeOutdatedClientCursors[]) => unknown
     >();
 
-    private readonly updateLock = new Lock(CursorTracker.name);
+    private readonly updateLock: Lock;
 
     private knownRemoteCursors: (ClientCursors & {
         upToDateness: DocumentUpToDateness;
@@ -33,11 +34,14 @@ export class CursorTracker {
         [];
 
     public constructor(
+        private readonly logger: Logger,
         private readonly database: Database,
         private readonly webSocketManager: WebSocketManager,
         private readonly fileOperations: FileOperations,
         private readonly fileChangeNotifier: FileChangeNotifier
     ) {
+        this.updateLock = new Lock(CursorTracker.name, logger);
+
         this.webSocketManager.onRemoteCursorsUpdateReceived.add(
             async (clientCursors) => {
                 await this.updateLock.withLock(async () => {

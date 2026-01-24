@@ -473,7 +473,6 @@ export class UnrestrictedSyncer {
         }
 
         let actualPath = document.relativePath;
-        let mustCreate = false;
 
         if (isCreate) {
             // We have a file locally that got moved by another client to the same path as the one we're trying to create.
@@ -485,16 +484,16 @@ export class UnrestrictedSyncer {
             );
             if (existingDocument !== undefined) {
                 this.logger.info(
-                    `Merging document ${existingDocument.relativePath} into existing document ${document.relativePath
+                    `Merging existing document ${existingDocument.relativePath} into ${document.relativePath
                     } after concurrent move & creation`
                 );
-                this.database.removeDocument(document); // this was a (fake) pending document
                 if (!existingDocument.isDeleted) {
                     this.database.delete(existingDocument.relativePath); // make sure syncLocallyDeletedFile doesn't actually schedule deleting the new file
-                    await this.operations.delete(existingDocument.relativePath);
+                    this.database.removeDocument(existingDocument);
+                    await this.operations.move(existingDocument.relativePath, document.relativePath);
+                } else {
+                    this.database.removeDocument(existingDocument);
                 }
-                mustCreate = true;
-                document = existingDocument;
             }
         }
 
@@ -516,37 +515,21 @@ export class UnrestrictedSyncer {
             const responseBytes = base64ToBytes(response.contentBase64);
             contentHash = hash(responseBytes);
 
+            this.database.updateDocumentMetadata(
+                {
+                    documentId: response.documentId,
+                    parentVersionId: response.vaultUpdateId,
+                    hash: contentHash,
+                    remoteRelativePath: response.relativePath
+                },
+                document
+            );
 
-
-            if (mustCreate) {
-                this.database.createNewPendingDocument(actualPath);
-                this.database.updateDocumentMetadata(
-                    {
-                        documentId: response.documentId,
-                        parentVersionId: response.vaultUpdateId,
-                        hash: contentHash,
-                        remoteRelativePath: response.relativePath
-                    },
-                    document
-                );
-
-                await this.operations.create(actualPath, responseBytes);
-            } else {
-                this.database.updateDocumentMetadata(
-                    {
-                        documentId: response.documentId,
-                        parentVersionId: response.vaultUpdateId,
-                        hash: contentHash,
-                        remoteRelativePath: response.relativePath
-                    },
-                    document
-                );
-                await this.operations.write(
-                    actualPath,
-                    originalContentBytes,
-                    responseBytes
-                );
-            }
+            await this.operations.write(
+                actualPath,
+                originalContentBytes,
+                responseBytes
+            );
             await this.updateCache(
                 response.vaultUpdateId,
                 responseBytes,

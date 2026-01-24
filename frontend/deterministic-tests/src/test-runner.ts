@@ -191,34 +191,24 @@ export class TestRunner {
         }
     }
 
-    private async waitForConvergence(maxAttempts = 50): Promise<void> {
+    private async waitForConvergence(): Promise<void> {
         this.logger.info("Barrier: waiting for convergence...");
 
-        for (let attempt = 0; attempt < maxAttempts; attempt++) {
-            for (const agent of this.agents) {
-                await agent.waitForSync();
-            }
+        for (const agent of this.agents) {
+            await agent.waitForSync();
+        }
 
-            if (await this.checkConsistency()) {
-                this.logger.info("Barrier complete: all clients converged");
-                return;
-            }
-
-            this.logger.info(
-                `Convergence attempt ${attempt + 1}/${maxAttempts}: not yet consistent, syncing again...`
-            );
+        if (await this.checkConsistency()) {
+            this.logger.info("Barrier complete: all clients converged");
+            return;
         }
 
         throw new Error(
-            `Clients did not converge after ${maxAttempts} attempts`
+            `Clients did not converge`
         );
     }
 
     private async checkConsistency(): Promise<boolean> {
-        if (this.agents.length < 2) {
-            return true;
-        }
-
         const [referenceAgent] = this.agents;
         const referenceFiles = (await referenceAgent.getFiles()).sort();
 
@@ -227,13 +217,9 @@ export class TestRunner {
             const files = (await agent.getFiles()).sort();
 
             if (files.length !== referenceFiles.length) {
-                return false;
-            }
-
-            for (let j = 0; j < files.length; j++) {
-                if (files[j] !== referenceFiles[j]) {
-                    return false;
-                }
+                throw new Error(
+                    `File count mismatch: client 0 has ${referenceFiles.length} files, client ${i} has ${files.length} files.\n Files: ${files.join(", ")}\n Reference: ${referenceFiles.join(", ")}`
+                );
             }
 
             for (const file of referenceFiles) {
@@ -242,7 +228,9 @@ export class TestRunner {
                 const agentContent = await agent.getFileContent(file);
 
                 if (referenceContent !== agentContent) {
-                    return false;
+                    throw new Error(
+                        `Content mismatch for ${file}:\nReference: "${referenceContent}"\nClient ${i}: "${agentContent}"`
+                    );
                 }
             }
         }

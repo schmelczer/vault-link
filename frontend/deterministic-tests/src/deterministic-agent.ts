@@ -38,6 +38,8 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
             webSocket: webSocketImplementation
         });
 
+        debugging.logToConsole(this.client.logger, { useColors: true });
+
         await this.client.start();
 
         const connectionCheck = await this.client.checkConnection();

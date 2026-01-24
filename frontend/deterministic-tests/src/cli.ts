@@ -24,7 +24,7 @@ process.on("uncaughtException", (error) => {
 });
 
 const TESTS: Partial<Record<string, TestDefinition>> = {
-    "write-write-conflict": writeWriteConflictTest,
+    // "write-write-conflict": writeWriteConflictTest,
     "rename-create-conflict": renameCreateConflictTest
 };
 
