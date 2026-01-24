@@ -11,7 +11,7 @@ export function slowWebSocketFactory(
         private static readonly RECEIVE_KEY = "websocket-receive";
         private static readonly SEND_KEY = "websocket-send";
 
-        private readonly locks = new Locks(logger);
+        private readonly locks = new Locks(FlakyWebSocket.name, logger);
 
         public set onopen(callback: ((event: Event) => void) | null) {
             super.onopen = async (event: Event): Promise<void> => {

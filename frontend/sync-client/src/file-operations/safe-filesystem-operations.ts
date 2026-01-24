@@ -17,7 +17,7 @@ export class SafeFileSystemOperations implements FileSystemOperations {
         private readonly fs: FileSystemOperations,
         private readonly logger: Logger
     ) {
-        this.locks = new Locks(logger);
+        this.locks = new Locks(SafeFileSystemOperations.name, logger);
     }
 
     public async listFilesRecursively(

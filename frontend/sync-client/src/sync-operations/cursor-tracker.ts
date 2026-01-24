@@ -22,7 +22,7 @@ export class CursorTracker {
         (cursors: MaybeOutdatedClientCursors[]) => unknown
     >();
 
-    private readonly updateLock = new Lock();
+    private readonly updateLock = new Lock(CursorTracker.name);
 
     private knownRemoteCursors: (ClientCursors & {
         upToDateness: DocumentUpToDateness;

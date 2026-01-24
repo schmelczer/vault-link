@@ -20,7 +20,7 @@ export class Locks<T> {
     /** Queue of waiters for each key */
     private readonly waiters = new Map<T, WaiterEntry<T>[]>();
 
-    public constructor(private readonly logger?: Logger) { }
+    public constructor(private readonly name: string, private readonly logger?: Logger) { }
 
     /**
      * Executes a function while holding exclusive locks on one or more keys.
@@ -122,7 +122,7 @@ export class Locks<T> {
             return Promise.resolve();
         }
 
-        this.logger?.debug(`Waiting for lock on ${key}`);
+        this.logger?.debug(`Waiting for lock '${this.name}' on '${key}'`);
 
         return new Promise((resolve, reject) => {
             // DefaultDict behavior
@@ -149,18 +149,18 @@ export class Locks<T> {
     public unlock(key: T): void {
         if (!this.locked.has(key)) {
             this.logger?.debug(
-                `Attempted to unlock ${key} which is not locked`
+                `Attempted to unlock '${this.name}' on '${key}' which is not locked`
             );
             return;
         }
 
-        this.logger?.debug(`Releasing lock on ${key}`);
+        this.logger?.debug(`Releasing lock '${this.name}' on '${key}'`);
 
         // Remove first waiter to ensure FIFO order
         const nextWaiter = this.waiters.get(key)?.shift();
 
         if (nextWaiter) {
-            this.logger?.debug(`Granted lock on ${key}`);
+            this.logger?.debug(`Granted lock '${this.name}' on '${key}'`);
             nextWaiter.resolve();
         } else {
             this.locked.delete(key);
@@ -171,8 +171,8 @@ export class Locks<T> {
 export class Lock {
     private readonly locks: Locks<boolean>;
 
-    public constructor(logger?: Logger) {
-        this.locks = new Locks(logger);
+    public constructor(name: string, logger?: Logger) {
+        this.locks = new Locks(name, logger);
     }
 
     public async withLock<R>(fn: () => R | Promise<R>): Promise<R> {

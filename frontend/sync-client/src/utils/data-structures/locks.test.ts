@@ -18,7 +18,7 @@ describe("withLock", () => {
     let locks: Locks<RelativePath>;
 
     beforeEach(() => {
-        locks = new Locks<RelativePath>(logger);
+        locks = new Locks<RelativePath>("locks-test", logger);
     });
 
     it("should execute function with single key lock", async () => {
@@ -253,7 +253,7 @@ describe("reset", () => {
     let locks: Locks<RelativePath>;
 
     beforeEach(() => {
-        locks = new Locks<RelativePath>(logger);
+        locks = new Locks<RelativePath>("locks-test", logger);
     });
 
     it("should reject pending waiters with SyncResetError while running operation completes", async () => {
@@ -265,7 +265,7 @@ describe("reset", () => {
         await sleep(1);
 
         const secondPromise = locks.withLock(testPath, async () => "second");
-        void secondPromise.catch(() => {}); // eslint-disable-line @typescript-eslint/no-empty-function
+        void secondPromise.catch(() => { }); // eslint-disable-line @typescript-eslint/no-empty-function
 
         locks.reset();
 
@@ -286,7 +286,7 @@ describe("reset", () => {
         await sleep(1);
 
         const secondPromise = locks.withLock(testPath, async () => "second");
-        void secondPromise.catch(() => {}); // eslint-disable-line @typescript-eslint/no-empty-function
+        void secondPromise.catch(() => { }); // eslint-disable-line @typescript-eslint/no-empty-function
 
         locks.reset();
 
@@ -312,7 +312,7 @@ describe("reset", () => {
             [testPath, testPath2],
             async () => "multi"
         );
-        void multiKeyPromise.catch(() => {}); // eslint-disable-line @typescript-eslint/no-empty-function
+        void multiKeyPromise.catch(() => { }); // eslint-disable-line @typescript-eslint/no-empty-function
 
         // Wait for the multi-key operation to acquire testPath and start waiting on testPath2
         await sleep(10);
