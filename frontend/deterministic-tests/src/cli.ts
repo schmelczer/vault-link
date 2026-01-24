@@ -11,7 +11,7 @@ import * as fs from "node:fs";
 import { debugging, Logger } from "sync-client";
 
 const logger = new Logger();
-debugging.logToConsole(logger);
+debugging.logToConsole(logger, { useColors: true });
 
 process.on("unhandledRejection", (reason) => {
     logger.error(`Unhandled Rejection: ${reason}`);
