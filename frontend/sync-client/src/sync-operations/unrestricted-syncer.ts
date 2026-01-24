@@ -3,7 +3,6 @@ import type {
     DocumentRecord,
     RelativePath
 } from "../persistence/database";
-
 import { diff } from "reconcile-text";
 import type { SyncService } from "../services/sync-service";
 import type { Logger } from "../tracing/logger";
@@ -18,11 +17,9 @@ import type {
 } from "../tracing/sync-history";
 import { SyncStatus, SyncType } from "../tracing/sync-history";
 import { EMPTY_HASH, hash } from "../utils/hash";
-
 import { base64ToBytes } from "byte-base64";
 import type { Settings } from "../persistence/settings";
 import type { FileOperations } from "../file-operations/file-operations";
-import { createPromise } from "../utils/create-promise";
 import { FileNotFoundError } from "../errors/file-not-found-error";
 import { SyncResetError } from "../errors/sync-reset-error";
 import { globsToRegexes } from "../utils/globs-to-regexes";
@@ -33,7 +30,6 @@ import type { FixedSizeDocumentCache } from "../utils/data-structures/fix-sized-
 import { isFileTypeMergable } from "../utils/is-file-type-mergable";
 import { isBinary } from "../utils/is-binary";
 import type { ServerConfig } from "../services/server-config";
-import { Locks } from "../utils/data-structures/locks";
 
 export class UnrestrictedSyncer {
     private ignorePatterns: RegExp[];
@@ -66,7 +62,7 @@ export class UnrestrictedSyncer {
         // We use the same code path for both local and remote updates. We need to force the update
         // if there are no local changes but we know that the remote version is newer.
         force = false,
-        document,
+        document
     }: {
         oldPath?: RelativePath;
         force?: boolean;
@@ -123,7 +119,6 @@ export class UnrestrictedSyncer {
                     originalContentBytes: contentBytes,
                     isCreate: true
                 });
-
             } else {
                 const areThereLocalChanges =
                     document.metadata.hash !== contentHash ||
@@ -351,7 +346,7 @@ export class UnrestrictedSyncer {
                     remoteRelativePath: remoteVersion.relativePath
                 },
                 this.database.createNewPendingDocument(
-                    remoteVersion.relativePath,
+                    remoteVersion.relativePath
                 )
             );
 
@@ -365,7 +360,6 @@ export class UnrestrictedSyncer {
                 remoteVersion.relativePath
             );
 
-
             this.history.addHistoryEntry({
                 status: SyncStatus.SUCCESS,
                 details: updateDetails,
@@ -375,8 +369,6 @@ export class UnrestrictedSyncer {
             });
         });
     }
-
-
 
     private async executeSync<T>(
         details: SyncDetails,
@@ -481,9 +473,9 @@ export class UnrestrictedSyncer {
         }
 
         let actualPath = document.relativePath;
+        let mustCreate = false;
 
-
-        if (isCreate === true) {
+        if (isCreate) {
             // We have a file locally that got moved by another client to the same path as the one we're trying to create.
             // The server returns a merging update for the document ID that already exists locally (but at another path).
             // We have to merge these two documents by extending the provenance of the existing document and deleting
@@ -492,14 +484,18 @@ export class UnrestrictedSyncer {
                 response.documentId
             );
             if (existingDocument !== undefined) {
-                this.logger.info(`Merging document ${existingDocument.relativePath} into existing document ${document.relativePath} after concurrent move & creation`);
+                this.logger.info(
+                    `Merging document ${existingDocument.relativePath} into existing document ${document.relativePath
+                    } after concurrent move & creation`
+                );
                 this.database.removeDocument(document); // this was a (fake) pending document
                 if (!existingDocument.isDeleted) {
-                    this.operations.delete(document.relativePath);
+                    this.database.delete(existingDocument.relativePath); // make sure syncLocallyDeletedFile doesn't actually schedule deleting the new file
+                    await this.operations.delete(existingDocument.relativePath);
                 }
+                mustCreate = true;
                 document = existingDocument;
             }
-
         }
 
         // this can't happen on the creation path as we can only get a merging response if a document already exists remotely on the same path
@@ -516,26 +512,41 @@ export class UnrestrictedSyncer {
             ); // this can throw FileNotFoundError
         }
 
-
         if (!("type" in response) || response.type === "MergingUpdate") {
             const responseBytes = base64ToBytes(response.contentBase64);
             contentHash = hash(responseBytes);
 
 
-            this.database.updateDocumentMetadata(
-                {
-                    documentId: response.documentId,
-                    parentVersionId: response.vaultUpdateId,
-                    hash: contentHash,
-                    remoteRelativePath: response.relativePath
-                },
-                document
-            );
-            await this.operations.write(
-                actualPath,
-                originalContentBytes,
-                responseBytes
-            );
+
+            if (mustCreate) {
+                this.database.createNewPendingDocument(actualPath);
+                this.database.updateDocumentMetadata(
+                    {
+                        documentId: response.documentId,
+                        parentVersionId: response.vaultUpdateId,
+                        hash: contentHash,
+                        remoteRelativePath: response.relativePath
+                    },
+                    document
+                );
+
+                await this.operations.create(actualPath, responseBytes);
+            } else {
+                this.database.updateDocumentMetadata(
+                    {
+                        documentId: response.documentId,
+                        parentVersionId: response.vaultUpdateId,
+                        hash: contentHash,
+                        remoteRelativePath: response.relativePath
+                    },
+                    document
+                );
+                await this.operations.write(
+                    actualPath,
+                    originalContentBytes,
+                    responseBytes
+                );
+            }
             await this.updateCache(
                 response.vaultUpdateId,
                 responseBytes,

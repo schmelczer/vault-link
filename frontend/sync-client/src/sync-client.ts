@@ -40,7 +40,6 @@ export class SyncClient {
         private readonly history: SyncHistory,
         private readonly settings: Settings,
         private readonly database: Database,
-        private readonly unrestrictedSyncer: UnrestrictedSyncer,
         private readonly syncer: Syncer,
         private readonly webSocketManager: WebSocketManager,
         public readonly logger: Logger,
@@ -56,7 +55,7 @@ export class SyncClient {
                 database: Partial<StoredDatabase>;
             }>
         >
-    ) { }
+    ) {}
 
     public get documentCount(): number {
         return this.database.length;
@@ -221,7 +220,6 @@ export class SyncClient {
             history,
             settings,
             database,
-            unrestrictedSyncer,
             syncer,
             webSocketManager,
             logger,
@@ -409,7 +407,6 @@ export class SyncClient {
         if (!this.syncer.isFirstSyncComplete || !this.hasFinishedOfflineSync) {
             return DocumentSyncStatus.SYNCING;
         }
-
 
         return this.syncer.hasPendingOperationsForDocument(relativePath)
             ? DocumentSyncStatus.SYNCING

@@ -33,14 +33,13 @@ export type { AuthenticationError } from "./errors/authentication-error";
 export type { MaybeOutdatedClientCursors } from "./types/maybe-outdated-client-cursors";
 export { DocumentSyncStatus } from "./types/document-sync-status";
 export { SyncClient } from "./sync-client";
-export { __debug_locks } from "./sync-operations/syncer";
 export type { TextWithCursors, CursorPosition } from "reconcile-text";
 
 export const debugging = {
     slowFetchFactory,
     slowWebSocketFactory,
     logToConsole,
-    InMemoryFileSystem,
+    InMemoryFileSystem
 };
 
 export const utils = {

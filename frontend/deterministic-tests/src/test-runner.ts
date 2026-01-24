@@ -46,12 +46,11 @@ export class TestRunner {
             for (let i = 0; i < test.steps.length; i++) {
                 const step = test.steps[i];
                 this.logger.info(
-                    `\nStep ${i + 1}/${test.steps.length}: ${JSON.stringify(step)}`
+                    `Step ${i + 1}/${test.steps.length}: ${JSON.stringify(step)}`
                 );
                 await this.executeStep(step);
             }
 
-            // Cleanup
             await this.cleanup();
 
             const duration = Date.now() - startTime;

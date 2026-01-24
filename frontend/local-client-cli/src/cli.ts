@@ -66,7 +66,7 @@ async function main(): Promise<void> {
 
     console.log(
         styleText("VaultLink Local CLI", "bold", "cyan") +
-        colorize(` v${packageJson.version}`, "dim")
+            colorize(` v${packageJson.version}`, "dim")
     );
     console.log(colorize("=".repeat(50), "dim"));
     console.log(

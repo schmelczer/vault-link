@@ -1,4 +1,9 @@
-import { __debug_locks } from "sync-client";
+export class TimeoutError extends Error {
+    public constructor(message: string) {
+        super(message);
+        this.name = "TimeoutError";
+    }
+}
 
 export async function withTimeout<T>(
     promise: Promise<T>,
@@ -10,16 +15,11 @@ export async function withTimeout<T>(
         new Promise<T>((_, reject) =>
             setTimeout(() => {
                 reject(
-                    new TimeoutError(`${operationName} timed out after ${timeoutMs}ms ${__debug_locks.map(lock => lock.getDebugString()).join(", ")}`)
+                    new TimeoutError(
+                        `${operationName} timed out after ${timeoutMs}ms`
+                    )
                 );
             }, timeoutMs)
         )
     ]);
-}
-
-export class TimeoutError extends Error {
-    constructor(message: string) {
-        super(message);
-        this.name = "TimeoutError";
-    }
 }

@@ -80,10 +80,10 @@ async function main(): Promise<void> {
 
             if (!result.success) {
                 allPassed = false;
-                logger.error(`\n✗ FAILED: ${test.name}`);
+                logger.error(`✗ FAILED: ${test.name}`);
                 logger.error(`Error: ${result.error}`);
             } else {
-                logger.info(`\n✓ PASSED: ${test.name} (${result.duration}ms)`);
+                logger.info(`✓ PASSED: ${test.name} (${result.duration}ms)`);
             }
         }
     } finally {

@@ -17,7 +17,7 @@ export class MockAgent extends MockClient {
 
     // The renamed file finding algorithm isn't too smart so we can't both update and rename the same file
     private readonly doNotTouchWhileOffline: string[] = [];
-    private lastSyncEnabledState: boolean = true;
+    private lastSyncEnabledState = true;
 
     public constructor(
         initialSettings: Partial<SyncSettings>,
@@ -107,14 +107,12 @@ export class MockAgent extends MockClient {
     public async waitUntilSynced(): Promise<void> {
         await withTimeout(
             (async (): Promise<void> => {
-                this.client.setSetting("isSyncEnabled", true);
+                await this.client.setSetting("isSyncEnabled", true);
                 await this.client.waitUntilFinished();
             })(),
             TIMEOUT_MS,
             "waitUntilSynced()"
         );
-
-
     }
 
     public async act(): Promise<void> {

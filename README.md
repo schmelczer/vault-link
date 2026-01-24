@@ -80,5 +80,4 @@ And to clean up the logs & database files, run `task clean`
 
 - [Sync server](./sync-server/README.md)
 
-
 remove force merge everywhere

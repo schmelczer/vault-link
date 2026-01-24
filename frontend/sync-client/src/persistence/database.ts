@@ -101,7 +101,7 @@ export class Database {
                     i === 0
                         ? false
                         : records[i - 1].parallelVersion ===
-                        current.parallelVersion
+                          current.parallelVersion
                 )
             ) {
                 throw new Error(
@@ -130,18 +130,13 @@ export class Database {
                 target.metadata,
                 null,
                 2
-            )} to ${JSON.stringify(
-                metadata,
-                null,
-                2
-            )}`
+            )} to ${JSON.stringify(metadata, null, 2)}`
         );
 
         target.metadata = metadata;
 
         this.saveInTheBackground();
     }
-
 
     public getLatestDocumentByRelativePath(
         find: RelativePath
@@ -153,9 +148,8 @@ export class Database {
         return candidates[0];
     }
 
-
     public createNewPendingDocument(
-        relativePath: RelativePath,
+        relativePath: RelativePath
     ): DocumentRecord {
         this.logger.debug(`Creating new pending document: ${relativePath}`);
         const previousEntry =
@@ -222,7 +216,6 @@ export class Database {
         }
         candidate.isDeleted = true;
     }
-
 
     public removeDocument(find: DocumentRecord): void {
         removeFromArray(this.documents, find);
@@ -294,7 +287,7 @@ export class Database {
         if (duplicates.length > 0) {
             throw new Error(
                 "Document IDs are not unique, found duplicates: " +
-                duplicates.join("; ")
+                    duplicates.join("; ")
             );
         }
     }

@@ -80,8 +80,6 @@ async function runTest({
 
         await utils.awaitAll(clients.map(async (client) => client.init()));
 
-
-
         for (let i = 0; i < iterations; i++) {
             logger.info(`Iteration ${i + 1}/${iterations}`);
             await utils.awaitAll(clients.map(async (client) => client.act()));
@@ -184,7 +182,7 @@ process.on("uncaughtException", (error) => {
     }
 
     logger.error(`Error - uncaught exception: ${error}`);
-    if (error instanceof Error && error.stack) {
+    if (error instanceof Error && error.stack != null) {
         logger.error(error.stack);
     }
     process.exit(1);
@@ -215,7 +213,7 @@ process.on("unhandledRejection", (error, _promise) => {
     }
 
     logger.error(`Error - unhandled rejection: ${error}`);
-    if (error instanceof Error && error.stack) {
+    if (error instanceof Error && error.stack != null) {
         logger.error(error.stack);
     }
     process.exit(1);
@@ -227,7 +225,7 @@ runTests()
     })
     .catch((error: unknown) => {
         logger.error(`Error - tests failed with ${error}`);
-        if (error instanceof Error && error.stack) {
+        if (error instanceof Error && error.stack != null) {
             logger.error(error.stack);
         }
         process.exit(1);

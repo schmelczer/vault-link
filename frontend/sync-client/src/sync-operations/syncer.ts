@@ -11,7 +11,6 @@ import type { Settings } from "../persistence/settings";
 import type { FileOperations } from "../file-operations/file-operations";
 import { findMatchingFile } from "../utils/find-matching-file";
 import type { UnrestrictedSyncer } from "./unrestricted-syncer";
-import { createPromise } from "../utils/create-promise";
 import { SyncResetError } from "../errors/sync-reset-error";
 import { Locks } from "../utils/data-structures/locks";
 import type { DocumentVersionWithoutContent } from "../services/types/DocumentVersionWithoutContent";
@@ -21,14 +20,12 @@ import type { WebSocketClientMessage } from "../services/types/WebSocketClientMe
 import { awaitAll } from "../utils/await-all";
 import { EventListeners } from "../utils/data-structures/event-listeners";
 
-export const __debug_locks: Locks<any>[] = []; // Used only for debugging timeouts
-
 export class Syncer {
     public readonly onRemainingOperationsCountChanged = new EventListeners<
         (remainingOperations: number) => unknown
     >();
 
-    public readonly updatedDocumentsByPathAndKeysLock: Locks<DocumentId | RelativePath>;
+    public readonly updatedDocumentsByPathAndKeysLocks: Locks<string>; // can be DocumentId or RelativePath
 
     // FIFO to limit the number of concurrent sync operations
     private readonly syncQueue: PQueue;
@@ -50,8 +47,9 @@ export class Syncer {
             concurrency: settings.getSettings().syncConcurrency
         });
 
-        this.updatedDocumentsByPathAndKeysLock = new Locks<DocumentId>(this.logger);
-        __debug_locks.push(this.updatedDocumentsByPathAndKeysLock); // Used only for debugging timeouts
+        this.updatedDocumentsByPathAndKeysLocks = new Locks<DocumentId>(
+            this.logger
+        );
 
         settings.onSettingsChanged.add((newSettings, oldSettings) => {
             if (newSettings.syncConcurrency !== oldSettings.syncConcurrency) {
@@ -84,7 +82,7 @@ export class Syncer {
     }
 
     public hasPendingOperationsForDocument(relativePath: string): boolean {
-        return this.updatedDocumentsByPathAndKeysLock.isLocked(relativePath);
+        return this.updatedDocumentsByPathAndKeysLocks.isLocked(relativePath);
     }
 
     public async syncLocallyCreatedFile(
@@ -102,29 +100,26 @@ export class Syncer {
             return;
         }
 
-        const document = this.database.createNewPendingDocument(
-            relativePath
-        );
+        const document = this.database.createNewPendingDocument(relativePath);
 
-        await this.enqueueSyncOperation(async () =>
-            this.unrestrictedSyncer.unrestrictedSyncLocallyCreatedOrUpdatedFile(
-                {
-                    document
-                }
-            ), [relativePath]
+        await this.enqueueSyncOperation(
+            async () =>
+                this.unrestrictedSyncer.unrestrictedSyncLocallyCreatedOrUpdatedFile(
+                    {
+                        document
+                    }
+                ),
+            [relativePath]
         );
     }
 
     public async syncLocallyDeletedFile(
         relativePath: RelativePath
     ): Promise<void> {
-        const document = this.database.getLatestDocumentByRelativePath(relativePath);
+        let document =
+            this.database.getLatestDocumentByRelativePath(relativePath);
 
-
-        if (
-            document
-                ?.isDeleted === true
-        ) {
+        if (document == null || document.isDeleted === true) {
             // This is must be a consequence of us deleting a file because of a remote update
             // which triggered a local delete, so we don't need to do anything here.
             this.logger.debug(
@@ -137,25 +132,13 @@ export class Syncer {
         // document which finishes after the delete has succeeded and would introduce a phantom metadata record.
         this.database.delete(relativePath);
 
-
-
         await this.enqueueSyncOperation(async () => {
-            const document = this.database.getLatestDocumentByRelativePath(relativePath);
-
-            if (document === undefined) {
-                this.logger.debug(
-                    `Cannot find document ${relativePath} in the database, must have been deleted already, skipping`
-                );
-                return;
-            }
-
             await this.unrestrictedSyncer.unrestrictedSyncLocallyDeletedFile(
                 document
             );
 
             this.database.removeDocument(document);
-        }, [document?.metadata?.documentId, relativePath]
-        );
+        }, [document?.metadata?.documentId, relativePath]);
     }
 
     public async syncLocallyUpdatedFile({
@@ -165,18 +148,15 @@ export class Syncer {
         oldPath?: RelativePath;
         relativePath: RelativePath;
     }): Promise<void> {
-        const documentAtNewPath = this.database.getLatestDocumentByRelativePath(
-            relativePath
-        );
+        const documentAtNewPath =
+            this.database.getLatestDocumentByRelativePath(relativePath);
 
         if (oldPath !== undefined) {
             // We might have moved the document in the database before calling this method,
             // in that case, we mustn't move it again.
             if (
-                documentAtNewPath ===
-                undefined ||
-                documentAtNewPath
-                    ?.isDeleted === true
+                documentAtNewPath === undefined ||
+                documentAtNewPath.isDeleted
             ) {
                 if (oldPath === relativePath) {
                     throw new Error(
@@ -188,7 +168,7 @@ export class Syncer {
             }
         }
 
-        let document =
+        const document =
             this.database.getLatestDocumentByRelativePath(relativePath);
 
         if (
@@ -216,17 +196,16 @@ export class Syncer {
             return;
         }
 
-
-        await this.enqueueSyncOperation(async () =>
-            this.unrestrictedSyncer.unrestrictedSyncLocallyCreatedOrUpdatedFile(
-                {
-                    oldPath,
-                    document
-                }
-            ), [document.metadata?.documentId, relativePath, oldPath]
+        await this.enqueueSyncOperation(
+            async () =>
+                this.unrestrictedSyncer.unrestrictedSyncLocallyCreatedOrUpdatedFile(
+                    {
+                        oldPath,
+                        document
+                    }
+                ),
+            [document.metadata?.documentId, relativePath, oldPath]
         );
-
-
     }
 
     public async scheduleSyncForOfflineChanges(): Promise<void> {
@@ -290,7 +269,7 @@ export class Syncer {
     public reset(): void {
         this._isFirstSyncComplete = false;
         this.syncQueue.clear();
-        this.updatedDocumentsByPathAndKeysLock.reset();
+        this.updatedDocumentsByPathAndKeysLocks.reset();
         this.runningScheduleSyncForOfflineChanges = undefined;
     }
 
@@ -310,13 +289,17 @@ export class Syncer {
         const document = this.database.getDocumentByDocumentId(
             remoteVersion.documentId
         );
-        this.enqueueSyncOperation(async () =>
-            await this.syncQueue.add(async () =>
+        await this.enqueueSyncOperation(
+            async () =>
                 this.unrestrictedSyncer.unrestrictedSyncRemotelyUpdatedFile(
                     remoteVersion,
                     document
-                )
-            ), [document?.relativePath, remoteVersion.relativePath, remoteVersion.documentId]
+                ),
+            [
+                document?.relativePath,
+                remoteVersion.relativePath,
+                remoteVersion.documentId
+            ]
         );
 
         this.database.addSeenUpdateId(remoteVersion.vaultUpdateId);
@@ -465,10 +448,11 @@ export class Syncer {
 
     private async enqueueSyncOperation<T>(
         operation: () => Promise<T>,
-        keys: Array<DocumentId | RelativePath | undefined | null>
+        keys: (DocumentId | undefined | null)[]
     ): Promise<T> {
-        return this.updatedDocumentsByPathAndKeysLock.withLock(keys.filter(k => k !== undefined && k !== null), async () =>
-            this.syncQueue.add(operation)
+        return this.updatedDocumentsByPathAndKeysLocks.withLock(
+            keys.filter((k) => k !== undefined && k !== null),
+            async () => this.syncQueue.add(operation)
         );
     }
 }

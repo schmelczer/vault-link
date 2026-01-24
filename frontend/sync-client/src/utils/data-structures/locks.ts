@@ -1,6 +1,5 @@
 import { SyncResetError } from "../../errors/sync-reset-error";
 import type { Logger } from "../../tracing/logger";
-import { awaitAll } from "../await-all";
 
 /**
  * Manages exclusive locks on items to prevent concurrent modifications.
@@ -8,15 +7,18 @@ import { awaitAll } from "../await-all";
  *
  * @template T The type of the key used for locking
  */
+/** Waiter entry with callbacks */
+interface WaiterEntry<T> {
+    resolve: () => unknown;
+    reject: (err: unknown) => unknown;
+}
+
 export class Locks<T> {
     /** Currently locked keys */
     private readonly locked = new Set<T>();
 
-    /** Queue of resolve functions waiting for each key */
-    private readonly waiters = new Map<
-        T,
-        [() => unknown, (err: unknown) => unknown][]
-    >();
+    /** Queue of waiters for each key */
+    private readonly waiters = new Map<T, WaiterEntry<T>[]>();
 
     public constructor(private readonly logger?: Logger) { }
 
@@ -59,15 +61,17 @@ export class Locks<T> {
         const uniqueKeys = Array.from(new Set(keys));
         uniqueKeys.sort((a, b) => String(a).localeCompare(String(b))); // Ensure consistent order to prevent deadlocks
 
-        for (const key of uniqueKeys) {
-            // Must acquire locks in-order (not concurrently) to prevent deadlocks
-            await this.waitForLock(key);
-        }
-
+        const lockedKeys = [];
         try {
+            for (const key of uniqueKeys) {
+                // Must acquire locks in-order (not concurrently) to prevent deadlocks
+                await this.waitForLock(key);
+                lockedKeys.push(key);
+            }
+
             return await fn();
         } finally {
-            uniqueKeys.forEach((key) => {
+            lockedKeys.forEach((key) => {
                 this.unlock(key);
             });
         }
@@ -77,7 +81,7 @@ export class Locks<T> {
         // Resolve all waiting promises before clearing to prevent deadlock
         // Any operation waiting for a lock will be granted access immediately
         for (const waiting of this.waiters.values()) {
-            for (const [_, reject] of waiting) {
+            for (const { reject } of waiting) {
                 reject(new SyncResetError());
             }
         }
@@ -87,40 +91,6 @@ export class Locks<T> {
 
     public isLocked(key: T): boolean {
         return this.locked.has(key);
-    }
-
-    public getDebugString(): string {
-        const lockedKeys = Array.from(this.locked).map((key) => String(key));
-        const waiterEntries = Array.from(this.waiters.entries()).filter(
-            ([_, waiting]) => waiting.length > 0
-        );
-
-        const lines: string[] = [];
-        lines.push("=== Locks Debug ===");
-        lines.push(`Locked keys (${lockedKeys.length}):`);
-        if (lockedKeys.length === 0) {
-            lines.push("  (none)");
-        } else {
-            for (const key of lockedKeys) {
-                const waiterCount =
-                    this.waiters.get(key as T)?.length ?? 0;
-                lines.push(
-                    `  - ${key}${waiterCount > 0 ? ` (${waiterCount} waiting)` : ""}`
-                );
-            }
-        }
-
-        lines.push(`Waiters (${waiterEntries.length} keys):`);
-        if (waiterEntries.length === 0) {
-            lines.push("  (none)");
-        } else {
-            for (const [key, waiting] of waiterEntries) {
-                lines.push(`  - ${String(key)}: ${waiting.length} waiting`);
-            }
-        }
-        lines.push("===================");
-
-        return lines.join("\n");
     }
 
     /**
@@ -162,10 +132,12 @@ export class Locks<T> {
                 this.waiters.set(key, waiting);
             }
 
-            waiting.push([resolve, reject]);
+            waiting.push({
+                resolve,
+                reject,
+            });
         });
     }
-
 
     /**
      * Releases a lock and grants access to the next waiting operation in FIFO order.
@@ -176,15 +148,20 @@ export class Locks<T> {
      */
     public unlock(key: T): void {
         if (!this.locked.has(key)) {
+            this.logger?.debug(
+                `Attempted to unlock ${key} which is not locked`
+            );
             return;
         }
 
-        // Remove first waiter to ensure FIFO order
-        const [resolveNextWaiting, _] = this.waiters.get(key)?.shift() ?? [];
+        this.logger?.debug(`Releasing lock on ${key}`);
 
-        if (resolveNextWaiting) {
+        // Remove first waiter to ensure FIFO order
+        const nextWaiter = this.waiters.get(key)?.shift();
+
+        if (nextWaiter) {
             this.logger?.debug(`Granted lock on ${key}`);
-            resolveNextWaiting();
+            nextWaiter.resolve();
         } else {
             this.locked.delete(key);
         }

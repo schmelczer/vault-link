@@ -83,13 +83,13 @@ export class MockClient extends debugging.InMemoryFileSystem {
                 .map((part) => part.trim());
             const newParts = newContent.split(" ").map((part) => part.trim());
             existingParts.forEach((part) =>
-            // all changes should be additive
-            {
-                assert(
-                    newParts.includes(part),
-                    `Part ${part} not found in new content: ${newContent}`
-                );
-            }
+                // all changes should be additive
+                {
+                    assert(
+                        newParts.includes(part),
+                        `Part ${part} not found in new content: ${newContent}`
+                    );
+                }
             );
         }
 

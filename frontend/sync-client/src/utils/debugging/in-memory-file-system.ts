@@ -45,7 +45,6 @@ export class InMemoryFileSystem implements FileSystemOperations {
         return this.files.has(path);
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-empty-function
     public async createDirectory(_path: RelativePath): Promise<void> {
         // This doesn't mean anything in our virtual FS representation
     }
