@@ -57,6 +57,61 @@ export class UnrestrictedSyncer {
         });
     }
 
+    public async resolveIdempotencyKeys(): Promise<void> {
+        const pendingDocs = this.database.pendingDocuments;
+        if (pendingDocs.length === 0) {
+            return;
+        }
+
+        const keys = pendingDocs
+            .map((d) => d.idempotencyKey)
+            // eslint-disable-next-line no-restricted-syntax -- Type narrowing, not removing a specific item
+            .filter((k): k is string => k !== undefined);
+        if (keys.length === 0) {
+            return;
+        }
+
+        this.logger.debug(
+            `Resolving ${keys.length} pending idempotency keys`
+        );
+
+        const resolved =
+            await this.syncService.resolveIdempotencyKeys(keys);
+
+        for (const doc of pendingDocs) {
+            if (
+                doc.idempotencyKey !== undefined &&
+                resolved.has(doc.idempotencyKey)
+            ) {
+                const documentId = resolved.get(doc.idempotencyKey)!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
+
+                // Skip if this documentId is already assigned to another document
+                const existing =
+                    this.database.getDocumentByDocumentId(documentId);
+                if (existing !== undefined) {
+                    this.logger.debug(
+                        `Document ${documentId} already exists at ${existing.relativePath}, removing stale pending doc at ${doc.relativePath}`
+                    );
+                    this.database.removeDocument(doc);
+                    continue;
+                }
+
+                this.logger.info(
+                    `Resolved idempotency key ${doc.idempotencyKey} to document ${documentId} for ${doc.relativePath}`
+                );
+                this.database.updateDocumentMetadata(
+                    {
+                        documentId,
+                        parentVersionId: 0,
+                        hash: "",
+                        remoteRelativePath: doc.relativePath
+                    },
+                    doc
+                );
+            }
+        }
+    }
+
     public async unrestrictedSyncLocallyCreatedOrUpdatedFile({
         oldPath,
         // We use the same code path for both local and remote updates. We need to force the update
@@ -108,7 +163,8 @@ export class UnrestrictedSyncer {
             if (document.metadata === undefined) {
                 response = await this.syncService.create({
                     relativePath: originalRelativePath,
-                    contentBytes
+                    contentBytes,
+                    idempotencyKey: document.idempotencyKey
                 });
 
                 await this.handleMaybeMergingResponse({
@@ -246,6 +302,18 @@ export class UnrestrictedSyncer {
                 documentId: document.metadata.documentId,
                 relativePath: document.relativePath
             });
+
+            // A concurrent merge operation may have removed this document from the
+            // database while we were waiting for the delete response. In that case,
+            // the merge already handled the state transition and we should not
+            // update metadata (which would fail anyway since the document is gone).
+            if (!this.database.containsDocument(document)) {
+                this.logger.debug(
+                    `Document ${document.relativePath} was removed from database by a concurrent operation, skipping metadata update after delete`
+                );
+                this.database.addSeenUpdateId(response.vaultUpdateId);
+                return;
+            }
 
             this.database.updateDocumentMetadata(
                 {
@@ -474,6 +542,8 @@ export class UnrestrictedSyncer {
 
         let actualPath = document.relativePath;
 
+        let existingContentBytes: Uint8Array | undefined;
+
         if (isCreate) {
             // We have a file locally that got moved by another client to the same path as the one we're trying to create.
             // The server returns a merging update for the document ID that already exists locally (but at another path).
@@ -482,19 +552,51 @@ export class UnrestrictedSyncer {
             const existingDocument = this.database.getDocumentByDocumentId(
                 response.documentId
             );
-            if (existingDocument !== undefined) {
+            // If existingDocument === document, then a previous sync operation already
+            // assigned this documentId to our document. We don't need to merge - just
+            // continue to update the metadata below.
+            if (existingDocument !== undefined && existingDocument !== document) {
                 this.logger.info(
                     `Merging existing document ${existingDocument.relativePath} into ${document.relativePath
                     } after concurrent move & creation`
                 );
                 if (!existingDocument.isDeleted) {
                     this.database.delete(existingDocument.relativePath); // make sure syncLocallyDeletedFile doesn't actually schedule deleting the new file
+
+                    try {
+                        existingContentBytes = await this.operations.read(
+                            existingDocument.relativePath
+                        );
+                    } catch (e) {
+                        if (e instanceof FileNotFoundError) {
+                            return;
+                        }
+                        throw e;
+                    }
+
                     this.database.removeDocument(existingDocument);
-                    await this.operations.move(existingDocument.relativePath, document.relativePath);
+                    await this.operations.delete(existingDocument.relativePath);
+
                 } else {
                     this.database.removeDocument(existingDocument);
                 }
             }
+        }
+
+        // A document's documentId should never change once assigned. If the response has a
+        // different documentId than what the document already has, it means the file was
+        // renamed during the sync operation and the response is for a different document.
+        // We should bail out and let subsequent sync operations fix the state.
+        if (
+            document.metadata?.documentId !== undefined &&
+            document.metadata.documentId !== response.documentId
+        ) {
+            this.logger.info(
+                `Document ${document.relativePath} already has documentId ${document.metadata.documentId}, ` +
+                    `but response has documentId ${response.documentId}. Ignoring response to prevent documentId corruption.`
+            );
+            this.database.addSeenUpdateId(response.vaultUpdateId);
+            return;
         }
 
         // this can't happen on the creation path as we can only get a merging response if a document already exists remotely on the same path
@@ -530,6 +632,17 @@ export class UnrestrictedSyncer {
                 originalContentBytes,
                 responseBytes
             );
+
+            if (existingContentBytes !== undefined) {
+                // the merge case is only always for text files, so don't mind that we have to provide a byte array here
+                await this.operations.write(
+                    actualPath,
+                    new Uint8Array(0),
+                    existingContentBytes
+                );
+            }
+
+
             await this.updateCache(
                 response.vaultUpdateId,
                 responseBytes,

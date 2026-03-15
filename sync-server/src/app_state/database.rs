@@ -325,7 +325,8 @@ impl Database {
                 is_deleted,
                 user_id,
                 device_id,
-                has_been_merged
+                has_been_merged,
+                idempotency_key
             from latest_document_versions
             where relative_path = ? and is_deleted = false
             order by vault_update_id desc  -- `latest_document_versions` only contains a single latest version of each document, however,
@@ -365,7 +366,8 @@ impl Database {
                 is_deleted,
                 user_id,
                 device_id,
-                has_been_merged
+                has_been_merged,
+                idempotency_key
             from latest_document_versions
             where document_id = ?
             "#,
@@ -400,7 +402,8 @@ impl Database {
                 is_deleted,
                 user_id,
                 device_id,
-                has_been_merged
+                has_been_merged,
+                idempotency_key
             from documents
             where vault_update_id = ?"#,
             vault_update_id
@@ -434,9 +437,10 @@ impl Database {
                 content,
                 is_deleted,
                 user_id,
-                device_id
+                device_id,
+                idempotency_key
             )
-            values (?, ?, ?, ?, ?, ?, ?, ?)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
             version.vault_update_id,
             document_id,
@@ -445,7 +449,8 @@ impl Database {
             version.content,
             version.is_deleted,
             version.user_id,
-            version.device_id
+            version.device_id,
+            version.idempotency_key
         );
 
         if let Some(mut transaction) = transaction {
@@ -479,6 +484,44 @@ impl Database {
             .await;
 
         Ok(())
+    }
+
+    pub async fn get_document_by_idempotency_key(
+        &self,
+        vault: &VaultId,
+        idempotency_key: &str,
+        transaction: Option<&mut Transaction<'_>>,
+    ) -> Result<Option<StoredDocumentVersion>> {
+        let query = sqlx::query_as!(
+            StoredDocumentVersion,
+            r#"
+            select
+                d.vault_update_id,
+                d.document_id as "document_id: Hyphenated",
+                d.relative_path,
+                d.updated_date as "updated_date: chrono::DateTime<Utc>",
+                d.content,
+                d.is_deleted,
+                d.user_id,
+                d.device_id,
+                d.has_been_merged,
+                d.idempotency_key
+            from latest_document_versions d
+            inner join documents d2 on d.document_id = d2.document_id
+            where d2.idempotency_key = ?
+            limit 1
+            "#,
+            idempotency_key
+        );
+
+        if let Some(transaction) = transaction {
+            query.fetch_optional(&mut **transaction).await
+        } else {
+            query
+                .fetch_optional(&self.get_connection_pool(vault).await?)
+                .await
+        }
+        .context("Cannot fetch document by idempotency key")
     }
 
     /// Cleanup idle connection pools that haven't been accessed in more than 5 minutes

@@ -14,6 +14,8 @@ pub struct CreateDocumentVersion {
     #[ts(as = "Vec<u8>")]
     #[form_data(limit = "unlimited")]
     pub content: FieldData<Bytes>,
+
+    pub idempotency_key: Option<String>,
 }
 
 #[derive(Debug, TryFromMultipart)]

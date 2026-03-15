@@ -83,18 +83,18 @@ export class MockClient extends debugging.InMemoryFileSystem {
                 .map((part) => part.trim());
             const newParts = newContent.split(" ").map((part) => part.trim());
             existingParts.forEach((part) =>
-                // all changes should be additive
-                {
-                    assert(
-                        newParts.includes(part),
-                        `Part ${part} not found in new content: ${newContent}`
-                    );
-                }
+            // all changes should be additive
+            {
+                assert(
+                    newParts.includes(part),
+                    `Part ${part} not found in new content: '${newContent}'`
+                );
+            }
             );
         }
 
         this.client.logger.info(
-            `Updated file ${path} with:\n  current content: ${currentContent}\n  new content: ${newContent}`
+            `Updated file ${path} with:\n  current content: '${currentContent}'\n  new content: '${newContent}'`
         );
 
         this.executeFileOperation(
@@ -137,7 +137,7 @@ export class MockClient extends debugging.InMemoryFileSystem {
         }
     ): Promise<void> {
         this.client.logger.info(
-            `Deleting file: ${path} with:\n  content ${new TextDecoder().decode(this.files.get(path))}`
+            `Deleting file: ${path} with:\n  content '${new TextDecoder().decode(this.files.get(path))}'`
         );
         this.files.delete(path);
 

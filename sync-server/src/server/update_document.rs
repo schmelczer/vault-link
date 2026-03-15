@@ -182,6 +182,7 @@ async fn update_document(
         &sanitized_relative_path,
         content,
         transaction,
+        None,
     )
     .await
 }
@@ -198,6 +199,7 @@ pub async fn merge_with_stored_version(
     sanitized_relative_path: &str,
     content: Vec<u8>,
     mut transaction: Transaction<'_>,
+    idempotency_key: Option<String>,
 ) -> Result<Json<DocumentUpdateResponse>, SyncServerError> {
     // Return the latest version if the content and path are the same as the latest
     // version
@@ -290,6 +292,7 @@ pub async fn merge_with_stored_version(
         user_id: user.name,
         device_id: device_id.0,
         has_been_merged: are_all_participants_mergable && is_different_from_request_content,
+        idempotency_key,
     };
 
     state

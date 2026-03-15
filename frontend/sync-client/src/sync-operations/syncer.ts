@@ -89,15 +89,33 @@ export class Syncer {
     public async syncLocallyCreatedFile(
         relativePath: RelativePath
     ): Promise<void> {
-        // check whether someone else has already created the document in the database
-        if (
-            this.database.getLatestDocumentByRelativePath(relativePath)
-                ?.isDeleted === false
-        ) {
-            // This is likely a consequence of us creating a file because of a remote update
-            // which triggered a local create, so we don't need to do anything here.
+        const existingDocument =
+            this.database.getLatestDocumentByRelativePath(relativePath);
+
+        // Check whether someone else has already created the document in the database
+        if (existingDocument?.isDeleted === false) {
+            if (existingDocument.metadata !== undefined) {
+                // Fully synced document — likely created by a remote update
+                // which triggered a local create, so we don't need to do anything here.
+                this.logger.debug(
+                    `Document ${relativePath} already exists in the database with metadata, skipping`
+                );
+                return;
+            }
+
+            // Pending create (interrupted by a sync reset or duplicate file watcher event)
+            // — reuse the existing record and retry the sync.
             this.logger.debug(
-                `Document ${relativePath} already exists in the database, skipping`
+                `Document ${relativePath} has a pending create that was interrupted, retrying sync`
+            );
+            await this.enqueueSyncOperation(
+                async () =>
+                    this.unrestrictedSyncer.unrestrictedSyncLocallyCreatedOrUpdatedFile(
+                        {
+                            document: existingDocument
+                        }
+                    ),
+                [relativePath]
             );
             return;
         }
@@ -118,10 +136,10 @@ export class Syncer {
     public async syncLocallyDeletedFile(
         relativePath: RelativePath
     ): Promise<void> {
-        let document =
+        const document =
             this.database.getLatestDocumentByRelativePath(relativePath);
 
-        if (document == null || document.isDeleted === true) {
+        if (document == null || document.isDeleted) {
             // This is must be a consequence of us deleting a file because of a remote update
             // which triggered a local delete, so we don't need to do anything here.
             this.logger.debug(
@@ -199,6 +217,17 @@ export class Syncer {
             return;
         }
 
+        // If a create operation is already in progress for this document (no metadata
+        // yet), skip the HTTP sync. The create operation will handle syncing the content.
+        // We've already updated the document's path in the database above if needed,
+        // so the create operation will use the correct path.
+        if (document.metadata === undefined) {
+            this.logger.debug(
+                `Document ${relativePath} has a pending create operation, skipping HTTP sync`
+            );
+            return;
+        }
+
         await this.enqueueSyncOperation(
             async () =>
                 this.unrestrictedSyncer.unrestrictedSyncLocallyCreatedOrUpdatedFile(
@@ -265,7 +294,15 @@ export class Syncer {
 
             this._isFirstSyncComplete = true;
         } catch (e) {
-            this.logger.error(`Failed to sync remotely updated file: ${e}`);
+            if (e instanceof SyncResetError) {
+                this.logger.info(
+                    "Sync reset during remote update processing"
+                );
+            } else {
+                this.logger.error(
+                    `Failed to sync remotely updated file: ${e}`
+                );
+            }
         }
     }
 
@@ -309,6 +346,8 @@ export class Syncer {
     }
 
     private async internalScheduleSyncForOfflineChanges(): Promise<void> {
+        await this.unrestrictedSyncer.resolveIdempotencyKeys();
+
         const allLocalFiles = await this.operations.listFilesRecursively();
         this.logger.info(
             `Scheduling sync for ${allLocalFiles.length} local files`
@@ -453,9 +492,25 @@ export class Syncer {
         operation: () => Promise<T>,
         keys: (string | undefined | null)[]
     ): Promise<T> {
-        return this.updatedDocumentsByPathAndKeysLocks.withLock(
-            keys.filter((k) => k !== undefined && k !== null),
-            async () => this.syncQueue.add(operation)
+        const filteredKeys = keys.filter((k) => k !== undefined && k !== null);
+
+        // IMPORTANT: We must NOT hold locks while waiting for a queue slot.
+        // If we did, we could deadlock when two concurrent operations hold
+        // locks on different keys while both waiting for queue capacity.
+        //
+        // Instead, we acquire locks INSIDE the queued operation. This ensures:
+        // 1. We only hold locks during actual operation execution
+        // 2. The queue serializes access to queue slots
+        // 3. Locks serialize access to the same document/path
+        //
+        // The result type needs special handling since syncQueue.add() can
+        // return undefined when the queue is paused/cleared.
+        const result = await this.syncQueue.add(async () =>
+            this.updatedDocumentsByPathAndKeysLocks.withLock(
+                filteredKeys,
+                operation
+            )
         );
+        return result as T;
     }
 }

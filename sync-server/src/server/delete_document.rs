@@ -84,6 +84,7 @@ pub async fn delete_document(
         user_id: user.name,
         device_id: device_id.0,
         has_been_merged: false,
+        idempotency_key: None,
     };
 
     state

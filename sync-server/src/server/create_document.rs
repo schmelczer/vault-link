@@ -1,3 +1,4 @@
+use anyhow::Context;
 use axum::{
     Extension, Json,
     extract::{Path, State},
@@ -47,6 +48,25 @@ pub async fn create_document(
         .await
         .map_err(server_error)?;
 
+    if let Some(ref idempotency_key) = request.idempotency_key {
+        let existing = state
+            .database
+            .get_document_by_idempotency_key(&vault_id, idempotency_key, Some(&mut transaction))
+            .await
+            .map_err(server_error)?;
+        if let Some(existing) = existing {
+            info!("Found existing document with idempotency key `{idempotency_key}`, returning existing document");
+            transaction
+                .rollback()
+                .await
+                .context("Failed to roll back transaction")
+                .map_err(server_error)?;
+            return Ok(Json(DocumentUpdateResponse::FastForwardUpdate(
+                existing.into(),
+            )));
+        }
+    }
+
     let sanitized_relative_path = sanitize_path(&request.relative_path);
 
     let latest_version = state
@@ -74,6 +94,7 @@ pub async fn create_document(
             &sanitized_relative_path,
             request.content.contents.to_vec(),
             transaction,
+            request.idempotency_key,
         )
         .await;
     }
@@ -111,6 +132,7 @@ pub async fn create_document(
         user_id: user.name,
         device_id: device_id.0,
         has_been_merged: false,
+        idempotency_key: request.idempotency_key,
     };
 
     state

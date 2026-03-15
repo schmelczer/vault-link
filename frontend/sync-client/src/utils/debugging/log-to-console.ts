@@ -12,11 +12,11 @@ const COLORS = {
 
 export function logToConsole(
     logger: Logger,
-    { useColors = true }: { useColors?: boolean } = {}
+    { useColors = true, prefix }: { useColors?: boolean; prefix?: string } = {}
 ): void {
     logger.onLogEmitted.add((logLine: LogLine) => {
         const timestamp = logLine.timestamp.toISOString();
-        const message = logLine.message;
+        const {message} = logLine;
 
         let color = "";
         let reset = "";
@@ -38,7 +38,8 @@ export function logToConsole(
             }
         }
 
-        const formatted = `${timestamp} ${color}${logLine.level}${reset} ${message}`;
+        const prefixPart = prefix !== undefined ? `${prefix} ` : "";
+        const formatted = `${prefixPart}${timestamp} ${color}${logLine.level}${reset} ${message}`;
 
         switch (logLine.level) {
             case LogLevel.ERROR:

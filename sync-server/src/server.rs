@@ -9,6 +9,7 @@ mod fetch_latest_documents;
 mod index;
 mod ping;
 mod requests;
+mod resolve_keys;
 mod responses;
 mod update_document;
 mod websocket;
@@ -107,6 +108,10 @@ fn get_authed_routes(app_state: AppState) -> Router<AppState> {
         .route(
             "/vaults/:vault_id/documents",
             post(create_document::create_document),
+        )
+        .route(
+            "/vaults/:vault_id/documents/resolve-keys",
+            post(resolve_keys::resolve_keys),
         )
         .route(
             "/vaults/:vault_id/documents/:document_id",

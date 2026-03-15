@@ -22,6 +22,7 @@ pub struct StoredDocumentVersion {
     pub device_id: DeviceId,
     #[allow(dead_code)] // This is for manual analysis
     pub has_been_merged: bool,
+    pub idempotency_key: Option<String>,
 }
 
 impl PartialEq<Self> for StoredDocumentVersion {

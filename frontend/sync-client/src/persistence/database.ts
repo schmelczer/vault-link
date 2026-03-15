@@ -23,8 +23,15 @@ export interface StoredDocumentMetadata {
     hash: string;
 }
 
+export interface StoredPendingDocument {
+    relativePath: RelativePath;
+    idempotencyKey: string;
+    originalCreationPath: RelativePath;
+}
+
 export interface StoredDatabase {
     documents: StoredDocumentMetadata[];
+    pendingDocuments?: StoredPendingDocument[];
     lastSeenUpdateId: VaultUpdateId | undefined;
 }
 
@@ -39,6 +46,11 @@ export interface DocumentRecord {
     metadata: DocumentMetadata | undefined;
     isDeleted: boolean;
     parallelVersion: number;
+    /** The path when this pending document was first created locally.
+     *  Survives renames so we can match it against server responses
+     *  when a create request succeeded but the response was lost. */
+    originalCreationPath?: RelativePath;
+    idempotencyKey?: string;
 }
 
 export class Database {
@@ -59,6 +71,26 @@ export class Database {
                 isDeleted: false,
                 parallelVersion: 0
             })) ?? [];
+
+        if (initialState.pendingDocuments) {
+            for (const pending of initialState.pendingDocuments) {
+                const existing =
+                    this.getLatestDocumentByRelativePath(
+                        pending.relativePath
+                    );
+                this.documents.push({
+                    relativePath: pending.relativePath,
+                    metadata: undefined,
+                    isDeleted: false,
+                    parallelVersion:
+                        existing !== undefined
+                            ? existing.parallelVersion + 1
+                            : 0,
+                    originalCreationPath: pending.originalCreationPath,
+                    idempotencyKey: pending.idempotencyKey
+                });
+            }
+        }
 
         this.ensureConsistency();
         this.logger.debug(`Loaded ${this.documents.length} documents`);
@@ -112,6 +144,12 @@ export class Database {
         });
     }
 
+    public get pendingDocuments(): DocumentRecord[] {
+        return this.documents.filter(
+            (doc) => doc.metadata === undefined && !doc.isDeleted
+        );
+    }
+
     public updateDocumentMetadata(
         metadata: {
             documentId: DocumentId;
@@ -155,19 +193,25 @@ export class Database {
         const previousEntry =
             this.getLatestDocumentByRelativePath(relativePath);
 
-        const entry = {
+        const entry: DocumentRecord = {
             relativePath,
             metadata: undefined,
             isDeleted: false,
             parallelVersion:
                 previousEntry?.parallelVersion === undefined
                     ? 0
-                    : previousEntry.parallelVersion + 1
+                    : previousEntry.parallelVersion + 1,
+            originalCreationPath: relativePath,
+            idempotencyKey: crypto.randomUUID()
         };
 
         this.documents.push(entry);
 
-        // no need to save as we only save documents which have metadata
+        // Save without consistency check — pending docs can't violate
+        // the documentId uniqueness invariant since they have no metadata.
+        void this.save().catch((error: unknown) => {
+            this.logger.error(`Error saving data: ${error}`);
+        });
 
         return entry;
     }
@@ -222,6 +266,10 @@ export class Database {
         this.saveInTheBackground();
     }
 
+    public containsDocument(target: DocumentRecord): boolean {
+        return this.documents.includes(target);
+    }
+
     public getLastSeenUpdateId(): VaultUpdateId {
         return this.lastSeenUpdateIds.min;
     }
@@ -254,6 +302,13 @@ export class Database {
                     relativePath,
                     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
                     ...metadata! // `resolvedDocuments` only returns docs with metadata set
+                })
+            ),
+            pendingDocuments: this.pendingDocuments.map(
+                ({ relativePath, idempotencyKey, originalCreationPath }) => ({
+                    relativePath,
+                    idempotencyKey: idempotencyKey!,
+                    originalCreationPath: originalCreationPath!
                 })
             ),
             lastSeenUpdateId: this.lastSeenUpdateIds.min

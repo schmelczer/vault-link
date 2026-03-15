@@ -10,7 +10,7 @@ import { hash } from "../utils/hash";
 import type { FileChangeNotifier } from "./file-change-notifier";
 import { Lock } from "../utils/data-structures/locks";
 import { EventListeners } from "../utils/data-structures/event-listeners";
-import { Logger } from "../tracing/logger";
+import type { Logger } from "../tracing/logger";
 
 // Cursor positions are updated separately from documents. However, a given cursor position is only
 // valid within a certain version of the document it belongs to. This class tracks previous and the latest

@@ -67,10 +67,12 @@ export class SyncService {
 
     public async create({
         relativePath,
-        contentBytes
+        contentBytes,
+        idempotencyKey
     }: {
         relativePath: RelativePath;
         contentBytes: Uint8Array;
+        idempotencyKey?: string;
     }): Promise<DocumentUpdateResponse> {
         return this.retryForever(async () => {
             const formData = new FormData();
@@ -80,6 +82,10 @@ export class SyncService {
                 "content",
                 new Blob([new Uint8Array(contentBytes)])
             );
+
+            if (idempotencyKey !== undefined) {
+                formData.append("idempotency_key", idempotencyKey);
+            }
 
             this.logger.debug(
                 `Creating document with relative path ${relativePath}`
@@ -360,6 +366,52 @@ export class SyncService {
 
             return result;
         });
+    }
+
+    public async resolveIdempotencyKeys(
+        keys: string[]
+    ): Promise<Map<string, string>> {
+        this.logger.debug(
+            `Resolving ${keys.length} idempotency keys`
+        );
+
+        try {
+            const response = await this.client(
+                this.getUrl("/documents/resolve-keys"),
+                {
+                    method: "POST",
+                    body: JSON.stringify({ idempotencyKeys: keys }),
+                    headers: this.getDefaultHeaders({ type: "json" })
+                }
+            );
+
+            if (!response.ok) {
+                this.logger.warn(
+                    `Failed to resolve idempotency keys: ${await SyncService.errorFromResponse(
+                        response
+                    )}`
+                );
+                return new Map();
+            }
+
+            const result: { resolved: Record<string, string> } =
+                (await response.json()) as { resolved: Record<string, string> }; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+
+            const resolved = new Map<string, string>(
+                Object.entries(result.resolved)
+            );
+
+            this.logger.debug(
+                `Resolved ${resolved.size}/${keys.length} idempotency keys`
+            );
+
+            return resolved;
+        } catch (e) {
+            this.logger.warn(
+                `Failed to resolve idempotency keys: ${e}`
+            );
+            return new Map();
+        }
     }
 
     public async ping(): Promise<PingResponse> {
