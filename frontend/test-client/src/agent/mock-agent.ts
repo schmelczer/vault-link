@@ -129,18 +129,16 @@ export class MockAgent extends MockClient {
             options.push(this.enableSyncAction.bind(this));
         }
 
-        const files = await this.listFilesRecursively();
 
-        if (files.length > 0) {
-            options.push(
-                this.renameFileAction.bind(this, files),
-                this.updateFileAction.bind(this, files)
-            );
+        options.push(
+            this.renameFileAction.bind(this),
+            this.updateFileAction.bind(this)
+        );
 
-            if (this.doDeletes) {
-                options.push(this.deleteFileAction.bind(this, files));
-            }
+        if (this.doDeletes) {
+            options.push(this.deleteFileAction.bind(this));
         }
+
 
         if (Math.random() < 0.015 && this.doResets) {
             // we can't just queue this up as once it's destroyed, no more method calls can go to SyncClient
@@ -257,22 +255,20 @@ export class MockAgent extends MockClient {
                     .includes(content);
             });
 
-            if (this.doDeletes) {
-                // assert(
-                //     found.length <= 1,
-                //     `[${this.name}] Content ${content} found in ${found.join(", ")}`
-                // );
-            } else {
+            assert(
+                found.length <= 1,
+                `[${this.name}] Content ${content} found in multiple files: ${found.join(", ")}`
+            );
+
+            if (!this.doDeletes) {
                 assert(
                     found.length >= 1,
                     `[${this.name}] Content ${content} not found in any files`
                 );
+            }
 
-                // assert(
-                //     found.length <= 1,
-                //     `[${this.name}] Content ${content} found in multiple files: ${found.join(", ")}`
-                // );
 
+            if (found.length === 1) {
                 const [file] = found;
                 const fileContent = new TextDecoder().decode(
                     this.files.get(file)
@@ -324,7 +320,12 @@ export class MockAgent extends MockClient {
         this.lastSyncEnabledState = true;
     }
 
-    private async renameFileAction(files: RelativePath[]): Promise<void> {
+    private async renameFileAction(): Promise<void> {
+        const files = await this.listFilesRecursively();
+        if (files.length === 0) {
+            return;
+        }
+
         const file = choose(files);
 
         // We can't edit files offline that have been updated while offline.
@@ -355,7 +356,12 @@ export class MockAgent extends MockClient {
         return this.rename(file, newName, { ignoreSlowFileEvents: true });
     }
 
-    private async updateFileAction(files: RelativePath[]): Promise<void> {
+    private async updateFileAction(): Promise<void> {
+        const files = await this.listFilesRecursively();
+        if (files.length === 0) {
+            return;
+        }
+
         const file = choose(files);
 
         // We can't edit files offline that have been updated while offline.
@@ -385,7 +391,12 @@ export class MockAgent extends MockClient {
         );
     }
 
-    private async deleteFileAction(files: RelativePath[]): Promise<void> {
+    private async deleteFileAction(): Promise<void> {
+        const files = await this.listFilesRecursively();
+        if (files.length === 0) {
+            return;
+        }
+
         const file = choose(files);
         this.client.logger.info(`Decided to delete file ${file}`);
         return this.delete(file, { ignoreSlowFileEvents: true });
