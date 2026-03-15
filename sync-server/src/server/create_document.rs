@@ -55,7 +55,9 @@ pub async fn create_document(
             .await
             .map_err(server_error)?;
         if let Some(existing) = existing {
-            info!("Found existing document with idempotency key `{idempotency_key}`, returning existing document");
+            info!(
+                "Found existing document with idempotency key `{idempotency_key}`, returning existing document"
+            );
             transaction
                 .rollback()
                 .await
@@ -78,6 +80,7 @@ pub async fn create_document(
         )
         .await
         .map_err(server_error)?;
+
     if let Some(latest_version) = latest_version {
         info!(
             "Document already exists at new location: `{sanitized_relative_path}` when trying to create it in vault `{vault_id}`, merging into existing document"
@@ -85,7 +88,7 @@ pub async fn create_document(
 
         return merge_with_stored_version(
             &sanitized_relative_path,
-            &Vec::new(),
+            &latest_version.content.clone(),
             latest_version,
             vault_id,
             user,

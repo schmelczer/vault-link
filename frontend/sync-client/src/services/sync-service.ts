@@ -9,6 +9,7 @@ import type { Settings } from "../persistence/settings";
 import type { FetchController } from "./fetch-controller";
 import { sleep } from "../utils/sleep";
 import { SyncResetError } from "../errors/sync-reset-error";
+import { HttpClientError } from "../errors/http-client-error";
 import type { SerializedError } from "./types/SerializedError";
 import type { DocumentVersionWithoutContent } from "./types/DocumentVersionWithoutContent";
 import type { DocumentUpdateResponse } from "./types/DocumentUpdateResponse";
@@ -65,6 +66,17 @@ export class SyncService {
         return result;
     }
 
+    private static async throwHttpError(
+        response: Response,
+        context: string
+    ): Promise<never> {
+        const message = `${context}: ${await SyncService.errorFromResponse(response)}`;
+        if (response.status >= 400 && response.status < 500) {
+            throw new HttpClientError(response.status, message);
+        }
+        throw new Error(message);
+    }
+
     public async create({
         relativePath,
         contentBytes,
@@ -98,10 +110,9 @@ export class SyncService {
             });
 
             if (!response.ok) {
-                throw new Error(
-                    `Failed to create document: ${await SyncService.errorFromResponse(
-                        response
-                    )}`
+                await SyncService.throwHttpError(
+                    response,
+                    "Failed to create document"
                 );
             }
 
@@ -146,10 +157,9 @@ export class SyncService {
             );
 
             if (!response.ok) {
-                throw new Error(
-                    `Failed to update document: ${await SyncService.errorFromResponse(
-                        response
-                    )}`
+                await SyncService.throwHttpError(
+                    response,
+                    "Failed to update document"
                 );
             }
 
@@ -157,8 +167,7 @@ export class SyncService {
                 (await response.json()) as DocumentUpdateResponse; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
 
             this.logger.debug(
-                `Updated document ${JSON.stringify(result)} with id ${
-                    result.documentId
+                `Updated document ${JSON.stringify(result)} with id ${result.documentId
                 }}`
             );
 
@@ -199,10 +208,9 @@ export class SyncService {
             );
 
             if (!response.ok) {
-                throw new Error(
-                    `Failed to update document: ${await SyncService.errorFromResponse(
-                        response
-                    )}`
+                await SyncService.throwHttpError(
+                    response,
+                    "Failed to update document"
                 );
             }
 
@@ -210,8 +218,7 @@ export class SyncService {
                 (await response.json()) as DocumentUpdateResponse; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
 
             this.logger.debug(
-                `Updated document ${JSON.stringify(result)} with id ${
-                    result.documentId
+                `Updated document ${JSON.stringify(result)} with id ${result.documentId
                 }}`
             );
 
@@ -245,10 +252,9 @@ export class SyncService {
             );
 
             if (!response.ok) {
-                throw new Error(
-                    `Failed to delete document: ${await SyncService.errorFromResponse(
-                        response
-                    )}`
+                await SyncService.throwHttpError(
+                    response,
+                    "Failed to delete document"
                 );
             }
 
@@ -279,10 +285,9 @@ export class SyncService {
             );
 
             if (!response.ok) {
-                throw new Error(
-                    `Failed to get document: ${await SyncService.errorFromResponse(
-                        response
-                    )}`
+                await SyncService.throwHttpError(
+                    response,
+                    "Failed to get document"
                 );
             }
 
@@ -317,10 +322,9 @@ export class SyncService {
             );
 
             if (!response.ok) {
-                throw new Error(
-                    `Failed to get document: ${await SyncService.errorFromResponse(
-                        response
-                    )}`
+                await SyncService.throwHttpError(
+                    response,
+                    "Failed to get document"
                 );
             }
 
@@ -338,7 +342,7 @@ export class SyncService {
         return this.retryForever(async () => {
             this.logger.debug(
                 "Getting all documents" +
-                    (since != null ? ` since ${since}` : "")
+                (since != null ? ` since ${since}` : "")
             );
 
             const url = new URL(this.getUrl("/documents"));
@@ -350,10 +354,9 @@ export class SyncService {
             });
 
             if (!response.ok) {
-                throw new Error(
-                    `Failed to get documents: ${await SyncService.errorFromResponse(
-                        response
-                    )}`
+                await SyncService.throwHttpError(
+                    response,
+                    "Failed to get documents"
                 );
             }
 
@@ -461,6 +464,12 @@ export class SyncService {
             } catch (e) {
                 // We must not retry errors coming from reset
                 if (e instanceof SyncResetError) {
+                    throw e;
+                }
+
+                // Don't retry 4xx client errors — the request itself is wrong
+                // and retrying won't help
+                if (e instanceof HttpClientError) {
                     throw e;
                 }
 

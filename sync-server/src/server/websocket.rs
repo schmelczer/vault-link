@@ -7,7 +7,7 @@ use axum::{
     response::Response,
 };
 use futures::stream::StreamExt;
-use log::{debug, info};
+use log::{debug, info, warn};
 use serde::Deserialize;
 
 use crate::{
@@ -101,24 +101,38 @@ async fn websocket(
 
     let device_id = authed_handshake.handshake.device_id.clone();
     let mut send_task = tokio::spawn(async move {
-        while let Ok(update) = broadcast_receiver.recv().await {
-            if Some(&device_id) == update.origin_device_id.as_ref() {
-                continue;
-            }
+        loop {
+            match broadcast_receiver.recv().await {
+                Ok(update) => {
+                    if Some(&device_id) == update.origin_device_id.as_ref() {
+                        continue;
+                    }
 
-            let message = match update.message {
-                WebSocketServerMessage::CursorPositions(CursorPositionFromServer { clients }) => {
-                    WebSocketServerMessage::CursorPositions(CursorPositionFromServer {
-                        clients: clients
-                            .into_iter()
-                            .filter(|client| client.device_id != device_id)
-                            .collect(),
-                    })
+                    let message = match update.message {
+                        WebSocketServerMessage::CursorPositions(
+                            CursorPositionFromServer { clients },
+                        ) => WebSocketServerMessage::CursorPositions(CursorPositionFromServer {
+                            clients: clients
+                                .into_iter()
+                                .filter(|client| client.device_id != device_id)
+                                .collect(),
+                        }),
+                        WebSocketServerMessage::VaultUpdate(_) => update.message,
+                    };
+
+                    send_update_over_websocket(&message, &mut sender).await?;
                 }
-                WebSocketServerMessage::VaultUpdate(_) => update.message,
-            };
-
-            send_update_over_websocket(&message, &mut sender).await?;
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                    warn!(
+                        "WebSocket receiver for device {device_id} lagged by {n} messages, \
+                         disconnecting for re-sync"
+                    );
+                    break;
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                    break;
+                }
+            }
         }
 
         Ok::<(), SyncServerError>(())

@@ -83,6 +83,15 @@ export class UnrestrictedSyncer {
                 doc.idempotencyKey !== undefined &&
                 resolved.has(doc.idempotencyKey)
             ) {
+                // Check if document was removed by a concurrent operation
+                // (e.g., a delete) between the snapshot and now
+                if (!this.database.containsDocument(doc)) {
+                    this.logger.info(
+                        `Pending doc at ${doc.relativePath} was removed during key resolution, skipping`
+                    );
+                    continue;
+                }
+
                 const documentId = resolved.get(doc.idempotencyKey)!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
 
                 // Skip if this documentId is already assigned to another document
@@ -160,7 +169,14 @@ export class UnrestrictedSyncer {
 
             let response: DocumentVersion | DocumentUpdateResponse | undefined =
                 undefined;
-            if (document.metadata === undefined) {
+            if (
+                document.metadata === undefined ||
+                document.metadata.parentVersionId === 0
+            ) {
+                // parentVersionId === 0 occurs when resolveIdempotencyKeys
+                // assigned a documentId but hasn't synced yet. Treat as a
+                // create — the server will recognise the idempotency key
+                // and return the existing document.
                 response = await this.syncService.create({
                     relativePath: originalRelativePath,
                     contentBytes,
@@ -188,16 +204,22 @@ export class UnrestrictedSyncer {
                             (await this.serverConfig.getConfig())
                                 .mergeableFileExtensions
                         );
+                    // Snapshot parentVersionId atomically with the cache
+                    // lookup. document.metadata is a mutable shared
+                    // reference — a concurrent operation could update
+                    // parentVersionId between the cache lookup and the
+                    // putText call, causing a diff/version mismatch.
+                    const parentVersionIdForUpdate =
+                        document.metadata.parentVersionId;
                     const cachedVersion = this.contentCache.get(
-                        document.metadata.parentVersionId
+                        parentVersionIdForUpdate
                     );
 
                     response =
                         isText && cachedVersion !== undefined
                             ? await this.syncService.putText({
                                 documentId: document.metadata.documentId,
-                                parentVersionId:
-                                    document.metadata.parentVersionId,
+                                parentVersionId: parentVersionIdForUpdate,
                                 relativePath: document.relativePath,
                                 content: diff(
                                     new TextDecoder().decode(cachedVersion),
@@ -206,8 +228,7 @@ export class UnrestrictedSyncer {
                             })
                             : await this.syncService.putBinary({
                                 documentId: document.metadata.documentId,
-                                parentVersionId:
-                                    document.metadata.parentVersionId,
+                                parentVersionId: parentVersionIdForUpdate,
                                 relativePath: document.relativePath,
                                 contentBytes
                             });
@@ -522,6 +543,31 @@ export class UnrestrictedSyncer {
             this.logger.info(
                 `Document ${document.relativePath} has been deleted before we could finish updating it`
             );
+            // Assign metadata so the pending delete can inform the server
+            if (document.metadata === undefined) {
+                const existingWithSameId =
+                    this.database.getDocumentByDocumentId(
+                        response.documentId
+                    );
+                if (
+                    existingWithSameId !== undefined &&
+                    existingWithSameId !== document
+                ) {
+                    // Another doc already has this documentId — the server
+                    // knows about it. Just remove this stale pending doc.
+                    this.database.removeDocument(document);
+                } else {
+                    this.database.updateDocumentMetadata(
+                        {
+                            documentId: response.documentId,
+                            parentVersionId: response.vaultUpdateId,
+                            hash: contentHash,
+                            remoteRelativePath: response.relativePath
+                        },
+                        document
+                    );
+                }
+            }
             this.database.addSeenUpdateId(response.vaultUpdateId);
             return;
         }
@@ -615,18 +661,9 @@ export class UnrestrictedSyncer {
 
         if (!("type" in response) || response.type === "MergingUpdate") {
             const responseBytes = base64ToBytes(response.contentBase64);
-            contentHash = hash(responseBytes);
 
-            this.database.updateDocumentMetadata(
-                {
-                    documentId: response.documentId,
-                    parentVersionId: response.vaultUpdateId,
-                    hash: contentHash,
-                    remoteRelativePath: response.relativePath
-                },
-                document
-            );
-
+            // Write file BEFORE updating metadata so that if the write fails,
+            // metadata doesn't point to a version whose content was never written.
             await this.operations.write(
                 actualPath,
                 originalContentBytes,
@@ -642,27 +679,90 @@ export class UnrestrictedSyncer {
                 );
             }
 
+            // Re-read and re-hash after write because the 3-way merge in
+            // operations.write() may produce content different from responseBytes.
+            const actualContent = await this.operations.read(actualPath);
+            const actualHash = hash(actualContent);
 
+            // The document may have been removed by a concurrent operation
+            // (e.g., a delete) during the awaited file write/read above.
+            // The file is safely on disk; recovery will re-detect it.
+            if (!this.database.containsDocument(document)) {
+                this.logger.info(
+                    `Document ${document.relativePath} was removed during sync, skipping metadata update`
+                );
+                return;
+            }
+
+            this.database.updateDocumentMetadata(
+                {
+                    documentId: response.documentId,
+                    parentVersionId: response.vaultUpdateId,
+                    hash: actualHash,
+                    remoteRelativePath: response.relativePath
+                },
+                document
+            );
+
+            // Cache the SERVER's content (responseBytes), not the local
+            // content (actualContent). The cache is used to compute diffs
+            // for subsequent updates: diff(cached, newFileContent). The
+            // server applies this diff against its content at
+            // parentVersionId, which is responseBytes. Using actualContent
+            // would produce diffs that don't match the server's state.
             await this.updateCache(
                 response.vaultUpdateId,
                 responseBytes,
                 actualPath
             );
         } else {
-            this.database.updateDocumentMetadata(
-                {
-                    documentId: response.documentId,
-                    parentVersionId: response.vaultUpdateId,
-                    hash: contentHash,
-                    remoteRelativePath: response.relativePath
-                },
-                document
-            );
-            await this.updateCache(
-                response.vaultUpdateId,
-                originalContentBytes,
-                actualPath
-            );
+            // FastForwardUpdate — the server accepted our content as-is,
+            // UNLESS this was an idempotent create return (the server
+            // returned the original version, whose content may differ from
+            // what we sent). Detect this by comparing contentSize.
+            const serverContentMatchesLocal =
+                !("contentSize" in response) ||
+                response.contentSize === originalContentBytes.length;
+
+            if (serverContentMatchesLocal) {
+                this.database.updateDocumentMetadata(
+                    {
+                        documentId: response.documentId,
+                        parentVersionId: response.vaultUpdateId,
+                        hash: contentHash,
+                        remoteRelativePath: response.relativePath
+                    },
+                    document
+                );
+                await this.updateCache(
+                    response.vaultUpdateId,
+                    originalContentBytes,
+                    actualPath
+                );
+            } else {
+                // The server returned a stale idempotent version. Fetch
+                // the actual content so the cache stays consistent, then
+                // the hash mismatch will trigger a follow-up update sync.
+                const serverContent =
+                    await this.syncService.getDocumentVersionContent({
+                        documentId: response.documentId,
+                        vaultUpdateId: response.vaultUpdateId
+                    });
+                this.database.updateDocumentMetadata(
+                    {
+                        documentId: response.documentId,
+                        parentVersionId: response.vaultUpdateId,
+                        hash: hash(serverContent),
+                        remoteRelativePath: response.relativePath
+                    },
+                    document
+                );
+                await this.updateCache(
+                    response.vaultUpdateId,
+                    serverContent,
+                    actualPath
+                );
+            }
         }
 
         this.database.addSeenUpdateId(response.vaultUpdateId);
@@ -672,9 +772,10 @@ export class UnrestrictedSyncer {
         sizeInBytes: number,
         relativePath: RelativePath
     ): CommonHistoryEntry | undefined {
-        const sizeInMB = Math.round(sizeInBytes / 1024 / 1024);
         const { maxFileSizeMB } = this.settings.getSettings();
-        if (sizeInMB > maxFileSizeMB) {
+        const maxFileSizeBytes = maxFileSizeMB * 1024 * 1024;
+        if (sizeInBytes > maxFileSizeBytes) {
+            const sizeInMB = (sizeInBytes / 1024 / 1024).toFixed(1);
             return {
                 status: SyncStatus.SKIPPED,
                 details: {

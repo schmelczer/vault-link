@@ -18,6 +18,7 @@ import type { NetworkConnectionStatus } from "./types/network-connection-status"
 import { DocumentSyncStatus } from "./types/document-sync-status";
 import { WebSocketManager } from "./services/websocket-manager";
 import { createClientId } from "./utils/create-client-id";
+import { SyncResetError } from "./errors/sync-reset-error";
 import { CursorTracker } from "./sync-operations/cursor-tracker";
 import type { CursorSpan } from "./services/types/CursorSpan";
 import type { MaybeOutdatedClientCursors } from "./types/maybe-outdated-client-cursors";
@@ -424,8 +425,21 @@ export class SyncClient {
 
     public async waitUntilFinished(): Promise<void> {
         this.checkIfDestroyed("waitUntilIdle");
-        await this.syncer.waitUntilFinished();
-        await this.webSocketManager.waitUntilFinished();
+        // Loop until both sync queue and WebSocket handlers are
+        // simultaneously idle. WS handlers can enqueue new sync
+        // operations, and completed sync operations can trigger
+        // broadcasts that create new WS handler promises.
+        let iteration = 0;
+        while (true) {
+            iteration++;
+            this.logger.info(`waitUntilFinished: iteration ${iteration}`);
+            await this.webSocketManager.waitUntilFinished();
+            await this.syncer.waitUntilFinished();
+            // Check if anything new arrived while we were waiting
+            if (!this.webSocketManager.hasOutstandingWork()) {
+                break;
+            }
+        }
         await this.database.save(); // flush all changes to disk
     }
 
@@ -476,10 +490,40 @@ export class SyncClient {
         this.hasFinishedOfflineSync = true;
     }
 
+    /**
+     * Hard pause: aborts all in-flight HTTP operations via FetchController reset.
+     * Used when the SyncClient is being destroyed or fully reset (connection
+     * settings changed). This is the nuclear option — every outstanding fetch
+     * is rejected with SyncResetError so the queue drains immediately.
+     */
     private async pause(): Promise<void> {
         this.hasFinishedOfflineSync = false;
         this.fetchController.startReset();
+        try {
+            await this.webSocketManager.stop();
+            await this.waitUntilFinished();
+        } catch (e) {
+            // SyncResetError is expected here — we just called startReset()
+            // which rejects in-flight fetches. Only re-throw non-reset errors
+            // (after ensuring the FetchController is left in a usable state).
+            this.fetchController.finishReset();
+            if (!(e instanceof SyncResetError)) {
+                throw e;
+            }
+        }
+    }
+
+    /**
+     * Soft pause: stops the WebSocket and clears the sync queue, but lets
+     * in-flight HTTP operations complete naturally. Used when the user toggles
+     * sync off — we don't want to abort creates/updates that are mid-flight
+     * because they'd just be re-queued on re-enable, potentially leading to
+     * an infinite retry loop with flaky connections.
+     */
+    private async softPause(): Promise<void> {
+        this.hasFinishedOfflineSync = false;
         await this.webSocketManager.stop();
+        this.syncer.reset();
         await this.waitUntilFinished();
     }
 
@@ -509,7 +553,7 @@ export class SyncClient {
             if (newSettings.isSyncEnabled) {
                 await this.startSyncing();
             } else {
-                await this.pause();
+                await this.softPause();
             }
         }
 

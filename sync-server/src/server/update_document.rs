@@ -79,9 +79,12 @@ pub async fn update_text(
 ) -> Result<Json<DocumentUpdateResponse>, SyncServerError> {
     let parent_document = get_parent_document(&state, &vault_id, request.parent_version_id).await?;
 
+    let parent_content = str::from_utf8(&parent_document.content)
+        .context("Parent document content is not valid UTF-8")
+        .map_err(client_error)?;
+
     let edited_text = EditedText::from_diff(
-        str::from_utf8(&parent_document.content)
-            .expect("parent must be valid UTF-8 because it's a text document"),
+        parent_content,
         request.content,
         &*BuiltinTokenizer::Word,
     )
@@ -232,15 +235,20 @@ pub async fn merge_with_stored_version(
             "Merging changes for document `{}` in vault `{vault_id}`",
             latest_version.document_id
         );
+        let parent_str = str::from_utf8(parent_document_content)
+            .context("Parent document content is not valid UTF-8")
+            .map_err(server_error)?;
+        let latest_str = str::from_utf8(&latest_version.content)
+            .context("Latest version content is not valid UTF-8")
+            .map_err(server_error)?;
+        let content_str = str::from_utf8(&content)
+            .context("New content is not valid UTF-8")
+            .map_err(server_error)?;
+
         reconcile(
-            str::from_utf8(parent_document_content)
-                .expect("parent must be valid UTF-8 because it's not binary"),
-            &str::from_utf8(&latest_version.content)
-                .expect("latest_version must be valid UTF-8 because it's not binary")
-                .into(),
-            &str::from_utf8(&content)
-                .expect("content must be valid UTF-8 because it's not binary")
-                .into(),
+            parent_str,
+            &latest_str.into(),
+            &content_str.into(),
             &*BuiltinTokenizer::Word,
         )
         .apply()

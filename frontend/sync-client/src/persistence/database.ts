@@ -64,32 +64,45 @@ export class Database {
     ) {
         initialState ??= {};
 
-        this.documents =
-            initialState.documents?.map(({ relativePath, ...metadata }) => ({
+        const validDocuments = (initialState.documents ?? []).filter(
+            (doc) =>
+                this.validateStoredField(doc, "relativePath", "string") &&
+                this.validateStoredField(doc, "documentId", "string") &&
+                this.validateStoredField(doc, "parentVersionId", "number")
+        );
+
+        this.documents = validDocuments.map(
+            ({ relativePath, ...metadata }) => ({
                 relativePath,
                 metadata,
                 isDeleted: false,
                 parallelVersion: 0
-            })) ?? [];
+            })
+        );
 
-        if (initialState.pendingDocuments) {
-            for (const pending of initialState.pendingDocuments) {
-                const existing =
-                    this.getLatestDocumentByRelativePath(
-                        pending.relativePath
-                    );
-                this.documents.push({
-                    relativePath: pending.relativePath,
-                    metadata: undefined,
-                    isDeleted: false,
-                    parallelVersion:
-                        existing !== undefined
-                            ? existing.parallelVersion + 1
-                            : 0,
-                    originalCreationPath: pending.originalCreationPath,
-                    idempotencyKey: pending.idempotencyKey
-                });
-            }
+        const validPendingDocuments = (
+            initialState.pendingDocuments ?? []
+        ).filter(
+            (doc) =>
+                this.validateStoredField(doc, "relativePath", "string") &&
+                this.validateStoredField(doc, "idempotencyKey", "string")
+        );
+
+        for (const pending of validPendingDocuments) {
+            const existing = this.getLatestDocumentByRelativePath(
+                pending.relativePath
+            );
+            this.documents.push({
+                relativePath: pending.relativePath,
+                metadata: undefined,
+                isDeleted: false,
+                parallelVersion:
+                    existing !== undefined
+                        ? existing.parallelVersion + 1
+                        : 0,
+                originalCreationPath: pending.originalCreationPath,
+                idempotencyKey: pending.idempotencyKey
+            });
         }
 
         this.ensureConsistency();
@@ -104,6 +117,25 @@ export class Database {
         this.documents.forEach((doc) => {
             this.lastSeenUpdateIds.add(doc.metadata?.parentVersionId);
         });
+    }
+
+    private validateStoredField(
+        doc: object,
+        field: string,
+        expectedType: "string" | "number"
+    ): boolean {
+        const value = (doc as Record<string, unknown>)[field];
+        if (
+            typeof value !== expectedType ||
+            (expectedType === "string" && !value) ||
+            (expectedType === "number" && isNaN(value as number))
+        ) {
+            this.logger.warn(
+                `Skipping stored document with invalid ${field}: ${JSON.stringify(doc)}`
+            );
+            return false;
+        }
+        return true;
     }
 
     public get length(): number {
@@ -301,7 +333,7 @@ export class Database {
                 ({ relativePath, metadata }) => ({
                     relativePath,
                     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-                    ...metadata! // `resolvedDocuments` only returns docs with metadata set
+                    ...metadata! // filtered to only docs with metadata set
                 })
             ),
             pendingDocuments: this.pendingDocuments.map(
@@ -316,6 +348,25 @@ export class Database {
     }
 
     private ensureConsistency(): void {
+        // Check for duplicate documentIds across ALL documents with metadata,
+        // not just the deduplicated resolvedDocuments view. A duplicate on a
+        // lower-parallelVersion record would otherwise go undetected.
+        const allWithMetadata = this.documents
+            // eslint-disable-next-line no-restricted-syntax -- Type narrowing, not removing a specific item
+            .filter((d) => d.metadata !== undefined);
+        const documentIdSet = new Set<string>();
+        for (const doc of allWithMetadata) {
+            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+            const docId = doc.metadata!.documentId;
+            if (documentIdSet.has(docId)) {
+                throw new Error(
+                    `Duplicate documentId ${docId} found in database`
+                );
+            }
+            documentIdSet.add(docId);
+        }
+
+        // Also check the deduplicated view for path-level invariants
         const idToPath = new Map<string, string[]>();
 
         this.resolvedDocuments.forEach(({ relativePath, metadata }) => {

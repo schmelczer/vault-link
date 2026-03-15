@@ -85,7 +85,11 @@ export class Locks<T> {
                 reject(new SyncResetError());
             }
         }
-        this.locked.clear();
+
+        // Do NOT clear this.locked — let running operations release their own
+        // locks via the finally block in withLock. Clearing this.locked would
+        // allow new operations to acquire locks on keys still held by in-flight
+        // operations, breaking mutual exclusion.
         this.waiters.clear();
     }
 

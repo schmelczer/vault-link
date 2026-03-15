@@ -333,3 +333,94 @@ When fixing the duplicate-document-after-interrupted-create problem, several heu
 3. **In-memory tracking** (e.g., `pendingLocalId`): Any in-memory state is lost on app crash. The whole point of the fix is to handle interrupted creates, which include crashes.
 
 The idempotency key approach works because it's: (a) crash-safe (persisted locally); (b) deterministic (UUID lookup, no heuristics); (c) server-authoritative (the server resolves keys to documentIds).
+
+### Critical Implementation Invariants (Learned from Bugs)
+
+These invariants were discovered through deep auditing and E2E testing. Violating any of them causes data loss, sync stalls, or test failures.
+
+**1. `waitUntilFinished` must loop until both sync queue AND WebSocket handlers are simultaneously idle.**
+WebSocket message handlers (`onRemoteVaultUpdateReceived`) enqueue new sync operations. If you wait for the sync queue first, then WebSocket handlers, the handlers may have enqueued new operations that aren't awaited. The correct implementation loops: wait for WS handlers → wait for sync queue → check if WS has new work → repeat if needed. See `SyncClient.waitUntilFinished()`.
+
+**2. `enqueueSyncOperation` must catch ALL errors, not just `SyncResetError`.**
+`executeSync` re-throws non-SyncReset/non-FileNotFound errors (they're logged in sync history as ERROR). If `enqueueSyncOperation` doesn't catch these, they become unhandled promise rejections that crash the process. The catch logs the error and returns undefined — failed operations will be retried on the next WebSocket reconnect (which clears `runningScheduleSyncForOfflineChanges` and triggers a fresh filesystem scan).
+
+**3. `Locks.reset()` must NOT clear `this.locked`.**
+In-flight operations (currently executing their callback) still hold conceptual locks. If `reset()` clears `this.locked`, new operations can acquire the same key and run concurrently with the still-running old operation. Only clear `this.waiters` (to reject pending waiters with SyncResetError). Let running operations release their locks naturally via the `finally` block in `withLock`.
+
+**4. `handleMaybeMergingResponse` must write the file BEFORE updating metadata.**
+If metadata is updated first and the write fails (crash, OS error), the metadata points to a server version whose content was never written locally. On recovery, the stale local content is uploaded, potentially overwriting other clients' changes that were part of the merge. Order: write file → re-read + re-hash → update metadata → update cache.
+
+**5. After a MergingUpdate, cache the SERVER's content (`responseBytes`), not the local content.**
+The content cache is used to compute diffs for subsequent updates: `diff(cached, newFileContent)`. The server applies this diff against its content at `parentVersionId`. If the cache stores the local content (which may differ from the server's due to the 3-way merge in `FileOperations.write`), the diff won't match the server's state and the update will fail with "Invalid diff".
+
+**6. After a MergingUpdate, re-read the file and re-hash.**
+The 3-way merge in `operations.write()` may produce content different from `responseBytes` (because the user edited the file between the read and the write). The stored hash must match the actual on-disk content, not the server's merged content. Otherwise, the next sync cycle incorrectly detects "no changes" (phantom hash match) or always detects changes (phantom hash mismatch).
+
+**7. Snapshot `parentVersionId` before computing diffs.**
+`document.metadata` is a mutable shared reference. A concurrent operation (via a WebSocket handler running during an `await` in the same sync operation) can update `parentVersionId` between the cache lookup and the `putText` call. Always capture `const parentVersionIdForUpdate = document.metadata.parentVersionId` and use that value for both the cache lookup and the HTTP request.
+
+**8. Guard `updateDocumentMetadata` against concurrently removed documents.**
+After any `await` (file write, re-read, HTTP call), the document may have been removed from the database by a concurrent delete operation. Always check `database.containsDocument(document)` before calling `updateDocumentMetadata` if there was an `await` since the document reference was obtained. Return gracefully if removed — the file is on disk and `scheduleSyncForOfflineChanges` will re-detect it.
+
+**9. When assigning a `documentId` to a pending doc, check for duplicates first.**
+Both `resolveIdempotencyKeys` and `handleMaybeMergingResponse` (for deleted pending docs) assign documentIds. Before setting metadata, call `getDocumentByDocumentId(id)`. If another document already has that ID, remove the stale pending doc instead of creating a duplicate. `ensureConsistency` checks for duplicate documentIds across ALL documents (not just `resolvedDocuments`).
+
+**10. `resolveIdempotencyKeys` sets `parentVersionId: 0` — treat this as a create, not an update.**
+When `resolveIdempotencyKeys` assigns a documentId to a pending doc, it uses `parentVersionId: 0` as a placeholder. The sync path must check for `parentVersionId === 0` and take the CREATE path (sending a create with the idempotency key), not the UPDATE path (which would fail because version 0 doesn't exist on the server).
+
+**11. Idempotent create returns can have stale content — check `contentSize`.**
+When the server returns a `FastForwardUpdate` for a create with an idempotency key, it may return the ORIGINAL version (from the first create), not a new version with the current content. The response's `contentSize` may not match `originalContentBytes.length`. If they differ, fetch the actual server content for that version and use it for the cache and hash, so subsequent diffs are correct.
+
+**12. `SyncClient.pause()` must swallow `SyncResetError`.**
+`pause()` calls `fetchController.startReset()` which rejects in-flight fetches. Those rejections propagate through `waitUntilFinished()`. Since `pause()` CAUSED the reset, the resulting `SyncResetError` is expected and must be caught (not re-thrown). Only re-throw non-SyncResetError exceptions. Also call `fetchController.finishReset()` in the catch block to prevent the FetchController from getting stuck in resetting state.
+
+**13. `runningScheduleSyncForOfflineChanges` must be cleared on WebSocket disconnect.**
+After the initial `scheduleSyncForOfflineChanges()` completes, the field retains the resolved promise. On WebSocket disconnect/reconnect (without a full client reset), the field must be cleared so the next call triggers a fresh filesystem scan. Add a handler on `onWebSocketStatusChanged` that sets the field to `undefined` when `isConnected` is false.
+
+**14. The server must not `expect()` / panic on UTF-8 conversion — return a client error.**
+In `update_text`, the parent version's content may be binary (if another client uploaded binary via `putBinary`). Using `.expect()` on `str::from_utf8()` panics the server. Use `.context(...).map_err(client_error)?` to return a 4xx error, allowing the client to fall back to `putBinary`.
+
+**15. The create-merge parent content must be `latest_version.content`, not empty.**
+In `create_document.rs`, when a create merges with an existing document, the 3-way merge parent must be the latest version's content (`&latest_version.content`), not an empty vector (`&Vec::new()`). An empty parent causes `reconcile("", existing, new)` to treat all content as additions, producing garbled interleaved text.
+
+**16. `retryForever` must not retry 4xx HTTP errors.**
+4xx errors indicate the request itself is wrong (e.g., invalid diff, missing parent version). Retrying won't help. The `HttpClientError` class (in `errors/http-client-error.ts`) carries the status code. `retryForever` checks for it and re-throws immediately. Only 5xx errors (transient server failures) are retried.
+
+**17. The broadcast channel's `RecvError::Lagged` must be handled explicitly.**
+The `while let Ok(update) = broadcast_receiver.recv().await` pattern silently exits the loop on `Lagged`, disconnecting the client without logging. Handle `Lagged` explicitly with a `warn!` log and `break`. The channel capacity (`broadcast_channel_capacity` in config, default 1024) is separate from `max_clients_per_vault`.
+
+### E2E Test Debugging Guide
+
+**How to run E2E tests:**
+```bash
+cd sync-server && rm -rf databases && ./target/release/sync_server config-e2e.yml &
+sleep 3
+cd /volumes/syncthing/Projects/vault-link && scripts/e2e.sh 8
+```
+Always clean the `databases` directory before running. The server must be running separately.
+
+**Common E2E failure patterns:**
+
+1. **`SyncResetError` unhandled rejection**: Check that `enqueueSyncOperation` catches all errors and that `pause()` swallows SyncResetError. The test client's `unhandledRejection` handler checks `error.name === "SyncResetError"` — if the error message changes, update the filter in `test-client/src/cli.ts`.
+
+2. **"Files from agent-X missing in agent-Y"**: This is a consistency assertion. Check the agent's LOCAL file list (now correctly logged per-agent after a logging bug fix). Common causes:
+   - **Broadcasts lost during shutdown**: Operations completed on one agent but the WebSocket broadcast didn't reach the other before destroy. The 5-second sleep between finish and destroy helps.
+   - **Path deconfliction**: Both agents have the same DOCUMENT but at different LOCAL paths (e.g., `binary-10.bin` vs `binary-10 (1).bin`). This is a known limitation with concurrent creates at the same path.
+   - **Failed sync operations not retried**: If `executeSync` throws, the failed file won't be retried until the next WebSocket reconnect (which clears `runningScheduleSyncForOfflineChanges` and triggers a fresh filesystem scan).
+
+3. **"Document not found in database"**: A concurrent operation removed the document between the last `await` and the `updateDocumentMetadata` call. Add a `containsDocument` guard.
+
+4. **"Duplicate documentId found in database"**: Two documents have the same `documentId`. Usually caused by `resolveIdempotencyKeys` or `handleMaybeMergingResponse` assigning a documentId without checking if another doc already has it.
+
+5. **"Invalid diff: attempting to access N characters..."**: The content cache has wrong content for a `parentVersionId`. Common causes: (a) cached local content instead of server content after MergingUpdate; (b) idempotent create returned a stale version but the client cached its current content under that version ID; (c) `parentVersionId` changed between cache lookup and `putText` call due to mutable shared reference.
+
+6. **"Parent version with id 0 not found"**: A document's `parentVersionId` is 0 (set by `resolveIdempotencyKeys`). The sync path should treat `parentVersionId === 0` as a create, not an update.
+
+**Test client internals (`test-client/src/agent/mock-agent.ts`):**
+- `files`: InMemoryFileSystem map — the ACTUAL filesystem state
+- `data`: Map of expected file contents — what the agent CREATED/UPDATED
+- `assertFileSystemsAreConsistent`: Compares `files` maps between two agents
+- `assertAllContentIsPresentOnce`: Checks no duplicate content across files
+- The `finish()` and `destroy()` methods use `withTimeout(TIMEOUT_MS)` — operations that exceed 30s are killed
+
+**Logging bug (fixed):** In `assertFileSystemsAreConsistent`, the error handler's "Local files" log previously printed `otherAgent.files.keys()` for BOTH agents. Now correctly prints `this.files.keys()` for the current agent.

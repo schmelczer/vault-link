@@ -109,6 +109,10 @@ export class WebSocketManager {
         await awaitAll(this.outstandingPromises);
     }
 
+    public hasOutstandingWork(): boolean {
+        return this.outstandingPromises.length > 0;
+    }
+
     public sendHandshakeMessage(
         message: WebSocketClientMessage & { type: "handshake" }
     ): void {

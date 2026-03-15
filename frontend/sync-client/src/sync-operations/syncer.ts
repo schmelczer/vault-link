@@ -71,6 +71,10 @@ export class Syncer {
             if (isConnected) {
                 // The JS WebSocket API doesn't support setting headers, so we have to send the token as a message
                 this.sendHandshakeMessage();
+            } else {
+                // Clear so that the next reconnect re-runs scheduleSyncForOfflineChanges
+                // instead of returning the stale resolved promise.
+                this.runningScheduleSyncForOfflineChanges = undefined;
             }
         });
         this.webSocketManager.onRemoteVaultUpdateReceived.add(
@@ -267,7 +271,7 @@ export class Syncer {
 
     public async waitUntilFinished(): Promise<void> {
         await this.runningScheduleSyncForOfflineChanges;
-        await this.syncQueue.onIdle(); // Wait for queue to be empty and running tasks to finish
+        await this.syncQueue.onIdle();
     }
 
     public async syncRemotelyUpdatedFile(
@@ -330,19 +334,19 @@ export class Syncer {
             remoteVersion.documentId
         );
         await this.enqueueSyncOperation(
-            async () =>
-                this.unrestrictedSyncer.unrestrictedSyncRemotelyUpdatedFile(
+            async () => {
+                await this.unrestrictedSyncer.unrestrictedSyncRemotelyUpdatedFile(
                     remoteVersion,
                     document
-                ),
+                );
+                this.database.addSeenUpdateId(remoteVersion.vaultUpdateId);
+            },
             [
                 document?.relativePath,
                 remoteVersion.relativePath,
                 remoteVersion.documentId
             ]
         );
-
-        this.database.addSeenUpdateId(remoteVersion.vaultUpdateId);
     }
 
     private async internalScheduleSyncForOfflineChanges(): Promise<void> {
@@ -371,9 +375,12 @@ export class Syncer {
         }
         const instructions: (Instruction | undefined)[] = await awaitAll(
             allLocalFiles.map(async (relativePath) => {
-                if (
+                const existingMetadata =
                     this.database.getLatestDocumentByRelativePath(relativePath)
-                        ?.metadata !== undefined
+                        ?.metadata;
+                if (
+                    existingMetadata !== undefined &&
+                    existingMetadata.parentVersionId > 0
                 ) {
                     this.logger.debug(
                         `Document ${relativePath} might have been updated locally, scheduling sync to validate and update it`
@@ -382,12 +389,27 @@ export class Syncer {
                     return { type: "update", relativePath } as Instruction;
                 }
 
-                // Perhaps the file has been moved; let's check by looking at the deleted files
-                const contentHash = await this.syncQueue.add(async () => {
+                // Perhaps the file has been moved; let's check by looking at the deleted files.
+                // Skip reading oversized files into memory for hash computation —
+                // they can't participate in move detection and will be scheduled as creates.
+                const hashResult = await this.syncQueue.add(async () => {
                     try {
+                        const sizeInBytes =
+                            await this.operations.getFileSize(relativePath);
+                        const sizeInMB = Math.ceil(
+                            sizeInBytes / 1024 / 1024
+                        );
+                        const { maxFileSizeMB } =
+                            this.settings.getSettings();
+                        if (sizeInMB > maxFileSizeMB) {
+                            // File exceeds size limit — skip hash-based move
+                            // detection and schedule as a create instead
+                            return { skippedOversized: true } as const;
+                        }
+
                         const contentBytes =
                             await this.operations.read(relativePath); // this can throw FileNotFoundError
-                        return hash(contentBytes);
+                        return { hash: hash(contentBytes) } as const;
                     } catch (e) {
                         if (
                             e instanceof Error &&
@@ -399,15 +421,21 @@ export class Syncer {
                     }
                 });
 
-                if (contentHash == undefined) {
+                if (hashResult == undefined) {
                     // The file was deleted before we had a chance to read it, no need to sync it here
                     return;
                 }
 
-                const originalFile = findMatchingFile(
-                    contentHash,
-                    locallyPossiblyDeletedFiles
-                );
+                const contentHash =
+                    "hash" in hashResult ? hashResult.hash : undefined;
+
+                const originalFile =
+                    contentHash != undefined
+                        ? findMatchingFile(
+                            contentHash,
+                            locallyPossiblyDeletedFiles
+                        )
+                        : undefined;
                 if (originalFile !== undefined) {
                     // `originalFile` hasn't been deleted but it got moved instead
                     /* eslint-disable no-restricted-syntax -- Comparing by property, not direct equality */
@@ -505,12 +533,25 @@ export class Syncer {
         //
         // The result type needs special handling since syncQueue.add() can
         // return undefined when the queue is paused/cleared.
-        const result = await this.syncQueue.add(async () =>
-            this.updatedDocumentsByPathAndKeysLocks.withLock(
-                filteredKeys,
-                operation
-            )
-        );
+        const result = await this.syncQueue.add(async () => {
+            try {
+                return await this.updatedDocumentsByPathAndKeysLocks.withLock(
+                    filteredKeys,
+                    operation
+                );
+            } catch (e) {
+                // Catch all errors to prevent unhandled promise rejections.
+                // SyncResetError: lock waiter rejected during reset (expected).
+                // Other errors: logged by executeSync's history entry, will
+                // be retried on the next scheduleSyncForOfflineChanges cycle.
+                if (!(e instanceof SyncResetError)) {
+                    this.logger.info(
+                        `Sync operation failed, will retry on next cycle: ${e}`
+                    );
+                }
+                return undefined;
+            }
+        });
         return result as T;
     }
 }

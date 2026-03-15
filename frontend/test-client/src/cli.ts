@@ -119,7 +119,7 @@ async function runTest({
             logger.info(
                 `Checking consistency between ${client.name} and ${clients[i + 1].name}`
             );
-            client.assertFileSystemsAreConsistent(clients[i]);
+            client.assertFileSystemsAreConsistent(clients[i + 1]);
             logger.info(`Consistency check for ${client.name} passed`);
         });
 

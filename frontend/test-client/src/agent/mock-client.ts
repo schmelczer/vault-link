@@ -177,7 +177,7 @@ export class MockClient extends debugging.InMemoryFileSystem {
         );
     }
 
-    private executeFileOperation(
+    protected executeFileOperation(
         callback: () => unknown,
         ignoreSlowFileEvents = false
     ): void {
