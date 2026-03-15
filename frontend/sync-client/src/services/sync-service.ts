@@ -375,7 +375,7 @@ export class SyncService {
             `Resolving ${keys.length} idempotency keys`
         );
 
-        try {
+        return this.retryForever(async () => {
             const response = await this.client(
                 this.getUrl("/documents/resolve-keys"),
                 {
@@ -386,12 +386,11 @@ export class SyncService {
             );
 
             if (!response.ok) {
-                this.logger.warn(
+                throw new Error(
                     `Failed to resolve idempotency keys: ${await SyncService.errorFromResponse(
                         response
                     )}`
                 );
-                return new Map();
             }
 
             const result: { resolved: Record<string, string> } =
@@ -406,12 +405,7 @@ export class SyncService {
             );
 
             return resolved;
-        } catch (e) {
-            this.logger.warn(
-                `Failed to resolve idempotency keys: ${e}`
-            );
-            return new Map();
-        }
+        });
     }
 
     public async ping(): Promise<PingResponse> {

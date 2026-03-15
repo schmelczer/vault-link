@@ -303,7 +303,7 @@ When the server broadcasts updates via WebSocket:
 
 7. **Key resolution with stale documentIds**: When `resolveIdempotencyKeys` returns a documentId, check `getDocumentByDocumentId` first. If another document already has that ID (assigned through normal sync), remove the stale pending doc instead of creating a duplicate.
 
-8. **`resolveIdempotencyKeys` must not use `retryForever`**: The HTTP call to `/documents/resolve-keys` is an optimization. If it fails (e.g., SyncReset aborts the fetch), return an empty map and let the pending creates retry normally with their keys. Using `retryForever` can cause deadlocks — the sync pipeline stalls waiting for the retry while the WebSocket is disconnected.
+8. **`resolveIdempotencyKeys` uses `retryForever`**: The HTTP call to `/documents/resolve-keys` retries forever like all other sync service calls. `SyncResetError` is re-thrown by `retryForever`, so the pipeline properly aborts on WebSocket disconnect without deadlocking.
 
 ### E2E Test Configuration
 
