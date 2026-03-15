@@ -1,6 +1,7 @@
 import type { SyncSettings } from "sync-client";
 import { utils, debugging, Logger } from "sync-client";
 import { MockAgent } from "./agent/mock-agent";
+import { assert } from "./utils/assert";
 import { sleep } from "./utils/sleep";
 import { v4 as uuidv4 } from "uuid";
 import { randomCasing } from "./utils/random-casing";
@@ -17,6 +18,79 @@ let doResets = false;
 
 const logger = new Logger();
 debugging.logToConsole(logger);
+
+interface ServerDocument {
+    documentId: string;
+    relativePath: string;
+    isDeleted: boolean;
+    vaultUpdateId: number;
+}
+
+async function assertServerStateConsistency(
+    agent: MockAgent,
+    settings: Partial<SyncSettings>
+): Promise<void> {
+    assert(settings.vaultName !== undefined, "vaultName is required");
+    assert(settings.token !== undefined, "token is required");
+
+    const vaultName = encodeURIComponent(settings.vaultName.trim());
+    const baseUrl = `${settings.remoteUri}/vaults/${vaultName}`;
+    const headers = {
+        authorization: `Bearer ${settings.token.trim()}`
+    };
+
+    const response = await fetch(`${baseUrl}/documents`, { headers });
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const result = (await response.json()) as {
+        latestDocuments: ServerDocument[];
+    };
+
+    const serverDocs = result.latestDocuments.filter((d) => !d.isDeleted);
+    const localFiles = agent.getFileList();
+
+    // Every local file should have a corresponding server document
+    for (const localFile of localFiles) {
+        const serverDoc = serverDocs.find(
+            (d) => d.relativePath === localFile
+        );
+        assert(
+            serverDoc !== undefined,
+            `[server-consistency] Local file '${localFile}' not found on server`
+        );
+    }
+
+    // Every non-deleted server document should have a local file
+    for (const serverDoc of serverDocs) {
+        assert(
+            localFiles.includes(serverDoc.relativePath),
+            `[server-consistency] Server document '${serverDoc.relativePath}' (id: ${serverDoc.documentId}) not found locally`
+        );
+    }
+
+    // Verify content matches for each document
+    for (const serverDoc of serverDocs) {
+        const contentResponse = await fetch(
+            `${baseUrl}/documents/${serverDoc.documentId}/versions/${serverDoc.vaultUpdateId}/content`,
+            { headers }
+        );
+        const serverBytes = new Uint8Array(
+            await contentResponse.arrayBuffer()
+        );
+        const localBytes = agent.getFileContent(serverDoc.relativePath);
+
+        assert(
+            localBytes !== undefined,
+            `[server-consistency] Local file '${serverDoc.relativePath}' content is undefined`
+        );
+
+        const serverText = new TextDecoder().decode(serverBytes);
+        const localText = new TextDecoder().decode(localBytes);
+        assert(
+            serverText === localText,
+            `[server-consistency] Content mismatch for '${serverDoc.relativePath}':\n  server: '${serverText}'\n  local:  '${localText}'`
+        );
+    }
+}
 
 async function runTest({
     agentCount,
@@ -101,6 +175,18 @@ async function runTest({
             }
         }
 
+        // Wait for in-flight broadcasts to propagate and be processed
+        await sleep(5000);
+        for (const client of clients) {
+            try {
+                await client.waitUntilSynced();
+            } catch (err) {
+                if (err instanceof TimeoutError || !slowFileEvents) {
+                    throw err;
+                }
+            }
+        }
+
         // then we need a second pass to ensure that all agents pull the same state
         for (const client of clients) {
             try {
@@ -130,6 +216,20 @@ async function runTest({
             client.assertAllContentIsPresentOnce();
             logger.info(`Content check for ${client.name} passed`);
         });
+
+        clients.forEach((client) => {
+            logger.info(
+                `Checking binary content duplication for ${client.name}`
+            );
+            client.assertBinaryContentNotDuplicated();
+            logger.info(
+                `Binary content duplication check for ${client.name} passed`
+            );
+        });
+
+        logger.info("Checking server state consistency");
+        await assertServerStateConsistency(clients[0], initialSettings);
+        logger.info("Server state consistency check passed");
 
         logger.info(`Test passed ${settings}`);
     } catch (err) {
@@ -189,7 +289,11 @@ process.on("uncaughtException", (error) => {
 });
 
 process.on("unhandledRejection", (error, _promise) => {
-    if (error instanceof Error && error.message === "Sync was reset") {
+    if (
+        error instanceof Error &&
+        (error.message === "Sync was reset" ||
+            error.name === "SyncResetError")
+    ) {
         return;
     }
 
