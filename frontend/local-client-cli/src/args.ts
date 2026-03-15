@@ -1,4 +1,4 @@
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import packageJson from "../package.json";
 import { LogLevel } from "sync-client";
 
@@ -25,41 +25,79 @@ export function parseArgs(argv: string[]): CliArgs {
             "VaultLink Local CLI - Sync your vault to the local filesystem"
         )
         .version(packageJson.version)
-        .option("-l, --local-path <path>", "Local directory path to sync")
-        .option("-r, --remote-uri <uri>", "Remote server URI")
-        .option("-t, --token <token>", "Authentication token")
-        .option("-v, --vault-name <name>", "Vault name")
-        .option(
-            "--sync-concurrency <number>",
-            "[OPTIONAL] Number of concurrent sync operations",
-            parseInt
+        .addOption(
+            new Option(
+                "-l, --local-path <path>",
+                "Local directory path to sync"
+            ).env("VAULTLINK_LOCAL_PATH")
         )
-        .option(
-            "--max-file-size-mb <number>",
-            "[OPTIONAL] Maximum file size in MB",
-            parseInt
+        .addOption(
+            new Option(
+                "-r, --remote-uri <uri>",
+                "Remote server URI"
+            ).env("VAULTLINK_REMOTE_URI")
         )
-        .option(
-            "--ignore-pattern <pattern...>",
-            "[OPTIONAL] Patterns to ignore (can be specified multiple times)"
+        .addOption(
+            new Option(
+                "-t, --token <token>",
+                "Authentication token"
+            ).env("VAULTLINK_TOKEN")
         )
-        .option(
-            "--websocket-retry-interval-ms <number>",
-            "[OPTIONAL] WebSocket retry interval in milliseconds",
-            parseInt
+        .addOption(
+            new Option(
+                "-v, --vault-name <name>",
+                "Vault name"
+            ).env("VAULTLINK_VAULT_NAME")
         )
-        .option(
-            "--log-level <level>",
-            "[OPTIONAL] Log level (DEBUG, INFO, WARNING, ERROR)",
-            "INFO"
+        .addOption(
+            new Option(
+                "--sync-concurrency <number>",
+                "[OPTIONAL] Number of concurrent sync operations"
+            )
+                .argParser(parseInt)
+                .env("VAULTLINK_SYNC_CONCURRENCY")
         )
-        .option(
-            "--health <path>",
-            "[OPTIONAL] Path to health status file for Docker healthcheck"
+        .addOption(
+            new Option(
+                "--max-file-size-mb <number>",
+                "[OPTIONAL] Maximum file size in MB"
+            )
+                .argParser(parseInt)
+                .env("VAULTLINK_MAX_FILE_SIZE_MB")
         )
-        .option(
-            "--enable-telemetry",
-            "[OPTIONAL] Enable telemetry (disabled by default)"
+        .addOption(
+            new Option(
+                "--ignore-pattern <pattern...>",
+                "[OPTIONAL] Patterns to ignore (can be specified multiple times)"
+            ).env("VAULTLINK_IGNORE_PATTERNS")
+        )
+        .addOption(
+            new Option(
+                "--websocket-retry-interval-ms <number>",
+                "[OPTIONAL] WebSocket retry interval in milliseconds"
+            )
+                .argParser(parseInt)
+                .env("VAULTLINK_WEBSOCKET_RETRY_INTERVAL_MS")
+        )
+        .addOption(
+            new Option(
+                "--log-level <level>",
+                "[OPTIONAL] Log level (DEBUG, INFO, WARNING, ERROR)"
+            )
+                .default("INFO")
+                .env("VAULTLINK_LOG_LEVEL")
+        )
+        .addOption(
+            new Option(
+                "--health <path>",
+                "[OPTIONAL] Path to health status file for Docker healthcheck"
+            ).env("VAULTLINK_HEALTH")
+        )
+        .addOption(
+            new Option(
+                "--enable-telemetry",
+                "[OPTIONAL] Enable telemetry (disabled by default)"
+            ).env("VAULTLINK_ENABLE_TELEMETRY")
         )
         .addHelpText(
             "after",
@@ -70,6 +108,10 @@ Examples:
     --ignore-pattern ".git/**" --ignore-pattern "*.tmp"
   $ vaultlink -l ./my-vault -r https://sync.example.com -t mytoken -v default \\
     --log-level DEBUG
+
+Environment variables:
+  All options can be configured via VAULTLINK_ prefixed environment variables.
+  CLI arguments take precedence over environment variables.
 `
         );
 
@@ -92,20 +134,26 @@ Examples:
     const enableTelemetry = opts.enableTelemetry as boolean | undefined;
     /* eslint-enable @typescript-eslint/no-unsafe-type-assertion */
 
-    if (localPath === undefined) {
-        throw new Error(
-            "required option '-l, --local-path <path>' not specified"
-        );
-    }
-    if (remoteUri === undefined) {
-        throw new Error("required option '--remote-uri <uri>' not specified");
-    }
-    if (token === undefined) {
-        throw new Error("required option '--token <token>' not specified");
-    }
-    if (vaultName === undefined) {
-        throw new Error("required option '--vault-name <name>' not specified");
-    }
+    const requireOption = <T>(
+        value: T | undefined,
+        name: string
+    ): T => {
+        if (value === undefined) {
+            const option = program.options.find(
+                (o) => o.attributeName() === name
+            );
+            throw new Error(
+                `required option '${option?.flags ?? name}' not specified` +
+                    (option?.envVar ? ` (or set ${option.envVar})` : "")
+            );
+        }
+        return value;
+    };
+
+    const requiredLocalPath = requireOption(localPath, "localPath");
+    const requiredRemoteUri = requireOption(remoteUri, "remoteUri");
+    const requiredToken = requireOption(token, "token");
+    const requiredVaultName = requireOption(vaultName, "vaultName");
 
     // Validate and parse log level
     const logLevelUpper = logLevelStr.toUpperCase();
@@ -121,10 +169,10 @@ Examples:
     const logLevel = logLevelUpper;
 
     return {
-        localPath,
-        remoteUri,
-        token,
-        vaultName,
+        localPath: requiredLocalPath,
+        remoteUri: requiredRemoteUri,
+        token: requiredToken,
+        vaultName: requiredVaultName,
         syncConcurrency,
         maxFileSizeMB: maxFileSizeMb,
         ignorePatterns: ignorePattern,

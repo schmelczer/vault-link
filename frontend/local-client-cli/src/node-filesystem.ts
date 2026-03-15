@@ -47,7 +47,7 @@ export class NodeFileSystemOperations implements FileSystemOperations {
 
         try {
             await fs.mkdir(dir, { recursive: true });
-            await fs.writeFile(fullPath, content);
+            await this.atomicWrite(fullPath, content);
         } catch (error) {
             throw new Error(
                 `Failed to write file ${fullPath}: ${error instanceof Error ? error.message : String(error)}`
@@ -67,7 +67,7 @@ export class NodeFileSystemOperations implements FileSystemOperations {
         try {
             const currentContent = await fs.readFile(fullPath, "utf-8");
             const result = updater({ text: currentContent, cursors: [] });
-            await fs.writeFile(fullPath, result.text, "utf-8");
+            await this.atomicWrite(fullPath, result.text, "utf-8");
             return result.text;
         } catch (error) {
             throw new Error(
@@ -154,6 +154,19 @@ export class NodeFileSystemOperations implements FileSystemOperations {
                 `Failed to rename file from ${oldFullPath} to ${newFullPath}: ${error instanceof Error ? error.message : String(error)}`
             );
         }
+    }
+
+    private async atomicWrite(
+        fullPath: string,
+        content: Uint8Array | string,
+        encoding?: BufferEncoding
+    ): Promise<void> {
+        const tmpPath = fullPath + ".tmp";
+        await fs.writeFile(tmpPath, content, encoding);
+        const fd = await fs.open(tmpPath, "r");
+        await fd.datasync();
+        await fd.close();
+        await fs.rename(tmpPath, fullPath);
     }
 
     private async walkDirectory(

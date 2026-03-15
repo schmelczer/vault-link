@@ -146,11 +146,16 @@ async function main(): Promise<void> {
 
     if (args.health !== undefined) {
         const healthFile = args.health;
-        const healthInterval = setInterval(() => {
+        const writeHealth = (): void => {
             void client.checkConnection().then((status) => {
                 writeHealthStatus(healthFile, status);
             });
-        }, HEALTH_CHECK_INTERVAL_MS);
+        };
+        writeHealth();
+        const healthInterval = setInterval(
+            writeHealth,
+            HEALTH_CHECK_INTERVAL_MS
+        );
         const clearHealthInterval = (): void => {
             clearInterval(healthInterval);
         };
@@ -169,7 +174,7 @@ async function main(): Promise<void> {
 
     client.logger.info("Starting sync client");
 
-    const fileWatcher = new FileWatcher(absolutePath, client);
+    const fileWatcher = new FileWatcher(absolutePath, client, ignorePatterns);
 
     client.onWebSocketStatusChanged.add(() => {
         const isConnected = client.isWebSocketConnected;
@@ -186,7 +191,13 @@ async function main(): Promise<void> {
         }
     });
 
+    let isShuttingDown = false;
     const gracefulShutdown = async (signal: string): Promise<void> => {
+        if (isShuttingDown) {
+            return;
+        }
+        isShuttingDown = true;
+
         console.log(
             colorize(
                 `\n${signal} received. Shutting down gracefully...`,

@@ -228,3 +228,67 @@ test("parseArgs - throws on invalid log level", () => {
         ]);
     }, /Invalid log level/);
 });
+
+test("parseArgs - reads required options from environment variables", () => {
+    process.env.VAULTLINK_LOCAL_PATH = "/env/path";
+    process.env.VAULTLINK_REMOTE_URI = "https://env.example.com";
+    process.env.VAULTLINK_TOKEN = "env-token";
+    process.env.VAULTLINK_VAULT_NAME = "env-vault";
+
+    try {
+        const args = parseArgs(["node", "cli.js"]);
+        assert.equal(args.localPath, "/env/path");
+        assert.equal(args.remoteUri, "https://env.example.com");
+        assert.equal(args.token, "env-token");
+        assert.equal(args.vaultName, "env-vault");
+    } finally {
+        delete process.env.VAULTLINK_LOCAL_PATH;
+        delete process.env.VAULTLINK_REMOTE_URI;
+        delete process.env.VAULTLINK_TOKEN;
+        delete process.env.VAULTLINK_VAULT_NAME;
+    }
+});
+
+test("parseArgs - CLI arguments take precedence over environment variables", () => {
+    process.env.VAULTLINK_TOKEN = "env-token";
+
+    try {
+        const args = parseArgs([
+            "node",
+            "cli.js",
+            "-l",
+            "/path/to/vault",
+            "-r",
+            "https://sync.example.com",
+            "-t",
+            "cli-token",
+            "-v",
+            "default"
+        ]);
+        assert.equal(args.token, "cli-token");
+    } finally {
+        delete process.env.VAULTLINK_TOKEN;
+    }
+});
+
+test("parseArgs - reads log level from environment variable", () => {
+    process.env.VAULTLINK_LOG_LEVEL = "DEBUG";
+
+    try {
+        const args = parseArgs([
+            "node",
+            "cli.js",
+            "-l",
+            "/path/to/vault",
+            "-r",
+            "https://sync.example.com",
+            "-t",
+            "mytoken",
+            "-v",
+            "default"
+        ]);
+        assert.equal(args.logLevel, LogLevel.DEBUG);
+    } finally {
+        delete process.env.VAULTLINK_LOG_LEVEL;
+    }
+});

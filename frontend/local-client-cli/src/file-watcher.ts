@@ -8,7 +8,8 @@ export class FileWatcher {
 
     public constructor(
         private readonly basePath: string,
-        private readonly client: SyncClient
+        private readonly client: SyncClient,
+        private readonly ignorePatterns: string[] = []
     ) {}
 
     public start(): void {
@@ -22,7 +23,8 @@ export class FileWatcher {
             recursive: true,
             renameDetection: true,
             renameTimeout: 125,
-            ignoreInitial: true
+            ignoreInitial: true,
+            ignore: (filePath: string) => this.shouldIgnore(filePath)
         });
 
         this.watcher.on("add", (filePath: string) => {
@@ -54,6 +56,19 @@ export class FileWatcher {
         }
         this.isRunning = false;
         this.client.logger.info("File watcher stopped");
+    }
+
+    private shouldIgnore(filePath: string): boolean {
+        const rel = path
+            .relative(this.basePath, filePath)
+            .replace(/\\/g, "/");
+        return this.ignorePatterns.some((pattern) => {
+            if (pattern.endsWith("/**")) {
+                const prefix = pattern.slice(0, -3);
+                return rel === prefix || rel.startsWith(prefix + "/");
+            }
+            return rel === pattern;
+        });
     }
 
     private handleCreate(relativePath: RelativePath): void {
