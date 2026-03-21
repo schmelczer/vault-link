@@ -41,7 +41,15 @@ async fn main() -> ExitCode {
         }
     };
 
-    let mut result = set_up_logging(&args, &config.logging);
+    let mut result = config
+        .server
+        .validate()
+        .context("Invalid server configuration")
+        .map_err(init_error);
+
+    if result.is_ok() {
+        result = set_up_logging(&args, &config.logging);
+    }
 
     if result.is_ok() {
         result = start_server(config).await;

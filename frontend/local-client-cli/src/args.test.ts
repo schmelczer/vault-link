@@ -55,13 +55,10 @@ test("parseArgs - parse with optional arguments", () => {
         "mytoken",
         "-v",
         "default",
-        "--sync-concurrency",
-        "5",
         "--max-file-size-mb",
         "20"
     ]);
 
-    assert.equal(args.syncConcurrency, 5);
     assert.equal(args.maxFileSizeMB, 20);
 });
 
@@ -291,4 +288,163 @@ test("parseArgs - reads log level from environment variable", () => {
     } finally {
         delete process.env.VAULTLINK_LOG_LEVEL;
     }
+});
+
+test("parseArgs - quiet defaults to false", () => {
+    const args = parseArgs([
+        "node",
+        "cli.js",
+        "-l",
+        "/path/to/vault",
+        "-r",
+        "https://sync.example.com",
+        "-t",
+        "mytoken",
+        "-v",
+        "default"
+    ]);
+
+    assert.equal(args.quiet, false);
+});
+
+test("parseArgs - parse --quiet flag", () => {
+    const args = parseArgs([
+        "node",
+        "cli.js",
+        "-l",
+        "/path/to/vault",
+        "-r",
+        "https://sync.example.com",
+        "-t",
+        "mytoken",
+        "-v",
+        "default",
+        "--quiet"
+    ]);
+
+    assert.equal(args.quiet, true);
+});
+
+test("parseArgs - parse -q short flag", () => {
+    const args = parseArgs([
+        "node",
+        "cli.js",
+        "-l",
+        "/path/to/vault",
+        "-r",
+        "https://sync.example.com",
+        "-t",
+        "mytoken",
+        "-v",
+        "default",
+        "-q"
+    ]);
+
+    assert.equal(args.quiet, true);
+});
+
+test("parseArgs - line-endings defaults to auto", () => {
+    const args = parseArgs([
+        "node",
+        "cli.js",
+        "-l",
+        "/path/to/vault",
+        "-r",
+        "https://sync.example.com",
+        "-t",
+        "mytoken",
+        "-v",
+        "default"
+    ]);
+
+    assert.equal(args.lineEndings, "auto");
+});
+
+test("parseArgs - parse --line-endings lf", () => {
+    const args = parseArgs([
+        "node",
+        "cli.js",
+        "-l",
+        "/path/to/vault",
+        "-r",
+        "https://sync.example.com",
+        "-t",
+        "mytoken",
+        "-v",
+        "default",
+        "--line-endings",
+        "lf"
+    ]);
+
+    assert.equal(args.lineEndings, "lf");
+});
+
+test("parseArgs - parse --line-endings crlf", () => {
+    const args = parseArgs([
+        "node",
+        "cli.js",
+        "-l",
+        "/path/to/vault",
+        "-r",
+        "https://sync.example.com",
+        "-t",
+        "mytoken",
+        "-v",
+        "default",
+        "--line-endings",
+        "crlf"
+    ]);
+
+    assert.equal(args.lineEndings, "crlf");
+});
+
+test("parseArgs - throws on invalid remote URI protocol", () => {
+    assert.throws(() => {
+        parseArgs([
+            "node",
+            "cli.js",
+            "-l",
+            "/path/to/vault",
+            "-r",
+            "ftp://sync.example.com",
+            "-t",
+            "mytoken",
+            "-v",
+            "default"
+        ]);
+    }, /Invalid remote URI/);
+});
+
+test("parseArgs - accepts http:// remote URI", () => {
+    const args = parseArgs([
+        "node",
+        "cli.js",
+        "-l",
+        "/path/to/vault",
+        "-r",
+        "http://localhost:3000",
+        "-t",
+        "mytoken",
+        "-v",
+        "default"
+    ]);
+
+    assert.equal(args.remoteUri, "http://localhost:3000");
+});
+
+test("parseArgs - accepts wss:// remote URI", () => {
+    const args = parseArgs([
+        "node",
+        "cli.js",
+        "-l",
+        "/path/to/vault",
+        "-r",
+        "wss://sync.example.com",
+        "-t",
+        "mytoken",
+        "-v",
+        "default"
+    ]);
+
+    assert.equal(args.remoteUri, "wss://sync.example.com");
 });

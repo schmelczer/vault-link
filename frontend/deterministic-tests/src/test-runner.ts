@@ -87,7 +87,6 @@ export class TestRunner {
             isSyncEnabled: false,
             token: this.token,
             vaultName,
-            syncConcurrency: 1,
             remoteUri: this.remoteUri
         };
 

@@ -1,8 +1,54 @@
+use std::sync::LazyLock;
+
 use regex::Regex;
+
+static DEDUP_SUFFIX_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r" \((\d+)\)$").expect("invalid regex"));
+
+/// Strip the ` (N)` deconfliction suffix from a path, returning the base path.
+/// e.g., `"binary-2 (3).bin"` → `"binary-2.bin"`, `"binary-2.bin"` → `"binary-2.bin"`
+pub fn get_base_path(path: &str) -> String {
+    let mut path_parts = path.split('/').collect::<Vec<_>>();
+    let Some(file_name) = path_parts.pop() else {
+        return path.to_owned();
+    };
+    if file_name.is_empty() {
+        return path.to_owned();
+    }
+    let file_name = file_name.to_owned();
+
+    let mut directory = path_parts.join("/");
+    if !directory.is_empty() {
+        directory.push('/');
+    }
+
+    let is_simple_dotfile = file_name.starts_with('.') && file_name.matches('.').count() == 1;
+
+    let (stem, extension) = if is_simple_dotfile {
+        (file_name.clone(), String::new())
+    } else {
+        let name_parts = file_name.rsplitn(2, '.').collect::<Vec<_>>();
+        let mut reverse_parts = name_parts.into_iter().rev();
+        match (reverse_parts.next(), reverse_parts.next()) {
+            (Some(s), maybe_ext) => (
+                s.to_owned(),
+                maybe_ext.map(|ext| format!(".{ext}")).unwrap_or_default(),
+            ),
+            _ => unreachable!("Path must have at least one part"),
+        }
+    };
+
+    let clean_stem = DEDUP_SUFFIX_REGEX.replace(&stem, "").to_string();
+    format!("{directory}{clean_stem}{extension}")
+}
 
 pub fn dedup_paths(path: &str) -> impl Iterator<Item = String> {
     let mut path_parts = path.split('/').collect::<Vec<_>>();
-    let file_name = path_parts.pop().unwrap().to_owned();
+    let file_name = path_parts
+        .pop()
+        .filter(|s| !s.is_empty())
+        .unwrap_or(path)
+        .to_owned();
 
     let mut directory = path_parts.join("/");
     if !directory.is_empty() {
@@ -29,14 +75,13 @@ pub fn dedup_paths(path: &str) -> impl Iterator<Item = String> {
         }
     };
 
-    let regex = Regex::new(r" \((\d+)\)$").unwrap();
-    let start_number = regex
+    let start_number = DEDUP_SUFFIX_REGEX
         .captures(&stem)
         .and_then(|caps| caps.get(1))
         .and_then(|m| m.as_str().parse::<u32>().ok())
         .unwrap_or(0);
 
-    let clean_stem = regex.replace(&stem, "").to_string();
+    let clean_stem = DEDUP_SUFFIX_REGEX.replace(&stem, "").to_string();
 
     (start_number..).map(move |dedup_number| {
         if dedup_number == 0 {

@@ -8,7 +8,8 @@ export default [
             "sync-client/src/services/types.ts",
             "**/dist/",
             "**/*.mjs",
-            "**/*.js"
+            "**/*.js",
+            "history-ui/**"
         ]
     },
     ...tseslint.config({

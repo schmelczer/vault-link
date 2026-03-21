@@ -13,12 +13,21 @@ pub const DEFAULT_PORT: u16 = 3000;
 pub const DEFAULT_MAX_BODY_SIZE_MB: usize = 4096;
 pub const DEFAULT_RESPONSE_TIMEOUT_SECONDS: Duration = Duration::from_mins(30);
 pub const DEFAULT_MAX_CLIENTS_PER_VAULT: usize = 256;
+pub const DEFAULT_BROADCAST_CHANNEL_CAPACITY: usize = 4096;
+pub const DEFAULT_MAX_PENDING_WS_CONNECTIONS: usize = 128;
 
 pub const DEFAULT_LOG_DIRECTORY: &str = "logs";
 pub const DEFAULT_LOG_ROTATION_INTERVAL: Duration = Duration::from_hours(24);
 pub const IDLE_POOL_TIMEOUT: Duration = Duration::from_mins(5);
+pub const GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
 pub const DEFAULT_LOG_LEVEL: LogLevel = LogLevel::Info;
 
 pub const DEFAULT_MERGEABLE_FILE_EXTENSIONS: &[&str] = &["md", "txt"];
+
+/// 0 means rate limiting is disabled.
+pub const DEFAULT_RATE_LIMIT_PER_SECOND: u64 = 0;
+
+/// Default: allow all origins.
+pub const DEFAULT_ALLOWED_ORIGINS: &[&str] = &["*"];
 
 pub const SUPPORTED_API_VERSION: u32 = 3;

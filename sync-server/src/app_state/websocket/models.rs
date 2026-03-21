@@ -11,7 +11,7 @@ pub struct WebSocketHandshake {
     pub token: String,
     pub device_id: DeviceId,
 
-    #[ts(as = "Option<i32>")]
+    #[ts(type = "number | null")]
     pub last_seen_vault_update_id: Option<VaultUpdateId>,
 }
 
@@ -28,7 +28,7 @@ pub struct DocumentWithCursors {
     // that it exists and can be client-side
     // interpolated. However, the actual
     // position is meaningless.
-    #[ts(as = "Option<u32>")]
+    #[ts(type = "number | null")]
     pub vault_update_id: Option<VaultUpdateId>,
 
     pub document_id: DocumentId,
@@ -70,6 +70,7 @@ pub struct WebSocketVaultUpdate {
 pub enum WebSocketClientMessage {
     Handshake(WebSocketHandshake),
     CursorPositions(CursorPositionFromClient),
+    Ping {},
 }
 
 #[derive(TS, Serialize, Clone, Debug)]

@@ -19,6 +19,36 @@ process_count=$1
 
 mkdir -p logs
 
+# Build and restart the server
+echo "Building server..."
+cd sync-server
+cargo build --release
+
+# Kill any existing server process
+echo "Stopping existing server..."
+pkill -f "sync_server" 2>/dev/null || true
+sleep 1
+
+# Clean databases
+echo "Cleaning databases..."
+rm -rf databases
+
+# Start the server in the background
+echo "Starting server..."
+./target/release/sync_server config-e2e.yml &
+server_pid=$!
+echo "Server started with PID: $server_pid"
+
+# Ensure server is killed on script exit
+cleanup_server() {
+    echo "Stopping server (PID: $server_pid)..."
+    kill $server_pid 2>/dev/null || true
+    wait $server_pid 2>/dev/null || true
+}
+trap cleanup_server EXIT
+
+cd ..
+
 cd frontend
 npm ci
 npm run build
@@ -27,18 +57,10 @@ npm run build
 
 pids=()
 for i in $(seq 1 $process_count); do
-    # Create a named pipe for this process
-    pipe="/tmp/vaultlink_pipe_$$_$i"
-    mkfifo "$pipe"
-
-    # Start the node process writing to the pipe
-    node test-client/dist/cli.js > "$pipe" 2>&1 &
+    node test-client/dist/cli.js > "../logs/log_${i}.log" 2>&1 &
     pid=$!
     pids+=($pid)
-    echo "Started process $i with PID: $pid"
-
-    # Read from pipe, prefix with PID
-    (sed "s/^/[PID $pid] /" < "$pipe" > "../logs/log_${i}.log"; rm "$pipe") &
+    echo "Started process $i with PID: $pid (log: logs/log_${i}.log)"
 done
 
 cd ..
@@ -66,10 +88,25 @@ print_failed_log() {
     return 1
 }
 
-echo "Monitoring $process_count processes"
+E2E_TIMEOUT=${2:-3600}
+start_time=$(date +%s)
+echo "Monitoring $process_count processes (timeout: ${E2E_TIMEOUT}s)"
 
 # Monitor processes
 while true; do
+    # Script-level timeout to prevent indefinite hangs
+    current_time=$(date +%s)
+    elapsed=$((current_time - start_time))
+    if [ $elapsed -ge $E2E_TIMEOUT ]; then
+        echo "E2E timeout reached (${E2E_TIMEOUT}s). Killing remaining processes."
+        for pid in "${pids[@]}"; do
+            if [ -n "$pid" ]; then
+                kill $pid 2>/dev/null || true
+            fi
+        done
+        exit 1
+    fi
+
     if print_failed_log; then
         # Kill remaining processes
         for pid in "${pids[@]}"; do

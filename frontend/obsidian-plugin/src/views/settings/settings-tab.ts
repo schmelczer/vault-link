@@ -351,22 +351,6 @@ export class SyncSettingsTab extends PluginSettingTab {
             );
 
         new Setting(containerEl)
-            .setName("Sync concurrency")
-            .setDesc(
-                "How many concurrent sync operations to run. Setting this value higher may increase the overall performance, however, it will require more memory as well. If you notice frequent crashes, especially on mobile, set this to 1."
-            )
-            .addSlider((text) =>
-                text
-                    .setLimits(1, 16, 1)
-                    .setDynamicTooltip()
-                    .setInstant(false)
-                    .setValue(this.syncClient.getSettings().syncConcurrency)
-                    .onChange(async (value) =>
-                        this.syncClient.setSetting("syncConcurrency", value)
-                    )
-            );
-
-        new Setting(containerEl)
             .setName("Maximum file size to be uploaded (MB)")
             .setDesc(
                 "Set the maximum file size that can be uploaded to the server. Files larger than this size will be ignored."

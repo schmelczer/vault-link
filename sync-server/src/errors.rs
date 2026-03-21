@@ -5,7 +5,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use log::debug;
+use log::{debug, error, warn};
 use serde::Serialize;
 use thiserror::Error;
 use ts_rs::TS;
@@ -69,7 +69,19 @@ impl Display for SerializedError {
 
 impl IntoResponse for SyncServerError {
     fn into_response(self) -> Response {
-        let body = Json(self.serialize());
+        let serialized = self.serialize();
+
+        match &self {
+            Self::InitError(_) | Self::ServerError(_) => {
+                error!("{serialized}");
+            }
+            Self::ClientError(_) | Self::NotFound(_) => {
+                warn!("{serialized}");
+            }
+            Self::Unauthenticated(_) | Self::PermissionDeniedError(_) => {}
+        }
+
+        let body = Json(serialized);
 
         match self {
             Self::InitError(_) | Self::ServerError(_) => {

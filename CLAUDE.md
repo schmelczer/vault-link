@@ -15,11 +15,13 @@ VaultLink is a self-hosted Obsidian plugin for real-time collaborative file sync
 - **frontend/obsidian-plugin/**: Obsidian plugin that integrates the sync client with Obsidian's API
 - **frontend/test-client/**: CLI testing tool for simulating multiple concurrent users
 - **frontend/local-client-cli/**: Standalone CLI for VaultLink sync client
+- **frontend/history-ui/**: Svelte 5 web UI for browsing vault history, viewing diffs, and restoring versions
 
 ### Key Technologies
 
 - **Backend**: Rust with Axum framework, SQLite with SQLx, WebSockets for real-time sync
 - **Frontend**: TypeScript, Webpack for bundling, Node.js native test runner
+- **History UI**: Svelte 5 with runes, Vite for bundling, embedded in server binary via `rust-embed`
 - **Sync Algorithm**: Uses reconcile-text library for operational transformation
 
 ### Architectural Patterns
@@ -46,6 +48,32 @@ The sync-client builds two separate bundles:
 
 - `sync-client.web.js`: Browser-compatible UMD bundle (excludes `ws` package)
 - `sync-client.node.js`: Node.js CommonJS bundle with WebSocket support
+
+**History UI Architecture:**
+
+The history UI (`frontend/history-ui/`) is a standalone Svelte 5 SPA that provides read-only vault history browsing. It communicates with the server via the same REST API used by sync clients, plus three additional endpoints:
+
+- `GET /vaults/:vault_id/documents/:document_id/versions` — all versions of a document (without content)
+- `GET /vaults/:vault_id/history?limit=&before_update_id=` — paginated vault-wide version history (cursor-based)
+- `POST /vaults/:vault_id/documents/:document_id/restore` — restore a document to a historical version (creates a new version with old content)
+
+Server-side implementation:
+- Database methods: `get_document_versions()` and `get_vault_history()` in `database.rs`, plus a `VaultHistoryRow` helper struct for `sqlx::query_as!`
+- Handlers: `fetch_document_versions.rs`, `fetch_vault_history.rs`, `restore_document_version.rs`
+- Response type: `VaultHistoryResponse { versions, hasMore }` in `responses.rs`
+- SPA serving: `rust-embed` embeds `frontend/history-ui/dist/` into the binary; `index.rs` serves the SPA at `/` and assets at `/assets/*`
+
+Client-side component hierarchy:
+- `App.svelte` — session restore, routing
+- `Login.svelte` — vault name + token auth via `/ping`
+- `Dashboard.svelte` — main layout: file tree sidebar, activity feed, time-travel slider
+- `DocumentDetail.svelte` — version timeline, content preview, diff view, restore
+- `DiffView.svelte` — unified diff with LCS algorithm
+- `FileTree.svelte` — recursive tree built from flat `relativePath` values
+- `ActivityFeed.svelte` — git-log-style feed with action pills (created/updated/renamed/deleted/restored)
+- `TimeSlider.svelte` — scrubs through `vaultUpdateId` range, reconstructs vault state at any point
+
+State is managed with Svelte 5 runes (`$state`, `$derived`, `$effect`) in `lib/stores.svelte.ts`. Auth is stored in `sessionStorage`. The API client (`lib/api.ts`) sets `Authorization: Bearer` and `device-id: history-ui` headers on all requests.
 
 ## Development Commands
 
@@ -101,6 +129,23 @@ npm run test -w sync-client      # Run tests for specific workspace
 npm run lint     # Lint and format TypeScript code with ESLint + Prettier
 ```
 
+### History UI Development
+
+```bash
+cd frontend
+npm run dev -w history-ui   # Start Vite dev server (localhost:5173, proxies API to localhost:3000)
+npm run build -w history-ui  # Build for production (output: frontend/history-ui/dist/)
+```
+
+The history UI is a Svelte 5 SPA embedded in the server binary via `rust-embed`. The build flow is:
+
+1. `npm run build -w history-ui` produces `frontend/history-ui/dist/`
+2. The Rust server embeds these files at compile time (`sync-server/src/server/index.rs`)
+3. The server serves `index.html` at `GET /` and static assets at `GET /assets/*`
+4. If the dist directory doesn't exist at Rust compile time, `build.rs` creates a placeholder
+
+During development, run the Vite dev server separately and use its proxy to forward API calls to the running sync server.
+
 ### Database Operations
 
 ```bash
@@ -129,12 +174,13 @@ sqlx migrate run --source src/app_state/database/migrations --database-url sqlit
 
 ### Workspace Configuration
 
-The frontend uses npm workspaces with four packages:
+The frontend uses npm workspaces with five packages:
 
 - `sync-client`: Core synchronization logic (builds dual bundles for web and Node.js)
 - `obsidian-plugin`: Obsidian-specific integration
 - `test-client`: Testing utilities for E2E tests
 - `local-client-cli`: Standalone CLI for VaultLink sync client
+- `history-ui`: Svelte 5 SPA for vault history browsing (built with Vite, embedded in server binary)
 
 ### Type Generation and API Updates
 
@@ -200,6 +246,13 @@ scripts/clean-up.sh            # Clean up after tests
 - **ESLint**: Strict rules with unused imports detection
 - Configuration in `frontend/package.json`
 - Run `npm run lint` to format and fix issues
+
+### Svelte (History UI)
+
+- Uses Svelte 5 runes syntax (`$state`, `$derived`, `$effect`, `$props`)
+- Vite as bundler with `@sveltejs/vite-plugin-svelte`
+- Excluded from the main ESLint config (Svelte files need different linting); `history-ui/**` is in the eslint ignores list
+- CSS is component-scoped via Svelte's `<style>` blocks with CSS custom properties defined in `app.css`
 
 ### EditorConfig
 
@@ -275,7 +328,7 @@ Runs on reconnect to detect what changed while offline:
 3. For each file with metadata: schedule as update (hash comparison will skip unchanged)
 4. For each file without metadata: try to match against "deleted" DB records by content hash (detects moves). If no match, schedule as create.
 5. For DB records whose files don't exist locally: schedule as delete
-6. Deletes and updates run first, THEN creates — to avoid the server merging creates with about-to-be-deleted docs
+6. Ordering is: interrupted-deletes → updates → creates → possibly-deleted-deletes. Creates run BEFORE possibly-deleted deletes so that the server can merge creates with existing documents at the same path (preserving documentIds). If deletes ran first, a renamed+edited file would get a new documentId instead of adopting the existing one.
 
 ### Remote Update Processing
 
@@ -368,8 +421,8 @@ Both `resolveIdempotencyKeys` and `handleMaybeMergingResponse` (for deleted pend
 **10. `resolveIdempotencyKeys` sets `parentVersionId: 0` — treat this as a create, not an update.**
 When `resolveIdempotencyKeys` assigns a documentId to a pending doc, it uses `parentVersionId: 0` as a placeholder. The sync path must check for `parentVersionId === 0` and take the CREATE path (sending a create with the idempotency key), not the UPDATE path (which would fail because version 0 doesn't exist on the server).
 
-**11. Idempotent create returns can have stale content — check `contentSize`.**
-When the server returns a `FastForwardUpdate` for a create with an idempotency key, it may return the ORIGINAL version (from the first create), not a new version with the current content. The response's `contentSize` may not match `originalContentBytes.length`. If they differ, fetch the actual server content for that version and use it for the cache and hash, so subsequent diffs are correct.
+**11. Idempotent create returns can have stale content — always fetch server content.**
+When the server returns a `FastForwardUpdate` for a create with an idempotency key, it may return the ORIGINAL version (from the first create), not a new version with the current content. Always fetch the actual server content for idempotent create returns (the `isCreate` path in `handleMaybeMergingResponse`) and use it for the cache and hash, so subsequent diffs are correct. Do not use a content-length comparison as a shortcut — two different byte sequences can have the same length.
 
 **12. `SyncClient.pause()` must swallow `SyncResetError`.**
 `pause()` calls `fetchController.startReset()` which rejects in-flight fetches. Those rejections propagate through `waitUntilFinished()`. Since `pause()` CAUSED the reset, the resulting `SyncResetError` is expected and must be caught (not re-thrown). Only re-throw non-SyncResetError exceptions. Also call `fetchController.finishReset()` in the catch block to prevent the FetchController from getting stuck in resetting state.
@@ -380,14 +433,26 @@ After the initial `scheduleSyncForOfflineChanges()` completes, the field retains
 **14. The server must not `expect()` / panic on UTF-8 conversion — return a client error.**
 In `update_text`, the parent version's content may be binary (if another client uploaded binary via `putBinary`). Using `.expect()` on `str::from_utf8()` panics the server. Use `.context(...).map_err(client_error)?` to return a 4xx error, allowing the client to fall back to `putBinary`.
 
-**15. The create-merge parent content must be `latest_version.content`, not empty.**
-In `create_document.rs`, when a create merges with an existing document, the 3-way merge parent must be the latest version's content (`&latest_version.content`), not an empty vector (`&Vec::new()`). An empty parent causes `reconcile("", existing, new)` to treat all content as additions, producing garbled interleaved text.
+**15. The create-merge parent content must be empty (`&Vec::new()`), not `latest_version.content`.**
+In `create_document.rs`, when a create merges with an existing document, the 3-way merge parent must be an empty vector (`&Vec::new()`), not the latest version's content. Using `latest_version.content` as the parent makes `reconcile(A, A, B) = B`, which silently discards the existing content (last-write-wins). An empty parent causes `reconcile("", existing, new)` to correctly treat both sides as independent additions and merge them together.
 
 **16. `retryForever` must not retry 4xx HTTP errors.**
 4xx errors indicate the request itself is wrong (e.g., invalid diff, missing parent version). Retrying won't help. The `HttpClientError` class (in `errors/http-client-error.ts`) carries the status code. `retryForever` checks for it and re-throws immediately. Only 5xx errors (transient server failures) are retried.
 
 **17. The broadcast channel's `RecvError::Lagged` must be handled explicitly.**
-The `while let Ok(update) = broadcast_receiver.recv().await` pattern silently exits the loop on `Lagged`, disconnecting the client without logging. Handle `Lagged` explicitly with a `warn!` log and `break`. The channel capacity (`broadcast_channel_capacity` in config, default 1024) is separate from `max_clients_per_vault`.
+The `while let Ok(update) = broadcast_receiver.recv().await` pattern silently exits the loop on `Lagged`, disconnecting the client without logging. Handle `Lagged` explicitly with a `warn!` log and `break`. The channel capacity is `max_clients_per_vault`.
+
+**18. `merge_with_stored_version` must not short-circuit when an idempotency key is provided.**
+When the new content is identical to the latest version and an `idempotency_key` is present, the function must still insert a new version row so the key is persisted in the database. Without this, the key is lost: `resolveIdempotencyKeys` returns no match after a crash, and the client retries the create without idempotency protection — potentially doubling content via the empty-parent merge. The short-circuit (`content == latest_version.content && ... && idempotency_key.is_none()`) only applies to keyless updates.
+
+**19. The idempotency key check in `create_document` must skip deleted documents.**
+When `get_document_by_idempotency_key` returns a document with `is_deleted: true`, the server must NOT return it as an idempotent match. Returning a deleted version causes the client to call `applyRemoteDeleteLocally`, silently deleting the user's local file. Instead, fall through to the normal create path so the file is preserved as a new document.
+
+**20. `syncLocallyCreatedFile` must treat `parentVersionId === 0` as needing a create retry.**
+When `resolveIdempotencyKeys` assigns metadata with `parentVersionId: 0`, the document looks "resolved" to `syncLocallyCreatedFile` (it has `metadata !== undefined`). Without a special check for `parentVersionId === 0`, the method returns early ("already exists with metadata"), leaving the document permanently stuck — it never syncs. The fix: when `parentVersionId === 0`, treat it like a pending create retry and enqueue `unrestrictedSyncLocallyCreatedOrUpdatedFile`.
+
+**21. The client must normalize content to UTF-8 at the read boundary.**
+`FileOperations.read()` calls `normalizeToUtf8()` to transcode UTF-16 (detected by BOM) to UTF-8 before any downstream code sees the bytes. This means `isBinary` / `is_binary` on both client and server only need to check UTF-8 validity — no UTF-16 handling required. A disagreement between client and server on text vs binary causes permanent sync failures (client sends `putText` for content the server considers binary, 4xx error, `retryForever` won't retry). The UTF-8-only contract keeps classification trivial and impossible to get out of sync.
 
 ### E2E Test Debugging Guide
 

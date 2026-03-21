@@ -56,15 +56,16 @@ vaultlink \
 
 ### Optional
 
-| Option                               | Default | Description                            |
-| ------------------------------------ | ------- | -------------------------------------- |
-| `--sync-concurrency <number>`        | `1`     | Concurrent sync operations             |
-| `--max-file-size-mb <number>`        | `10`    | Maximum file size in MB                |
-| `--ignore-pattern <pattern>`         | -       | Glob pattern to ignore (repeatable)    |
-| `--websocket-retry-interval-ms <ms>` | `3500`  | WebSocket reconnection interval        |
-| `--log-level <level>`                | `INFO`  | Log level: DEBUG, INFO, WARNING, ERROR |
-| `-h, --help`                         | -       | Show help                              |
-| `-V, --version`                      | -       | Show version                           |
+| Option                               | Default | Description                                          |
+| ------------------------------------ | ------- | ---------------------------------------------------- |
+| `--max-file-size-mb <number>`        | `10`    | Maximum file size in MB                              |
+| `--ignore-pattern <pattern>`         | -       | Glob pattern to ignore (repeatable)                  |
+| `--websocket-retry-interval-ms <ms>` | `3500`  | WebSocket reconnection interval                      |
+| `--log-level <level>`                | `INFO`  | Log level: DEBUG, INFO, WARNING, ERROR               |
+| `--line-endings <mode>`              | `auto`  | Line ending style: auto, lf, crlf                   |
+| `-q, --quiet`                        | -       | Suppress startup banner for non-interactive use      |
+| `-h, --help`                         | -       | Show help                                            |
+| `-V, --version`                      | -       | Show version                                         |
 
 ### Auto-Ignored Patterns
 
@@ -83,16 +84,23 @@ With ignore patterns:
 
 ```bash
 vaultlink -l ./vault -r wss://sync.example.com -t token123 -v default \
-  --ignore-pattern "*.tmp" \
+  --ignore-pattern "**/*.tmp" \
   --ignore-pattern ".DS_Store" \
   --ignore-pattern "node_modules/**"
 ```
 
-With debug logging:
+With debug logging and quiet startup:
 
 ```bash
 vaultlink -l ./vault -r wss://sync.example.com -t token123 -v default \
-  --log-level DEBUG
+  --log-level DEBUG --quiet
+```
+
+Force LF line endings (useful for cross-platform vaults):
+
+```bash
+vaultlink -l ./vault -r wss://sync.example.com -t token123 -v default \
+  --line-endings lf
 ```
 
 ## Docker Deployment

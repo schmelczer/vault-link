@@ -25,6 +25,8 @@ pub struct StoredDocumentVersion {
     pub idempotency_key: Option<String>,
 }
 
+/// Equality is based solely on `vault_update_id` (the primary key).
+/// Two rows with the same PK are the same database record.
 impl PartialEq<Self> for StoredDocumentVersion {
     fn eq(&self, other: &Self) -> bool {
         self.vault_update_id == other.vault_update_id
@@ -34,7 +36,7 @@ impl PartialEq<Self> for StoredDocumentVersion {
 #[derive(TS, Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentVersionWithoutContent {
-    #[ts(as = "i32")]
+    #[ts(type = "number")]
     pub vault_update_id: VaultUpdateId,
 
     pub document_id: DocumentId,
@@ -44,7 +46,7 @@ pub struct DocumentVersionWithoutContent {
     pub user_id: UserId,
     pub device_id: DeviceId,
 
-    #[ts(as = "i32")]
+    #[ts(type = "number")]
     pub content_size: u64,
 }
 
@@ -66,7 +68,7 @@ impl From<StoredDocumentVersion> for DocumentVersionWithoutContent {
 #[derive(TS, Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentVersion {
-    #[ts(as = "i32")]
+    #[ts(type = "number")]
     pub vault_update_id: VaultUpdateId,
 
     pub document_id: DocumentId,

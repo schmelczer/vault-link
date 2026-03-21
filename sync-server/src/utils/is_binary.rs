@@ -1,16 +1,12 @@
-/// Heuristically determine if the given data is a binary or a text file's
-/// content.
+use super::decode_text::decode_text;
+
+/// Determine if the given data is binary (not valid UTF-8).
 ///
-/// Only text inputs can be reconciled using the crate's functions.
+/// Clients transcode UTF-16 to UTF-8 at the read boundary, so the
+/// server only ever receives UTF-8 text or binary content.
 #[must_use]
 pub fn is_binary(data: &[u8]) -> bool {
-    if data.contains(&0) {
-        // Even though the NUL character is valid in UTF-8, it's highly suspicious in
-        // human-readable text.
-        return true;
-    }
-
-    std::str::from_utf8(data).is_err()
+    decode_text(data).is_none()
 }
 
 #[cfg(test)]
@@ -19,8 +15,13 @@ mod tests {
 
     #[test]
     fn test_is_binary() {
-        assert!(is_binary(&[0, 159, 146, 150]));
-        assert!(is_binary(&[0, 12]));
+        assert!(is_binary(&[0x80, 0x81, 0x82]));
         assert!(!is_binary(b"hello"));
+    }
+
+    #[test]
+    fn test_nul_bytes_in_utf8_are_text() {
+        assert!(!is_binary(b"hello\x00world"));
+        assert!(!is_binary(&[0, 12]));
     }
 }

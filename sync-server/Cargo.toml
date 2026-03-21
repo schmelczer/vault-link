@@ -1,6 +1,6 @@
 [package]
 name = "sync_server"
-rust-version = "1.92.0"
+rust-version = "1.94.0"
 authors = ["Andras Schmelczer <andras@schmelczer.dev>"]
 edition = "2024"
 license = "MIT"
@@ -10,7 +10,7 @@ version = "0.14.0"
 [dependencies]
 serde = { version = "1.0.219", default-features = false, features = ["derive"] }
 thiserror = { version = "2.0.12", default-features = false  }
-tokio = { version = "1.48.0", features = ["full"]}
+tokio = { version = "1.48.0", features = ["macros", "rt-multi-thread", "sync", "time", "net", "fs", "signal"]}
 uuid = { version = "1.16.0", features = ["v4", "serde"] }
 log = { version = "0.4.28" }
 anyhow =  { version = "1.0.100", features = ["backtrace"] }
@@ -33,7 +33,10 @@ serde_json = "1.0.140"
 bimap = "0.6.3"
 ts-rs =  { version = "10.1", features = ["uuid-impl", "chrono-impl"] }
 base64 = "0.22.1"
-reconcile-text = { version = "0.8.0", features = ["serde"] }
+reconcile-text = { version = "0.11.0", features = ["serde"] }
+rust-embed = "8.5"
+mime_guess = "2.0"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 
 [profile.release]
 codegen-units = 1

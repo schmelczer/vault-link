@@ -9,7 +9,7 @@ use crate::{
         database::models::{DocumentVersionWithoutContent, VaultId, VaultUpdateId},
     },
     config::user_config::User,
-    errors::{SyncServerError, server_error, unauthenticated_error},
+    errors::{SyncServerError, client_error, server_error, unauthenticated_error},
     server::auth::auth,
 };
 
@@ -26,16 +26,16 @@ pub fn get_authenticated_handshake(
     if let Some(Message::Text(message)) = message {
         let message: WebSocketClientMessage = serde_json::from_str(&message)
             .context("Failed to parse message")
-            .map_err(server_error)?;
+            .map_err(client_error)?;
 
         match message {
             WebSocketClientMessage::Handshake(handshake) => {
                 let user = auth(state, handshake.token.trim(), vault_id)?;
                 Ok(AuthenticatedWebSocketHandshake { handshake, user })
             }
-            WebSocketClientMessage::CursorPositions(_) => Err(unauthenticated_error(
-                anyhow::anyhow!("Expected a handshake message"),
-            )),
+            WebSocketClientMessage::CursorPositions(_) | WebSocketClientMessage::Ping {} => Err(
+                unauthenticated_error(anyhow::anyhow!("Expected a handshake message")),
+            ),
         }
     } else {
         Err(unauthenticated_error(anyhow::anyhow!(

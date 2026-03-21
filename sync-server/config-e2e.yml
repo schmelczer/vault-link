@@ -1,12 +1,14 @@
 database:
   databases_directory_path: databases
-  max_connections_per_vault: 12
+  max_connections_per_vault: 64
   cursor_timeout: 1m
 server:
   host: 0.0.0.0
-  port: 3000
+  port: 3010
   max_body_size_mb: 512
   max_clients_per_vault: 256
+  broadcast_channel_capacity: 1024
+  dev_proxy_url: "http://localhost:5173"    
   response_timeout: 30m
   mergeable_file_extensions:
   - md

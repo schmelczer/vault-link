@@ -1,16 +1,20 @@
 import Watcher from "watcher";
 import * as path from "path";
 import type { SyncClient, RelativePath } from "sync-client";
+import { toUnixPath, compileGlobPattern } from "./path-utils";
 
 export class FileWatcher {
     private watcher: Watcher | undefined;
     private isRunning = false;
+    private readonly compiledPatterns: RegExp[];
 
     public constructor(
         private readonly basePath: string,
         private readonly client: SyncClient,
-        private readonly ignorePatterns: string[] = []
-    ) {}
+        ignorePatterns: string[] = []
+    ) {
+        this.compiledPatterns = ignorePatterns.map(compileGlobPattern);
+    }
 
     public start(): void {
         if (this.isRunning) {
@@ -24,7 +28,8 @@ export class FileWatcher {
             renameDetection: true,
             renameTimeout: 125,
             ignoreInitial: true,
-            ignore: (filePath: string) => this.shouldIgnore(filePath)
+            ignore: (filePath: string): boolean =>
+                this.shouldIgnore(filePath)
         });
 
         this.watcher.on("add", (filePath: string) => {
@@ -59,16 +64,8 @@ export class FileWatcher {
     }
 
     private shouldIgnore(filePath: string): boolean {
-        const rel = path
-            .relative(this.basePath, filePath)
-            .replace(/\\/g, "/");
-        return this.ignorePatterns.some((pattern) => {
-            if (pattern.endsWith("/**")) {
-                const prefix = pattern.slice(0, -3);
-                return rel === prefix || rel.startsWith(prefix + "/");
-            }
-            return rel === pattern;
-        });
+        const rel = toUnixPath(path.relative(this.basePath, filePath));
+        return this.compiledPatterns.some((regex) => regex.test(rel));
     }
 
     private handleCreate(relativePath: RelativePath): void {
@@ -116,18 +113,7 @@ export class FileWatcher {
     }
 
     private toRelativePath(absolutePath: string): RelativePath {
-        const relative = path.relative(this.basePath, absolutePath);
-        return this.toUnixPath(relative);
-    }
-
-    /**
-     * Convert a native platform path to forward slashes
-     */
-    private toUnixPath(nativePath: string): string {
-        if (path.sep === "\\") {
-            return nativePath.replace(/\\/g, "/");
-        }
-        return nativePath;
+        return toUnixPath(path.relative(this.basePath, absolutePath));
     }
 
     private formatError(err: unknown): string {

@@ -6,6 +6,7 @@ import type {
     RelativePath,
     TextWithCursors
 } from "sync-client";
+import { toUnixPath, toNativePath } from "./path-utils";
 
 export class NodeFileSystemOperations implements FileSystemOperations {
     public constructor(private readonly basePath: string) {}
@@ -15,7 +16,7 @@ export class NodeFileSystemOperations implements FileSystemOperations {
     ): Promise<RelativePath[]> {
         const files: RelativePath[] = [];
         await this.walkDirectory(
-            directory !== undefined ? this.toNativePath(directory) : "",
+            directory !== undefined ? toNativePath(directory) : "",
             files
         );
         return files;
@@ -24,7 +25,7 @@ export class NodeFileSystemOperations implements FileSystemOperations {
     public async read(relativePath: RelativePath): Promise<Uint8Array> {
         const fullPath = path.join(
             this.basePath,
-            this.toNativePath(relativePath)
+            toNativePath(relativePath)
         );
         try {
             return await fs.readFile(fullPath);
@@ -41,7 +42,7 @@ export class NodeFileSystemOperations implements FileSystemOperations {
     ): Promise<void> {
         const fullPath = path.join(
             this.basePath,
-            this.toNativePath(relativePath)
+            toNativePath(relativePath)
         );
         const dir = path.dirname(fullPath);
 
@@ -61,7 +62,7 @@ export class NodeFileSystemOperations implements FileSystemOperations {
     ): Promise<string> {
         const fullPath = path.join(
             this.basePath,
-            this.toNativePath(relativePath)
+            toNativePath(relativePath)
         );
 
         try {
@@ -79,7 +80,7 @@ export class NodeFileSystemOperations implements FileSystemOperations {
     public async getFileSize(relativePath: RelativePath): Promise<number> {
         const fullPath = path.join(
             this.basePath,
-            this.toNativePath(relativePath)
+            toNativePath(relativePath)
         );
         try {
             const stats = await fs.stat(fullPath);
@@ -94,7 +95,7 @@ export class NodeFileSystemOperations implements FileSystemOperations {
     public async exists(relativePath: RelativePath): Promise<boolean> {
         const fullPath = path.join(
             this.basePath,
-            this.toNativePath(relativePath)
+            toNativePath(relativePath)
         );
         try {
             await fs.access(fullPath);
@@ -107,7 +108,7 @@ export class NodeFileSystemOperations implements FileSystemOperations {
     public async createDirectory(relativePath: RelativePath): Promise<void> {
         const fullPath = path.join(
             this.basePath,
-            this.toNativePath(relativePath)
+            toNativePath(relativePath)
         );
         try {
             await fs.mkdir(fullPath, { recursive: false });
@@ -121,7 +122,7 @@ export class NodeFileSystemOperations implements FileSystemOperations {
     public async delete(relativePath: RelativePath): Promise<void> {
         const fullPath = path.join(
             this.basePath,
-            this.toNativePath(relativePath)
+            toNativePath(relativePath)
         );
         try {
             await fs.unlink(fullPath);
@@ -138,11 +139,11 @@ export class NodeFileSystemOperations implements FileSystemOperations {
     ): Promise<void> {
         const oldFullPath = path.join(
             this.basePath,
-            this.toNativePath(oldPath)
+            toNativePath(oldPath)
         );
         const newFullPath = path.join(
             this.basePath,
-            this.toNativePath(newPath)
+            toNativePath(newPath)
         );
         const newDir = path.dirname(newFullPath);
 
@@ -192,28 +193,9 @@ export class NodeFileSystemOperations implements FileSystemOperations {
                 await this.walkDirectory(entryRelativePath, files);
             } else if (entry.isFile()) {
                 // Always return forward slashes
-                files.push(this.toUnixPath(entryRelativePath));
+                files.push(toUnixPath(entryRelativePath));
             }
         }
     }
 
-    /**
-     * Convert a forward-slash path to native platform path separators
-     */
-    private toNativePath(relativePath: string): string {
-        if (path.sep === "\\") {
-            return relativePath.replace(/\//g, "\\");
-        }
-        return relativePath;
-    }
-
-    /**
-     * Convert a native platform path to forward slashes
-     */
-    private toUnixPath(nativePath: string): string {
-        if (path.sep === "\\") {
-            return nativePath.replace(/\\/g, "/");
-        }
-        return nativePath;
-    }
 }

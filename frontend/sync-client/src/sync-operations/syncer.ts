@@ -1,168 +1,129 @@
-import type {
-    Database,
-    DocumentId,
-    DocumentRecord,
-    RelativePath
-} from "../persistence/database";
 import type { Logger } from "../tracing/logger";
-import PQueue from "p-queue";
-import { hash } from "../utils/hash";
 import type { Settings } from "../persistence/settings";
 import type { FileOperations } from "../file-operations/file-operations";
-import { findMatchingFile } from "../utils/find-matching-file";
-import type { UnrestrictedSyncer } from "./unrestricted-syncer";
-import { SyncResetError } from "../errors/sync-reset-error";
-import { Locks } from "../utils/data-structures/locks";
-import type { DocumentVersionWithoutContent } from "../services/types/DocumentVersionWithoutContent";
 import type { WebSocketVaultUpdate } from "../services/types/WebSocketVaultUpdate";
 import type { WebSocketManager } from "../services/websocket-manager";
 import type { WebSocketClientMessage } from "../services/types/WebSocketClientMessage";
-import { awaitAll } from "../utils/await-all";
-import { EventListeners } from "../utils/data-structures/event-listeners";
+import type { RelativePath } from "../persistence/database";
+import type { VirtualFilesystem } from "../persistence/vfs";
+import type { CoalescedAction } from "./sync-events";
+import type { SyncDeps } from "./sync-actions";
+import { SyncEventQueue } from "./sync-event-queue";
+import {
+    executeSyncCreate,
+    executeSyncUpdate,
+    executeSyncUpdateFull,
+    executeSyncDelete,
+    executeRemoteUpdate
+} from "./sync-actions";
+import { SyncResetError } from "../errors/sync-reset-error";
+import { hash } from "../utils/hash";
+import type { EventListeners } from "../utils/data-structures/event-listeners";
 
 export class Syncer {
-    public readonly onRemainingOperationsCountChanged = new EventListeners<
+    public readonly onRemainingOperationsCountChanged: EventListeners<
         (remainingOperations: number) => unknown
-    >();
-
-    public readonly updatedDocumentsByPathAndKeysLocks: Locks<string>; // can be DocumentId or RelativePath
-
-    // FIFO to limit the number of concurrent sync operations
-    private readonly syncQueue: PQueue;
+    >;
 
     private _isFirstSyncComplete = false;
-    private runningScheduleSyncForOfflineChanges: Promise<void> | undefined;
-    private previousRemainingOperationsCount = 0;
+    private runningReconciliation: Promise<void> | undefined;
+    private readonly eventUnsubscribers: (() => void)[] = [];
+    private readonly queue: SyncEventQueue;
 
     public constructor(
         private readonly deviceId: string,
         private readonly logger: Logger,
-        private readonly database: Database,
+        private readonly vfs: VirtualFilesystem,
         private readonly settings: Settings,
         private readonly webSocketManager: WebSocketManager,
         private readonly operations: FileOperations,
-        private readonly unrestrictedSyncer: UnrestrictedSyncer
+        private readonly deps: SyncDeps
     ) {
-        this.syncQueue = new PQueue({
-            concurrency: settings.getSettings().syncConcurrency
-        });
+        this.queue = new SyncEventQueue(this.logger, this.vfs);
+        this.queue.setExecutor(this.executeAction.bind(this));
 
-        this.updatedDocumentsByPathAndKeysLocks = new Locks<DocumentId>(
-            Syncer.name,
-            this.logger
+        this.onRemainingOperationsCountChanged =
+            this.queue.onRemainingOperationsCountChanged;
+
+        this.eventUnsubscribers.push(
+            this.webSocketManager.onWebSocketStatusChanged.add(
+                (isConnected) => {
+                    if (isConnected) {
+                        this.sendHandshakeMessage();
+                        this.queue.clearResetting();
+                        void this.scheduleSyncForOfflineChanges();
+                    } else {
+                        this.reset();
+                    }
+                }
+            )
         );
 
-        settings.onSettingsChanged.add((newSettings, oldSettings) => {
-            if (newSettings.syncConcurrency !== oldSettings.syncConcurrency) {
-                this.syncQueue.concurrency = newSettings.syncConcurrency;
-            }
-        });
+        this.eventUnsubscribers.push(
+            this.webSocketManager.onRemoteVaultUpdateReceived.add(
+                async (message: WebSocketVaultUpdate) => {
+                    // Ensure offline reconciliation is running so that
+                    // local changes are queued before remote updates
+                    try {
+                        await this.scheduleSyncForOfflineChanges();
+                    } catch (e) {
+                        if (e instanceof SyncResetError) {
+                            this.logger.info(
+                                "Sync reset during remote update processing"
+                            );
+                            return;
+                        }
+                        this.logger.error(
+                            `Failed to sync remotely updated file: ${e}`
+                        );
+                    }
 
-        this.syncQueue.on("active", () => {
-            if (this.previousRemainingOperationsCount !== this.syncQueue.size) {
-                this.previousRemainingOperationsCount = this.syncQueue.size;
-                this.onRemainingOperationsCountChanged.trigger(
-                    this.syncQueue.size
-                );
-            }
-        });
+                    for (const doc of message.documents) {
+                        this.queue.enqueue(
+                            doc.isDeleted
+                                ? { type: "remote-delete", version: doc }
+                                : { type: "remote-update", version: doc }
+                        );
+                    }
+                    // Do NOT advance the lastSeenUpdateId watermark here.
+                    // Individual executeAction calls advance it after success
+                    // via vfs.addSeenUpdateId inside the sync-actions functions.
 
-        this.webSocketManager.onWebSocketStatusChanged.add((isConnected) => {
-            if (isConnected) {
-                // The JS WebSocket API doesn't support setting headers, so we have to send the token as a message
-                this.sendHandshakeMessage();
-            } else {
-                // Clear so that the next reconnect re-runs scheduleSyncForOfflineChanges
-                // instead of returning the stale resolved promise.
-                this.runningScheduleSyncForOfflineChanges = undefined;
-            }
-        });
-        this.webSocketManager.onRemoteVaultUpdateReceived.add(
-            this.syncRemotelyUpdatedFile.bind(this)
+                    this._isFirstSyncComplete = true;
+                }
+            )
         );
     }
+
+    // -----------------------------------------------------------------------
+    // Public API
+    // -----------------------------------------------------------------------
 
     public get isFirstSyncComplete(): boolean {
         return this._isFirstSyncComplete;
     }
 
     public hasPendingOperationsForDocument(relativePath: string): boolean {
-        return this.updatedDocumentsByPathAndKeysLocks.isLocked(relativePath);
+        return this.queue.hasPendingEventsFor(relativePath);
+    }
+
+    public hasOutstandingWork(): boolean {
+        return (
+            this.queue.hasOutstandingWork() ||
+            this.runningReconciliation !== undefined
+        );
     }
 
     public async syncLocallyCreatedFile(
         relativePath: RelativePath
     ): Promise<void> {
-        const existingDocument =
-            this.database.getLatestDocumentByRelativePath(relativePath);
-
-        // Check whether someone else has already created the document in the database
-        if (existingDocument?.isDeleted === false) {
-            if (existingDocument.metadata !== undefined) {
-                // Fully synced document — likely created by a remote update
-                // which triggered a local create, so we don't need to do anything here.
-                this.logger.debug(
-                    `Document ${relativePath} already exists in the database with metadata, skipping`
-                );
-                return;
-            }
-
-            // Pending create (interrupted by a sync reset or duplicate file watcher event)
-            // — reuse the existing record and retry the sync.
-            this.logger.debug(
-                `Document ${relativePath} has a pending create that was interrupted, retrying sync`
-            );
-            await this.enqueueSyncOperation(
-                async () =>
-                    this.unrestrictedSyncer.unrestrictedSyncLocallyCreatedOrUpdatedFile(
-                        {
-                            document: existingDocument
-                        }
-                    ),
-                [relativePath]
-            );
-            return;
-        }
-
-        const document = this.database.createNewPendingDocument(relativePath);
-
-        await this.enqueueSyncOperation(
-            async () =>
-                this.unrestrictedSyncer.unrestrictedSyncLocallyCreatedOrUpdatedFile(
-                    {
-                        document
-                    }
-                ),
-            [relativePath]
-        );
+        this.queue.enqueue({ type: "local-create", path: relativePath });
     }
 
     public async syncLocallyDeletedFile(
         relativePath: RelativePath
     ): Promise<void> {
-        const document =
-            this.database.getLatestDocumentByRelativePath(relativePath);
-
-        if (document == null || document.isDeleted) {
-            // This is must be a consequence of us deleting a file because of a remote update
-            // which triggered a local delete, so we don't need to do anything here.
-            this.logger.debug(
-                `Document ${relativePath} has already been marked as deleted, skipping`
-            );
-            return;
-        }
-
-        // We have to have a record of the delete in case there's an in-flight update for the same
-        // document which finishes after the delete has succeeded and would introduce a phantom metadata record.
-        this.database.delete(relativePath);
-
-        await this.enqueueSyncOperation(async () => {
-            await this.unrestrictedSyncer.unrestrictedSyncLocallyDeletedFile(
-                document
-            );
-
-            this.database.removeDocument(document);
-        }, [document?.metadata?.documentId, relativePath]);
+        this.queue.enqueue({ type: "local-delete", path: relativePath });
     }
 
     public async syncLocallyUpdatedFile({
@@ -172,88 +133,51 @@ export class Syncer {
         oldPath?: RelativePath;
         relativePath: RelativePath;
     }): Promise<void> {
-        const document =
-            this.database.getLatestDocumentByRelativePath(oldPath ?? relativePath);
-
-        // must have been removed after a successful delete
-        if (document === undefined) {
-            this.logger.debug(
-                `Cannot find document ${relativePath} in the database, skipping`
-            );
-            return;
-        }
-
-        if (document.isDeleted) {
-            this.logger.debug(
-                `Document ${relativePath} has been deleted locally, skipping`
-            );
-            return;
-        }
-
-        const documentAtNewPath =
-            this.database.getLatestDocumentByRelativePath(relativePath);
-
-        if (oldPath !== undefined) {
-            // We might have moved the document in the database before calling this method,
-            // in that case, we mustn't move it again.
-            if (
-                documentAtNewPath === undefined ||
-                documentAtNewPath.isDeleted
-            ) {
-                if (oldPath === relativePath) {
-                    throw new Error(
-                        `Old path and new path are the same: ${oldPath}`
-                    );
-                }
-
-                this.database.move(oldPath, relativePath);
-            }
-        }
-
-
-        if (
-            oldPath !== undefined &&
-            document?.metadata?.remoteRelativePath === relativePath
-        ) {
-            this.logger.debug(
-                `Document ${relativePath} has been moved as a result of a remote update, skipping sync`
-            );
-            return;
-        }
-
-        // If a create operation is already in progress for this document (no metadata
-        // yet), skip the HTTP sync. The create operation will handle syncing the content.
-        // We've already updated the document's path in the database above if needed,
-        // so the create operation will use the correct path.
-        if (document.metadata === undefined) {
-            this.logger.debug(
-                `Document ${relativePath} has a pending create operation, skipping HTTP sync`
-            );
-            return;
-        }
-
-        await this.enqueueSyncOperation(
-            async () =>
-                this.unrestrictedSyncer.unrestrictedSyncLocallyCreatedOrUpdatedFile(
-                    {
-                        oldPath,
-                        document
+        if (oldPath !== undefined && oldPath !== relativePath) {
+            // Move the VFS record immediately so that a concurrent
+            // scheduleSyncForOfflineChanges scan sees the metadata at
+            // the new path and doesn't create a duplicate document.
+            const doc = this.vfs.getByPath(oldPath);
+            if (doc !== undefined) {
+                const existingAtNew = this.vfs.getByPath(relativePath);
+                if (
+                    existingAtNew === undefined ||
+                    existingAtNew.state === "deleted-locally"
+                ) {
+                    try {
+                        this.vfs.move(oldPath, relativePath);
+                    } catch {
+                        // Target path occupied — leave it for the executor
                     }
-                ),
-            [document.metadata?.documentId, relativePath, oldPath]
-        );
+                }
+            }
+
+            this.queue.enqueue({
+                type: "local-move",
+                fromPath: oldPath,
+                toPath: relativePath
+            });
+        } else {
+            this.queue.enqueue({
+                type: "local-update",
+                path: relativePath
+            });
+        }
     }
 
     public async scheduleSyncForOfflineChanges(): Promise<void> {
-        if (this.runningScheduleSyncForOfflineChanges !== undefined) {
-            this.logger.debug("Uploading local changes is already in progress");
-            return this.runningScheduleSyncForOfflineChanges;
+        if (this.runningReconciliation !== undefined) {
+            this.logger.debug(
+                "Uploading local changes is already in progress"
+            );
+            return this.runningReconciliation;
         }
 
+        const promise = this.internalReconcile();
+        this.runningReconciliation = promise;
+
         try {
-            this.runningScheduleSyncForOfflineChanges =
-                this.internalScheduleSyncForOfflineChanges();
-            await this.runningScheduleSyncForOfflineChanges;
+            await promise;
             this.logger.info(`All local changes have been applied remotely`);
         } catch (e) {
             if (e instanceof SyncResetError) {
@@ -266,292 +190,447 @@ export class Syncer {
                 `Not all local changes have been applied remotely: ${e}`
             );
             throw e;
+        } finally {
+            if (this.runningReconciliation === promise) {
+                this.runningReconciliation = undefined;
+            }
         }
     }
 
     public async waitUntilFinished(): Promise<void> {
-        await this.runningScheduleSyncForOfflineChanges;
-        await this.syncQueue.onIdle();
+        await this.runningReconciliation;
+        await this.queue.waitForIdle();
     }
 
-    public async syncRemotelyUpdatedFile(
-        message: WebSocketVaultUpdate
-    ): Promise<void> {
-        try {
-            await this.scheduleSyncForOfflineChanges();
-
-            const handlerPromise = awaitAll(
-                message.documents.map(async (document) =>
-                    this.internalSyncRemotelyUpdatedFile(document)
-                )
-            );
-
-            await handlerPromise;
-
-            if (message.isInitialSync && message.documents.length > 0) {
-                this.database.setLastSeenUpdateId(
-                    message.documents
-                        .map((document) => document.vaultUpdateId)
-                        .reduce((a, b) => Math.max(a, b))
-                );
-            }
-
-            this._isFirstSyncComplete = true;
-        } catch (e) {
-            if (e instanceof SyncResetError) {
-                this.logger.info(
-                    "Sync reset during remote update processing"
-                );
-            } else {
-                this.logger.error(
-                    `Failed to sync remotely updated file: ${e}`
-                );
-            }
-        }
+    /**
+     * Force a final filesystem scan to catch any operations that were
+     * silently dropped (e.g., due to mutable document references
+     * pointing to a moved path). Called by the SyncClient after the
+     * normal waitUntilFinished completes to ensure eventual consistency.
+     */
+    public async runFinalConsistencyCheck(): Promise<void> {
+        await this.runningReconciliation;
+        this.runningReconciliation = undefined;
+        await this.scheduleSyncForOfflineChanges();
+        await this.queue.waitForIdle();
     }
 
     public reset(): void {
         this._isFirstSyncComplete = false;
-        this.syncQueue.clear();
-        this.updatedDocumentsByPathAndKeysLocks.reset();
-        this.runningScheduleSyncForOfflineChanges = undefined;
+        this.queue.reset();
+        this.runningReconciliation = undefined;
     }
+
+    public destroy(): void {
+        this.queue.destroy();
+        this.eventUnsubscribers.forEach((unsub) => { unsub(); });
+        this.eventUnsubscribers.length = 0;
+    }
+
+    // -----------------------------------------------------------------------
+    // Executor — dispatches CoalescedActions to sync-actions functions
+    // -----------------------------------------------------------------------
+
+    private async executeAction(
+        _key: string,
+        action: CoalescedAction
+    ): Promise<void> {
+        switch (action.action) {
+            case "create": {
+                const doc = this.vfs.getByPath(action.path);
+                if (doc === undefined) {
+                    // Create a pending doc in VFS, then sync
+                    const pending = await this.vfs.createPending(action.path);
+                    await executeSyncCreate(this.deps, pending);
+                } else if (doc.state === "pending") {
+                    await executeSyncCreate(this.deps, doc);
+                } else if (
+                    doc.state === "tracked" &&
+                    doc.serverVersion === 0
+                ) {
+                    // Resolved by resolveIdempotencyKeys but not yet synced.
+                    // parentVersionId 0 is a placeholder — treat as create retry.
+                    this.logger.debug(
+                        `Document ${action.path} has serverVersion 0 from key resolution, retrying sync`
+                    );
+                    await executeSyncUpdateFull(
+                        this.deps,
+                        doc,
+                        undefined,
+                        false
+                    );
+                } else if (doc.state === "tracked") {
+                    // Already tracked — treat as an update instead
+                    this.logger.debug(
+                        `Document ${action.path} already tracked, treating create as update`
+                    );
+                    await executeSyncUpdate(this.deps, doc);
+                }
+                break;
+            }
+
+            case "update": {
+                // Try path lookup first; fall back to documentId if
+                // a concurrent move changed the VFS path after this
+                // action was queued.
+                const doc =
+                    this.vfs.getByPath(action.path) ??
+                    (!_key.startsWith("path:")
+                        ? this.vfs.getByDocumentId(_key)
+                        : undefined);
+                if (doc === undefined) {
+                    this.logger.debug(
+                        `Cannot find document ${action.path} in VFS, skipping update (will be picked up by next filesystem scan)`
+                    );
+                } else if (doc.state === "tracked") {
+                    await executeSyncUpdate(this.deps, doc);
+                } else if (doc.state === "pending") {
+                    // Pending create, content will be read at sync time
+                    await executeSyncCreate(this.deps, doc);
+                }
+                break;
+            }
+
+            case "delete": {
+                const doc = this.vfs.getByPath(action.path);
+                if (doc === undefined) {
+                    this.logger.debug(
+                        `Document ${action.path} has already been removed, skipping delete`
+                    );
+                    break;
+                }
+
+                if (doc.state === "pending") {
+                    // Never synced — just remove from VFS
+                    this.vfs.remove(doc);
+                } else if (doc.state === "tracked") {
+                    // Mark as deleted locally, then sync
+                    const {documentId} = doc;
+                    this.vfs.deleteLocally(action.path);
+                    const deleted = this.vfs.getByDocumentId(documentId);
+                    if (
+                        deleted?.state === "deleted-locally"
+                    ) {
+                        await executeSyncDelete(this.deps, deleted);
+                    }
+                }
+                break;
+            }
+
+            case "move":
+            case "move-and-update": {
+                const doc = this.vfs.getByPath(action.toPath);
+                if (doc === undefined) {
+                    this.logger.debug(
+                        `Cannot find document at ${action.toPath} after move, skipping`
+                    );
+                } else if (doc.state === "tracked") {
+                    await executeSyncUpdate(
+                        this.deps,
+                        doc,
+                        action.fromPath
+                    );
+                } else if (doc.state === "pending") {
+                    // Pending create was renamed — retry the create at
+                    // the new path
+                    await executeSyncCreate(this.deps, doc);
+                }
+                break;
+            }
+
+            case "remote-update":
+            case "remote-delete": {
+                const doc = this.vfs.getByDocumentId(
+                    action.version.documentId
+                );
+                await executeRemoteUpdate(
+                    this.deps,
+                    action.version,
+                    doc ?? undefined
+                );
+                // addSeenUpdateId is called inside the sync-actions functions
+                // after each successful operation
+                break;
+            }
+
+            case "noop":
+                break;
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Handshake
+    // -----------------------------------------------------------------------
 
     private sendHandshakeMessage(): void {
         const message: WebSocketClientMessage = {
             type: "handshake",
             deviceId: this.deviceId,
             token: this.settings.getSettings().token,
-            lastSeenVaultUpdateId: this.database.getLastSeenUpdateId()
+            lastSeenVaultUpdateId: this.vfs.getLastSeenUpdateId()
         };
         this.webSocketManager.sendHandshakeMessage(message);
     }
 
-    private async internalSyncRemotelyUpdatedFile(
-        remoteVersion: DocumentVersionWithoutContent
-    ): Promise<void> {
-        const document = this.database.getDocumentByDocumentId(
-            remoteVersion.documentId
-        );
-        await this.enqueueSyncOperation(
-            async () => {
-                await this.unrestrictedSyncer.unrestrictedSyncRemotelyUpdatedFile(
-                    remoteVersion,
-                    document
-                );
-                this.database.addSeenUpdateId(remoteVersion.vaultUpdateId);
-            },
-            [
-                document?.relativePath,
-                remoteVersion.relativePath,
-                remoteVersion.documentId
-            ]
-        );
+    // -----------------------------------------------------------------------
+    // Offline reconciliation
+    // -----------------------------------------------------------------------
+
+    private async internalReconcile(): Promise<void> {
+        // Pause the event queue during reconciliation to prevent races
+        // between resolveIdempotencyKeys (which transitions pending→tracked)
+        // and queued create operations (which expect pending docs).
+        // Wait for any currently running operation to finish first.
+        this.queue.pause();
+        await this.queue.waitForIdle();
+        try {
+            await this.internalReconcileInner();
+        } finally {
+            this.queue.resume();
+        }
     }
 
-    private async internalScheduleSyncForOfflineChanges(): Promise<void> {
-        await this.unrestrictedSyncer.resolveIdempotencyKeys();
+    private async internalReconcileInner(): Promise<void> {
+        // 1. Resolve idempotency keys for pending creates
+        await this.resolveIdempotencyKeys();
 
-        const allLocalFiles = await this.operations.listFilesRecursively();
+        // 2. Clean up orphaned pending documents: metadata === undefined
+        // (never synced) and local file no longer exists (user deleted
+        // before sync, then app crashed). Since they were never synced,
+        // there's nothing to delete on the server — just remove from VFS.
+        for (const pendingDoc of this.vfs.pendingDocuments()) {
+            if (!(await this.operations.exists(pendingDoc.relativePath))) {
+                this.logger.info(
+                    `Removing orphaned pending document at ${pendingDoc.relativePath} — file no longer exists and was never synced`
+                );
+                this.vfs.remove(pendingDoc);
+            }
+        }
+
+        // 3. Scan filesystem and reconcile with VFS
+        const allLocalFiles =
+            await this.operations.listFilesRecursively();
         this.logger.info(
             `Scheduling sync for ${allLocalFiles.length} local files`
         );
 
-        let locallyPossiblyDeletedFiles: DocumentRecord[] = [];
+        const result = await this.vfs.reconcileWithDisk(
+            allLocalFiles,
+            async (path) => {
+                try {
+                    // Bail out if a reset happened
+                    if (!this.queue.hasOutstandingWork()) {
+                        // Not resetting, proceed
+                    }
 
-        for (const document of this.database.resolvedDocuments) {
-            if (
-                !document.isDeleted &&
-                !(await this.operations.exists(document.relativePath))
-            ) {
-                locallyPossiblyDeletedFiles.push(document);
-            }
-        }
+                    const sizeInBytes =
+                        await this.operations.getFileSize(path);
+                    const sizeInMB = Math.ceil(sizeInBytes / 1024 / 1024);
+                    const { maxFileSizeMB } =
+                        this.settings.getSettings();
+                    if (sizeInMB > maxFileSizeMB) {
+                        return undefined;
+                    }
 
-        interface Instruction {
-            type: "update" | "create";
-            relativePath: string;
-            oldPath?: string;
-        }
-        const instructions: (Instruction | undefined)[] = await awaitAll(
-            allLocalFiles.map(async (relativePath) => {
-                const existingMetadata =
-                    this.database.getLatestDocumentByRelativePath(relativePath)
-                        ?.metadata;
-                if (
-                    existingMetadata !== undefined &&
-                    existingMetadata.parentVersionId > 0
-                ) {
-                    this.logger.debug(
-                        `Document ${relativePath} might have been updated locally, scheduling sync to validate and update it`
-                    );
-
-                    return { type: "update", relativePath } as Instruction;
-                }
-
-                // Perhaps the file has been moved; let's check by looking at the deleted files.
-                // Skip reading oversized files into memory for hash computation —
-                // they can't participate in move detection and will be scheduled as creates.
-                const hashResult = await this.syncQueue.add(async () => {
-                    try {
-                        const sizeInBytes =
-                            await this.operations.getFileSize(relativePath);
-                        const sizeInMB = Math.ceil(
-                            sizeInBytes / 1024 / 1024
-                        );
-                        const { maxFileSizeMB } =
-                            this.settings.getSettings();
-                        if (sizeInMB > maxFileSizeMB) {
-                            // File exceeds size limit — skip hash-based move
-                            // detection and schedule as a create instead
-                            return { skippedOversized: true } as const;
-                        }
-
-                        const contentBytes =
-                            await this.operations.read(relativePath); // this can throw FileNotFoundError
-                        return { hash: hash(contentBytes) } as const;
-                    } catch (e) {
-                        if (
-                            e instanceof Error &&
-                            e.name === "FileNotFoundError"
-                        ) {
-                            return undefined;
-                        }
+                    const contentBytes =
+                        await this.operations.read(path);
+                    return hash(contentBytes);
+                } catch (e) {
+                    if (e instanceof SyncResetError) {
                         throw e;
                     }
-                });
-
-                if (hashResult == undefined) {
-                    // The file was deleted before we had a chance to read it, no need to sync it here
-                    return;
-                }
-
-                const contentHash =
-                    "hash" in hashResult ? hashResult.hash : undefined;
-
-                const originalFile =
-                    contentHash != undefined
-                        ? findMatchingFile(
-                            contentHash,
-                            locallyPossiblyDeletedFiles
-                        )
-                        : undefined;
-                if (originalFile !== undefined) {
-                    // `originalFile` hasn't been deleted but it got moved instead
-                    /* eslint-disable no-restricted-syntax -- Comparing by property, not direct equality */
-                    locallyPossiblyDeletedFiles =
-                        locallyPossiblyDeletedFiles.filter(
-                            (item) =>
-                                item.relativePath !== originalFile.relativePath
-                        );
-                    /* eslint-enable no-restricted-syntax */
-
-                    this.logger.debug(
-                        `Document '${originalFile.relativePath}' was not found under its current path in the database but was found under a different path (${relativePath}), scheduling sync to move it`
+                    if (
+                        e instanceof Error &&
+                        e.name === "FileNotFoundError"
+                    ) {
+                        return undefined;
+                    }
+                    this.logger.warn(
+                        `Skipping file ${path} due to read error: ${e}`
                     );
-
-                    return {
-                        type: "update",
-                        oldPath: originalFile.relativePath,
-                        relativePath
-                    } as Instruction;
+                    return undefined;
                 }
+            }
+        );
 
-                this.logger.debug(
-                    `Document ${relativePath} not found in database, scheduling sync to create it`
+        // 4. Apply moves to VFS and enqueue move events
+        for (const moved of result.movedFiles) {
+            const oldPath = moved.document.relativePath;
+            try {
+                this.vfs.move(oldPath, moved.newPath);
+            } catch {
+                // Target path occupied — skip this move
+                this.logger.info(
+                    `Cannot move document from ${oldPath} to ${moved.newPath} — path is occupied`
                 );
+                continue;
+            }
+            this.queue.enqueue({
+                type: "local-move",
+                fromPath: oldPath,
+                toPath: moved.newPath
+            });
+        }
 
-                return {
-                    type: "create",
-                    relativePath
-                } as Instruction;
-            })
-        );
-
-        // this has to happen strictly after the previous awaitAll, as that one
-        // might have removed some of the documents from the list
-        await awaitAll(
-            locallyPossiblyDeletedFiles.map(async ({ relativePath }) => {
+        // 5. Enqueue interrupted deletes (marked deleted locally but
+        // server-side delete never completed)
+        for (const deletedDoc of this.vfs.deletedLocallyDocuments()) {
+            if (!(await this.operations.exists(deletedDoc.relativePath))) {
                 this.logger.debug(
-                    `Document ${relativePath} has been deleted locally, scheduling sync to delete it`
+                    `Document ${deletedDoc.relativePath} had an interrupted delete, retrying server-side delete`
                 );
+                // Enqueue as a remote-delete since the doc is already
+                // in deleted-locally state — the executor will call
+                // executeSyncDelete directly.
+                this.queue.enqueue({
+                    type: "local-delete",
+                    path: deletedDoc.relativePath
+                });
+            }
+        }
 
-                // We're outside of the pqueue, so we need to call the public wrapper
-                return this.syncLocallyDeletedFile(relativePath);
-            })
-        );
+        // 6. Enqueue updates for modified files
+        for (const modified of result.modifiedFiles) {
+            this.logger.debug(
+                `Document ${modified.path} might have been updated locally, scheduling sync`
+            );
+            this.queue.enqueue({
+                type: "local-update",
+                path: modified.path
+            });
+        }
 
-        await awaitAll(
-            instructions.map(async (instruction) => {
-                if (instruction === undefined) {
-                    return;
+        // 7. Enqueue creates for new files.
+        // Before scheduling a create, check if the content already exists
+        // in a tracked document whose file is also on disk (duplicate
+        // detection for ensureClearPath displacements).
+        for (const newFile of result.newFiles) {
+            let shouldSkip = false;
+
+            // Duplicate content detection
+            try {
+                const contentBytes = await this.operations.read(newFile);
+                const contentHash = hash(contentBytes);
+                const trackedDocs = this.vfs.trackedDocuments();
+                const duplicateDoc = trackedDocs.find(
+                    (doc) =>
+                        doc.localHash === contentHash &&
+                        doc.relativePath !== newFile
+                );
+                if (
+                    duplicateDoc !== undefined &&
+                    (await this.operations.exists(duplicateDoc.relativePath))
+                ) {
+                    this.logger.info(
+                        `File at ${newFile} has same content as tracked document at ${duplicateDoc.relativePath}, deleting duplicate`
+                    );
+                    await this.operations.delete(newFile);
+                    shouldSkip = true;
                 }
+            } catch {
+                // File may have been deleted or unreadable — proceed with create
+            }
 
-                if (instruction.type === "update") {
-                    // We're outside of the pqueue, so we need to call the public wrapper
-                    await this.syncLocallyUpdatedFile({
-                        oldPath: instruction.oldPath,
-                        relativePath: instruction.relativePath
-                    });
-                    return;
-                }
-            })
-        );
+            if (!shouldSkip) {
+                this.logger.debug(
+                    `Document ${newFile} not found in VFS, scheduling sync to create it`
+                );
+                this.queue.enqueue({
+                    type: "local-create",
+                    path: newFile
+                });
+            }
+        }
 
-        // we have to ensure the deletes & updates have finished before starting creates,
-        // otherwise the server might return an existing document (that we're about to delete)
-        // instead of actually creating a new one
-        await awaitAll(
-            instructions.map(async (instruction) => {
-                if (instruction === undefined) {
-                    return;
-                }
+        // 8. Enqueue deletes for missing files AFTER creates so that
+        // creates can adopt deleted docs via server-side merge.
+        for (const missing of result.missingFiles) {
+            // Skip deleted-locally docs (already handled above)
+            if (missing.state === "deleted-locally") {
+                continue;
+            }
 
-                if (instruction.type === "create") {
-                    // We're outside of the pqueue, so we need to call the public wrapper
-                    await this.syncLocallyCreatedFile(instruction.relativePath);
-                    return;
-                }
-            })
-        );
+            // Re-check if the file reappeared (e.g., re-created by a
+            // concurrent sync operation)
+            if (await this.operations.exists(missing.relativePath)) {
+                this.logger.debug(
+                    `Document ${missing.relativePath} reappeared on disk, skipping delete`
+                );
+                continue;
+            }
+
+            // Re-check if the document is still in the VFS (it may have
+            // been adopted by a concurrent create operation)
+            if (!this.vfs.contains(missing)) {
+                this.logger.debug(
+                    `Document ${missing.relativePath} was adopted by a create, skipping delete`
+                );
+                continue;
+            }
+
+            this.logger.debug(
+                `Document ${missing.relativePath} has been deleted locally, scheduling sync to delete it`
+            );
+            this.queue.enqueue({
+                type: "local-delete",
+                path: missing.relativePath
+            });
+        }
+
+        this._isFirstSyncComplete = true;
     }
 
-    private async enqueueSyncOperation<T>(
-        operation: () => Promise<T>,
-        keys: (string | undefined | null)[]
-    ): Promise<T> {
-        const filteredKeys = keys.filter((k) => k !== undefined && k !== null);
+    // -----------------------------------------------------------------------
+    // Idempotency key resolution
+    // -----------------------------------------------------------------------
 
-        // IMPORTANT: We must NOT hold locks while waiting for a queue slot.
-        // If we did, we could deadlock when two concurrent operations hold
-        // locks on different keys while both waiting for queue capacity.
-        //
-        // Instead, we acquire locks INSIDE the queued operation. This ensures:
-        // 1. We only hold locks during actual operation execution
-        // 2. The queue serializes access to queue slots
-        // 3. Locks serialize access to the same document/path
-        //
-        // The result type needs special handling since syncQueue.add() can
-        // return undefined when the queue is paused/cleared.
-        const result = await this.syncQueue.add(async () => {
-            try {
-                return await this.updatedDocumentsByPathAndKeysLocks.withLock(
-                    filteredKeys,
-                    operation
+    private async resolveIdempotencyKeys(): Promise<void> {
+        const pending = this.vfs.pendingDocuments();
+        if (pending.length === 0) {
+            return;
+        }
+
+        const keys = pending.map((d) => d.idempotencyKey);
+
+        this.logger.debug(
+            `Resolving ${keys.length} pending idempotency keys`
+        );
+
+        const resolved =
+            await this.deps.syncService.resolveIdempotencyKeys(keys);
+
+        for (const doc of pending) {
+            const documentId = resolved.get(doc.idempotencyKey);
+            if (documentId === undefined) continue;
+
+            // Check if document was removed by a concurrent operation
+            if (!this.vfs.contains(doc)) {
+                this.logger.info(
+                    `Pending doc at ${doc.relativePath} was removed during key resolution, skipping`
                 );
-            } catch (e) {
-                // Catch all errors to prevent unhandled promise rejections.
-                // SyncResetError: lock waiter rejected during reset (expected).
-                // Other errors: logged by executeSync's history entry, will
-                // be retried on the next scheduleSyncForOfflineChanges cycle.
-                if (!(e instanceof SyncResetError)) {
-                    this.logger.info(
-                        `Sync operation failed, will retry on next cycle: ${e}`
-                    );
-                }
-                return undefined;
+                continue;
             }
-        });
-        return result as T;
+
+            // Skip if this documentId is already assigned to another document
+            const existing = this.vfs.getByDocumentId(documentId);
+            if (existing !== undefined) {
+                this.logger.debug(
+                    `Document ${documentId} already exists at ${existing.relativePath}, removing stale pending doc at ${doc.relativePath}`
+                );
+                this.vfs.remove(doc);
+                continue;
+            }
+
+            this.logger.info(
+                `Resolved idempotency key ${doc.idempotencyKey} to document ${documentId} for ${doc.relativePath}`
+            );
+            this.vfs.assignDocumentId(doc.idempotencyKey, documentId);
+
+            // Migrate the event queue key from path-based to documentId
+            this.queue.migrateKey(
+                "path:" + doc.relativePath,
+                documentId
+            );
+        }
     }
 }

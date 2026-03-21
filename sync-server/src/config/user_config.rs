@@ -19,10 +19,19 @@ where
     let mut user_token_map = BiHashMap::new();
     for user in &users {
         if let Some(existing_name) = user_token_map.get_by_right(&user.token) {
+            let redacted = if user.token.len() > 6 {
+                format!(
+                    "{}...{}",
+                    &user.token[..3],
+                    &user.token[user.token.len() - 3..]
+                )
+            } else {
+                "***".to_owned()
+            };
             return Err(D::Error::custom(format!(
-                "Duplicate user token found: `{}` for users `{}` and `{}`. User tokens must be \
-                unique.",
-                user.token, existing_name, user.name
+                "Duplicate user token found: `{redacted}` for users `{}` and `{}`. User tokens \
+                must be unique.",
+                existing_name, user.name
             )));
         }
 
@@ -41,8 +50,21 @@ where
 
 impl UserConfig {
     pub fn get_user(&self, token: &str) -> Option<&User> {
-        self.user_configs.iter().find(|u| u.token == token)
+        self.user_configs
+            .iter()
+            .find(|u| constant_time_eq(u.token.as_bytes(), token.as_bytes()))
     }
+}
+
+/// Constant-time byte comparison to prevent timing attacks on token lookups.
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    a.iter()
+        .zip(b.iter())
+        .fold(0u8, |acc, (x, y)| acc | (x ^ y))
+        == 0
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

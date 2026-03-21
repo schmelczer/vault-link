@@ -2,19 +2,24 @@ import { Command, Option } from "commander";
 import packageJson from "../package.json";
 import { LogLevel } from "sync-client";
 
+export type LineEndingMode = "auto" | "lf" | "crlf";
+
 export interface CliArgs {
     remoteUri: string;
     token: string;
     vaultName: string;
     localPath: string;
-    syncConcurrency?: number;
     maxFileSizeMB?: number;
     ignorePatterns?: string[];
     webSocketRetryIntervalMs?: number;
     logLevel: LogLevel;
     health?: string;
     enableTelemetry?: boolean;
+    quiet: boolean;
+    lineEndings: LineEndingMode;
 }
+
+const VALID_URI_PREFIXES = ["http://", "https://", "ws://", "wss://"];
 
 export function parseArgs(argv: string[]): CliArgs {
     const program = new Command();
@@ -48,14 +53,6 @@ export function parseArgs(argv: string[]): CliArgs {
                 "-v, --vault-name <name>",
                 "Vault name"
             ).env("VAULTLINK_VAULT_NAME")
-        )
-        .addOption(
-            new Option(
-                "--sync-concurrency <number>",
-                "[OPTIONAL] Number of concurrent sync operations"
-            )
-                .argParser(parseInt)
-                .env("VAULTLINK_SYNC_CONCURRENCY")
         )
         .addOption(
             new Option(
@@ -99,15 +96,30 @@ export function parseArgs(argv: string[]): CliArgs {
                 "[OPTIONAL] Enable telemetry (disabled by default)"
             ).env("VAULTLINK_ENABLE_TELEMETRY")
         )
+        .addOption(
+            new Option(
+                "-q, --quiet",
+                "[OPTIONAL] Suppress startup banner for non-interactive use"
+            ).env("VAULTLINK_QUIET")
+        )
+        .addOption(
+            new Option(
+                "--line-endings <mode>",
+                "[OPTIONAL] Line ending style: auto (platform default), lf, crlf"
+            )
+                .default("auto")
+                .choices(["auto", "lf", "crlf"])
+                .env("VAULTLINK_LINE_ENDINGS")
+        )
         .addHelpText(
             "after",
             `
 Examples:
   $ vaultlink -l ./my-vault -r https://sync.example.com -t mytoken -v default
   $ vaultlink -l ./my-vault -r https://sync.example.com -t mytoken -v default \\
-    --ignore-pattern ".git/**" --ignore-pattern "*.tmp"
+    --ignore-pattern ".git/**" --ignore-pattern "**/*.tmp"
   $ vaultlink -l ./my-vault -r https://sync.example.com -t mytoken -v default \\
-    --log-level DEBUG
+    --log-level DEBUG --quiet
 
 Environment variables:
   All options can be configured via VAULTLINK_ prefixed environment variables.
@@ -123,7 +135,6 @@ Environment variables:
     const remoteUri = opts.remoteUri as string | undefined;
     const token = opts.token as string | undefined;
     const vaultName = opts.vaultName as string | undefined;
-    const syncConcurrency = opts.syncConcurrency as number | undefined;
     const maxFileSizeMb = opts.maxFileSizeMb as number | undefined;
     const ignorePattern = opts.ignorePattern as string[] | undefined;
     const websocketRetryIntervalMs = opts.websocketRetryIntervalMs as
@@ -132,6 +143,8 @@ Environment variables:
     const logLevelStr = (opts.logLevel as string | undefined) ?? "INFO";
     const health = opts.health as string | undefined;
     const enableTelemetry = opts.enableTelemetry as boolean | undefined;
+    const quiet = (opts.quiet as boolean | undefined) ?? false;
+    const lineEndingsStr = (opts.lineEndings as string | undefined) ?? "auto";
     /* eslint-enable @typescript-eslint/no-unsafe-type-assertion */
 
     const requireOption = <T>(
@@ -142,9 +155,12 @@ Environment variables:
             const option = program.options.find(
                 (o) => o.attributeName() === name
             );
+            const envHint =
+                option?.envVar !== undefined
+                    ? ` (or set ${option.envVar})`
+                    : "";
             throw new Error(
-                `required option '${option?.flags ?? name}' not specified` +
-                    (option?.envVar ? ` (or set ${option.envVar})` : "")
+                `required option '${option?.flags ?? name}' not specified${envHint}`
             );
         }
         return value;
@@ -154,6 +170,17 @@ Environment variables:
     const requiredRemoteUri = requireOption(remoteUri, "remoteUri");
     const requiredToken = requireOption(token, "token");
     const requiredVaultName = requireOption(vaultName, "vaultName");
+
+    // Validate remote URI protocol
+    if (
+        !VALID_URI_PREFIXES.some((prefix) =>
+            requiredRemoteUri.startsWith(prefix)
+        )
+    ) {
+        throw new Error(
+            `Invalid remote URI '${requiredRemoteUri}'. Must start with ${VALID_URI_PREFIXES.join(", ")}`
+        );
+    }
 
     // Validate and parse log level
     const logLevelUpper = logLevelStr.toUpperCase();
@@ -168,17 +195,21 @@ Environment variables:
     }
     const logLevel = logLevelUpper;
 
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const lineEndings = lineEndingsStr as LineEndingMode;
+
     return {
         localPath: requiredLocalPath,
         remoteUri: requiredRemoteUri,
         token: requiredToken,
         vaultName: requiredVaultName,
-        syncConcurrency,
         maxFileSizeMB: maxFileSizeMb,
         ignorePatterns: ignorePattern,
         webSocketRetryIntervalMs: websocketRetryIntervalMs,
         logLevel,
         health,
-        enableTelemetry
+        enableTelemetry,
+        quiet,
+        lineEndings
     };
 }

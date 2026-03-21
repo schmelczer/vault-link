@@ -43,6 +43,10 @@ pub async fn resolve_keys(
         request.idempotency_keys.len()
     );
 
+    // Each key lookup is an independent read — no write transaction needed.
+    // Using create_write_transaction (BEGIN IMMEDIATE) here would hold the
+    // SQLite write lock for the entire iteration, blocking all concurrent
+    // creates/updates/deletes and causing server-wide deadlocks under load.
     let mut resolved = HashMap::new();
 
     for key in &request.idempotency_keys {
@@ -53,11 +57,22 @@ pub async fn resolve_keys(
             .map_err(server_error)?;
 
         if let Some(doc) = document {
-            resolved.insert(key.clone(), doc.document_id.to_string());
+            // Skip deleted documents — returning their documentId would cause
+            // the client to assign a stale ID to its pending doc, and the
+            // subsequent create retry would get a different documentId from the
+            // server (since create_document falls through for deleted matches),
+            // leaving the document permanently stuck.
+            if !doc.is_deleted {
+                resolved.insert(key.clone(), doc.document_id.to_string());
+            }
         }
     }
 
-    debug!("Resolved {}/{} idempotency keys", resolved.len(), request.idempotency_keys.len());
+    debug!(
+        "Resolved {}/{} idempotency keys",
+        resolved.len(),
+        request.idempotency_keys.len()
+    );
 
     Ok(Json(ResolveKeysResponse { resolved }))
 }

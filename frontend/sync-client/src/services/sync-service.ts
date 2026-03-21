@@ -49,11 +49,42 @@ export class SyncService {
                 .get("Content-Type")
                 ?.includes("application/json") == true
         ) {
-            const result: SerializedError =
-                (await response.json()) as SerializedError; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
-            return SyncService.formatError(result);
+            try {
+                const result: SerializedError =
+                    (await response.json()) as SerializedError; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+                return SyncService.formatError(result);
+            } catch {
+                return `HTTP ${response.status}: ${response.statusText} (failed to parse error response body)`;
+            }
         }
         return `HTTP ${response.status}: ${response.statusText}`;
+    }
+
+    /**
+     * Safely parse JSON from a response body. If parsing fails (e.g., malformed
+     * JSON from the server), throws an HttpClientError with status 0 so that
+     * retryForever does not retry indefinitely.
+     */
+    private static async parseJsonResponse<T>(
+        response: Response
+    ): Promise<T> {
+        try {
+            return (await response.json()) as T; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+        } catch (error) {
+            // Timeout and abort errors are transient — let them propagate
+            // so retryForever can retry. Only wrap genuine parse failures
+            // (malformed JSON) as HttpClientError to prevent infinite retries.
+            if (
+                error instanceof Error &&
+                (error.name === "TimeoutError" || error.name === "AbortError")
+            ) {
+                throw error;
+            }
+            throw new HttpClientError(
+                0,
+                `Failed to parse JSON response: ${error}`
+            );
+        }
     }
 
     private static formatError(error: SerializedError): string {
@@ -117,7 +148,9 @@ export class SyncService {
             }
 
             const result: DocumentUpdateResponse =
-                (await response.json()) as DocumentUpdateResponse; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+                await SyncService.parseJsonResponse<DocumentUpdateResponse>(
+                    response
+                );
 
             this.logger.debug(`Created document ${JSON.stringify(result)}`);
 
@@ -164,7 +197,9 @@ export class SyncService {
             }
 
             const result: DocumentUpdateResponse =
-                (await response.json()) as DocumentUpdateResponse; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+                await SyncService.parseJsonResponse<DocumentUpdateResponse>(
+                    response
+                );
 
             this.logger.debug(
                 `Updated document ${JSON.stringify(result)} with id ${result.documentId
@@ -215,7 +250,9 @@ export class SyncService {
             }
 
             const result: DocumentUpdateResponse =
-                (await response.json()) as DocumentUpdateResponse; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+                await SyncService.parseJsonResponse<DocumentUpdateResponse>(
+                    response
+                );
 
             this.logger.debug(
                 `Updated document ${JSON.stringify(result)} with id ${result.documentId
@@ -234,9 +271,7 @@ export class SyncService {
         relativePath: RelativePath;
     }): Promise<DocumentVersionWithoutContent> {
         return this.retryForever(async () => {
-            const request: DeleteDocumentVersion = {
-                relativePath
-            };
+            const request: DeleteDocumentVersion = {};
 
             this.logger.debug(
                 `Delete document with id ${documentId} and relative path ${relativePath}`
@@ -259,7 +294,9 @@ export class SyncService {
             }
 
             const result: DocumentVersionWithoutContent =
-                (await response.json()) as DocumentVersionWithoutContent; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+                await SyncService.parseJsonResponse<DocumentVersionWithoutContent>(
+                    response
+                );
 
             this.logger.debug(
                 `Deleted document ${relativePath} with id ${documentId}`
@@ -292,7 +329,9 @@ export class SyncService {
             }
 
             const result: DocumentVersion =
-                (await response.json()) as DocumentVersion; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+                await SyncService.parseJsonResponse<DocumentVersion>(
+                    response
+                );
 
             this.logger.debug(`Got document ${JSON.stringify(result)}`);
 
@@ -361,7 +400,9 @@ export class SyncService {
             }
 
             const result: FetchLatestDocumentsResponse =
-                (await response.json()) as FetchLatestDocumentsResponse; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+                await SyncService.parseJsonResponse<FetchLatestDocumentsResponse>(
+                    response
+                );
 
             this.logger.debug(
                 `Got ${result.latestDocuments.length} document metadata`
@@ -389,15 +430,16 @@ export class SyncService {
             );
 
             if (!response.ok) {
-                throw new Error(
-                    `Failed to resolve idempotency keys: ${await SyncService.errorFromResponse(
-                        response
-                    )}`
+                await SyncService.throwHttpError(
+                    response,
+                    "Failed to resolve idempotency keys"
                 );
             }
 
-            const result: { resolved: Record<string, string> } =
-                (await response.json()) as { resolved: Record<string, string> }; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+            const result =
+                await SyncService.parseJsonResponse<{
+                    resolved: Record<string, string>;
+                }>(response);
 
             const resolved = new Map<string, string>(
                 Object.entries(result.resolved)
@@ -425,7 +467,8 @@ export class SyncService {
             );
         }
 
-        const result: PingResponse = (await response.json()) as PingResponse; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+        const result: PingResponse =
+            await SyncService.parseJsonResponse<PingResponse>(response);
 
         this.logger.debug(
             `Pinged server, got response: ${JSON.stringify(result)}`
@@ -457,6 +500,7 @@ export class SyncService {
     }
 
     private async retryForever<T>(fn: () => Promise<T>): Promise<T> {
+        let attempt = 0;
         // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
         while (true) {
             try {
@@ -473,12 +517,19 @@ export class SyncService {
                     throw e;
                 }
 
-                const retryInterval =
+                attempt++;
+                const baseDelay =
                     this.settings.getSettings().networkRetryIntervalMs;
-                this.logger.error(
-                    `Failed network call (${e}), retrying in ${retryInterval}ms`
+                const exponentialDelay = Math.min(
+                    baseDelay * Math.pow(2, Math.min(attempt - 1, 5)),
+                    30000
                 );
-                await sleep(retryInterval);
+                const jitter = Math.random() * exponentialDelay * 0.5;
+                const delay = exponentialDelay + jitter;
+                this.logger.error(
+                    `Failed network call (${e}), retrying in ${Math.round(delay)}ms (attempt ${attempt})`
+                );
+                await sleep(delay);
             }
         }
     }

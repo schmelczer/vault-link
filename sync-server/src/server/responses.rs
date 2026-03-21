@@ -36,6 +36,15 @@ pub struct FetchLatestDocumentsResponse {
     pub last_update_id: VaultUpdateId,
 }
 
+/// Response to a vault history request (paginated).
+#[derive(TS, Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct VaultHistoryResponse {
+    pub versions: Vec<DocumentVersionWithoutContent>,
+    pub has_more: bool,
+}
+
 /// Response to an update document request.
 #[derive(TS, Debug, Clone, Serialize)]
 #[serde(tag = "type")]

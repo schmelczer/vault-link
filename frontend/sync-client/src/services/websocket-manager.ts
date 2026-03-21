@@ -34,6 +34,14 @@ export class WebSocketManager {
 
     private readonly outstandingPromises: Promise<unknown>[] = [];
 
+    /**
+     * Chains WebSocket message processing so only one message is handled
+     * at a time. Without this, a burst of messages would create many
+     * concurrent sync operations (each calling scheduleSyncForOfflineChanges
+     * and processing documents in parallel).
+     */
+    private messageProcessingChain: Promise<void> = Promise.resolve();
+
     private webSocket: WebSocket | undefined;
 
     public constructor(
@@ -102,6 +110,11 @@ export class WebSocketManager {
             }
         }
 
+        // Wait for any already-enqueued message handlers to finish.
+        // The isStopped guard in onmessage prevents NEW messages from
+        // being enqueued, but handlers that were chained before stop()
+        // set the flag may still be in flight.
+        await this.messageProcessingChain;
         await this.waitUntilFinished();
     }
 
@@ -216,29 +229,75 @@ export class WebSocketManager {
         };
 
         this.webSocket.onmessage = (event): void => {
+            // Discard messages received after stop() has been called.
+            // Without this guard, messages arriving between close()
+            // and the onclose event would be enqueued into
+            // messageProcessingChain and execute after stop() returns.
+            if (this.isStopped) {
+                return;
+            }
+
             try {
                 // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
                 const message = JSON.parse(
                     event.data
                 ) as WebSocketServerMessage;
 
-                // Track the message handling promise
-                const messageHandlingPromise = this.handleWebSocketMessage(
-                    message
-                )
+                // Cursor updates are pure reads (update an in-memory map) —
+                // handle immediately without blocking behind vault update
+                // processing. This avoids cursor latency during large syncs.
+                if (message.type === "cursorPositions") {
+                    this.logger.debug(
+                        `Received cursor positions for ${JSON.stringify(message.clients)}`
+                    );
+                    const cursorPromise =
+                        this.onRemoteCursorsUpdateReceived
+                            .triggerAsync(message.clients)
+                            .catch((error: unknown) => {
+                                this.logger.error(
+                                    `Error handling cursor update: ${String(error)}`
+                                );
+                            });
+                    // Track for waitUntilFinished / hasOutstandingWork
+                    this.outstandingPromises.push(cursorPromise);
+                    void cursorPromise.finally(() => {
+                        removeFromArray(
+                            this.outstandingPromises,
+                            cursorPromise
+                        );
+                    });
+                    return;
+                }
+
+                // Vault updates require serialization: each waits for the
+                // previous one to finish. This provides back-pressure so a
+                // burst of WebSocket messages doesn't create unbounded
+                // concurrent sync operations.
+                //
+                // Read-reassign safety: we read messageProcessingChain,
+                // chain a .then() onto it, and assign the resulting promise
+                // back. This is safe because JavaScript is single-threaded:
+                // no other code can run between the read and the assignment.
+                // The next onmessage invocation will see the updated chain
+                // and append after this handler, preserving FIFO order.
+                this.messageProcessingChain = this.messageProcessingChain
+                    .then(async () => this.handleWebSocketMessage(message))
                     .catch((error: unknown) => {
                         this.logger.error(
                             `Error handling WebSocket message: ${String(error)}`
                         );
-                    })
-                    .finally(() => {
-                        removeFromArray(
-                            this.outstandingPromises,
-                            messageHandlingPromise
-                        );
                     });
 
-                void this.outstandingPromises.push(messageHandlingPromise); // ignore the returned promise
+                const messageHandlingPromise = this.messageProcessingChain;
+
+                // Track the promise for waitUntilFinished / hasOutstandingWork
+                this.outstandingPromises.push(messageHandlingPromise);
+                void messageHandlingPromise.finally(() => {
+                    removeFromArray(
+                        this.outstandingPromises,
+                        messageHandlingPromise
+                    );
+                });
             } catch (error) {
                 this.logger.error(
                     `Error parsing WebSocket message: ${String(error)}`
@@ -283,17 +342,8 @@ export class WebSocketManager {
     ): Promise<void> {
         if (message.type === "vaultUpdate") {
             await this.onRemoteVaultUpdateReceived.triggerAsync(message);
-
-            // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-        } else if (message.type === "cursorPositions") {
-            this.logger.debug(
-                `Received cursor positions for ${JSON.stringify(message.clients)}`
-            );
-
-            await this.onRemoteCursorsUpdateReceived.triggerAsync(
-                message.clients
-            );
         } else {
+            // Cursor messages are handled inline in onmessage (not chained)
             this.logger.warn(
                 `Received unknown message type: ${JSON.stringify(message)}`
             );

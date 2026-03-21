@@ -16,20 +16,31 @@ impl Header for DeviceIdHeader {
     {
         let value = values.next().ok_or_else(headers::Error::invalid)?;
 
-        Ok(DeviceIdHeader(
-            value
-                .to_str()
-                .map_err(|_| headers::Error::invalid())?
-                .to_owned(),
-        ))
+        let s = value.to_str().map_err(|_| headers::Error::invalid())?;
+
+        if s.is_empty() || s.len() > 256 {
+            return Err(headers::Error::invalid());
+        }
+
+        // Only allow safe characters to prevent log injection and similar attacks.
+        // Covers UUIDs, user-agent strings like "vault-link/1.0 (12345; linux)",
+        // and human-readable device names.
+        if !s
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "-_./ ();:@+,".contains(c))
+        {
+            return Err(headers::Error::invalid());
+        }
+
+        Ok(DeviceIdHeader(s.to_owned()))
     }
 
     fn encode<E>(&self, values: &mut E)
     where
         E: Extend<HeaderValue>,
     {
-        let value = HeaderValue::from_static(Box::leak(self.0.clone().into_boxed_str()));
-
-        values.extend(std::iter::once(value));
+        if let Ok(value) = HeaderValue::from_str(&self.0) {
+            values.extend(std::iter::once(value));
+        }
     }
 }

@@ -3,7 +3,6 @@ import type { HistoryEntry, HistoryStats } from "./tracing/sync-history";
 import { SyncHistory } from "./tracing/sync-history";
 import { Logger, LogLevel, LogLine } from "./tracing/logger";
 import type { RelativePath, StoredDatabase } from "./persistence/database";
-import { Database } from "./persistence/database";
 import * as Sentry from "@sentry/browser";
 import type { SyncSettings } from "./persistence/settings";
 import { DEFAULT_SETTINGS, Settings } from "./persistence/settings";
@@ -12,7 +11,8 @@ import { Syncer } from "./sync-operations/syncer";
 import type { FileSystemOperations } from "./file-operations/filesystem-operations";
 import { FileOperations } from "./file-operations/file-operations";
 import { FetchController } from "./services/fetch-controller";
-import { UnrestrictedSyncer } from "./sync-operations/unrestricted-syncer";
+import { VirtualFilesystem } from "./persistence/vfs";
+import type { SyncDeps } from "./sync-operations/sync-actions";
 import { rateLimit } from "./utils/rate-limit";
 import type { NetworkConnectionStatus } from "./types/network-connection-status";
 import { DocumentSyncStatus } from "./types/document-sync-status";
@@ -25,7 +25,6 @@ import type { MaybeOutdatedClientCursors } from "./types/maybe-outdated-client-c
 import { FileChangeNotifier } from "./sync-operations/file-change-notifier";
 import { FixedSizeDocumentCache } from "./utils/data-structures/fix-sized-cache";
 import { setUpTelemetry } from "./utils/set-up-telemetry";
-import { DIFF_CACHE_SIZE_MB } from "./consts";
 import { ServerConfig } from "./services/server-config";
 import type { EventListeners } from "./utils/data-structures/event-listeners";
 
@@ -41,7 +40,7 @@ export class SyncClient {
         public readonly logger: Logger,
         private readonly history: SyncHistory,
         private readonly settings: Settings,
-        private readonly database: Database,
+        private readonly vfs: VirtualFilesystem,
         private readonly syncer: Syncer,
         private readonly webSocketManager: WebSocketManager,
         private readonly fetchController: FetchController,
@@ -59,7 +58,7 @@ export class SyncClient {
     ) { }
 
     public get documentCount(): number {
-        return this.database.length;
+        return this.vfs.length;
     }
 
     public get isWebSocketConnected(): boolean {
@@ -148,7 +147,7 @@ export class SyncClient {
             () => settings.getSettings().minimumSaveIntervalMs
         );
 
-        const database = new Database(
+        const vfs = new VirtualFilesystem(
             logger,
             state.database,
             async (data): Promise<void> => {
@@ -174,25 +173,26 @@ export class SyncClient {
 
         const fileOperations = new FileOperations(
             logger,
-            database,
+            vfs,
             fs,
             serverConfig,
             nativeLineEndings
         );
 
         const contentCache = new FixedSizeDocumentCache(
-            1024 * 1024 * DIFF_CACHE_SIZE_MB
+            1024 * 1024 * settings.getSettings().diffCacheSizeMB
         );
-        const unrestrictedSyncer = new UnrestrictedSyncer(
+
+        const syncDeps: SyncDeps = {
             logger,
-            database,
-            settings,
+            vfs,
             syncService,
-            fileOperations,
+            operations: fileOperations,
             history,
             contentCache,
-            serverConfig
-        );
+            serverConfig,
+            settings
+        };
 
         const webSocketManager = new WebSocketManager(
             logger,
@@ -203,17 +203,17 @@ export class SyncClient {
         const syncer = new Syncer(
             deviceId,
             logger,
-            database,
+            vfs,
             settings,
             webSocketManager,
             fileOperations,
-            unrestrictedSyncer
+            syncDeps
         );
 
         const fileChangeNotifier = new FileChangeNotifier();
         const cursorTracker = new CursorTracker(
             logger,
-            database,
+            vfs,
             webSocketManager,
             fileOperations,
             fileChangeNotifier
@@ -222,7 +222,7 @@ export class SyncClient {
             logger,
             history,
             settings,
-            database,
+            vfs,
             syncer,
             webSocketManager,
             fetchController,
@@ -333,8 +333,8 @@ export class SyncClient {
 
         // clear all local state
         this.logger.info("Resetting SyncClient's local state");
-        this.database.reset();
-        await this.database.save(); // ensure the new database reads as empty
+        this.vfs.reset();
+        await this.vfs.save(); // ensure the new database reads as empty
         this.resetInMemoryState();
         this.hasFinishedOfflineSync = false;
         this.serverConfig.reset();
@@ -433,14 +433,34 @@ export class SyncClient {
         while (true) {
             iteration++;
             this.logger.info(`waitUntilFinished: iteration ${iteration}`);
-            await this.webSocketManager.waitUntilFinished();
             await this.syncer.waitUntilFinished();
+            await this.webSocketManager.waitUntilFinished();
             // Check if anything new arrived while we were waiting
-            if (!this.webSocketManager.hasOutstandingWork()) {
+            if (
+                !this.webSocketManager.hasOutstandingWork() &&
+                !this.syncer.hasOutstandingWork()
+            ) {
                 break;
             }
         }
-        await this.database.save(); // flush all changes to disk
+
+        // Run a final filesystem scan to catch any operations that were
+        // silently dropped (e.g., due to mutable document references
+        // pointing to a moved path after concurrent renames).
+        await this.syncer.runFinalConsistencyCheck();
+        // Wait for any work produced by the final scan
+        while (true) {
+            await this.syncer.waitUntilFinished();
+            await this.webSocketManager.waitUntilFinished();
+            if (
+                !this.webSocketManager.hasOutstandingWork() &&
+                !this.syncer.hasOutstandingWork()
+            ) {
+                break;
+            }
+        }
+
+        await this.vfs.save(); // flush all changes to disk
     }
 
     /**
@@ -467,6 +487,8 @@ export class SyncClient {
         this.resetInMemoryState();
 
         // Clean up event listeners to prevent memory leaks
+        this.syncer.destroy();
+        this.cursorTracker.destroy();
         this.eventUnsubscribers.forEach((unsubscribe) => {
             unsubscribe();
         });
@@ -491,10 +513,16 @@ export class SyncClient {
     }
 
     /**
-     * Hard pause: aborts all in-flight HTTP operations via FetchController reset.
-     * Used when the SyncClient is being destroyed or fully reset (connection
-     * settings changed). This is the nuclear option — every outstanding fetch
-     * is rejected with SyncResetError so the queue drains immediately.
+     * Pause syncing: aborts all in-flight HTTP operations via FetchController
+     * reset, stops the WebSocket, and waits for the sync queue to drain.
+     *
+     * Used by both destroy/reset (connection settings changed) and when the
+     * user toggles sync off. In both cases, `fetchController.startReset()` is
+     * needed because the settings-change listener may have already set
+     * `canFetch = false`, which would cause controlled fetches to block
+     * indefinitely. The WebSocket close handler triggers `syncer.reset()`
+     * automatically via the `onWebSocketStatusChanged` listener, so an
+     * explicit `syncer.reset()` call is not needed here.
      */
     private async pause(): Promise<void> {
         this.hasFinishedOfflineSync = false;
@@ -504,27 +532,13 @@ export class SyncClient {
             await this.waitUntilFinished();
         } catch (e) {
             // SyncResetError is expected here — we just called startReset()
-            // which rejects in-flight fetches. Only re-throw non-reset errors
-            // (after ensuring the FetchController is left in a usable state).
-            this.fetchController.finishReset();
+            // which rejects in-flight fetches. Only re-throw non-reset errors.
             if (!(e instanceof SyncResetError)) {
                 throw e;
             }
+        } finally {
+            this.fetchController.finishReset();
         }
-    }
-
-    /**
-     * Soft pause: stops the WebSocket and clears the sync queue, but lets
-     * in-flight HTTP operations complete naturally. Used when the user toggles
-     * sync off — we don't want to abort creates/updates that are mid-flight
-     * because they'd just be re-queued on re-enable, potentially leading to
-     * an infinite retry loop with flaky connections.
-     */
-    private async softPause(): Promise<void> {
-        this.hasFinishedOfflineSync = false;
-        await this.webSocketManager.stop();
-        this.syncer.reset();
-        await this.waitUntilFinished();
     }
 
     private resetInMemoryState(): void {
@@ -553,7 +567,7 @@ export class SyncClient {
             if (newSettings.isSyncEnabled) {
                 await this.startSyncing();
             } else {
-                await this.softPause();
+                await this.pause();
             }
         }
 

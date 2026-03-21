@@ -6,7 +6,8 @@
         "obsidian-plugin",
         "test-client",
         "deterministic-tests",
-        "local-client-cli"
+        "local-client-cli",
+        "history-ui"
     ],
     "prettier": {
         "trailingComma": "none",

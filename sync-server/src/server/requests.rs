@@ -31,7 +31,7 @@ pub struct UpdateBinaryDocumentVersion {
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct UpdateTextDocumentVersion {
-    #[ts(as = "i32")]
+    #[ts(type = "number")]
     pub parent_version_id: VaultUpdateId,
 
     pub relative_path: String,
@@ -40,9 +40,5 @@ pub struct UpdateTextDocumentVersion {
     pub content: Vec<NumberOrText>,
 }
 
-#[derive(TS, Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[ts(export)]
-pub struct DeleteDocumentVersion {
-    pub relative_path: String,
-}
+#[derive(Debug, Deserialize)]
+pub struct DeleteDocumentVersion {}

@@ -6,7 +6,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use chrono::{Local, NaiveDateTime};
+use chrono::NaiveDateTime;
 use tracing_subscriber::fmt::MakeWriter;
 
 #[derive(Clone)]
@@ -55,7 +55,7 @@ impl RotatingFileWriter {
         let timestamp_str = filename.get(prefix_len..filename.len().checked_sub(4)?)?;
 
         let dt = NaiveDateTime::parse_from_str(timestamp_str, "%Y-%m-%d_%H-%M-%S").ok()?;
-        let timestamp = dt.and_local_timezone(Local).single()?;
+        let timestamp = dt.and_utc();
         let secs: u64 = timestamp.timestamp().try_into().ok()?;
 
         Some(UNIX_EPOCH + Duration::from_secs(secs))
@@ -114,7 +114,7 @@ impl RotatingFileWriter {
     }
 
     fn rotate(inner: &mut RotatingFileWriterInner) -> io::Result<()> {
-        let timestamp = Local::now().format("%Y-%m-%d_%H-%M-%S");
+        let timestamp = chrono::Utc::now().format("%Y-%m-%d_%H-%M-%S");
         let filename = format!("{}.{}.log", inner.file_prefix, timestamp);
         let filepath = inner.directory.join(filename);
 
@@ -132,8 +132,14 @@ impl RotatingFileWriter {
 
 impl Write for RotatingFileWriter {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock().unwrap_or_else(|poisoned| {
+            eprintln!("RotatingFileWriter mutex was poisoned, recovering");
+            poisoned.into_inner()
+        });
 
+        // Reset file handle after poison recovery so the next branch
+        // re-opens a valid file rather than writing to a potentially
+        // half-closed handle.
         if inner.current_file.is_none() {
             Self::open_or_create_log_file(&mut inner)?;
         } else if Self::should_rotate(&inner) {
@@ -148,7 +154,10 @@ impl Write for RotatingFileWriter {
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock().unwrap_or_else(|poisoned| {
+            eprintln!("RotatingFileWriter mutex was poisoned, recovering");
+            poisoned.into_inner()
+        });
         if let Some(ref mut file) = inner.current_file {
             file.flush()
         } else {
@@ -267,7 +276,7 @@ mod tests {
         // Parse the expected time
         let expected_dt =
             NaiveDateTime::parse_from_str(timestamp_str, "%Y-%m-%d_%H-%M-%S").unwrap();
-        let expected_timestamp = expected_dt.and_local_timezone(Local).single().unwrap();
+        let expected_timestamp = expected_dt.and_utc();
         let expected_duration =
             Duration::from_secs(expected_timestamp.timestamp().try_into().unwrap());
         let expected_next = UNIX_EPOCH + expected_duration + rotation_duration;
@@ -306,7 +315,7 @@ mod tests {
         // Should use the latest file (2025-10-26_14-00-00)
         let expected_dt =
             NaiveDateTime::parse_from_str("2025-10-26_14-00-00", "%Y-%m-%d_%H-%M-%S").unwrap();
-        let expected_timestamp = expected_dt.and_local_timezone(Local).single().unwrap();
+        let expected_timestamp = expected_dt.and_utc();
         let expected_duration =
             Duration::from_secs(expected_timestamp.timestamp().try_into().unwrap());
         let expected_next = UNIX_EPOCH + expected_duration + rotation_duration;

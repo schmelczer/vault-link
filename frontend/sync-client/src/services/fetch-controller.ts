@@ -6,6 +6,8 @@ import { SyncResetError } from "../errors/sync-reset-error";
  * Offers a resettable fetch implementation that waits until syncing is enabled
  * and aborts outstanding requests when a reset is started.
  */
+const HTTP_REQUEST_TIMEOUT_MS = 30_000;
+
 export class FetchController {
     private static readonly UNTIL_RESOLUTION = Symbol();
 
@@ -81,7 +83,17 @@ export class FetchController {
         }
 
         this.isResetting = false;
-        [this.until, this.resolveUntil, this.rejectUntil] = createPromise();
+        // Capture the old resolve before creating a fresh promise, then
+        // resolve the old one — exactly the same pattern the canFetch
+        // setter uses. This wakes up any fetches that entered the
+        // while-loop between startReset and finishReset so they re-check
+        // the condition. Without this, a canFetch change that occurred
+        // during the reset (setter skips resolution while isResetting is
+        // true) would leave fetches blocking on an unresolved promise.
+        const previousResolve = this.resolveUntil;
+        [this.until, this.resolveUntil, this.rejectUntil] =
+            createPromise<symbol>();
+        previousResolve(FetchController.UNTIL_RESOLUTION);
     }
 
     /**
@@ -117,7 +129,17 @@ export class FetchController {
                         ? input.clone()
                         : input;
 
-                const fetchPromise = fetch(_input, init);
+                const combinedSignal = init?.signal
+                    ? AbortSignal.any([
+                          AbortSignal.timeout(HTTP_REQUEST_TIMEOUT_MS),
+                          init.signal
+                      ])
+                    : AbortSignal.timeout(HTTP_REQUEST_TIMEOUT_MS);
+
+                const fetchPromise = fetch(_input, {
+                    ...init,
+                    signal: combinedSignal
+                });
 
                 // We only want to catch rejections from `this.until`
                 let result: symbol | Response | undefined = undefined;
