@@ -1,6 +1,6 @@
 import { SUPPORTED_API_VERSION } from "../consts";
-import { AuthenticationError } from "./authentication-error";
-import { ServerVersionMismatchError } from "./server-version-mismatch-error";
+import { AuthenticationError } from "../errors/authentication-error";
+import { ServerVersionMismatchError } from "../errors/server-version-mismatch-error";
 import type { SyncService } from "./sync-service";
 import type { PingResponse } from "./types/PingResponse";
 
@@ -32,11 +32,6 @@ export class ServerConfig {
                 "Failed to authenticate with the sync-server"
             );
         }
-    }
-
-    // warm the cache
-    public async initialize(): Promise<void> {
-        await this.getConfig();
     }
 
     public async checkConnection(forceUpdate = false): Promise<{

@@ -2,6 +2,4 @@
 import type { CursorPositionFromClient } from "./CursorPositionFromClient";
 import type { WebSocketHandshake } from "./WebSocketHandshake";
 
-export type WebSocketClientMessage =
-    | ({ type: "handshake" } & WebSocketHandshake)
-    | ({ type: "cursorPositions" } & CursorPositionFromClient);
+export type WebSocketClientMessage = { "type": "handshake" } & WebSocketHandshake | { "type": "cursorPositions" } & CursorPositionFromClient | { "type": "ping" };

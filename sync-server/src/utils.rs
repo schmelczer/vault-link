@@ -1,3 +1,4 @@
+pub mod decode_text;
 pub mod dedup_paths;
 pub mod find_first_available_path;
 pub mod is_binary;

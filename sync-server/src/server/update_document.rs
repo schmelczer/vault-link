@@ -16,7 +16,10 @@ use super::{
 use crate::{
     app_state::{
         AppState,
-        database::models::{DocumentId, StoredDocumentVersion, VaultId, VaultUpdateId},
+        database::{
+            WriteTransaction,
+            models::{DocumentId, StoredDocumentVersion, VaultId, VaultUpdateId},
+        },
     },
     config::user_config::User,
     errors::{SyncServerError, client_error, not_found_error, server_error},
@@ -46,7 +49,8 @@ pub async fn update_binary(
     State(state): State<AppState>,
     TypedMultipart(request): TypedMultipart<UpdateBinaryDocumentVersion>,
 ) -> Result<Json<DocumentUpdateResponse>, SyncServerError> {
-    let parent_document = get_parent_document(&state, &vault_id, request.parent_version_id).await?;
+    let parent_document =
+        get_parent_document(&state, &vault_id, &document_id, request.parent_version_id).await?;
     let content = request.content.contents.to_vec();
 
     update_document(
@@ -74,16 +78,16 @@ pub async fn update_text(
     State(state): State<AppState>,
     Json(request): Json<UpdateTextDocumentVersion>,
 ) -> Result<Json<DocumentUpdateResponse>, SyncServerError> {
-    let parent_document = get_parent_document(&state, &vault_id, request.parent_version_id).await?;
+    let parent_document =
+        get_parent_document(&state, &vault_id, &document_id, request.parent_version_id).await?;
 
-    let edited_text = EditedText::from_diff(
-        str::from_utf8(&parent_document.content)
-            .expect("parent must be valid UTF-8 because it's a text document"),
-        request.content,
-        &*BuiltinTokenizer::Word,
-    )
-    .context("Failed to apply given diff to parent document")
-    .map_err(client_error)?;
+    let parent_text = str::from_utf8(&parent_document.content)
+        .context("Parent version contains binary content; use putBinary instead of putText")
+        .map_err(client_error)?;
+
+    let edited_text = EditedText::from_diff(parent_text, request.content, &*BuiltinTokenizer::Word)
+        .context("Failed to apply given diff to parent document")
+        .map_err(client_error)?;
 
     let content = edited_text.apply().text().into_bytes();
 
@@ -103,9 +107,10 @@ pub async fn update_text(
 async fn get_parent_document(
     state: &AppState,
     vault_id: &VaultId,
+    document_id: &DocumentId,
     parent_version_id: VaultUpdateId,
 ) -> Result<StoredDocumentVersion, SyncServerError> {
-    state
+    let parent = state
         .database
         .get_document_version(vault_id, parent_version_id, None)
         .await
@@ -117,7 +122,15 @@ async fn get_parent_document(
                 )))
             },
             Ok,
-        )
+        )?;
+
+    if &parent.document_id != document_id {
+        return Err(client_error(anyhow!(
+            "Parent version `{parent_version_id}` does not belong to document `{document_id}`"
+        )));
+    }
+
+    Ok(parent)
 }
 
 #[allow(clippy::too_many_lines, clippy::too_many_arguments)]
@@ -134,6 +147,12 @@ async fn update_document(
     debug!("Updating document `{document_id}` in vault `{vault_id}`");
 
     let sanitized_relative_path = sanitize_path(relative_path);
+
+    if sanitized_relative_path.is_empty() {
+        return Err(client_error(anyhow!(
+            "Relative path is empty after sanitization"
+        )));
+    }
 
     let mut transaction = state
         .database
@@ -199,31 +218,40 @@ async fn update_document(
         && !is_binary(&latest_version.content)
         && !is_binary(&content);
 
-    let merged_content = if are_all_participants_mergable {
+    let (merged_content, is_different_from_request_content) = if are_all_participants_mergable {
         info!("Merging changes for document `{document_id}` in vault `{vault_id}`");
-        reconcile(
-            str::from_utf8(&parent_document.content)
-                .expect("parent must be valid UTF-8 because it's not binary"),
-            &str::from_utf8(&latest_version.content)
-                .expect("latest_version must be valid UTF-8 because it's not binary")
-                .into(),
-            &str::from_utf8(&content)
-                .expect("content must be valid UTF-8 because it's not binary")
-                .into(),
+        let parent_text = str::from_utf8(&parent_document.content)
+            .context("Parent document content is not valid UTF-8")
+            .map_err(client_error)?;
+        let latest_text = str::from_utf8(&latest_version.content)
+            .context("Latest version content is not valid UTF-8")
+            .map_err(client_error)?;
+        let new_text = str::from_utf8(&content)
+            .context("New content is not valid UTF-8")
+            .map_err(client_error)?;
+        let merged = reconcile(
+            parent_text,
+            &latest_text.into(),
+            &new_text.into(),
             &*BuiltinTokenizer::Word,
         )
         .apply()
         .text()
-        .into_bytes()
+        .into_bytes();
+        let is_different = merged != content;
+        (merged, is_different)
     } else {
-        content.clone()
+        (content, false)
     };
 
-    let is_different_from_request_content = merged_content != content;
-
-    // We can only update the relative path if we're the first one to do so
+    // Rename resolution: only apply the client's rename if the document's path
+    // hasn't changed since this client's parent version. Check the parent
+    // version's path against the latest version's path. If they differ, another
+    // client already renamed the document — keep the latest path (first rename
+    // wins). Content changes from both clients are still merged correctly via
+    // the 3-way reconcile above, independent of which rename wins.
     let new_relative_path = if parent_document.relative_path == latest_version.relative_path
-        && latest_version.relative_path != sanitized_relative_path
+        && sanitized_relative_path != latest_version.relative_path
     {
         let new_path = find_first_available_path(
             &vault_id,
@@ -255,6 +283,114 @@ async fn update_document(
         user_id: user.name,
         device_id: device_id.0,
         has_been_merged: are_all_participants_mergable && is_different_from_request_content,
+        idempotency_key: None,
+    };
+
+    state
+        .database
+        .insert_document_version(&vault_id, &new_version, Some(transaction))
+        .await
+        .map_err(server_error)?;
+
+    Ok(Json(if is_different_from_request_content {
+        DocumentUpdateResponse::MergingUpdate(new_version.into())
+    } else {
+        DocumentUpdateResponse::FastForwardUpdate(new_version.into())
+    }))
+}
+
+pub struct MergeInput<'a> {
+    pub parent_content: &'a [u8],
+    pub new_content: Vec<u8>,
+    pub idempotency_key: Option<String>,
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn merge_with_stored_version(
+    input: MergeInput<'_>,
+    latest_version: StoredDocumentVersion,
+    vault_id: VaultId,
+    user: User,
+    device_id: DeviceIdHeader,
+    state: AppState,
+    mut transaction: WriteTransaction,
+) -> Result<Json<DocumentUpdateResponse>, SyncServerError> {
+    let document_id = latest_version.document_id;
+
+    let last_update_id = state
+        .database
+        .get_max_update_id_in_vault(&vault_id, Some(&mut transaction))
+        .await
+        .map_err(server_error)?;
+
+    let are_all_participants_mergable = is_file_type_mergable(
+        &latest_version.relative_path,
+        &state.config.server.mergeable_file_extensions,
+    ) && !is_binary(input.parent_content)
+        && !is_binary(&latest_version.content)
+        && !is_binary(&input.new_content);
+
+    let merged_content = if are_all_participants_mergable {
+        info!("Merging changes for document `{document_id}` in vault `{vault_id}`");
+        let parent_text = str::from_utf8(input.parent_content)
+            .context("Parent content is not valid UTF-8")
+            .map_err(client_error)?;
+        let latest_text = str::from_utf8(&latest_version.content)
+            .context("Latest version content is not valid UTF-8")
+            .map_err(client_error)?;
+        let new_text = str::from_utf8(&input.new_content)
+            .context("New content is not valid UTF-8")
+            .map_err(client_error)?;
+        reconcile(
+            parent_text,
+            &latest_text.into(),
+            &new_text.into(),
+            &*BuiltinTokenizer::Word,
+        )
+        .apply()
+        .text()
+        .into_bytes()
+    } else {
+        input.new_content.clone()
+    };
+
+    let is_different_from_request_content = merged_content != input.new_content;
+
+    // When merging during create, keep the latest version's path (the existing
+    // document's path) rather than the requested path.
+    let new_relative_path = latest_version.relative_path.clone();
+
+    // Short-circuit: if content is identical AND no idempotency key to persist,
+    // return the existing version without inserting a new row.
+    if merged_content == latest_version.content
+        && new_relative_path == latest_version.relative_path
+        && input.idempotency_key.is_none()
+    {
+        info!(
+            "Merged content is the same as the latest version for `{document_id}`, skipping insert"
+        );
+        transaction
+            .rollback()
+            .await
+            .context("Failed to roll back transaction")
+            .map_err(server_error)?;
+
+        return Ok(Json(DocumentUpdateResponse::FastForwardUpdate(
+            latest_version.into(),
+        )));
+    }
+
+    let new_version = StoredDocumentVersion {
+        document_id,
+        vault_update_id: last_update_id + 1,
+        relative_path: new_relative_path,
+        content: merged_content,
+        updated_date: chrono::Utc::now(),
+        is_deleted: false,
+        user_id: user.name,
+        device_id: device_id.0,
+        has_been_merged: are_all_participants_mergable && is_different_from_request_content,
+        idempotency_key: input.idempotency_key,
     };
 
     state

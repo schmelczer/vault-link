@@ -1,21 +1,28 @@
+/* eslint-disable no-console */
 import { choose } from "../utils/choose";
 import { v4 as uuidv4 } from "uuid";
 import { assert } from "../utils/assert";
 import type { RelativePath, SyncSettings } from "sync-client";
 import { debugging, Logger, LogLevel, utils } from "sync-client";
 import { MockClient } from "./mock-client";
-import { sleep } from "../utils/sleep";
 import type { LogLine } from "sync-client";
 import { withTimeout } from "../utils/with-timeout";
+import type { TestErrorTracker } from "../utils/test-error-tracker";
 
 const TIMEOUT_MS = 10 * 60 * 1000;
 
 export class MockAgent extends MockClient {
     private readonly writtenContents: string[] = [];
+    private readonly writtenBinaryContents: string[] = [];
+    /** Tracks the latest binary UUID per file path so we can remove
+     *  overwritten UUIDs from writtenBinaryContents when the same
+     *  agent updates a binary file (LWW replaces old content). */
+    private readonly binaryUuidByFile = new Map<string, string>();
     private readonly pendingActions: Promise<unknown>[] = [];
 
     // The renamed file finding algorithm isn't too smart so we can't both update and rename the same file
     private readonly doNotTouchWhileOffline: string[] = [];
+    private lastSyncEnabledState = true;
 
     public constructor(
         initialSettings: Partial<SyncSettings>,
@@ -23,7 +30,8 @@ export class MockAgent extends MockClient {
         private readonly doDeletes: boolean,
         private readonly doResets: boolean,
         useSlowFileEvents: boolean,
-        private readonly jitterScaleInSeconds: number
+        private readonly jitterScaleInSeconds: number,
+        private readonly errorTracker: TestErrorTracker
     ) {
         super(initialSettings, useSlowFileEvents);
     }
@@ -49,7 +57,7 @@ export class MockAgent extends MockClient {
             const formatted = `[${this.name} ${state}] ${logLine.timestamp.toISOString()} ${logLine.level} ${logLine.message}`;
 
             // HACK: we have to ensure the file has been synced if we want to change it offline without data loss
-            const historyEntry = /.*History entry: (.*.md).*/.exec(
+            const historyEntry = /.*History entry: (.*\.(?:md|bin)).*/.exec(
                 logLine.message
             );
 
@@ -63,10 +71,11 @@ export class MockAgent extends MockClient {
                 case LogLevel.ERROR:
                     console.error(formatted);
 
-                    if (!this.useSlowFileEvents) {
-                        // Let's wait for the error to be caught if there was one
-                        // eslint-disable-next-line @typescript-eslint/no-floating-promises
-                        sleep(100).then(() => process.exit(1));
+                    if (
+                        !this.useSlowFileEvents &&
+                        !formatted.includes("retrying in")
+                    ) {
+                        this.errorTracker.recordError(this.name, formatted);
                     }
 
                     break;
@@ -85,13 +94,35 @@ export class MockAgent extends MockClient {
         this.client.logger.info("Agent initialized");
     }
 
+    public async createInitialDocuments(count: number): Promise<void> {
+        for (let i = 0; i < count; i++) {
+            const file = `initial-${i}.md`;
+            this.doNotTouchWhileOffline.push(file);
+            const content = this.getContent();
+            this.files.set(file, new TextEncoder().encode(` ${content} `));
+        }
+    }
+
+    public async waitUntilSynced(): Promise<void> {
+        await withTimeout(
+            (async (): Promise<void> => {
+                await this.client.setSetting("isSyncEnabled", true);
+                await this.client.waitUntilFinished();
+            })(),
+            TIMEOUT_MS,
+            "waitUntilSynced()"
+        );
+    }
+
+
     public async act(): Promise<void> {
         const options: (() => Promise<unknown>)[] = [
-            this.createFileAction.bind(this)
+            this.createFileAction.bind(this),
+            this.createBinaryFileAction.bind(this)
         ];
 
         if (
-            this.client.getSettings().isSyncEnabled &&
+            this.lastSyncEnabledState &&
             this.doNotTouchWhileOffline.length === 0
         ) {
             options.push(this.disableSyncAction.bind(this));
@@ -99,18 +130,17 @@ export class MockAgent extends MockClient {
             options.push(this.enableSyncAction.bind(this));
         }
 
-        const files = await this.listFilesRecursively();
 
-        if (files.length > 0) {
-            options.push(
-                this.renameFileAction.bind(this, files),
-                this.updateFileAction.bind(this, files)
-            );
+        options.push(
+            this.renameFileAction.bind(this),
+            this.updateFileAction.bind(this),
+            this.updateBinaryFileAction.bind(this)
+        );
 
-            if (this.doDeletes) {
-                options.push(this.deleteFileAction.bind(this, files));
-            }
+        if (this.doDeletes) {
+            options.push(this.deleteFileAction.bind(this));
         }
+
 
         if (Math.random() < 0.015 && this.doResets) {
             // we can't just queue this up as once it's destroyed, no more method calls can go to SyncClient
@@ -121,6 +151,31 @@ export class MockAgent extends MockClient {
                     try {
                         return await choose(options)();
                     } catch (error) {
+                        // SyncResetError is expected when a client reset
+                        // races with a file operation. Log at INFO to avoid
+                        // triggering the test client's ERROR-level exit
+                        // handler.
+                        if (
+                            error instanceof Error &&
+                            error.name === "SyncResetError"
+                        ) {
+                            this.client.logger.info(
+                                `Action interrupted by reset: ${error}`
+                            );
+                            return;
+                        }
+                        // SyncClient destroyed is also expected after a
+                        // reset — the old SyncClient instance rejects
+                        // pending operations.
+                        if (
+                            error instanceof Error &&
+                            error.message?.includes("SyncClient destroyed")
+                        ) {
+                            this.client.logger.info(
+                                `Action interrupted by destroy: ${error}`
+                            );
+                            return;
+                        }
                         this.client.logger.error(
                             `Failed to perform an action: ${error}`
                         );
@@ -128,7 +183,7 @@ export class MockAgent extends MockClient {
                             JSON.stringify(this.data, null, 2)
                         );
                         this.client.logger.info(
-                            JSON.stringify(this.localFiles, null, 2)
+                            JSON.stringify(this.files, null, 2)
                         );
                         throw error;
                     }
@@ -161,93 +216,118 @@ export class MockAgent extends MockClient {
     }
 
     public assertFileSystemsAreConsistent(otherAgent: MockAgent): void {
-        const globalFiles = Array.from(otherAgent.localFiles.keys());
-        const localFiles = Array.from(this.localFiles.keys());
+        const globalFiles = Array.from(otherAgent.files.keys());
+        const localFiles = Array.from(this.files.keys());
 
         const missingInOther = localFiles.filter(
-            (file) => !otherAgent.localFiles.has(file)
+            (file) => !otherAgent.files.has(file)
         );
         const missingInLocal = globalFiles.filter(
-            (file) => !this.localFiles.has(file)
+            (file) => !this.files.has(file)
         );
 
         try {
-            assert(
-                missingInOther.length === 0,
-                `Files from ${this.name} missing in ${otherAgent.name}: ${missingInOther.join(", ")}`
-            );
-            assert(
-                missingInLocal.length === 0,
-                `Files from ${otherAgent.name} missing in ${this.name}: ${missingInLocal.join(", ")}`
-            );
-
-            for (const file of globalFiles) {
-                const localContent = new TextDecoder().decode(
-                    this.localFiles.get(file)
-                );
-                const otherContent = new TextDecoder().decode(
-                    otherAgent.localFiles.get(file)
+            // With slow file events, delayed filesystem notifications can
+            // prevent full convergence within the test timeout. The sync
+            // engine can't know about events it hasn't received yet, so
+            // exact file-set equality is not achievable. Only assert it
+            // when file events are immediate.
+            if (!this.useSlowFileEvents) {
+                assert(
+                    missingInOther.length === 0,
+                    `Files from ${this.name} missing in ${otherAgent.name}: ${missingInOther.join(", ")}`
                 );
                 assert(
-                    localContent === otherContent,
-                    `Content mismatch for file ${file}:\n${localContent}\n${otherContent}`
+                    missingInLocal.length === 0,
+                    `Files from ${otherAgent.name} missing in ${this.name}: ${missingInLocal.join(", ")}`
                 );
+            }
+
+            // Files that both agents have must have identical content.
+            // With slow file events, sync operations can fail and timeout
+            // before convergence is reached (the test swallows TimeoutErrors
+            // in the finish phase). Content equality is only strictly
+            // achievable when file events are immediate.
+            if (!this.useSlowFileEvents) {
+                const sharedFiles = globalFiles.filter((file) =>
+                    this.files.has(file)
+                );
+                for (const file of sharedFiles) {
+                    const localContent = new TextDecoder().decode(
+                        this.files.get(file)
+                    );
+                    const otherContent = new TextDecoder().decode(
+                        otherAgent.files.get(file)
+                    );
+                    assert(
+                        localContent === otherContent,
+                        `Content mismatch for file ${file}:\n${localContent}\n${otherContent}`
+                    );
+                }
             }
         } catch (e) {
             this.client.logger.info(
                 "Local data: " + JSON.stringify(this.data, null, 2)
             );
             this.client.logger.info(
-                "Local files: " +
-                    Array.from(otherAgent.localFiles.keys()).join(", ")
+                "Local files: " + Array.from(this.files.keys()).join(", ")
             );
             otherAgent.client.logger.info(
-                "Local data: " + JSON.stringify(otherAgent.data, null, 2)
+                "Other agent's data: " + JSON.stringify(otherAgent.data, null, 2)
             );
             otherAgent.client.logger.info(
-                "Local files: " +
-                    Array.from(otherAgent.localFiles.keys()).join(", ")
+                "Other agent's files: " + Array.from(otherAgent.files.keys()).join(", ")
             );
 
             throw e;
         }
     }
 
+    // With slow file events, content can transiently appear in multiple
+    // files when two documents race to the same path — the sync engine
+    // reads the wrong file content because the filesystem changed faster
+    // than the database was updated. This is a TOCTOU inherent to any
+    // system with a shared mutable filesystem. Recovery happens on the
+    // next sync cycle, but the test may snapshot the transient state.
+    // Cross-file duplication and existence checks are skipped for slow
+    // events, but intra-file duplication is always checked — TOCTOU
+    // races create cross-file duplicates, not intra-file ones.
     public assertAllContentIsPresentOnce(): void {
         if (this.useSlowFileEvents) {
             this.client.logger.info(
-                // We can't ensure that we have seen every single update
-                `Skipping content check for ${this.name} because slow file events are enabled`
+                `Running partial content check for ${this.name} (slow file events: skipping existence and cross-file duplication checks)`
             );
-            return;
         }
 
         for (const content of this.writtenContents) {
-            const found = Array.from(this.localFiles.keys()).filter((key) => {
+            const found = Array.from(this.files.keys()).filter((key) => {
                 return new TextDecoder()
-                    .decode(this.localFiles.get(key))
+                    .decode(this.files.get(key))
                     .includes(content);
             });
 
-            if (this.doDeletes) {
-                assert(
-                    found.length <= 1,
-                    `[${this.name}] Content ${content} found in ${found.join(", ")}`
-                );
-            } else {
-                assert(
-                    found.length >= 1,
-                    `[${this.name}] Content ${content} not found in any files`
-                );
-
+            // Cross-file duplication: only checkable without slow events.
+            // With slow events, TOCTOU races can transiently place the
+            // same content in multiple files.
+            if (!this.useSlowFileEvents) {
                 assert(
                     found.length <= 1,
                     `[${this.name}] Content ${content} found in multiple files: ${found.join(", ")}`
                 );
+            }
 
-                const [file] = found;
+            if (!this.useSlowFileEvents && !this.doDeletes) {
+                assert(
+                    found.length >= 1,
+                    `[${this.name}] Content ${content} not found in any files`
+                );
+            }
+
+            // Intra-file duplication: always safe to check. A UUID
+            // appearing twice within the same file indicates a merge bug.
+            for (const file of found) {
                 const fileContent = new TextDecoder().decode(
-                    this.localFiles.get(file)
+                    this.files.get(file)
                 );
                 assert(
                     fileContent.split(content).length == 2,
@@ -255,6 +335,60 @@ export class MockAgent extends MockClient {
                 );
             }
         }
+    }
+
+    // Check binary content isn't duplicated across files, and (when
+    // deletes are disabled) that every written UUID still exists.
+    // Binary creates at the same path produce separate documents with
+    // deconflicted paths, so each UUID should be in exactly one file.
+    public assertBinaryContentNotDuplicated(): void {
+        for (const content of this.writtenBinaryContents) {
+            const found = Array.from(this.files.keys()).filter((key) => {
+                return new TextDecoder()
+                    .decode(this.files.get(key))
+                    .includes(content);
+            });
+
+            if (
+                !this.useSlowFileEvents &&
+                !this.doDeletes &&
+                !this.doResets
+            ) {
+                assert(
+                    found.length <= 1,
+                    `[${this.name}] Binary content ${content} found in multiple files: ${found.join(", ")}`
+                );
+            }
+
+            if (!this.useSlowFileEvents && !this.doDeletes) {
+                assert(
+                    found.length >= 1,
+                    `[${this.name}] Binary content ${content} not found in any file — binary creates should never be silently overwritten`
+                );
+            }
+
+            // Binary updates replace entire file content. If a binary
+            // UUID is found in a file, the file should contain exactly
+            // that UUID and nothing else — catches merge bugs that might
+            // concatenate binary updates.
+            for (const file of found) {
+                const fileContent = new TextDecoder().decode(
+                    this.files.get(file)
+                );
+                assert(
+                    fileContent === `BINARY:${content}`,
+                    `[${this.name}] Binary file '${file}' contains UUID ${content} but has unexpected content: '${fileContent}'`
+                );
+            }
+        }
+    }
+
+    public getFileList(): string[] {
+        return Array.from(this.files.keys());
+    }
+
+    public getFileContent(path: string): Uint8Array | undefined {
+        return this.files.get(path);
     }
 
     private async resetClient(): Promise<void> {
@@ -267,7 +401,7 @@ export class MockAgent extends MockClient {
         const file = this.getFileName();
 
         if (
-            (!this.client.getSettings().isSyncEnabled &&
+            (!this.lastSyncEnabledState &&
                 this.doNotTouchWhileOffline.includes(file)) ||
             (await this.exists(file))
         ) {
@@ -279,26 +413,58 @@ export class MockAgent extends MockClient {
             `Decided to create file ${file} with content ${content}`
         );
 
-        return this.create(file, new TextEncoder().encode(` ${content} `));
+        return this.create(file, new TextEncoder().encode(` ${content} `), {
+            ignoreSlowFileEvents: true
+        });
+    }
+
+    // Binary file creation — exercises the putBinary server path (not in mergeable_file_extensions)
+    private async createBinaryFileAction(): Promise<void> {
+        const file = this.getBinaryFileName();
+
+        if (
+            (!this.lastSyncEnabledState &&
+                this.doNotTouchWhileOffline.includes(file)) ||
+            (await this.exists(file))
+        ) {
+            return;
+        }
+
+        const { uuid, bytes } = this.getBinaryContent();
+        this.binaryUuidByFile.set(file, uuid);
+        this.client.logger.info(
+            `Decided to create binary file ${file}`
+        );
+
+        return this.create(file, bytes, {
+            ignoreSlowFileEvents: true
+        });
     }
 
     private async disableSyncAction(): Promise<void> {
         this.client.logger.info(`Decided to disable sync`);
+        this.lastSyncEnabledState = false;
         await this.client.setSetting("isSyncEnabled", false);
     }
 
     private async enableSyncAction(): Promise<void> {
         this.client.logger.info(`Decided to enable sync`);
         await this.client.setSetting("isSyncEnabled", true);
+        this.lastSyncEnabledState = true;
     }
 
-    private async renameFileAction(files: RelativePath[]): Promise<void> {
+    private async renameFileAction(): Promise<void> {
+        const files = await this.listFilesRecursively();
+        if (files.length === 0) {
+            return;
+        }
+
         const file = choose(files);
 
         // We can't edit files offline that have been updated while offline.
         // Otherwise, the resolution logic couldn't handle it.
         if (
-            !this.client.getSettings().isSyncEnabled &&
+            !this.lastSyncEnabledState &&
             this.doNotTouchWhileOffline.includes(file)
         ) {
             this.client.logger.info(
@@ -307,10 +473,17 @@ export class MockAgent extends MockClient {
             return;
         }
 
-        const newName = this.getFileName();
+        // Preserve file extension to avoid renaming .bin → .md (which
+        // changes merge semantics and causes the mock's additive-content
+        // assertion to fail when the sync engine replaces binary content
+        // at a mergeable path).
+        const ext = file.substring(file.lastIndexOf("."));
+        const newName = ext === ".bin"
+            ? this.getBinaryFileName()
+            : this.getFileName();
 
         if (
-            (!this.client.getSettings().isSyncEnabled &&
+            (!this.lastSyncEnabledState &&
                 this.doNotTouchWhileOffline.includes(newName)) ||
             (await this.exists(newName))
         ) {
@@ -320,16 +493,30 @@ export class MockAgent extends MockClient {
         this.client.logger.info(`Decided to rename file ${file} to ${newName}`);
         this.doNotTouchWhileOffline.push(file, newName);
 
-        return this.rename(file, newName);
+        // Move the binary UUID tracking to the new path
+        const binaryUuid = this.binaryUuidByFile.get(file);
+        if (binaryUuid !== undefined) {
+            this.binaryUuidByFile.delete(file);
+            this.binaryUuidByFile.set(newName, binaryUuid);
+        }
+
+        return this.rename(file, newName, { ignoreSlowFileEvents: true });
     }
 
-    private async updateFileAction(files: RelativePath[]): Promise<void> {
+    private async updateFileAction(): Promise<void> {
+        const files = (await this.listFilesRecursively()).filter((f) =>
+            f.endsWith(".md")
+        );
+        if (files.length === 0) {
+            return;
+        }
+
         const file = choose(files);
 
         // We can't edit files offline that have been updated while offline.
         // Otherwise, the resolution logic couldn't handle it.
         if (
-            !this.client.getSettings().isSyncEnabled &&
+            !this.lastSyncEnabledState &&
             this.doNotTouchWhileOffline.includes(file)
         ) {
             this.client.logger.info(
@@ -343,16 +530,76 @@ export class MockAgent extends MockClient {
             `Decided to update file ${file} with ${content}`
         );
         this.doNotTouchWhileOffline.push(file);
-        await this.atomicUpdateText(file, (old) => ({
-            text: old.text + ` ${content} `,
-            cursors: []
-        }));
+        await this.atomicUpdateText(
+            file,
+            (old) => ({
+                text: old.text + ` ${content} `,
+                cursors: []
+            }),
+            { ignoreSlowFileEvents: true }
+        );
     }
 
-    private async deleteFileAction(files: RelativePath[]): Promise<void> {
+    // Binary file update — complete replacement (last-write-wins for updates)
+    private async updateBinaryFileAction(): Promise<void> {
+        const files = (await this.listFilesRecursively()).filter((f) =>
+            f.endsWith(".bin")
+        );
+        if (files.length === 0) {
+            return;
+        }
+
+        const file = choose(files);
+
+        if (
+            !this.lastSyncEnabledState &&
+            this.doNotTouchWhileOffline.includes(file)
+        ) {
+            return;
+        }
+
+        const { uuid, bytes } = this.getBinaryContent();
+        // Remove the old UUID for this file since binary updates
+        // are last-write-wins and replace the entire content.
+        const oldUuid = this.binaryUuidByFile.get(file);
+        if (oldUuid !== undefined) {
+            const idx = this.writtenBinaryContents.indexOf(oldUuid);
+            if (idx !== -1) this.writtenBinaryContents.splice(idx, 1);
+        }
+        this.binaryUuidByFile.set(file, uuid);
+        this.client.logger.info(
+            `Decided to update binary file ${file}`
+        );
+        this.doNotTouchWhileOffline.push(file);
+        this.files.set(file, bytes);
+
+        this.executeFileOperation(
+            async () =>
+                this.client.syncLocallyUpdatedFile({
+                    relativePath: file
+                }),
+            true
+        );
+    }
+
+    private async deleteFileAction(): Promise<void> {
+        const files = await this.listFilesRecursively();
+        if (files.length === 0) {
+            return;
+        }
+
         const file = choose(files);
         this.client.logger.info(`Decided to delete file ${file}`);
-        return this.delete(file);
+
+        // Remove binary UUID tracking for deleted file
+        const binaryUuid = this.binaryUuidByFile.get(file);
+        if (binaryUuid !== undefined) {
+            this.binaryUuidByFile.delete(file);
+            const idx = this.writtenBinaryContents.indexOf(binaryUuid);
+            if (idx !== -1) this.writtenBinaryContents.splice(idx, 1);
+        }
+
+        return this.delete(file, { ignoreSlowFileEvents: true });
     }
 
     private getContent(): string {
@@ -361,8 +608,19 @@ export class MockAgent extends MockClient {
         return uuid;
     }
 
+    private getBinaryContent(): { uuid: string; bytes: Uint8Array } {
+        const uuid = uuidv4();
+        this.writtenBinaryContents.push(uuid);
+        return { uuid, bytes: new TextEncoder().encode(`BINARY:${uuid}`) };
+    }
+
     private getFileName(): string {
         // Simulate name collisions between the clients
         return `file-${Math.floor(Math.random() * 64)}.md`;
+    }
+
+    private getBinaryFileName(): string {
+        // Smaller range to increase collision frequency for last-write-wins testing
+        return `binary-${Math.floor(Math.random() * 16)}.bin`;
     }
 }

@@ -8,7 +8,8 @@ import type { Logger } from "../tracing/logger";
 import type { Settings } from "../persistence/settings";
 import type { FetchController } from "./fetch-controller";
 import { sleep } from "../utils/sleep";
-import { SyncResetError } from "./sync-reset-error";
+import { SyncResetError } from "../errors/sync-reset-error";
+import { HttpClientError } from "../errors/http-client-error";
 import type { SerializedError } from "./types/SerializedError";
 import type { DocumentVersionWithoutContent } from "./types/DocumentVersionWithoutContent";
 import type { DocumentUpdateResponse } from "./types/DocumentUpdateResponse";
@@ -48,11 +49,42 @@ export class SyncService {
                 .get("Content-Type")
                 ?.includes("application/json") == true
         ) {
-            const result: SerializedError =
-                (await response.json()) as SerializedError; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
-            return SyncService.formatError(result);
+            try {
+                const result: SerializedError =
+                    (await response.json()) as SerializedError; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+                return SyncService.formatError(result);
+            } catch {
+                return `HTTP ${response.status}: ${response.statusText} (failed to parse error response body)`;
+            }
         }
         return `HTTP ${response.status}: ${response.statusText}`;
+    }
+
+    /**
+     * Safely parse JSON from a response body. If parsing fails (e.g., malformed
+     * JSON from the server), throws an HttpClientError with status 0 so that
+     * retryForever does not retry indefinitely.
+     */
+    private static async parseJsonResponse<T>(
+        response: Response
+    ): Promise<T> {
+        try {
+            return (await response.json()) as T; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+        } catch (error) {
+            // Timeout and abort errors are transient — let them propagate
+            // so retryForever can retry. Only wrap genuine parse failures
+            // (malformed JSON) as HttpClientError to prevent infinite retries.
+            if (
+                error instanceof Error &&
+                (error.name === "TimeoutError" || error.name === "AbortError")
+            ) {
+                throw error;
+            }
+            throw new HttpClientError(
+                0,
+                `Failed to parse JSON response: ${error}`
+            );
+        }
     }
 
     private static formatError(error: SerializedError): string {
@@ -65,28 +97,41 @@ export class SyncService {
         return result;
     }
 
+    private static async throwHttpError(
+        response: Response,
+        context: string
+    ): Promise<never> {
+        const message = `${context}: ${await SyncService.errorFromResponse(response)}`;
+        if (response.status >= 400 && response.status < 500) {
+            throw new HttpClientError(response.status, message);
+        }
+        throw new Error(message);
+    }
+
     public async create({
-        documentId,
         relativePath,
-        contentBytes
+        contentBytes,
+        idempotencyKey
     }: {
-        documentId?: DocumentId;
         relativePath: RelativePath;
         contentBytes: Uint8Array;
-    }): Promise<DocumentVersionWithoutContent> {
+        idempotencyKey?: string;
+    }): Promise<DocumentUpdateResponse> {
         return this.retryForever(async () => {
             const formData = new FormData();
-            if (documentId !== undefined) {
-                formData.append("document_id", documentId);
-            }
+
             formData.append("relative_path", relativePath);
             formData.append(
                 "content",
                 new Blob([new Uint8Array(contentBytes)])
             );
 
+            if (idempotencyKey !== undefined) {
+                formData.append("idempotency_key", idempotencyKey);
+            }
+
             this.logger.debug(
-                `Creating document with id ${documentId} and relative path ${relativePath}`
+                `Creating document with relative path ${relativePath}`
             );
 
             const response = await this.client(this.getUrl("/documents"), {
@@ -96,15 +141,16 @@ export class SyncService {
             });
 
             if (!response.ok) {
-                throw new Error(
-                    `Failed to create document: ${await SyncService.errorFromResponse(
-                        response
-                    )}`
+                await SyncService.throwHttpError(
+                    response,
+                    "Failed to create document"
                 );
             }
 
-            const result: DocumentVersionWithoutContent =
-                (await response.json()) as DocumentVersionWithoutContent; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+            const result: DocumentUpdateResponse =
+                await SyncService.parseJsonResponse<DocumentUpdateResponse>(
+                    response
+                );
 
             this.logger.debug(`Created document ${JSON.stringify(result)}`);
 
@@ -144,19 +190,19 @@ export class SyncService {
             );
 
             if (!response.ok) {
-                throw new Error(
-                    `Failed to update document: ${await SyncService.errorFromResponse(
-                        response
-                    )}`
+                await SyncService.throwHttpError(
+                    response,
+                    "Failed to update document"
                 );
             }
 
             const result: DocumentUpdateResponse =
-                (await response.json()) as DocumentUpdateResponse; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+                await SyncService.parseJsonResponse<DocumentUpdateResponse>(
+                    response
+                );
 
             this.logger.debug(
-                `Updated document ${JSON.stringify(result)} with id ${
-                    result.documentId
+                `Updated document ${JSON.stringify(result)} with id ${result.documentId
                 }}`
             );
 
@@ -197,19 +243,19 @@ export class SyncService {
             );
 
             if (!response.ok) {
-                throw new Error(
-                    `Failed to update document: ${await SyncService.errorFromResponse(
-                        response
-                    )}`
+                await SyncService.throwHttpError(
+                    response,
+                    "Failed to update document"
                 );
             }
 
             const result: DocumentUpdateResponse =
-                (await response.json()) as DocumentUpdateResponse; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+                await SyncService.parseJsonResponse<DocumentUpdateResponse>(
+                    response
+                );
 
             this.logger.debug(
-                `Updated document ${JSON.stringify(result)} with id ${
-                    result.documentId
+                `Updated document ${JSON.stringify(result)} with id ${result.documentId
                 }}`
             );
 
@@ -225,9 +271,7 @@ export class SyncService {
         relativePath: RelativePath;
     }): Promise<DocumentVersionWithoutContent> {
         return this.retryForever(async () => {
-            const request: DeleteDocumentVersion = {
-                relativePath
-            };
+            const request: DeleteDocumentVersion = {};
 
             this.logger.debug(
                 `Delete document with id ${documentId} and relative path ${relativePath}`
@@ -243,15 +287,16 @@ export class SyncService {
             );
 
             if (!response.ok) {
-                throw new Error(
-                    `Failed to delete document: ${await SyncService.errorFromResponse(
-                        response
-                    )}`
+                await SyncService.throwHttpError(
+                    response,
+                    "Failed to delete document"
                 );
             }
 
             const result: DocumentVersionWithoutContent =
-                (await response.json()) as DocumentVersionWithoutContent; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+                await SyncService.parseJsonResponse<DocumentVersionWithoutContent>(
+                    response
+                );
 
             this.logger.debug(
                 `Deleted document ${relativePath} with id ${documentId}`
@@ -277,15 +322,16 @@ export class SyncService {
             );
 
             if (!response.ok) {
-                throw new Error(
-                    `Failed to get document: ${await SyncService.errorFromResponse(
-                        response
-                    )}`
+                await SyncService.throwHttpError(
+                    response,
+                    "Failed to get document"
                 );
             }
 
             const result: DocumentVersion =
-                (await response.json()) as DocumentVersion; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+                await SyncService.parseJsonResponse<DocumentVersion>(
+                    response
+                );
 
             this.logger.debug(`Got document ${JSON.stringify(result)}`);
 
@@ -315,10 +361,9 @@ export class SyncService {
             );
 
             if (!response.ok) {
-                throw new Error(
-                    `Failed to get document: ${await SyncService.errorFromResponse(
-                        response
-                    )}`
+                await SyncService.throwHttpError(
+                    response,
+                    "Failed to get document"
                 );
             }
 
@@ -336,7 +381,7 @@ export class SyncService {
         return this.retryForever(async () => {
             this.logger.debug(
                 "Getting all documents" +
-                    (since != null ? ` since ${since}` : "")
+                (since != null ? ` since ${since}` : "")
             );
 
             const url = new URL(this.getUrl("/documents"));
@@ -348,21 +393,63 @@ export class SyncService {
             });
 
             if (!response.ok) {
-                throw new Error(
-                    `Failed to get documents: ${await SyncService.errorFromResponse(
-                        response
-                    )}`
+                await SyncService.throwHttpError(
+                    response,
+                    "Failed to get documents"
                 );
             }
 
             const result: FetchLatestDocumentsResponse =
-                (await response.json()) as FetchLatestDocumentsResponse; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+                await SyncService.parseJsonResponse<FetchLatestDocumentsResponse>(
+                    response
+                );
 
             this.logger.debug(
                 `Got ${result.latestDocuments.length} document metadata`
             );
 
             return result;
+        });
+    }
+
+    public async resolveIdempotencyKeys(
+        keys: string[]
+    ): Promise<Map<string, string>> {
+        this.logger.debug(
+            `Resolving ${keys.length} idempotency keys`
+        );
+
+        return this.retryForever(async () => {
+            const response = await this.client(
+                this.getUrl("/documents/resolve-keys"),
+                {
+                    method: "POST",
+                    body: JSON.stringify({ idempotencyKeys: keys }),
+                    headers: this.getDefaultHeaders({ type: "json" })
+                }
+            );
+
+            if (!response.ok) {
+                await SyncService.throwHttpError(
+                    response,
+                    "Failed to resolve idempotency keys"
+                );
+            }
+
+            const result =
+                await SyncService.parseJsonResponse<{
+                    resolved: Record<string, string>;
+                }>(response);
+
+            const resolved = new Map<string, string>(
+                Object.entries(result.resolved)
+            );
+
+            this.logger.debug(
+                `Resolved ${resolved.size}/${keys.length} idempotency keys`
+            );
+
+            return resolved;
         });
     }
 
@@ -380,7 +467,8 @@ export class SyncService {
             );
         }
 
-        const result: PingResponse = (await response.json()) as PingResponse; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+        const result: PingResponse =
+            await SyncService.parseJsonResponse<PingResponse>(response);
 
         this.logger.debug(
             `Pinged server, got response: ${JSON.stringify(result)}`
@@ -412,6 +500,7 @@ export class SyncService {
     }
 
     private async retryForever<T>(fn: () => Promise<T>): Promise<T> {
+        let attempt = 0;
         // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
         while (true) {
             try {
@@ -422,12 +511,25 @@ export class SyncService {
                     throw e;
                 }
 
-                const retryInterval =
+                // Don't retry 4xx client errors — the request itself is wrong
+                // and retrying won't help
+                if (e instanceof HttpClientError) {
+                    throw e;
+                }
+
+                attempt++;
+                const baseDelay =
                     this.settings.getSettings().networkRetryIntervalMs;
-                this.logger.error(
-                    `Failed network call (${e}), retrying in ${retryInterval}ms`
+                const exponentialDelay = Math.min(
+                    baseDelay * Math.pow(2, Math.min(attempt - 1, 5)),
+                    30000
                 );
-                await sleep(retryInterval);
+                const jitter = Math.random() * exponentialDelay * 0.5;
+                const delay = exponentialDelay + jitter;
+                this.logger.error(
+                    `Failed network call (${e}), retrying in ${Math.round(delay)}ms (attempt ${attempt})`
+                );
+                await sleep(delay);
             }
         }
     }

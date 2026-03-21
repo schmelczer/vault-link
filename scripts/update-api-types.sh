@@ -12,5 +12,7 @@ cp -r sync-server/bindings/* frontend/sync-client/src/services/types/
 
 cd frontend
 npm run lint
-git ls-files | xargs npx eclint fix
-cd -
+cd ..
+
+# Format all files across the project (frontend and backend)
+npx -C frontend prettier --write "**/*.{ts,js,json,md,yml,yaml}"

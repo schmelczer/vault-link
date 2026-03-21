@@ -6,7 +6,10 @@ import type { CursorPositionFromClient } from "./types/CursorPositionFromClient"
 import type { ClientCursors } from "./types/ClientCursors";
 import { createPromise } from "../utils/create-promise";
 import type { WebSocketVaultUpdate } from "./types/WebSocketVaultUpdate";
-import { WEBSOCKET_DISCONNECT_TIMEOUT_IN_S } from "../consts";
+import {
+    WEBSOCKET_DISCONNECT_TIMEOUT_IN_SECONDS,
+    WEBSOCKET_CONNECTION_TIMEOUT_IN_SECONDS
+} from "../consts";
 import { removeFromArray } from "../utils/remove-from-array";
 import { EventListeners } from "../utils/data-structures/event-listeners";
 import { awaitAll } from "../utils/await-all";
@@ -27,32 +30,25 @@ export class WebSocketManager {
     private isStopped = true;
     private resolveDisconnectingPromise: null | (() => unknown) = null;
     private reconnectTimeoutId: ReturnType<typeof setTimeout> | undefined;
+    private connectionTimeoutId: ReturnType<typeof setTimeout> | undefined;
 
     private readonly outstandingPromises: Promise<unknown>[] = [];
 
+    /**
+     * Chains WebSocket message processing so only one message is handled
+     * at a time. Without this, a burst of messages would create many
+     * concurrent sync operations (each calling scheduleSyncForOfflineChanges
+     * and processing documents in parallel).
+     */
+    private messageProcessingChain: Promise<void> = Promise.resolve();
+
     private webSocket: WebSocket | undefined;
-    private readonly webSocketFactoryImplementation: typeof globalThis.WebSocket;
 
     public constructor(
-        private readonly deviceId: string,
         private readonly logger: Logger,
         private readonly settings: Settings,
-        webSocketImplementation?: typeof globalThis.WebSocket
-    ) {
-        if (webSocketImplementation) {
-            this.webSocketFactoryImplementation = webSocketImplementation;
-        } else {
-            if (
-                typeof globalThis !== "undefined" &&
-                typeof globalThis.WebSocket === "undefined"
-            ) {
-                // eslint-disable-next-line
-                this.webSocketFactoryImplementation = require("ws"); // polyfill for WebSocket in Node.js
-            } else {
-                this.webSocketFactoryImplementation = WebSocket;
-            }
-        }
-    }
+        private readonly webSocketFactoryImplementation: typeof globalThis.WebSocket = WebSocket
+    ) {}
 
     public get isWebSocketConnected(): boolean {
         return (
@@ -77,6 +73,11 @@ export class WebSocketManager {
             this.reconnectTimeoutId = undefined;
         }
 
+        if (this.connectionTimeoutId !== undefined) {
+            clearTimeout(this.connectionTimeoutId);
+            this.connectionTimeoutId = undefined;
+        }
+
         this.webSocket?.close(1000, "WebSocketManager has been stopped");
 
         // eslint-disable-next-line @typescript-eslint/init-declarations
@@ -85,10 +86,10 @@ export class WebSocketManager {
             timeoutId = setTimeout(() => {
                 reject(
                     new Error(
-                        `Timeout waiting for WebSocket to close after ${WEBSOCKET_DISCONNECT_TIMEOUT_IN_S} seconds`
+                        `Timeout waiting for WebSocket to close after ${WEBSOCKET_DISCONNECT_TIMEOUT_IN_SECONDS} seconds`
                     )
                 );
-            }, WEBSOCKET_DISCONNECT_TIMEOUT_IN_S * 1000);
+            }, WEBSOCKET_DISCONNECT_TIMEOUT_IN_SECONDS * 1000);
         });
 
         try {
@@ -109,11 +110,20 @@ export class WebSocketManager {
             }
         }
 
+        // Wait for any already-enqueued message handlers to finish.
+        // The isStopped guard in onmessage prevents NEW messages from
+        // being enqueued, but handlers that were chained before stop()
+        // set the flag may still be in flight.
+        await this.messageProcessingChain;
         await this.waitUntilFinished();
     }
 
     public async waitUntilFinished(): Promise<void> {
         await awaitAll(this.outstandingPromises);
+    }
+
+    public hasOutstandingWork(): boolean {
+        return this.outstandingPromises.length > 0;
     }
 
     public sendHandshakeMessage(
@@ -171,7 +181,10 @@ export class WebSocketManager {
                 this.webSocket.onclose = null;
                 this.webSocket.onmessage = null;
                 this.webSocket.onerror = null;
-                this.webSocket.close();
+                this.webSocket.close(
+                    1000,
+                    "Closing previous WebSocket connection"
+                );
             } catch (e) {
                 this.logger.error(
                     `Failed to close previous WebSocket connection: ${e}`
@@ -187,7 +200,22 @@ export class WebSocketManager {
 
         this.webSocket = new this.webSocketFactoryImplementation(wsUri);
 
+        // Set connection timeout to handle cases where server is down and the WebSocket connection won't open
+        this.connectionTimeoutId = setTimeout(() => {
+            this.connectionTimeoutId = undefined;
+            this.logger.warn(
+                `WebSocket connection timeout after ${WEBSOCKET_CONNECTION_TIMEOUT_IN_SECONDS} seconds`
+            );
+            // Force close to trigger onclose handler which will schedule reconnection
+            this.webSocket?.close(1000, "Connection timeout");
+        }, WEBSOCKET_CONNECTION_TIMEOUT_IN_SECONDS * 1000);
+
         this.webSocket.onopen = (): void => {
+            if (this.connectionTimeoutId !== undefined) {
+                clearTimeout(this.connectionTimeoutId);
+                this.connectionTimeoutId = undefined;
+            }
+
             // Check if we've been stopped while connecting
             if (this.isStopped) {
                 this.webSocket?.close(
@@ -201,29 +229,75 @@ export class WebSocketManager {
         };
 
         this.webSocket.onmessage = (event): void => {
+            // Discard messages received after stop() has been called.
+            // Without this guard, messages arriving between close()
+            // and the onclose event would be enqueued into
+            // messageProcessingChain and execute after stop() returns.
+            if (this.isStopped) {
+                return;
+            }
+
             try {
                 // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
                 const message = JSON.parse(
                     event.data
                 ) as WebSocketServerMessage;
 
-                // Track the message handling promise
-                const messageHandlingPromise = this.handleWebSocketMessage(
-                    message
-                )
+                // Cursor updates are pure reads (update an in-memory map) —
+                // handle immediately without blocking behind vault update
+                // processing. This avoids cursor latency during large syncs.
+                if (message.type === "cursorPositions") {
+                    this.logger.debug(
+                        `Received cursor positions for ${JSON.stringify(message.clients)}`
+                    );
+                    const cursorPromise =
+                        this.onRemoteCursorsUpdateReceived
+                            .triggerAsync(message.clients)
+                            .catch((error: unknown) => {
+                                this.logger.error(
+                                    `Error handling cursor update: ${String(error)}`
+                                );
+                            });
+                    // Track for waitUntilFinished / hasOutstandingWork
+                    this.outstandingPromises.push(cursorPromise);
+                    void cursorPromise.finally(() => {
+                        removeFromArray(
+                            this.outstandingPromises,
+                            cursorPromise
+                        );
+                    });
+                    return;
+                }
+
+                // Vault updates require serialization: each waits for the
+                // previous one to finish. This provides back-pressure so a
+                // burst of WebSocket messages doesn't create unbounded
+                // concurrent sync operations.
+                //
+                // Read-reassign safety: we read messageProcessingChain,
+                // chain a .then() onto it, and assign the resulting promise
+                // back. This is safe because JavaScript is single-threaded:
+                // no other code can run between the read and the assignment.
+                // The next onmessage invocation will see the updated chain
+                // and append after this handler, preserving FIFO order.
+                this.messageProcessingChain = this.messageProcessingChain
+                    .then(async () => this.handleWebSocketMessage(message))
                     .catch((error: unknown) => {
                         this.logger.error(
                             `Error handling WebSocket message: ${String(error)}`
                         );
-                    })
-                    .finally(() => {
-                        removeFromArray(
-                            this.outstandingPromises,
-                            messageHandlingPromise
-                        );
                     });
 
-                void this.outstandingPromises.push(messageHandlingPromise); // ignore the returned promise
+                const messageHandlingPromise = this.messageProcessingChain;
+
+                // Track the promise for waitUntilFinished / hasOutstandingWork
+                this.outstandingPromises.push(messageHandlingPromise);
+                void messageHandlingPromise.finally(() => {
+                    removeFromArray(
+                        this.outstandingPromises,
+                        messageHandlingPromise
+                    );
+                });
             } catch (error) {
                 this.logger.error(
                     `Error parsing WebSocket message: ${String(error)}`
@@ -231,7 +305,18 @@ export class WebSocketManager {
             }
         };
 
+        this.webSocket.onerror = (error): void => {
+            this.logger.warn(
+                `WebSocket error occurred: ${error instanceof ErrorEvent ? error.message : "Unknown error"}`
+            );
+        };
+
         this.webSocket.onclose = (event): void => {
+            if (this.connectionTimeoutId !== undefined) {
+                clearTimeout(this.connectionTimeoutId);
+                this.connectionTimeoutId = undefined;
+            }
+
             this.logger.warn(
                 `WebSocket closed with code ${event.code} (${event.reason == "" ? "unknown reason" : event.reason})`
             );
@@ -241,10 +326,13 @@ export class WebSocketManager {
                 this.resolveDisconnectingPromise?.();
                 this.resolveDisconnectingPromise = null;
             } else {
+                const delay =
+                    this.settings.getSettings().webSocketRetryIntervalMs;
+                this.logger.info(`Reconnecting to WebSocket in ${delay}ms...`);
                 this.reconnectTimeoutId = setTimeout(() => {
                     this.reconnectTimeoutId = undefined;
                     this.initializeWebSocket();
-                }, this.settings.getSettings().webSocketRetryIntervalMs);
+                }, delay);
             }
         };
     }
@@ -254,17 +342,8 @@ export class WebSocketManager {
     ): Promise<void> {
         if (message.type === "vaultUpdate") {
             await this.onRemoteVaultUpdateReceived.triggerAsync(message);
-
-            // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-        } else if (message.type === "cursorPositions") {
-            this.logger.debug(
-                `Received cursor positions for ${JSON.stringify(message.clients)}`
-            );
-
-            await this.onRemoteCursorsUpdateReceived.triggerAsync(
-                message.clients
-            );
         } else {
+            // Cursor messages are handled inline in onmessage (not chained)
             this.logger.warn(
                 `Received unknown message type: ${JSON.stringify(message)}`
             );

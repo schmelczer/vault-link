@@ -243,9 +243,9 @@ users:
 2. Client sends authentication message:
     ```json
     {
-      "type": "auth",
-      "token": "user-token",
-      "vault": "vault-name"
+        "type": "auth",
+        "token": "user-token",
+        "vault": "vault-name"
     }
     ```
 3. Server validates:

@@ -7,15 +7,19 @@ node_modules
 # Frontend build folders
 frontend/*/dist
 
-sync-server/db.sqlite3*
-sync-server/databases
-
 # Rust build folders
 sync-server/target
 sync-server/artifacts
 sync-server/bindings/*.ts
 
+# build folders
+sync-server/db.sqlite3*
+sync-server/databases
+frontend/deterministic-tests/databases
+
 *.log
 *.sqlx
 
 target
+
+.task

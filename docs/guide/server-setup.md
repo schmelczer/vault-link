@@ -75,7 +75,7 @@ chmod +x sync_server-linux-x86_64
 
 ### Build from Source
 
-Requirements: Rust 1.89.0+, SQLite development headers, SQLx CLI
+Requirements: Rust 1.92.0+, SQLite development headers, SQLx CLI
 
 ```bash
 # Clone the repository

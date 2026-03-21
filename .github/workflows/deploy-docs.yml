@@ -5,8 +5,8 @@ on:
     branches:
       - main
     paths:
-      - 'docs/**'
-      - '.github/workflows/deploy-docs.yml'
+      - "docs/**"
+      - ".github/workflows/deploy-docs.yml"
   workflow_dispatch:
 
 permissions:
@@ -28,12 +28,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v4.2.0
         with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: docs/package-lock.json
+          node-version: "25.x"
+          check-latest: true
 
       - name: Setup Pages
         uses: actions/configure-pages@v4

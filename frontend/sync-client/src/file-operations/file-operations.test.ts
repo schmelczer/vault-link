@@ -1,9 +1,6 @@
 import { describe, it } from "node:test";
-import type {
-    Database,
-    DocumentRecord,
-    RelativePath
-} from "../persistence/database";
+import type { RelativePath } from "../persistence/database";
+import type { VirtualFilesystem } from "../persistence/vfs";
 import { FileOperations } from "./file-operations";
 import { Logger } from "../tracing/logger";
 import { assertSetContainsExactly } from "../utils/assert-set-contains-exactly";
@@ -21,17 +18,14 @@ class MockServerConfig implements Pick<ServerConfig, "getConfig"> {
     }
 }
 
-class MockDatabase implements Partial<Database> {
-    public getLatestDocumentByRelativePath(
-        _find: RelativePath
-    ): DocumentRecord | undefined {
-        // no-op
+class MockVfs implements Partial<VirtualFilesystem> {
+    public getByPath(_path: string): undefined {
         return undefined;
     }
 
     public move(
-        _oldRelativePath: RelativePath,
-        _newRelativePath: RelativePath
+        _oldPath: string,
+        _newPath: string
     ): void {
         // no-op
     }
@@ -89,7 +83,7 @@ describe("File operations", () => {
         const fileSystemOperations = new FakeFileSystemOperations();
         const fileOperations = new FileOperations(
             new Logger(),
-            new MockDatabase() as Database, // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+            new MockVfs() as VirtualFilesystem, // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
             fileSystemOperations,
             new MockServerConfig() as ServerConfig // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
         );
@@ -119,7 +113,7 @@ describe("File operations", () => {
         const fileSystemOperations = new FakeFileSystemOperations();
         const fileOperations = new FileOperations(
             new Logger(),
-            new MockDatabase() as Database, // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+            new MockVfs() as VirtualFilesystem, // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
             fileSystemOperations,
             new MockServerConfig() as ServerConfig // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
         );
@@ -159,7 +153,7 @@ describe("File operations", () => {
         const fileSystemOperations = new FakeFileSystemOperations();
         const fileOperations = new FileOperations(
             new Logger(),
-            new MockDatabase() as Database, // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+            new MockVfs() as VirtualFilesystem, // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
             fileSystemOperations,
             new MockServerConfig() as ServerConfig // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
         );
@@ -178,7 +172,7 @@ describe("File operations", () => {
         const fileSystemOperations = new FakeFileSystemOperations();
         const fileOperations = new FileOperations(
             new Logger(),
-            new MockDatabase() as Database, // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+            new MockVfs() as VirtualFilesystem, // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
             fileSystemOperations,
             new MockServerConfig() as ServerConfig // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
         );
@@ -207,7 +201,7 @@ describe("File operations", () => {
         const fileSystemOperations = new FakeFileSystemOperations();
         const fileOperations = new FileOperations(
             new Logger(),
-            new MockDatabase() as Database, // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+            new MockVfs() as VirtualFilesystem, // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
             fileSystemOperations,
             new MockServerConfig() as ServerConfig // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
         );

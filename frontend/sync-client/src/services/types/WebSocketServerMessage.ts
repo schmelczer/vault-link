@@ -2,6 +2,4 @@
 import type { CursorPositionFromServer } from "./CursorPositionFromServer";
 import type { WebSocketVaultUpdate } from "./WebSocketVaultUpdate";
 
-export type WebSocketServerMessage =
-    | ({ type: "vaultUpdate" } & WebSocketVaultUpdate)
-    | ({ type: "cursorPositions" } & CursorPositionFromServer);
+export type WebSocketServerMessage = { "type": "vaultUpdate" } & WebSocketVaultUpdate | { "type": "cursorPositions" } & CursorPositionFromServer;

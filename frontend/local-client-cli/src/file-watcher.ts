@@ -1,15 +1,20 @@
 import Watcher from "watcher";
 import * as path from "path";
 import type { SyncClient, RelativePath } from "sync-client";
+import { toUnixPath, compileGlobPattern } from "./path-utils";
 
 export class FileWatcher {
     private watcher: Watcher | undefined;
     private isRunning = false;
+    private readonly compiledPatterns: RegExp[];
 
     public constructor(
         private readonly basePath: string,
-        private readonly client: SyncClient
-    ) {}
+        private readonly client: SyncClient,
+        ignorePatterns: string[] = []
+    ) {
+        this.compiledPatterns = ignorePatterns.map(compileGlobPattern);
+    }
 
     public start(): void {
         if (this.isRunning) {
@@ -22,7 +27,9 @@ export class FileWatcher {
             recursive: true,
             renameDetection: true,
             renameTimeout: 125,
-            ignoreInitial: true
+            ignoreInitial: true,
+            ignore: (filePath: string): boolean =>
+                this.shouldIgnore(filePath)
         });
 
         this.watcher.on("add", (filePath: string) => {
@@ -54,6 +61,11 @@ export class FileWatcher {
         }
         this.isRunning = false;
         this.client.logger.info("File watcher stopped");
+    }
+
+    private shouldIgnore(filePath: string): boolean {
+        const rel = toUnixPath(path.relative(this.basePath, filePath));
+        return this.compiledPatterns.some((regex) => regex.test(rel));
     }
 
     private handleCreate(relativePath: RelativePath): void {
@@ -101,18 +113,7 @@ export class FileWatcher {
     }
 
     private toRelativePath(absolutePath: string): RelativePath {
-        const relative = path.relative(this.basePath, absolutePath);
-        return this.toUnixPath(relative);
-    }
-
-    /**
-    * Convert a native platform path to forward slashes
-    */
-    private toUnixPath(nativePath: string): string {
-        if (path.sep === "\\") {
-            return nativePath.replace(/\\/g, "/");
-        }
-        return nativePath;
+        return toUnixPath(path.relative(this.basePath, absolutePath));
     }
 
     private formatError(err: unknown): string {

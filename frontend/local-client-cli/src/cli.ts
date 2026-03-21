@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 import * as path from "path";
 import * as fs from "fs/promises";
 import * as fsSync from "fs";
@@ -36,6 +37,20 @@ const LOG_LEVEL_ORDER = {
 };
 
 const HEALTH_CHECK_INTERVAL_MS = 30 * 1000;
+const PROGRESS_LOG_INTERVAL_MS = 2000;
+
+function resolveLineEndings(
+    mode: "auto" | "lf" | "crlf"
+): string {
+    switch (mode) {
+        case "lf":
+            return "\n";
+        case "crlf":
+            return "\r\n";
+        case "auto":
+            return process.platform === "win32" ? "\r\n" : "\n";
+    }
+}
 
 async function main(): Promise<void> {
     const args = parseArgs(process.argv);
@@ -63,21 +78,28 @@ async function main(): Promise<void> {
         process.exit(1);
     }
 
-    console.log(
-        styleText("VaultLink Local CLI", "bold", "cyan") +
-            colorize(` v${packageJson.version}`, "dim")
-    );
-    console.log(colorize("=".repeat(50), "dim"));
-    console.log(
-        `${colorize("Local path:", "dim")} ${colorize(absolutePath, "green")}`
-    );
-    console.log(
-        `${colorize("Remote URI:", "dim")} ${colorize(args.remoteUri, "cyan")}`
-    );
-    console.log(
-        `${colorize("Vault name:", "dim")} ${colorize(args.vaultName, "green")}`
-    );
-    console.log("");
+    if (!args.quiet) {
+        console.log(
+            styleText("VaultLink Local CLI", "bold", "cyan") +
+                colorize(` v${packageJson.version}`, "dim")
+        );
+        console.log(colorize("=".repeat(50), "dim"));
+        console.log(
+            `${colorize("Local path:", "dim")} ${colorize(absolutePath, "green")}`
+        );
+        console.log(
+            `${colorize("Remote URI:", "dim")} ${colorize(args.remoteUri, "cyan")}`
+        );
+        console.log(
+            `${colorize("Vault name:", "dim")} ${colorize(args.vaultName, "green")}`
+        );
+        if (args.lineEndings !== "auto") {
+            console.log(
+                `${colorize("Line endings:", "dim")} ${colorize(args.lineEndings.toUpperCase(), "green")}`
+            );
+        }
+        console.log("");
+    }
 
     const dataDir = path.join(absolutePath, ".vaultlink");
     const dataFile = path.join(dataDir, "sync-data.json");
@@ -97,8 +119,6 @@ async function main(): Promise<void> {
         remoteUri: args.remoteUri,
         token: args.token,
         vaultName: args.vaultName,
-        syncConcurrency:
-            args.syncConcurrency ?? DEFAULT_SETTINGS.syncConcurrency,
         maxFileSizeMB: args.maxFileSizeMB ?? DEFAULT_SETTINGS.maxFileSizeMB,
         ignorePatterns,
         webSocketRetryIntervalMs:
@@ -140,16 +160,21 @@ async function main(): Promise<void> {
                 );
             }
         },
-        nativeLineEndings: process.platform === "win32" ? "\r\n" : "\n"
+        nativeLineEndings: resolveLineEndings(args.lineEndings)
     });
 
     if (args.health !== undefined) {
         const healthFile = args.health;
-        const healthInterval = setInterval(() => {
+        const writeHealth = (): void => {
             void client.checkConnection().then((status) => {
                 writeHealthStatus(healthFile, status);
             });
-        }, HEALTH_CHECK_INTERVAL_MS);
+        };
+        writeHealth();
+        const healthInterval = setInterval(
+            writeHealth,
+            HEALTH_CHECK_INTERVAL_MS
+        );
         const clearHealthInterval = (): void => {
             clearInterval(healthInterval);
         };
@@ -168,7 +193,7 @@ async function main(): Promise<void> {
 
     client.logger.info("Starting sync client");
 
-    const fileWatcher = new FileWatcher(absolutePath, client);
+    const fileWatcher = new FileWatcher(absolutePath, client, ignorePatterns);
 
     client.onWebSocketStatusChanged.add(() => {
         const isConnected = client.isWebSocketConnected;
@@ -177,15 +202,42 @@ async function main(): Promise<void> {
         );
     });
 
+    // Throttled progress reporting
+    let syncBatchSize = 0;
+    let totalSyncOps = 0;
+    let lastProgressLogTime = 0;
+
     client.onRemainingOperationsCountChanged.add((remaining) => {
+        if (remaining > syncBatchSize) {
+            syncBatchSize = remaining;
+        }
+
         if (remaining === 0) {
-            client.logger.info("All sync operations completed");
+            if (syncBatchSize > 0) {
+                totalSyncOps += syncBatchSize;
+                client.logger.info(
+                    `Sync batch complete (${syncBatchSize} operations)`
+                );
+                syncBatchSize = 0;
+            }
         } else {
-            client.logger.info(`${remaining} sync operations remaining`);
+            const now = Date.now();
+            if (now - lastProgressLogTime >= PROGRESS_LOG_INTERVAL_MS) {
+                client.logger.info(
+                    `Syncing: ${remaining} operations remaining`
+                );
+                lastProgressLogTime = now;
+            }
         }
     });
 
+    let isShuttingDown = false;
     const gracefulShutdown = async (signal: string): Promise<void> => {
+        if (isShuttingDown) {
+            return;
+        }
+        isShuttingDown = true;
+
         console.log(
             colorize(
                 `\n${signal} received. Shutting down gracefully...`,
@@ -196,7 +248,17 @@ async function main(): Promise<void> {
         fileWatcher.stop();
         await client.waitUntilFinished();
         await client.destroy();
-        console.log(colorize("Shutdown complete", "green"));
+
+        if (totalSyncOps > 0) {
+            console.log(
+                colorize(
+                    `Shutdown complete (${totalSyncOps} operations synced)`,
+                    "green"
+                )
+            );
+        } else {
+            console.log(colorize("Shutdown complete", "green"));
+        }
         process.exit(0);
     };
 
@@ -219,9 +281,13 @@ async function main(): Promise<void> {
             process.exit(1);
         }
 
-        console.log(`${colorize("✓", "green")} Server connection successful`);
-        console.log(colorize("Press Ctrl+C to stop", "dim"));
-        console.log("");
+        if (!args.quiet) {
+            console.log(
+                `${colorize("✓", "green")} Server connection successful`
+            );
+            console.log(colorize("Press Ctrl+C to stop", "dim"));
+            console.log("");
+        }
 
         await client.start();
         fileWatcher.start();

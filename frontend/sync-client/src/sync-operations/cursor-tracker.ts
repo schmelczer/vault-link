@@ -1,5 +1,6 @@
 import type { FileOperations } from "../file-operations/file-operations";
-import type { Database, RelativePath } from "../persistence/database";
+import type { RelativePath } from "../persistence/database";
+import type { VirtualFilesystem } from "../persistence/vfs";
 import type { ClientCursors } from "../services/types/ClientCursors";
 import type { CursorSpan } from "../services/types/CursorSpan";
 import type { DocumentWithCursors } from "../services/types/DocumentWithCursors";
@@ -10,6 +11,7 @@ import { hash } from "../utils/hash";
 import type { FileChangeNotifier } from "./file-change-notifier";
 import { Lock } from "../utils/data-structures/locks";
 import { EventListeners } from "../utils/data-structures/event-listeners";
+import type { Logger } from "../tracing/logger";
 
 // Cursor positions are updated separately from documents. However, a given cursor position is only
 // valid within a certain version of the document it belongs to. This class tracks previous and the latest
@@ -22,7 +24,8 @@ export class CursorTracker {
         (cursors: MaybeOutdatedClientCursors[]) => unknown
     >();
 
-    private readonly updateLock = new Lock();
+    private readonly updateLock: Lock;
+    private readonly eventUnsubscribers: (() => void)[] = [];
 
     private knownRemoteCursors: (ClientCursors & {
         upToDateness: DocumentUpToDateness;
@@ -33,59 +36,69 @@ export class CursorTracker {
         [];
 
     public constructor(
-        private readonly database: Database,
+        private readonly logger: Logger,
+        private readonly vfs: VirtualFilesystem,
         private readonly webSocketManager: WebSocketManager,
         private readonly fileOperations: FileOperations,
         private readonly fileChangeNotifier: FileChangeNotifier
     ) {
-        this.webSocketManager.onRemoteCursorsUpdateReceived.add(
-            async (clientCursors) => {
-                await this.updateLock.withLock(async () => {
-                    // The latest message will contain all active clients, so we can delete the ones
-                    // from the local list which are no longer active.
-                    const allIds = new Set(
-                        clientCursors.map((c) => c.deviceId)
-                    );
-                    const updatedKnownRemoteCursors =
-                        this.knownRemoteCursors.filter((c) =>
-                            allIds.has(c.deviceId)
+        this.updateLock = new Lock(CursorTracker.name, logger);
+
+        this.eventUnsubscribers.push(
+            this.webSocketManager.onRemoteCursorsUpdateReceived.add(
+                async (clientCursors) => {
+                    await this.updateLock.withLock(async () => {
+                        // The latest message will contain all active clients, so we can delete the ones
+                        // from the local list which are no longer active.
+                        const allIds = new Set(
+                            clientCursors.map((c) => c.deviceId)
                         );
+                        const updatedKnownRemoteCursors =
+                            this.knownRemoteCursors.filter((c) =>
+                                allIds.has(c.deviceId)
+                            );
 
-                    for (const cursor of clientCursors.filter((client) =>
-                        client.documentsWithCursors.every(
-                            (doc) => doc.vault_update_id != null
-                        )
-                    )) {
-                        updatedKnownRemoteCursors.push({
-                            ...cursor,
-                            upToDateness:
-                                await this.getDocumentsUpToDateness(cursor)
-                        });
-                    }
+                        for (const cursor of clientCursors.filter((client) =>
+                            client.documentsWithCursors.every(
+                                (doc) => doc.vault_update_id != null
+                            )
+                        )) {
+                            updatedKnownRemoteCursors.push({
+                                ...cursor,
+                                upToDateness:
+                                    await this.getDocumentsUpToDateness(cursor)
+                            });
+                        }
 
-                    this.knownRemoteCursors = updatedKnownRemoteCursors;
-                });
+                        this.knownRemoteCursors = updatedKnownRemoteCursors;
+                    });
 
-                this.onRemoteCursorsUpdated.trigger(
-                    this.getRelevantAndPruneKnownClientCursors()
-                );
-            }
+                    this.onRemoteCursorsUpdated.trigger(
+                        this.getRelevantAndPruneKnownClientCursors()
+                    );
+                }
+            )
         );
 
-        this.fileChangeNotifier.onFileChanged.add(async (relativePath) =>
-            this.updateLock.withLock(async () => {
-                for (const clientCursor of this.knownRemoteCursors) {
-                    if (
-                        clientCursor.documentsWithCursors.some(
-                            (document) =>
-                                document.relative_path === relativePath
-                        )
-                    ) {
-                        clientCursor.upToDateness =
-                            await this.getDocumentsUpToDateness(clientCursor);
-                    }
-                }
-            })
+        this.eventUnsubscribers.push(
+            this.fileChangeNotifier.onFileChanged.add(
+                async (relativePath) =>
+                    this.updateLock.withLock(async () => {
+                        for (const clientCursor of this.knownRemoteCursors) {
+                            if (
+                                clientCursor.documentsWithCursors.some(
+                                    (document) =>
+                                        document.relative_path === relativePath
+                                )
+                            ) {
+                                clientCursor.upToDateness =
+                                    await this.getDocumentsUpToDateness(
+                                        clientCursor
+                                    );
+                            }
+                        }
+                    })
+            )
         );
     }
 
@@ -100,21 +113,20 @@ export class CursorTracker {
         for (const [relativePath, cursors] of Object.entries(
             documentToCursors
         )) {
-            const record =
-                this.database.getLatestDocumentByRelativePath(relativePath);
+            const doc = this.vfs.getByPath(relativePath);
 
-            if (!record) {
+            if (!doc) {
                 continue; // Let's wait for the file to be created before sending cursors
             }
 
-            if (!record.metadata) {
-                continue; // this is a new document, no need to sync the cursors
+            if (doc.state !== "tracked") {
+                continue; // this is a pending document, no need to sync the cursors
             }
 
             documentsWithCursors.push({
                 relative_path: relativePath,
-                document_id: record.documentId,
-                vault_update_id: record.metadata.parentVersionId,
+                document_id: doc.documentId,
+                vault_update_id: doc.serverVersion,
                 cursors: cursors.map(({ start, end }) => ({
                     start: Math.min(start, end),
                     end: Math.max(start, end)
@@ -135,10 +147,10 @@ export class CursorTracker {
             const readContent = await this.fileOperations.read(
                 doc.relative_path
             );
-            const record = this.database.getLatestDocumentByRelativePath(
-                doc.relative_path
-            );
-            if (record?.metadata?.hash !== hash(readContent)) {
+            const vfsDoc = this.vfs.getByPath(doc.relative_path);
+            const storedHash =
+                vfsDoc?.state === "tracked" ? vfsDoc.localHash : undefined;
+            if (storedHash !== hash(readContent)) {
                 doc.vault_update_id = null;
             }
         }
@@ -160,6 +172,12 @@ export class CursorTracker {
         this.lastLocalCursorState = [];
         this.lastLocalCursorStateWithoutDirtyDocuments = [];
         this.updateLock.reset();
+    }
+
+    public destroy(): void {
+        for (const unsubscribe of this.eventUnsubscribers) {
+            unsubscribe();
+        }
     }
 
     private getRelevantAndPruneKnownClientCursors(): MaybeOutdatedClientCursors[] {
@@ -223,24 +241,19 @@ export class CursorTracker {
     private async getDocumentUpToDateness(
         document: DocumentWithCursors
     ): Promise<DocumentUpToDateness> {
-        const record = this.database.getLatestDocumentByRelativePath(
-            document.relative_path
-        );
+        const vfsDoc = this.vfs.getByPath(document.relative_path);
 
-        if (!record) {
+        if (!vfsDoc) {
             // the document of the cursor must be from the future
             return DocumentUpToDateness.Later;
         }
 
-        if (
-            (record.metadata?.parentVersionId ?? 0) <
-            (document.vault_update_id ?? 0)
-        ) {
+        const serverVersion =
+            vfsDoc.state === "tracked" ? vfsDoc.serverVersion : 0;
+
+        if (serverVersion < (document.vault_update_id ?? 0)) {
             return DocumentUpToDateness.Later;
-        } else if (
-            (document.vault_update_id ?? 0) <
-            (record.metadata?.parentVersionId ?? 0)
-        ) {
+        } else if ((document.vault_update_id ?? 0) < serverVersion) {
             // the document of the cursor must be from the past
             return DocumentUpToDateness.Prior;
         }
@@ -249,9 +262,11 @@ export class CursorTracker {
             document.relative_path
         );
 
-        return this.database.getLatestDocumentByRelativePath(
-            document.relative_path
-        )?.metadata?.hash === hash(currentContent)
+        const freshDoc = this.vfs.getByPath(document.relative_path);
+        const storedHash =
+            freshDoc?.state === "tracked" ? freshDoc.localHash : undefined;
+
+        return storedHash === hash(currentContent)
             ? DocumentUpToDateness.UpToDate
             : DocumentUpToDateness.Prior;
     }

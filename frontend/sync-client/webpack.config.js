@@ -49,11 +49,6 @@ module.exports = [
                 type: "umd"
             },
             globalObject: "this"
-        },
-        resolve: {
-            fallback: {
-                ws: false // Exclude `ws` from the browser bundle
-            }
         }
     }),
     merge(common, {
@@ -62,10 +57,6 @@ module.exports = [
             path: path.resolve(__dirname, "dist"),
             filename: "sync-client.node.js",
             libraryTarget: "commonjs2"
-        },
-        externals: {
-            bufferutil: "bufferutil",
-            "utf-8-validate": "utf-8-validate" // required for ws: https://github.com/websockets/ws/issues/2245#issuecomment-2250318733
         }
     })
 ];

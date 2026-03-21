@@ -6,7 +6,6 @@ export interface SyncSettings {
     remoteUri: string;
     token: string;
     vaultName: string;
-    syncConcurrency: number;
     isSyncEnabled: boolean;
     maxFileSizeMB: number;
     ignorePatterns: string[];
@@ -21,7 +20,6 @@ export const DEFAULT_SETTINGS: SyncSettings = {
     remoteUri: "",
     token: "",
     vaultName: "default",
-    syncConcurrency: 1,
     isSyncEnabled: false,
     maxFileSizeMB: 10,
     ignorePatterns: [],
@@ -38,7 +36,7 @@ export class Settings {
     >();
 
     private settings: SyncSettings;
-    private readonly lock: Lock = new Lock();
+    private readonly lock: Lock;
 
     public constructor(
         private readonly logger: Logger,
@@ -49,6 +47,8 @@ export class Settings {
             ...DEFAULT_SETTINGS,
             ...(initialState ?? {})
         };
+
+        this.lock = new Lock(Settings.name, this.logger);
 
         this.logger.debug(
             `Loaded settings: ${JSON.stringify(this.settings, null, 2)}`

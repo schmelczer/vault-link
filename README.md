@@ -8,12 +8,12 @@
 
 ## Develop
 
-### Install [nvm](https://github.com/nvm-sh/nvm)
+### Set up Node.JS 25 with [nvm](https://github.com/nvm-sh/nvm)
 
 - `curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash`
-- `nvm install 22`
-- `nvm use 22`
-- Optionally set the system-wide default: `nvm alias default 22`
+- `nvm install 25`
+- `nvm use 25`
+- Optionally, set the system-wide default: `nvm alias default 25`
 
 ### Set up Rust
 
@@ -46,34 +46,38 @@ npm install
 npm run dev
 ```
 
-### Scripts
+### Common Tasks
+
+This project uses [Taskfile](https://taskfile.dev/) for task automation. Run `task --list` to see all available tasks.
 
 #### Before pushing
 
 ```sh
-scripts/check.sh --fix
+task check:fix
 ```
 
 #### Update HTTP API TS bindings
 
 ```sh
-scripts/update-api-types.sh
+task update-api-types
 ```
 
 #### Publish new version
 
 ```sh
-scripts/bump-version.sh patch
+task release:bump -- patch
 ```
 
 #### Run E2E tests
 
 ```sh
-scripts/e2e.sh 8
+task e2e -- 8
 ```
 
-And to clean up the logs & database files, run `scripts/clean-up.sh`
+And to clean up the logs & database files, run `task clean`
 
 ## Projects
 
 - [Sync server](./sync-server/README.md)
+
+remove force merge everywhere

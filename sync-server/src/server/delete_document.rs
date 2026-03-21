@@ -1,4 +1,4 @@
-use anyhow::Context;
+use anyhow::{Context, anyhow};
 use axum::{
     Extension, Json,
     extract::{Path, State},
@@ -16,8 +16,8 @@ use crate::{
         },
     },
     config::user_config::User,
-    errors::{SyncServerError, server_error},
-    utils::{normalize::normalize, sanitize_path::sanitize_path},
+    errors::{SyncServerError, not_found_error, server_error},
+    utils::normalize::normalize,
 };
 
 #[derive(Deserialize)]
@@ -37,7 +37,7 @@ pub async fn delete_document(
     Extension(user): Extension<User>,
     TypedHeader(device_id): TypedHeader<DeviceIdHeader>,
     State(state): State<AppState>,
-    Json(request): Json<DeleteDocumentVersion>,
+    Json(_request): Json<DeleteDocumentVersion>,
 ) -> Result<Json<DocumentVersionWithoutContent>, SyncServerError> {
     debug!("Deleting document `{document_id}` in vault `{vault_id}`");
 
@@ -59,6 +59,18 @@ pub async fn delete_document(
         .await
         .map_err(server_error)?;
 
+    if latest_version.is_none() {
+        transaction
+            .rollback()
+            .await
+            .context("Failed to roll back transaction")
+            .map_err(server_error)?;
+
+        return Err(not_found_error(anyhow!(
+            "Document `{document_id}` not found in vault `{vault_id}`"
+        )));
+    }
+
     if let Some(latest_version) = &latest_version
         && latest_version.is_deleted
     {
@@ -72,18 +84,20 @@ pub async fn delete_document(
         return Ok(Json(latest_version.clone().into()));
     }
 
-    let latest_content = latest_version.map_or_else(Vec::new, |version| version.content); // in case the document has never existed before deleting it
+    // latest_version is guaranteed to be Some and not deleted at this point
+    let latest_version = latest_version.expect("checked above: not None and not deleted");
 
     let new_version = StoredDocumentVersion {
         vault_update_id: last_update_id + 1,
         document_id,
-        relative_path: sanitize_path(&request.relative_path),
-        content: latest_content, // copy the content from the latest version
+        relative_path: latest_version.relative_path,
+        content: latest_version.content,
         updated_date: chrono::Utc::now(),
         is_deleted: true,
         user_id: user.name,
         device_id: device_id.0,
         has_been_merged: false,
+        idempotency_key: None,
     };
 
     state
