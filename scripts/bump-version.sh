@@ -35,7 +35,8 @@ cd ..
 
 cp frontend/obsidian-plugin/manifest.json manifest.json  # for BRAT, otherwise it wouldn't update
 
-git ls-files | xargs npx eclint fix
+# Format all files across the project (frontend and backend)
+npx -C frontend prettier --write "**/*.{ts,js,json,md,yml,yaml}"
 
 # Commit and tag
 git add .

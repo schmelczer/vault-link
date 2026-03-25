@@ -11,7 +11,19 @@
         "trailingComma": "none",
         "tabWidth": 4,
         "useTabs": false,
-        "endOfLine": "lf"
+        "endOfLine": "lf",
+        "overrides": [
+            {
+                "files": [
+                    "*.yml",
+                    "*.yaml",
+                    "*.md"
+                ],
+                "options": {
+                    "tabWidth": 2
+                }
+            }
+        ]
     },
     "scripts": {
         "build": "npm run build --workspaces",
