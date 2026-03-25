@@ -53,7 +53,7 @@ Central authority for synchronisation. Rust + Axum framework.
 
 **Technology**:
 
-- **Language**: Rust 1.89+
+- **Language**: Rust 1.92+
 - **Framework**: Axum (async web framework)
 - **Database**: SQLite with SQLx
 - **Protocol**: WebSockets for real-time communication
