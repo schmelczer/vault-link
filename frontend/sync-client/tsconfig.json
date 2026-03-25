@@ -12,7 +12,5 @@
         "declaration": true,
         "declarationDir": "./dist/types"
     },
-    "exclude": [
-        "./dist"
-    ]
+    "exclude": ["./dist"]
 }

@@ -5,6 +5,6 @@
         "**/dist": true,
         "**/node_modules": true,
         "**/.sqlx": true,
-        "**/target": true,
-    },
+        "**/target": true
+    }
 }
