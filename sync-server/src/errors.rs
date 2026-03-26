@@ -5,7 +5,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use log::{debug, error};
+use log::{debug, error, warn};
 use serde::Serialize;
 use thiserror::Error;
 use ts_rs::TS;
@@ -29,6 +29,9 @@ pub enum SyncServerError {
 
     #[error("Permission denied error: {0}")]
     PermissionDeniedError(#[source] anyhow::Error),
+
+    #[error("Too many requests: {0}")]
+    TooManyRequests(#[source] anyhow::Error),
 }
 
 impl SyncServerError {
@@ -39,7 +42,8 @@ impl SyncServerError {
             | Self::ServerError(error)
             | Self::NotFound(error)
             | Self::Unauthenticated(error)
-            | Self::PermissionDeniedError(error) => error.into(),
+            | Self::PermissionDeniedError(error)
+            | Self::TooManyRequests(error) => error.into(),
         }
     }
 }
@@ -69,7 +73,22 @@ impl Display for SerializedError {
 
 impl IntoResponse for SyncServerError {
     fn into_response(self) -> Response {
-        let body = Json(self.serialize());
+        let serialized = self.serialize();
+
+        match &self {
+            Self::InitError(_) | Self::ServerError(_) => {
+                error!("{serialized}");
+            }
+            Self::ClientError(_) | Self::NotFound(_) => {
+                warn!("{serialized}");
+            }
+            Self::TooManyRequests(_) => {
+                warn!("{serialized}");
+            }
+            Self::Unauthenticated(_) | Self::PermissionDeniedError(_) => {}
+        }
+
+        let body = Json(serialized);
 
         match self {
             Self::InitError(_) | Self::ServerError(_) => {
@@ -79,6 +98,9 @@ impl IntoResponse for SyncServerError {
             Self::NotFound(_) => (StatusCode::NOT_FOUND, body).into_response(),
             Self::Unauthenticated(_) => (StatusCode::UNAUTHORIZED, body).into_response(),
             Self::PermissionDeniedError(_) => (StatusCode::FORBIDDEN, body).into_response(),
+            Self::TooManyRequests(_) => {
+                (StatusCode::TOO_MANY_REQUESTS, body).into_response()
+            }
         }
     }
 }
@@ -102,6 +124,7 @@ impl From<&anyhow::Error> for SerializedError {
                     SyncServerError::NotFound(_) => "NotFound",
                     SyncServerError::Unauthenticated(_) => "Unauthenticated",
                     SyncServerError::PermissionDeniedError(_) => "PermissionDeniedError",
+                    SyncServerError::TooManyRequests(_) => "TooManyRequests",
                 },
             ),
             message: error.to_string(),
@@ -138,4 +161,19 @@ pub fn unauthenticated_error(error: anyhow::Error) -> SyncServerError {
 pub fn permission_denied_error(error: anyhow::Error) -> SyncServerError {
     debug!("Permission denied: {error:?}");
     SyncServerError::PermissionDeniedError(error)
+}
+
+pub fn too_many_requests_error(error: anyhow::Error) -> SyncServerError {
+    debug!("Too many requests: {error:?}");
+    SyncServerError::TooManyRequests(error)
+}
+
+/// Maps a `create_write_transaction` error to 429 if the database is busy,
+/// or 500 for all other failures.
+pub fn write_transaction_error(error: anyhow::Error) -> SyncServerError {
+    if error.downcast_ref::<crate::app_state::database::WriteBusyError>().is_some() {
+        too_many_requests_error(error)
+    } else {
+        server_error(error)
+    }
 }

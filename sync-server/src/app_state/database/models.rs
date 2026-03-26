@@ -22,6 +22,7 @@ pub struct StoredDocumentVersion {
     pub device_id: DeviceId,
     #[allow(dead_code)] // This is for manual analysis
     pub has_been_merged: bool,
+    pub idempotency_key: Option<String>,
 }
 
 impl PartialEq<Self> for StoredDocumentVersion {
@@ -33,7 +34,7 @@ impl PartialEq<Self> for StoredDocumentVersion {
 #[derive(TS, Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentVersionWithoutContent {
-    #[ts(as = "i32")]
+    #[ts(type = "number")]
     pub vault_update_id: VaultUpdateId,
 
     pub document_id: DocumentId,
@@ -43,7 +44,7 @@ pub struct DocumentVersionWithoutContent {
     pub user_id: UserId,
     pub device_id: DeviceId,
 
-    #[ts(as = "i32")]
+    #[ts(type = "number")]
     pub content_size: u64,
 }
 
@@ -65,7 +66,7 @@ impl From<StoredDocumentVersion> for DocumentVersionWithoutContent {
 #[derive(TS, Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentVersion {
-    #[ts(as = "i32")]
+    #[ts(type = "number")]
     pub vault_update_id: VaultUpdateId,
 
     pub document_id: DocumentId,
