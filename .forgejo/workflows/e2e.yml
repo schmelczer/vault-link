@@ -1,0 +1,71 @@
+name: E2E tests
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-tests
+  cancel-in-progress: false
+
+env:
+  RUSTFLAGS: "-Dwarnings"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: "25.x"
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.92.0"
+          components: clippy, rustfmt
+
+      - name: Setup rust
+        run: |
+          which sqlx || cargo install sqlx-cli
+          cd sync-server
+          sqlx database create --database-url sqlite://db.sqlite3
+          sqlx migrate run --source src/app_state/database/migrations --database-url sqlite://db.sqlite3
+
+      - name: E2E tests
+        run: |
+          cd sync-server
+          cargo run config-e2e.yml --color never &
+          SERVER_PID=$!
+          cd ..
+
+          scripts/e2e.sh 8
+          EXIT_CODE=$?
+
+          kill $SERVER_PID 2>/dev/null || true
+          wait $SERVER_PID 2>/dev/null || true
+
+          exit $EXIT_CODE
+
+      - name: Upload e2e logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-logs
+          path: logs/
+          retention-days: 30
+
+      - name: Cleanup
+        if: always()
+        run: scripts/clean-up.sh
