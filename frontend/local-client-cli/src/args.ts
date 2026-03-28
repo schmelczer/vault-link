@@ -1,20 +1,25 @@
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import packageJson from "../package.json";
 import { LogLevel } from "sync-client";
+
+export type LineEndingMode = "auto" | "lf" | "crlf";
 
 export interface CliArgs {
     remoteUri: string;
     token: string;
     vaultName: string;
     localPath: string;
-    syncConcurrency?: number;
     maxFileSizeMB?: number;
     ignorePatterns?: string[];
     webSocketRetryIntervalMs?: number;
     logLevel: LogLevel;
     health?: string;
     enableTelemetry?: boolean;
+    quiet: boolean;
+    lineEndings: LineEndingMode;
 }
+
+const VALID_PROTOCOLS = ["http://", "https://", "ws://", "wss://"];
 
 export function parseArgs(argv: string[]): CliArgs {
     const program = new Command();
@@ -25,41 +30,86 @@ export function parseArgs(argv: string[]): CliArgs {
             "VaultLink Local CLI - Sync your vault to the local filesystem"
         )
         .version(packageJson.version)
-        .option("-l, --local-path <path>", "Local directory path to sync")
-        .option("-r, --remote-uri <uri>", "Remote server URI")
-        .option("-t, --token <token>", "Authentication token")
-        .option("-v, --vault-name <name>", "Vault name")
-        .option(
-            "--sync-concurrency <number>",
-            "[OPTIONAL] Number of concurrent sync operations",
-            parseInt
+        .addOption(
+            new Option(
+                "-l, --local-path <path>",
+                "Local directory path to sync"
+            ).env("VAULTLINK_LOCAL_PATH")
         )
-        .option(
-            "--max-file-size-mb <number>",
-            "[OPTIONAL] Maximum file size in MB",
-            parseInt
+        .addOption(
+            new Option(
+                "-r, --remote-uri <uri>",
+                "Remote server URI"
+            ).env("VAULTLINK_REMOTE_URI")
         )
-        .option(
-            "--ignore-pattern <pattern...>",
-            "[OPTIONAL] Patterns to ignore (can be specified multiple times)"
+        .addOption(
+            new Option(
+                "-t, --token <token>",
+                "Authentication token"
+            ).env("VAULTLINK_TOKEN")
         )
-        .option(
-            "--websocket-retry-interval-ms <number>",
-            "[OPTIONAL] WebSocket retry interval in milliseconds",
-            parseInt
+        .addOption(
+            new Option(
+                "-v, --vault-name <name>",
+                "Vault name"
+            ).env("VAULTLINK_VAULT_NAME")
         )
-        .option(
-            "--log-level <level>",
-            "[OPTIONAL] Log level (DEBUG, INFO, WARNING, ERROR)",
-            "INFO"
+        .addOption(
+            new Option(
+                "--max-file-size-mb <number>",
+                "[OPTIONAL] Maximum file size in MB"
+            )
+                .argParser(parseInt)
+                .env("VAULTLINK_MAX_FILE_SIZE_MB")
         )
-        .option(
-            "--health <path>",
-            "[OPTIONAL] Path to health status file for Docker healthcheck"
+        .addOption(
+            new Option(
+                "--ignore-pattern <pattern...>",
+                "[OPTIONAL] Patterns to ignore (can be specified multiple times)"
+            ).env("VAULTLINK_IGNORE_PATTERNS")
         )
-        .option(
-            "--enable-telemetry",
-            "[OPTIONAL] Enable telemetry (disabled by default)"
+        .addOption(
+            new Option(
+                "--websocket-retry-interval-ms <number>",
+                "[OPTIONAL] WebSocket retry interval in milliseconds"
+            )
+                .argParser(parseInt)
+                .env("VAULTLINK_WEBSOCKET_RETRY_INTERVAL_MS")
+        )
+        .addOption(
+            new Option(
+                "--log-level <level>",
+                "[OPTIONAL] Log level (DEBUG, INFO, WARNING, ERROR)"
+            )
+                .default("INFO")
+                .env("VAULTLINK_LOG_LEVEL")
+        )
+        .addOption(
+            new Option(
+                "--health <path>",
+                "[OPTIONAL] Path to health status file for Docker healthcheck"
+            ).env("VAULTLINK_HEALTH")
+        )
+        .addOption(
+            new Option(
+                "--enable-telemetry",
+                "[OPTIONAL] Enable telemetry (disabled by default)"
+            ).env("VAULTLINK_ENABLE_TELEMETRY")
+        )
+        .addOption(
+            new Option(
+                "-q, --quiet",
+                "[OPTIONAL] Suppress startup banner for non-interactive use"
+            ).env("VAULTLINK_QUIET")
+        )
+        .addOption(
+            new Option(
+                "--line-endings <mode>",
+                "[OPTIONAL] Line ending style: auto (platform default), lf, crlf"
+            )
+                .default("auto")
+                .choices(["auto", "lf", "crlf"])
+                .env("VAULTLINK_LINE_ENDINGS")
         )
         .addHelpText(
             "after",
@@ -67,9 +117,13 @@ export function parseArgs(argv: string[]): CliArgs {
 Examples:
   $ vaultlink -l ./my-vault -r https://sync.example.com -t mytoken -v default
   $ vaultlink -l ./my-vault -r https://sync.example.com -t mytoken -v default \\
-    --ignore-pattern ".git/**" --ignore-pattern "*.tmp"
+    --ignore-pattern ".git/**" --ignore-pattern "**/*.tmp"
   $ vaultlink -l ./my-vault -r https://sync.example.com -t mytoken -v default \\
-    --log-level DEBUG
+    --log-level DEBUG --quiet
+
+Environment variables:
+  All options can be configured via VAULTLINK_ prefixed environment variables.
+  CLI arguments take precedence over environment variables.
 `
         );
 
@@ -81,7 +135,6 @@ Examples:
     const remoteUri = opts.remoteUri as string | undefined;
     const token = opts.token as string | undefined;
     const vaultName = opts.vaultName as string | undefined;
-    const syncConcurrency = opts.syncConcurrency as number | undefined;
     const maxFileSizeMb = opts.maxFileSizeMb as number | undefined;
     const ignorePattern = opts.ignorePattern as string[] | undefined;
     const websocketRetryIntervalMs = opts.websocketRetryIntervalMs as
@@ -90,21 +143,43 @@ Examples:
     const logLevelStr = (opts.logLevel as string | undefined) ?? "INFO";
     const health = opts.health as string | undefined;
     const enableTelemetry = opts.enableTelemetry as boolean | undefined;
+    const quiet = (opts.quiet as boolean | undefined) ?? false;
+    const lineEndingsStr = (opts.lineEndings as string | undefined) ?? "auto";
     /* eslint-enable @typescript-eslint/no-unsafe-type-assertion */
 
-    if (localPath === undefined) {
+    const requireOption = <T>(
+        value: T | undefined,
+        name: string
+    ): T => {
+        if (value === undefined) {
+            const option = program.options.find(
+                (o) => o.attributeName() === name
+            );
+            const envHint =
+                option?.envVar !== undefined
+                    ? ` (or set ${option.envVar})`
+                    : "";
+            throw new Error(
+                `required option '${option?.flags ?? name}' not specified${envHint}`
+            );
+        }
+        return value;
+    };
+
+    const requiredLocalPath = requireOption(localPath, "localPath");
+    const requiredRemoteUri = requireOption(remoteUri, "remoteUri");
+    const requiredToken = requireOption(token, "token");
+    const requiredVaultName = requireOption(vaultName, "vaultName");
+
+    // Validate remote URI protocol
+    if (
+        !VALID_PROTOCOLS.some((prefix) =>
+            requiredRemoteUri.startsWith(prefix)
+        )
+    ) {
         throw new Error(
-            "required option '-l, --local-path <path>' not specified"
+            `Invalid remote URI '${requiredRemoteUri}'. Must start with ${VALID_PROTOCOLS.join(", ")}`
         );
-    }
-    if (remoteUri === undefined) {
-        throw new Error("required option '--remote-uri <uri>' not specified");
-    }
-    if (token === undefined) {
-        throw new Error("required option '--token <token>' not specified");
-    }
-    if (vaultName === undefined) {
-        throw new Error("required option '--vault-name <name>' not specified");
     }
 
     // Validate and parse log level
@@ -120,17 +195,29 @@ Examples:
     }
     const logLevel = logLevelUpper;
 
+    const validLineEndings: readonly string[] = ["auto", "lf", "crlf"];
+    const isLineEndingMode = (value: string): value is LineEndingMode => {
+        return validLineEndings.includes(value);
+    };
+    if (!isLineEndingMode(lineEndingsStr)) {
+        throw new Error(
+            `Invalid line endings mode '${lineEndingsStr}'. Valid values are: ${validLineEndings.join(", ")}`
+        );
+    }
+    const lineEndings = lineEndingsStr;
+
     return {
-        localPath,
-        remoteUri,
-        token,
-        vaultName,
-        syncConcurrency,
+        localPath: requiredLocalPath,
+        remoteUri: requiredRemoteUri,
+        token: requiredToken,
+        vaultName: requiredVaultName,
         maxFileSizeMB: maxFileSizeMb,
         ignorePatterns: ignorePattern,
         webSocketRetryIntervalMs: websocketRetryIntervalMs,
         logLevel,
         health,
-        enableTelemetry
+        enableTelemetry,
+        quiet,
+        lineEndings
     };
 }

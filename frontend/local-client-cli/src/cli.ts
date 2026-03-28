@@ -5,24 +5,27 @@ import type { NetworkConnectionStatus } from "sync-client";
 import {
     SyncClient,
     DEFAULT_SETTINGS,
+    Logger,
     LogLevel,
+    type LogLine,
     type SyncSettings,
     type StoredDatabase
 } from "sync-client";
 import { parseArgs } from "./args";
 import { NodeFileSystemOperations } from "./node-filesystem";
 import { FileWatcher } from "./file-watcher";
-import { formatLogLine, colorize, styleText } from "./logger-formatter";
+import { formatLogLine } from "./logger-formatter";
 import packageJson from "../package.json";
 
 function writeHealthStatus(
+    logger: Logger,
     filePath: string,
     connectionStatus: NetworkConnectionStatus
 ): void {
     try {
         fsSync.writeFileSync(filePath, JSON.stringify(connectionStatus));
     } catch (error) {
-        console.error(
+        logger.error(
             `Failed to write health status to ${filePath}: ${error instanceof Error ? error.message : String(error)}`
         );
     }
@@ -35,11 +38,38 @@ const LOG_LEVEL_ORDER = {
     [LogLevel.ERROR]: 3
 };
 
+function createLogHandler(minLevel: LogLevel): (logLine: LogLine) => void {
+    return (logLine: LogLine): void => {
+        if (LOG_LEVEL_ORDER[logLine.level] >= LOG_LEVEL_ORDER[minLevel]) {
+            // eslint-disable-next-line no-console
+            console.log(formatLogLine(logLine));
+        }
+    };
+}
+
 const HEALTH_CHECK_INTERVAL_MS = 30 * 1000;
+const PROGRESS_LOG_INTERVAL_MS = 2000;
+
+function resolveLineEndings(
+    mode: "auto" | "lf" | "crlf"
+): string {
+    switch (mode) {
+        case "lf":
+            return "\n";
+        case "crlf":
+            return "\r\n";
+        case "auto":
+            return process.platform === "win32" ? "\r\n" : "\n";
+    }
+}
 
 async function main(): Promise<void> {
     const args = parseArgs(process.argv);
     const absolutePath = path.resolve(args.localPath);
+
+    const logger = new Logger();
+    const logHandler = createLogHandler(args.logLevel);
+    logger.onLogEmitted.add(logHandler);
 
     if (!fsSync.existsSync(absolutePath)) {
         fsSync.mkdirSync(absolutePath, { recursive: true });
@@ -48,36 +78,27 @@ async function main(): Promise<void> {
     try {
         const stats = await fs.stat(absolutePath);
         if (!stats.isDirectory()) {
-            console.error(
-                colorize(`Error: ${absolutePath} is not a directory`, "red")
-            );
+            logger.error(`${absolutePath} is not a directory`);
             process.exit(1);
         }
     } catch (error) {
-        console.error(
-            colorize(
-                `Error: Cannot access directory ${absolutePath}: ${error instanceof Error ? error.message : String(error)}`,
-                "red"
-            )
+        logger.error(
+            `Cannot access directory ${absolutePath}: ${error instanceof Error ? error.message : String(error)}`
         );
         process.exit(1);
     }
 
-    console.log(
-        styleText("VaultLink Local CLI", "bold", "cyan") +
-            colorize(` v${packageJson.version}`, "dim")
-    );
-    console.log(colorize("=".repeat(50), "dim"));
-    console.log(
-        `${colorize("Local path:", "dim")} ${colorize(absolutePath, "green")}`
-    );
-    console.log(
-        `${colorize("Remote URI:", "dim")} ${colorize(args.remoteUri, "cyan")}`
-    );
-    console.log(
-        `${colorize("Vault name:", "dim")} ${colorize(args.vaultName, "green")}`
-    );
-    console.log("");
+    if (!args.quiet) {
+        logger.info(`VaultLink Local CLI v${packageJson.version}`);
+        logger.info(`Local path: ${absolutePath}`);
+        logger.info(`Remote URI: ${args.remoteUri}`);
+        logger.info(`Vault name: ${args.vaultName}`);
+        if (args.lineEndings !== "auto") {
+            logger.info(
+                `Line endings: ${args.lineEndings.toUpperCase()}`
+            );
+        }
+    }
 
     const dataDir = path.join(absolutePath, ".vaultlink");
     const dataFile = path.join(dataDir, "sync-data.json");
@@ -97,8 +118,6 @@ async function main(): Promise<void> {
         remoteUri: args.remoteUri,
         token: args.token,
         vaultName: args.vaultName,
-        syncConcurrency:
-            args.syncConcurrency ?? DEFAULT_SETTINGS.syncConcurrency,
         maxFileSizeMB: args.maxFileSizeMB ?? DEFAULT_SETTINGS.maxFileSizeMB,
         ignorePatterns,
         webSocketRetryIntervalMs:
@@ -119,11 +138,8 @@ async function main(): Promise<void> {
                     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
                     database = JSON.parse(content) as Partial<StoredDatabase>;
                 } catch {
-                    console.error(
-                        colorize(
-                            `Cannot read data file at ${dataFile}`,
-                            "yellow"
-                        )
+                    logger.warn(
+                        `Cannot read data file at ${dataFile}`
                     );
                 }
 
@@ -133,23 +149,27 @@ async function main(): Promise<void> {
                 };
             },
             save: async ({ database: persistedDatabase }) => {
-                // settings can't be updated when running with this CLI
                 await fs.writeFile(
                     dataFile,
                     JSON.stringify(persistedDatabase, null, 2)
                 );
             }
         },
-        nativeLineEndings: process.platform === "win32" ? "\r\n" : "\n"
+        nativeLineEndings: resolveLineEndings(args.lineEndings)
     });
 
     if (args.health !== undefined) {
         const healthFile = args.health;
-        const healthInterval = setInterval(() => {
+        const writeHealth = (): void => {
             void client.checkConnection().then((status) => {
-                writeHealthStatus(healthFile, status);
+                writeHealthStatus(client.logger, healthFile, status);
             });
-        }, HEALTH_CHECK_INTERVAL_MS);
+        };
+        writeHealth();
+        const healthInterval = setInterval(
+            writeHealth,
+            HEALTH_CHECK_INTERVAL_MS
+        );
         const clearHealthInterval = (): void => {
             clearInterval(healthInterval);
         };
@@ -158,17 +178,10 @@ async function main(): Promise<void> {
         process.on("exit", clearHealthInterval);
     }
 
-    // Add colored log formatter with level filtering
-    client.logger.onLogEmitted.add((logLine) => {
-        // Only show messages at or above the configured log level
-        if (LOG_LEVEL_ORDER[logLine.level] >= LOG_LEVEL_ORDER[args.logLevel]) {
-            console.log(formatLogLine(logLine));
-        }
-    });
-
+    client.logger.onLogEmitted.add(logHandler);
     client.logger.info("Starting sync client");
 
-    const fileWatcher = new FileWatcher(absolutePath, client);
+    const fileWatcher = new FileWatcher(absolutePath, client, ignorePatterns);
 
     client.onWebSocketStatusChanged.add(() => {
         const isConnected = client.isWebSocketConnected;
@@ -177,26 +190,56 @@ async function main(): Promise<void> {
         );
     });
 
+    let syncBatchSize = 0;
+    let totalSyncOps = 0;
+    let lastProgressLogTime = 0;
+
     client.onRemainingOperationsCountChanged.add((remaining) => {
+        if (remaining > syncBatchSize) {
+            syncBatchSize = remaining;
+        }
+
         if (remaining === 0) {
-            client.logger.info("All sync operations completed");
+            if (syncBatchSize > 0) {
+                totalSyncOps += syncBatchSize;
+                client.logger.info(
+                    `Sync batch complete (${syncBatchSize} operations)`
+                );
+                syncBatchSize = 0;
+            }
         } else {
-            client.logger.info(`${remaining} sync operations remaining`);
+            const now = Date.now();
+            if (now - lastProgressLogTime >= PROGRESS_LOG_INTERVAL_MS) {
+                client.logger.info(
+                    `Syncing: ${remaining} operations remaining`
+                );
+                lastProgressLogTime = now;
+            }
         }
     });
 
+    let isShuttingDown = false;
     const gracefulShutdown = async (signal: string): Promise<void> => {
-        console.log(
-            colorize(
-                `\n${signal} received. Shutting down gracefully...`,
-                "yellow"
-            )
+        if (isShuttingDown) {
+            return;
+        }
+        isShuttingDown = true;
+
+        client.logger.info(
+            `${signal} received, shutting down gracefully`
         );
 
         fileWatcher.stop();
         await client.waitUntilFinished();
         await client.destroy();
-        console.log(colorize("Shutdown complete", "green"));
+
+        if (totalSyncOps > 0) {
+            client.logger.info(
+                `Shutdown complete (${totalSyncOps} operations synced)`
+            );
+        } else {
+            client.logger.info("Shutdown complete");
+        }
         process.exit(0);
     };
 
@@ -210,27 +253,21 @@ async function main(): Promise<void> {
     try {
         const connectionStatus = await client.checkConnection();
         if (!connectionStatus.isSuccessful) {
-            console.error(
-                colorize(
-                    `Error: Cannot connect to server: ${connectionStatus.serverMessage}`,
-                    "red"
-                )
+            client.logger.error(
+                `Cannot connect to server: ${connectionStatus.serverMessage}`
             );
             process.exit(1);
         }
 
-        console.log(`${colorize("✓", "green")} Server connection successful`);
-        console.log(colorize("Press Ctrl+C to stop", "dim"));
-        console.log("");
+        if (!args.quiet) {
+            client.logger.info("Server connection successful");
+        }
 
         await client.start();
         fileWatcher.start();
     } catch (error) {
-        console.error(
-            colorize(
-                `Fatal error: ${error instanceof Error ? error.message : String(error)}`,
-                "red"
-            )
+        client.logger.error(
+            `Fatal error: ${error instanceof Error ? error.message : String(error)}`
         );
 
         fileWatcher.stop();
@@ -240,11 +277,10 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
+    // Last-resort handler before the logger exists
+    // eslint-disable-next-line no-console
     console.error(
-        colorize(
-            `Unexpected error: ${error instanceof Error ? error.message : String(error)}`,
-            "red"
-        )
+        `Unexpected error: ${error instanceof Error ? error.message : String(error)}`
     );
     process.exit(1);
 });
