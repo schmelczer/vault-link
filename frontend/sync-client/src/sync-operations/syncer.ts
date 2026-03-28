@@ -118,10 +118,10 @@ export class Syncer {
     public async syncLocallyDeletedFile(
         relativePath: RelativePath
     ): Promise<void> {
-        let document =
+        const document =
             this.database.getLatestDocumentByRelativePath(relativePath);
 
-        if (document == null || document.isDeleted === true) {
+        if (document == null || document.isDeleted) {
             // This is must be a consequence of us deleting a file because of a remote update
             // which triggered a local delete, so we don't need to do anything here.
             this.logger.debug(

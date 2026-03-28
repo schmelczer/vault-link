@@ -16,7 +16,7 @@ export function logToConsole(
 ): void {
     logger.onLogEmitted.add((logLine: LogLine) => {
         const timestamp = logLine.timestamp.toISOString();
-        const message = logLine.message;
+        const {message} = logLine;
 
         let color = "";
         let reset = "";
