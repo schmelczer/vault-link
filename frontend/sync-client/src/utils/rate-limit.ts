@@ -1,4 +1,3 @@
-import { createPromise } from "./create-promise";
 import { sleep } from "./sleep";
 
 /**
@@ -45,7 +44,7 @@ export function rateLimit<
             newArgs = undefined;
         }
 
-        const [promise, resolve] = createPromise();
+        const { promise, resolve } = Promise.withResolvers<void>();
         running = promise;
         sleep(
             typeof minIntervalMs === "function"
