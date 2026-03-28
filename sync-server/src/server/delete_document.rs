@@ -1,4 +1,4 @@
-use anyhow::Context;
+use anyhow::{Context, anyhow};
 use axum::{
     Extension, Json,
     extract::{Path, State},
@@ -16,7 +16,7 @@ use crate::{
         },
     },
     config::user_config::User,
-    errors::{SyncServerError, server_error},
+    errors::{SyncServerError, client_error, not_found_error, server_error, write_transaction_error},
     utils::{normalize::normalize, sanitize_path::sanitize_path},
 };
 
@@ -37,7 +37,7 @@ pub async fn delete_document(
     Extension(user): Extension<User>,
     TypedHeader(device_id): TypedHeader<DeviceIdHeader>,
     State(state): State<AppState>,
-    Json(request): Json<DeleteDocumentVersion>,
+    Json(_request): Json<DeleteDocumentVersion>,
 ) -> Result<Json<DocumentVersionWithoutContent>, SyncServerError> {
     debug!("Deleting document `{document_id}` in vault `{vault_id}`");
 
@@ -45,7 +45,7 @@ pub async fn delete_document(
         .database
         .create_write_transaction(&vault_id)
         .await
-        .map_err(server_error)?;
+        .map_err(write_transaction_error)?;
 
     let last_update_id = state
         .database
@@ -77,7 +77,7 @@ pub async fn delete_document(
     let new_version = StoredDocumentVersion {
         vault_update_id: last_update_id + 1,
         document_id,
-        relative_path: sanitize_path(&request.relative_path),
+        relative_path: sanitize_path(&request.relative_path).map_err(client_error)?,
         content: latest_content, // copy the content from the latest version
         updated_date: chrono::Utc::now(),
         is_deleted: true,

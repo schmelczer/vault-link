@@ -1,8 +1,17 @@
+use std::sync::LazyLock;
+
 use regex::Regex;
+
+static DEDUP_SUFFIX_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r" \((\d+)\)$").expect("invalid regex"));
 
 pub fn dedup_paths(path: &str) -> impl Iterator<Item = String> {
     let mut path_parts = path.split('/').collect::<Vec<_>>();
-    let file_name = path_parts.pop().unwrap().to_owned();
+    let file_name = path_parts
+        .pop()
+        .filter(|s| !s.is_empty())
+        .unwrap_or(path)
+        .to_owned();
 
     let mut directory = path_parts.join("/");
     if !directory.is_empty() {
@@ -29,14 +38,13 @@ pub fn dedup_paths(path: &str) -> impl Iterator<Item = String> {
         }
     };
 
-    let regex = Regex::new(r" \((\d+)\)$").unwrap();
-    let start_number = regex
+    let start_number = DEDUP_SUFFIX_REGEX
         .captures(&stem)
         .and_then(|caps| caps.get(1))
         .and_then(|m| m.as_str().parse::<u32>().ok())
         .unwrap_or(0);
 
-    let clean_stem = regex.replace(&stem, "").to_string();
+    let clean_stem = DEDUP_SUFFIX_REGEX.replace(&stem, "").to_string();
 
     (start_number..).map(move |dedup_number| {
         if dedup_number == 0 {

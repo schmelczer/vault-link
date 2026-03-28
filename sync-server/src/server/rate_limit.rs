@@ -1,25 +1,37 @@
-use std::sync::{
-    Arc,
-    atomic::{AtomicU64, Ordering},
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+    time::Instant,
 };
 
 use axum::{extract::Request, http::StatusCode, middleware::Next, response::Response};
+use axum_extra::{
+    TypedHeader,
+    headers::{Authorization, authorization::Bearer},
+};
 
-/// Simple token-bucket rate limiter that refills every second.
+/// Per-user token-bucket rate limiter. Each bearer token gets its own bucket
+/// that refills to `max_per_second` tokens every second.
 #[derive(Clone, Debug)]
 pub struct RateLimiter {
-    inner: Arc<TokenBucket>,
+    max_per_second: u64,
+    buckets: Arc<Mutex<HashMap<String, Arc<TokenBucket>>>>,
 }
 
 #[derive(Debug)]
 struct TokenBucket {
-    tokens: AtomicU64,
+    state: Mutex<BucketState>,
     max_tokens: u64,
 }
 
+#[derive(Debug)]
+struct BucketState {
+    tokens: u64,
+    last_refill: Instant,
+}
+
 impl RateLimiter {
-    /// Create a new rate limiter. Spawns a background task that refills tokens
-    /// every second.
+    /// Create a new per-user rate limiter.
     ///
     /// # Panics
     ///
@@ -27,44 +39,62 @@ impl RateLimiter {
     pub fn new(max_per_second: u64) -> Self {
         assert!(
             max_per_second > 0,
-            "max_per_second must be > 0 (use 0 in config to disable rate limiting entirely)"
+            "max_per_second must be > 0 (set rate_limit_per_user_per_second to null in config to disable)"
         );
 
-        let bucket = Arc::new(TokenBucket {
-            tokens: AtomicU64::new(max_per_second),
-            max_tokens: max_per_second,
-        });
-
-        let bucket_clone = bucket.clone();
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
-            loop {
-                interval.tick().await;
-                bucket_clone
-                    .tokens
-                    .store(bucket_clone.max_tokens, Ordering::Release);
-            }
-        });
-
-        Self { inner: bucket }
+        Self {
+            max_per_second,
+            buckets: Arc::new(Mutex::new(HashMap::new())),
+        }
     }
 
-    fn try_acquire(&self) -> bool {
-        self.inner
-            .tokens
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
-                if current > 0 { Some(current - 1) } else { None }
+    fn get_or_create_bucket(&self, token: &str) -> Arc<TokenBucket> {
+        self.buckets
+            .lock()
+            .expect("rate limiter lock poisoned")
+            .entry(token.to_owned())
+            .or_insert_with(|| {
+                Arc::new(TokenBucket {
+                    state: Mutex::new(BucketState {
+                        tokens: self.max_per_second,
+                        last_refill: Instant::now(),
+                    }),
+                    max_tokens: self.max_per_second,
+                })
             })
-            .is_ok()
+            .clone()
+    }
+}
+
+impl TokenBucket {
+    fn try_acquire(&self) -> bool {
+        let mut state = self.state.lock().expect("token bucket lock poisoned");
+        let now = Instant::now();
+        if now.duration_since(state.last_refill).as_secs() >= 1 {
+            state.tokens = self.max_tokens;
+            state.last_refill = now;
+        }
+        if state.tokens > 0 {
+            state.tokens -= 1;
+            true
+        } else {
+            false
+        }
     }
 }
 
 pub async fn rate_limit_middleware(
     axum::extract::State(limiter): axum::extract::State<RateLimiter>,
+    auth_header: Option<TypedHeader<Authorization<Bearer>>>,
     req: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    if limiter.try_acquire() {
+    let Some(TypedHeader(auth)) = auth_header else {
+        return Ok(next.run(req).await);
+    };
+
+    let bucket = limiter.get_or_create_bucket(auth.token());
+    if bucket.try_acquire() {
         Ok(next.run(req).await)
     } else {
         Err(StatusCode::TOO_MANY_REQUESTS)

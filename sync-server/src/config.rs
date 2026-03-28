@@ -27,6 +27,19 @@ pub struct Config {
 }
 
 impl Config {
+    pub fn validate(&self) -> Result<()> {
+        self.server
+            .validate()
+            .context("Invalid server configuration")?;
+        self.logging
+            .validate()
+            .context("Invalid logging configuration")?;
+        self.database
+            .validate()
+            .context("Invalid database configuration")?;
+        Ok(())
+    }
+
     pub async fn read_or_create(path: &Path) -> Result<Self> {
         let display_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
 

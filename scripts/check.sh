@@ -30,8 +30,11 @@ fi
 which cargo-machete || cargo install cargo-machete
 cargo machete --with-metadata
 
+cd ..
+scripts/update-api-types.sh # this will dirty up the git state if not up-to-date
+
 echo "Running checks in frontend"
-cd ../frontend
+cd frontend
 
 if [[ "$FIX_MODE" == true ]]; then
     npm install
@@ -56,7 +59,5 @@ if [[ "$FIX_MODE" == false ]] && [[ $(git status --porcelain) ]]; then
     echo "Failing CI because the working directory is not clean after linting"
     exit 1
 fi
-
-cd ..
 
 echo "Success"

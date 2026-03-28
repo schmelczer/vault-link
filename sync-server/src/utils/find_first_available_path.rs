@@ -1,7 +1,7 @@
 use crate::app_state::database::models::VaultId;
 use crate::utils::dedup_paths::dedup_paths;
-use anyhow::{Result, bail};
-use log::info;
+use anyhow::Result;
+use log::{debug, info};
 use sqlx::sqlite::SqliteConnection;
 
 

@@ -41,11 +41,12 @@ async fn main() -> ExitCode {
         }
     };
 
-    let mut result = set_up_logging(&args, &config.logging);
-
-    if result.is_ok() {
-        result = start_server(config).await;
+    let result = async {
+        config.validate().map_err(init_error)?;
+        set_up_logging(&args, &config.logging)?;
+        start_server(config).await
     }
+    .await;
 
     match result {
         Ok(()) => ExitCode::SUCCESS,
