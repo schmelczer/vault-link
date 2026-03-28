@@ -101,7 +101,7 @@ export class UnrestrictedSyncer {
             const contentBytes = await this.operations.read(
                 document.relativePath
             ); // this can throw FileNotFoundError
-            const contentHash = hash(contentBytes);
+            const contentHash = await hash(contentBytes);
 
             let response: DocumentVersion | DocumentUpdateResponse | undefined =
                 undefined;
@@ -342,7 +342,7 @@ export class UnrestrictedSyncer {
                 {
                     documentId: remoteVersion.documentId,
                     parentVersionId: remoteVersion.vaultUpdateId,
-                    hash: hash(contentBytes),
+                    hash: await hash(contentBytes),
                     remoteRelativePath: remoteVersion.relativePath
                 },
                 this.database.createNewPendingDocument(
@@ -513,7 +513,7 @@ export class UnrestrictedSyncer {
 
         if (!("type" in response) || response.type === "MergingUpdate") {
             const responseBytes = base64ToBytes(response.contentBase64);
-            contentHash = hash(responseBytes);
+            contentHash = await hash(responseBytes);
 
             this.database.updateDocumentMetadata(
                 {

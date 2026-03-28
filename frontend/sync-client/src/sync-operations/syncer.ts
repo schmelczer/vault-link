@@ -348,7 +348,7 @@ export class Syncer {
                     try {
                         const contentBytes =
                             await this.operations.read(relativePath); // this can throw FileNotFoundError
-                        return hash(contentBytes);
+                        return await hash(contentBytes);
                     } catch (e) {
                         if (
                             e instanceof Error &&
