@@ -6,7 +6,7 @@ use log::info;
 use models::{
     DocumentId, DocumentVersionWithoutContent, StoredDocumentVersion, VaultId, VaultUpdateId,
 };
-use sqlx::{ConnectOptions, sqlite::SqliteConnectOptions, types::chrono::Utc};
+use sqlx::{ConnectOptions, Connection, sqlite::SqliteConnectOptions, types::chrono::Utc};
 
 pub mod models;
 
@@ -171,6 +171,45 @@ fn rollback_before_acquire(
 }
 
 impl Database {
+    /// Lists all vault IDs that exist on disk (have a `.sqlite` file).
+    pub async fn list_vaults(&self) -> Result<Vec<VaultId>> {
+        let mut vaults = Vec::new();
+        let mut entries = tokio::fs::read_dir(&self.config.databases_directory_path)
+            .await
+            .context("Failed to read databases directory")?;
+        while let Some(entry) = entries.next_entry().await? {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if let Some(vault) = name.strip_suffix(".sqlite") {
+                vaults.push(vault.to_owned());
+            }
+        }
+        vaults.sort();
+        Ok(vaults)
+    }
+
+    pub async fn get_vault_stats(
+        &self,
+        vault: &VaultId,
+    ) -> Result<models::VaultStats> {
+        let pool = self.get_connection_pool(vault).await?;
+        let row = sqlx::query!(
+            r#"
+            SELECT
+                (SELECT MIN(updated_date) FROM documents)
+                    AS "created_at: chrono::DateTime<Utc>",
+                (SELECT COUNT(DISTINCT document_id) FROM latest_document_versions
+                 WHERE is_deleted = false)
+                    AS "document_count!: u32"
+            "#,
+        )
+        .fetch_one(&pool)
+        .await?;
+        Ok(models::VaultStats {
+            created_at: row.created_at,
+            document_count: row.document_count,
+        })
+    }
+
     pub async fn try_new(
         config: &DatabaseConfig,
         broadcasts: &Broadcasts,
@@ -681,6 +720,140 @@ impl Database {
             .await;
 
         Ok(())
+    }
+
+    /// Return all versions (without content) of a specific document, ordered by `vault_update_id`
+    pub async fn get_document_versions(
+        &self,
+        vault: &VaultId,
+        document_id: &DocumentId,
+        connection: Option<&mut SqliteConnection>,
+    ) -> Result<Vec<DocumentVersionWithoutContent>> {
+        let document_id = document_id.as_hyphenated();
+        let query = sqlx::query!(
+            r#"
+            select
+                vault_update_id,
+                document_id as "document_id: Hyphenated",
+                relative_path,
+                updated_date as "updated_date: chrono::DateTime<Utc>",
+                is_deleted,
+                user_id,
+                device_id,
+                length(content) as "content_size: u64"
+            from documents
+            where document_id = ?
+            order by vault_update_id
+            "#,
+            document_id,
+        );
+
+        if let Some(conn) = connection {
+            query.fetch_all(&mut *conn).await
+        } else {
+            query
+                .fetch_all(&self.get_connection_pool(vault).await?)
+                .await
+        }
+        .with_context(|| format!("Cannot fetch document versions for document `{document_id}`"))
+        .map(|rows| {
+            rows.into_iter()
+                .map(|row| DocumentVersionWithoutContent {
+                    vault_update_id: row.vault_update_id,
+                    document_id: row.document_id.into(),
+                    relative_path: row.relative_path,
+                    updated_date: row.updated_date,
+                    is_deleted: row.is_deleted,
+                    user_id: row.user_id,
+                    device_id: row.device_id,
+                    content_size: row.content_size.unwrap_or(0),
+                })
+                .collect()
+        })
+    }
+
+    /// Return all versions across all documents, paginated, ordered by `vault_update_id` DESC
+    pub async fn get_vault_history(
+        &self,
+        vault: &VaultId,
+        limit: i64,
+        before_update_id: Option<VaultUpdateId>,
+        connection: Option<&mut SqliteConnection>,
+    ) -> Result<Vec<DocumentVersionWithoutContent>> {
+        let map_row = |row: models::VaultHistoryRow| DocumentVersionWithoutContent {
+            vault_update_id: row.vault_update_id,
+            document_id: row.document_id,
+            relative_path: row.relative_path,
+            updated_date: row.updated_date,
+            is_deleted: row.is_deleted,
+            user_id: row.user_id,
+            device_id: row.device_id,
+            content_size: row.content_size.unwrap_or(0),
+        };
+
+        if let Some(before) = before_update_id {
+            let query = sqlx::query_as!(
+                models::VaultHistoryRow,
+                r#"
+                select
+                    vault_update_id,
+                    document_id as "document_id: Hyphenated",
+                    relative_path,
+                    updated_date as "updated_date: chrono::DateTime<Utc>",
+                    is_deleted,
+                    user_id,
+                    device_id,
+                    length(content) as "content_size: u64"
+                from documents
+                where vault_update_id < ?
+                order by vault_update_id desc
+                limit ?
+                "#,
+                before,
+                limit,
+            );
+
+            let rows = if let Some(conn) = connection {
+                query.fetch_all(&mut *conn).await
+            } else {
+                query
+                    .fetch_all(&self.get_connection_pool(vault).await?)
+                    .await
+            }
+            .context("Cannot fetch vault history")?;
+
+            Ok(rows.into_iter().map(map_row).collect())
+        } else {
+            let query = sqlx::query_as!(
+                models::VaultHistoryRow,
+                r#"
+                select
+                    vault_update_id,
+                    document_id as "document_id: Hyphenated",
+                    relative_path,
+                    updated_date as "updated_date: chrono::DateTime<Utc>",
+                    is_deleted,
+                    user_id,
+                    device_id,
+                    length(content) as "content_size: u64"
+                from documents
+                order by vault_update_id desc
+                limit ?
+                "#,
+                limit,
+            );
+
+            let rows = if let Some(conn) = connection {
+                query.fetch_all(&mut *conn).await
+            } else {
+                query
+                    .fetch_all(&self.get_connection_pool(vault).await?)
+                    .await
+            }
+            .context("Cannot fetch vault history")?;
+
+            Ok(rows.into_iter().map(map_row).collect())
+        }
     }
 
     /// Cleanup idle connection pools that haven't been accessed in more than 5 minutes

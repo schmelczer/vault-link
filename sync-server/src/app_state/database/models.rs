@@ -77,6 +77,24 @@ pub struct DocumentVersion {
     pub device_id: DeviceId,
 }
 
+/// Row struct for vault history queries (used by `sqlx::query_as!`)
+#[derive(Debug)]
+pub struct VaultHistoryRow {
+    pub vault_update_id: VaultUpdateId,
+    pub document_id: DocumentId,
+    pub relative_path: String,
+    pub updated_date: DateTime<Utc>,
+    pub is_deleted: bool,
+    pub user_id: String,
+    pub device_id: String,
+    pub content_size: Option<u64>,
+}
+
+pub struct VaultStats {
+    pub created_at: Option<DateTime<Utc>>,
+    pub document_count: u32,
+}
+
 impl From<StoredDocumentVersion> for DocumentVersion {
     fn from(value: StoredDocumentVersion) -> Self {
         Self {

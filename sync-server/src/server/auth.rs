@@ -41,13 +41,17 @@ pub async fn auth_middleware(
     Ok(next.run(req).await)
 }
 
-pub fn auth(state: &AppState, token: &str, vault_id: &VaultId) -> Result<User, SyncServerError> {
-    let user = state
+pub fn authenticate(state: &AppState, token: &str) -> Result<User, SyncServerError> {
+    state
         .config
         .users
         .get_user(token)
         .cloned()
-        .ok_or_else(|| unauthenticated_error(anyhow::anyhow!("Invalid token")))?;
+        .ok_or_else(|| unauthenticated_error(anyhow::anyhow!("Invalid token")))
+}
+
+pub fn auth(state: &AppState, token: &str, vault_id: &VaultId) -> Result<User, SyncServerError> {
+    let user = authenticate(state, token)?;
 
     if match user.vault_access {
         VaultAccess::AllowAccessToAll => true,

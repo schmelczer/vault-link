@@ -55,6 +55,8 @@ pub async fn create_server(config: Config) -> Result<()> {
     let app = Router::new()
         .nest("/", get_authed_routes(app_state.clone()))
         .route("/", get(index::index))
+        .route("/assets/*path", get(index::spa_assets))
+        .route("/vaults", get(list_vaults::list_vaults))
         .route("/vaults/:vault_id/ping", get(ping::ping))
         .route("/vaults/:vault_id/ws", get(websocket::websocket_handler))
         .fallback(index::spa_fallback);
@@ -106,7 +108,7 @@ fn build_cors_layer(server_config: &ServerConfig) -> Result<CorsLayer> {
     let origins = &server_config.allowed_origins;
 
     let cors = if origins.len() == 1 && origins[0] == "*" {
-        info!("CORS: allowing all origins (wildcard)");
+        info!("CORS: allowing all origins");
         let header: HeaderValue = "*"
             .parse()
             .context("Failed to parse wildcard CORS origin")?;
