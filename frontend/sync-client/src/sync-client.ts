@@ -29,7 +29,6 @@ import { ServerConfig } from "./services/server-config";
 import type { EventListeners } from "./utils/data-structures/event-listeners";
 
 export class SyncClient {
-    private hasStartedOfflineSync = false;
     private hasFinishedOfflineSync = false;
     private hasStarted = false;
     private hasBeenDestroyed = false;
@@ -38,12 +37,12 @@ export class SyncClient {
     private readonly eventUnsubscribers: (() => void)[] = [];
 
     private constructor(
+        public readonly logger: Logger,
         private readonly history: SyncHistory,
         private readonly settings: Settings,
         private readonly database: Database,
         private readonly syncer: Syncer,
         private readonly webSocketManager: WebSocketManager,
-        public readonly logger: Logger,
         private readonly fetchController: FetchController,
         private readonly cursorTracker: CursorTracker,
         private readonly fileChangeNotifier: FileChangeNotifier,
@@ -56,7 +55,7 @@ export class SyncClient {
                 database: Partial<StoredDatabase>;
             }>
         >
-    ) {}
+    ) { }
 
     public get documentCount(): number {
         return this.database.length;
@@ -195,7 +194,6 @@ export class SyncClient {
         );
 
         const webSocketManager = new WebSocketManager(
-            deviceId,
             logger,
             settings,
             webSocket
@@ -206,7 +204,6 @@ export class SyncClient {
             logger,
             database,
             settings,
-            syncService,
             webSocketManager,
             fileOperations,
             unrestrictedSyncer
@@ -214,18 +211,19 @@ export class SyncClient {
 
         const fileChangeNotifier = new FileChangeNotifier();
         const cursorTracker = new CursorTracker(
+            logger,
             database,
             webSocketManager,
             fileOperations,
             fileChangeNotifier
         );
         const client = new SyncClient(
+            logger,
             history,
             settings,
             database,
             syncer,
             webSocketManager,
-            logger,
             fetchController,
             cursorTracker,
             fileChangeNotifier,
@@ -285,10 +283,10 @@ export class SyncClient {
     }
 
     /**
-    * Reload settings from disk overriding current in-memory settings.
-    * Missing values will be filled in from DEFAULT_SETTINGS rather than
-    * retaining current in-memory settings.
-    */
+     * Reload settings from disk overriding current in-memory settings.
+     * Missing values will be filled in from DEFAULT_SETTINGS rather than
+     * retaining current in-memory settings.
+     */
     public async reloadSettings(): Promise<void> {
         this.checkIfDestroyed("reloadSettings");
 
@@ -320,10 +318,10 @@ export class SyncClient {
     }
 
     /**
-    * Wait for the in-flight operations to finish, reset all tracking,
-    * and the local database but retain the settings.
-    * The SyncClient can be used again after calling this method.
-    */
+     * Wait for the in-flight operations to finish, reset all tracking,
+     * and the local database but retain the settings.
+     * The SyncClient can be used again after calling this method.
+     */
     public async reset(): Promise<void> {
         this.checkIfDestroyed("reset");
 
@@ -337,11 +335,12 @@ export class SyncClient {
         this.database.reset();
         await this.database.save(); // ensure the new database reads as empty
         this.resetInMemoryState();
-        this.hasStartedOfflineSync = false;
         this.hasFinishedOfflineSync = false;
         this.serverConfig.reset();
 
-        await this.startSyncing();
+        if (this.settings.getSettings().isSyncEnabled) {
+            await this.startSyncing();
+        }
     }
 
     public getSettings(): SyncSettings {
@@ -410,12 +409,7 @@ export class SyncClient {
             return DocumentSyncStatus.SYNCING;
         }
 
-        const document =
-            this.database.getLatestDocumentByRelativePath(relativePath);
-        if (document === undefined) {
-            return DocumentSyncStatus.SYNCING;
-        }
-        return document.updates.length > 0
+        return this.syncer.hasPendingOperationsForDocument(relativePath)
             ? DocumentSyncStatus.SYNCING
             : DocumentSyncStatus.UP_TO_DATE;
     }
@@ -436,9 +430,9 @@ export class SyncClient {
     }
 
     /**
-    * Completely destroy the SyncClient, cancelling all in-progress operations.
-    * After calling this method, the SyncClient cannot be used again.
-    */
+     * Completely destroy the SyncClient, cancelling all in-progress operations.
+     * After calling this method, the SyncClient cannot be used again.
+     */
     public async destroy(): Promise<void> {
         this.checkIfDestroyed("destroy");
 
@@ -473,18 +467,17 @@ export class SyncClient {
         this.checkIfDestroyed("startSyncing");
         this.fetchController.finishReset();
 
-        await this.serverConfig.initialize();
-        this.webSocketManager.start();
+        // warm the cache
+        await this.serverConfig.getConfig();
 
-        if (!this.hasStartedOfflineSync) {
-            this.hasStartedOfflineSync = true;
-            await this.syncer.scheduleSyncForOfflineChanges();
-        }
+        await this.syncer.scheduleSyncForOfflineChanges();
+        this.webSocketManager.start();
 
         this.hasFinishedOfflineSync = true;
     }
 
     private async pause(): Promise<void> {
+        this.hasFinishedOfflineSync = false;
         this.fetchController.startReset();
         await this.webSocketManager.stop();
         await this.waitUntilFinished();

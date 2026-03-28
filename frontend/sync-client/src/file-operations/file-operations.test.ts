@@ -23,7 +23,7 @@ class MockServerConfig implements Pick<ServerConfig, "getConfig"> {
 
 class MockDatabase implements Partial<Database> {
     public getLatestDocumentByRelativePath(
-        _find: RelativePath
+        _target: RelativePath
     ): DocumentRecord | undefined {
         // no-op
         return undefined;

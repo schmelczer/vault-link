@@ -38,7 +38,7 @@ export class Settings {
     >();
 
     private settings: SyncSettings;
-    private readonly lock: Lock = new Lock();
+    private readonly lock: Lock;
 
     public constructor(
         private readonly logger: Logger,
@@ -49,6 +49,8 @@ export class Settings {
             ...DEFAULT_SETTINGS,
             ...(initialState ?? {})
         };
+
+        this.lock = new Lock(Settings.name, this.logger);
 
         this.logger.debug(
             `Loaded settings: ${JSON.stringify(this.settings, null, 2)}`

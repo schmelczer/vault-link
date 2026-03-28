@@ -5,18 +5,20 @@ import type { RelativePath } from "../../persistence/database";
 import { Locks } from "./locks";
 import { awaitAll } from "../await-all";
 import { sleep } from "../sleep";
-import { SyncResetError } from "../../services/sync-reset-error";
+import { SyncResetError } from "../../errors/sync-reset-error";
 
 describe("withLock", () => {
     const testPath: RelativePath = "test/document/path";
     const testPath2: RelativePath = "test/document/path2";
+    const testPath3: RelativePath = "test/document/path3";
+
     const logger = new Logger();
 
     // eslint-disable-next-line @typescript-eslint/init-declarations
     let locks: Locks<RelativePath>;
 
     beforeEach(() => {
-        locks = new Locks<RelativePath>(logger);
+        locks = new Locks<RelativePath>("locks-test", logger);
     });
 
     it("should execute function with single key lock", async () => {
@@ -56,22 +58,32 @@ describe("withLock", () => {
     it("should sort multiple keys to prevent deadlocks", async () => {
         const executionOrder: string[] = [];
 
-        // Start two concurrent operations with keys in different orders
-        const promise1 = locks.withLock([testPath2, testPath], async () => {
-            executionOrder.push("operation1-start");
-            await sleep(50);
-            executionOrder.push("operation1-end");
-            return "result1";
-        });
+        await locks.waitForLock(testPath);
 
-        const promise2 = locks.withLock([testPath, testPath2], async () => {
-            executionOrder.push("operation2-start");
-            await sleep(50);
-            executionOrder.push("operation2-end");
-            return "result2";
-        });
+        const promise = awaitAll([
+            locks.withLock([testPath2, testPath3, testPath], async () => {
+                executionOrder.push("operation1-start");
+                executionOrder.push("operation1-end");
+                return "result1";
+            }),
 
-        const [result1, result2] = await awaitAll([promise1, promise2]);
+            locks.withLock([testPath3, testPath, testPath2], async () => {
+                executionOrder.push("operation2-start");
+                executionOrder.push("operation2-end");
+                return "result2";
+            })
+        ]);
+
+        locks.unlock(testPath);
+
+        const [result1, result2] = await Promise.race([
+            promise,
+            new Promise<never>((_, reject) => {
+                setTimeout(() => {
+                    reject(new Error("Deadlock detected"));
+                }, 1000);
+            })
+        ]);
 
         assert.strictEqual(result1, "result1");
         assert.strictEqual(result2, "result2");
@@ -234,13 +246,14 @@ describe("withLock", () => {
 
 describe("reset", () => {
     const testPath: RelativePath = "test/document/path";
+    const testPath2: RelativePath = "test/document/path2";
     const logger = new Logger();
 
     // eslint-disable-next-line @typescript-eslint/init-declarations
     let locks: Locks<RelativePath>;
 
     beforeEach(() => {
-        locks = new Locks<RelativePath>(logger);
+        locks = new Locks<RelativePath>("locks-test", logger);
     });
 
     it("should reject pending waiters with SyncResetError while running operation completes", async () => {
@@ -252,7 +265,7 @@ describe("reset", () => {
         await sleep(1);
 
         const secondPromise = locks.withLock(testPath, async () => "second");
-        void secondPromise.catch(() => {}); // eslint-disable-line @typescript-eslint/no-empty-function
+        void secondPromise.catch(() => { }); // eslint-disable-line @typescript-eslint/no-empty-function
 
         locks.reset();
 
@@ -273,7 +286,7 @@ describe("reset", () => {
         await sleep(1);
 
         const secondPromise = locks.withLock(testPath, async () => "second");
-        void secondPromise.catch(() => {}); // eslint-disable-line @typescript-eslint/no-empty-function
+        void secondPromise.catch(() => { }); // eslint-disable-line @typescript-eslint/no-empty-function
 
         locks.reset();
 
@@ -287,6 +300,40 @@ describe("reset", () => {
         locks.reset();
 
         const result = await locks.withLock(testPath, () => "success");
+        assert.strictEqual(result, "success");
+    });
+
+    it("should release partially acquired locks when reset interrupts multi-key acquisition", async () => {
+        // Hold testPath2 so multi-key acquisition will block on it
+        await locks.waitForLock(testPath2);
+
+        // Start multi-key lock that will acquire testPath first, then block on testPath2
+        const multiKeyPromise = locks.withLock(
+            [testPath, testPath2],
+            async () => "multi"
+        );
+        void multiKeyPromise.catch(() => { }); // eslint-disable-line @typescript-eslint/no-empty-function
+
+        // Wait for the multi-key operation to acquire testPath and start waiting on testPath2
+        await sleep(10);
+
+        // Reset should reject the waiting operation
+        locks.reset();
+
+        await assert.rejects(multiKeyPromise, (err: Error) => {
+            assert.ok(err instanceof SyncResetError);
+            return true;
+        });
+
+        // The key that was already acquired (testPath) should now be released
+        // This would hang/timeout if the lock was leaked
+        const result = await Promise.race([
+            locks.withLock(testPath, () => "success"),
+            sleep(100).then(() => {
+                throw new Error("Lock was not released - deadlock detected");
+            })
+        ]);
+
         assert.strictEqual(result, "success");
     });
 });

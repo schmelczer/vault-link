@@ -1,6 +1,6 @@
 import type { Logger } from "../tracing/logger";
 import { createPromise } from "../utils/create-promise";
-import { SyncResetError } from "./sync-reset-error";
+import { SyncResetError } from "../errors/sync-reset-error";
 
 /**
  * Offers a resettable fetch implementation that waits until syncing is enabled
@@ -25,18 +25,18 @@ export class FetchController {
     }
 
     /**
-    * Whether the fetch implementation can immediately send requests once outside of a reset.
-    */
+     * Whether the fetch implementation can immediately send requests once outside of a reset.
+     */
     public get canFetch(): boolean {
         return this._canFetch;
     }
 
     /**
-    * Allow or disallow fetching. The changes only take effect if not resetting.
-    * When called during a reset, its effect is deferred until the reset is finished.
-    *
-    * @param canFetch Whether fetching is enabled
-    */
+     * Allow or disallow fetching. The changes only take effect if not resetting.
+     * When called during a reset, its effect is deferred until the reset is finished.
+     *
+     * @param canFetch Whether fetching is enabled
+     */
     public set canFetch(canFetch: boolean) {
         this._canFetch = canFetch;
 
@@ -59,9 +59,9 @@ export class FetchController {
     }
 
     /**
-    * Starts a reset, causing all ongoing and future fetches to be rejected
-    * with a SyncResetError until finishReset is called.
-    */
+     * Starts a reset, causing all ongoing and future fetches to be rejected
+     * with a SyncResetError until finishReset is called.
+     */
     public startReset(): void {
         this.isResetting = true;
         this.rejectUntil(new SyncResetError());
@@ -72,9 +72,9 @@ export class FetchController {
     }
 
     /**
-    * Finishes a reset, allowing fetches to proceed or wait again depending on
-    * the current sync settings.
-    */
+     * Finishes a reset, allowing fetches to proceed or wait again depending on
+     * the current sync settings.
+     */
     public finishReset(): void {
         if (!this.isResetting) {
             return;
@@ -85,19 +85,19 @@ export class FetchController {
     }
 
     /**
-    *
-    * |------------------|---------------|-----------------------------------------------------|
-    * |                  | Sync enabled  |                 Sync disabled                       |
-    * |------------------|-------------- |-----------------------------------------------------|
-    * | During reset     |        Rejects with SyncResetError without sending request          |
-    * |------------------|-------------- |-----------------------------------------------------|
-    * | Outside of reset | Same as fetch | Blocks until sync is enabled and then same as fetch |
-    * |------------------|---------------|-----------------------------------------------------|
-    *
-    * @param logger for errors
-    * @param fetch to wrap
-    * @returns a wrapped fetch implementation affected by the FetchController state
-    */
+     *
+     * |------------------|---------------|-----------------------------------------------------|
+     * |                  | Sync enabled  |                 Sync disabled                       |
+     * |------------------|-------------- |-----------------------------------------------------|
+     * | During reset     |        Rejects with SyncResetError without sending request          |
+     * |------------------|-------------- |-----------------------------------------------------|
+     * | Outside of reset | Same as fetch | Blocks until sync is enabled and then same as fetch |
+     * |------------------|---------------|-----------------------------------------------------|
+     *
+     * @param logger for errors
+     * @param fetch to wrap
+     * @returns a wrapped fetch implementation affected by the FetchController state
+     */
     public getControlledFetchImplementation(
         logger: Logger,
         fetch: typeof globalThis.fetch = globalThis.fetch

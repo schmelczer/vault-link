@@ -8,7 +8,7 @@ import type { Logger } from "../tracing/logger";
 import type { Settings } from "../persistence/settings";
 import type { FetchController } from "./fetch-controller";
 import { sleep } from "../utils/sleep";
-import { SyncResetError } from "./sync-reset-error";
+import { SyncResetError } from "../errors/sync-reset-error";
 import type { SerializedError } from "./types/SerializedError";
 import type { DocumentVersionWithoutContent } from "./types/DocumentVersionWithoutContent";
 import type { DocumentUpdateResponse } from "./types/DocumentUpdateResponse";
@@ -66,19 +66,15 @@ export class SyncService {
     }
 
     public async create({
-        documentId,
         relativePath,
         contentBytes
     }: {
-        documentId?: DocumentId;
         relativePath: RelativePath;
         contentBytes: Uint8Array;
-    }): Promise<DocumentVersionWithoutContent> {
+    }): Promise<DocumentUpdateResponse> {
         return this.retryForever(async () => {
             const formData = new FormData();
-            if (documentId !== undefined) {
-                formData.append("document_id", documentId);
-            }
+
             formData.append("relative_path", relativePath);
             formData.append(
                 "content",
@@ -86,7 +82,7 @@ export class SyncService {
             );
 
             this.logger.debug(
-                `Creating document with id ${documentId} and relative path ${relativePath}`
+                `Creating document with relative path ${relativePath}`
             );
 
             const response = await this.client(this.getUrl("/documents"), {
@@ -103,8 +99,8 @@ export class SyncService {
                 );
             }
 
-            const result: DocumentVersionWithoutContent =
-                (await response.json()) as DocumentVersionWithoutContent; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+            const result: DocumentUpdateResponse =
+                (await response.json()) as DocumentUpdateResponse; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
 
             this.logger.debug(`Created document ${JSON.stringify(result)}`);
 

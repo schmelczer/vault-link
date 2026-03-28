@@ -45,11 +45,11 @@ export class FileOperations {
     }
 
     /**
-    * Create a file at the specified path.
-    *
-    * If a file with the same name already exists, it is moved before creating the new one.
-    * Parent directories are created if necessary.
-    */
+     * Create a file at the specified path.
+     *
+     * If a file with the same name already exists, it is moved before creating the new one.
+     * Parent directories are created if necessary.
+     */
     public async create(
         path: RelativePath,
         newContent: Uint8Array
@@ -77,11 +77,11 @@ export class FileOperations {
     }
 
     /**
-    * Update the file at the given path.
-    *
-    * Performs a 3-way merge before writing if the file's content differs from `expectedContent`.
-    * Does not recreate the file if it no longer exists, returning an empty array instead.
-    */
+     * Update the file at the given path.
+     *
+     * Performs a 3-way merge before writing if the file's content differs from `expectedContent`.
+     * Does not recreate the file if it no longer exists, returning an empty array instead.
+     */
     public async write(
         path: RelativePath,
         expectedContent: Uint8Array,
@@ -169,9 +169,9 @@ export class FileOperations {
         }
 
         await this.ensureClearPath(newPath);
-
         this.database.move(oldPath, newPath);
         await this.fs.rename(oldPath, newPath);
+
         await this.deletingEmptyParentDirectoriesOfDeletedFile(oldPath);
     }
 
@@ -239,12 +239,12 @@ export class FileOperations {
     }
 
     /**
-    * Deconflicts the given path by appending (1), (2), etc. before the file extension until a non-existent path is found.
-    * The returned path has a lock acquired on it; it must be released by the caller when no longer needed.
-    *
-    * @param path The starting path to deconflict
-    * @returns a non-existent path with a lock acquired on it
-    */
+     * Deconflicts the given path by appending (1), (2), etc. before the file extension until a non-existent path is found.
+     * The returned path has a lock acquired on it; it must be released by the caller when no longer needed.
+     *
+     * @param path The starting path to deconflict
+     * @returns a non-existent path with a lock acquired on it
+     */
     private async deconflictPath(path: RelativePath): Promise<RelativePath> {
         // eslint-disable-next-line prefer-const
         let [directory, fileName] = FileOperations.getParentDirAndFile(path);
