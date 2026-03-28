@@ -8,12 +8,12 @@
 
 ## Develop
 
-### Install [nvm](https://github.com/nvm-sh/nvm)
+### Set up Node.JS 25 with [nvm](https://github.com/nvm-sh/nvm)
 
 - `curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash`
-- `nvm install 22`
-- `nvm use 22`
-- Optionally set the system-wide default: `nvm alias default 22`
+- `nvm install 25`
+- `nvm use 25`
+- Optionally, set the system-wide default: `nvm alias default 25`
 
 ### Set up Rust
 

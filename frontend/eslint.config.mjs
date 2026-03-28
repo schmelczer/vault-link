@@ -8,7 +8,7 @@ export default [
             "sync-client/src/services/types.ts",
             "**/dist/",
             "**/*.mjs",
-            "**/*.js"
+            "**/*.js",
         ]
     },
     ...tseslint.config({
@@ -17,6 +17,7 @@ export default [
         },
         extends: [eslint.configs.recommended, tseslint.configs.all],
         rules: {
+            "no-console": "error",
             "no-unused-vars": "off",
             "@typescript-eslint/restrict-template-expressions": "off",
             "@typescript-eslint/no-unused-vars": "off",

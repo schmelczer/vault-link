@@ -132,7 +132,8 @@ export class RemoteCursorsPluginValue implements PluginValue {
                     ]
                 )
             },
-            edited
+            edited,
+            "Markdown"
         );
 
         reconciled.cursors.forEach(({ id, position }) => {
