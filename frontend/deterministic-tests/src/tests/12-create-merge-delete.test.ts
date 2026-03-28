@@ -1,7 +1,6 @@
 import type { TestDefinition } from "../test-definition";
 
 export const createMergeDeleteTest: TestDefinition = {
-    name: "Concurrent Create, Merge, Then Delete",
     description:
         "Two clients create A.md offline with different content. Both come online and " +
         "the content is merged. Then one client deletes A.md. Both clients should " +
@@ -23,8 +22,6 @@ export const createMergeDeleteTest: TestDefinition = {
         { type: "delete", client: 0, path: "A.md" },
         { type: "barrier" },
 
-        { type: "assert-not-exists", client: 0, path: "A.md" },
-        { type: "assert-not-exists", client: 1, path: "A.md" },
-        { type: "assert-consistent", verify: (state) => state.assertFileCount(0) }
+        { type: "assert-consistent", verify: (s) => s.assertFileCount(0).assertFileNotExists("A.md") }
     ]
 };

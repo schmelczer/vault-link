@@ -1,4 +1,4 @@
-import { ServerControl } from "./server-control";
+import type { ServerControl } from "./server-control";
 import type { Logger } from "sync-client";
 
 export class ServerManager {

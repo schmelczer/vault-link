@@ -6,7 +6,7 @@ Complements the fuzz-based E2E tests (`test-client`): fuzz tests discover bugs t
 
 ## How it works
 
-Each test is a `TestDefinition`: a name, a client count, and an ordered list of steps. The `TestRunner` spins up N `DeterministicAgent` instances (each wrapping a real `SyncClient` with an `InMemoryFileSystem`) pointed at a shared vault on the server, then executes steps one by one.
+Each test is a `TestDefinition`: a client count and an ordered list of steps. The test name is derived from the registry key (which matches the file name). The `TestRunner` spins up N `DeterministicAgent` instances (each wrapping a real `SyncClient` with an `InMemoryFileSystem`) pointed at a shared vault on the server, then executes steps one by one.
 
 Tests that don't pause the server share a single server process (vault-name isolation). Tests that use `pause-server`/`resume-server` (SIGSTOP/SIGCONT) each get a dedicated server, since SIGSTOP freezes the entire process.
 
@@ -14,7 +14,7 @@ All tests run in parallel up to a concurrency limit.
 
 ## Step types
 
-Clients always start with syincing being disabled.
+Clients always start with syncing disabled.
 
 **File operations** (per-client, fire-and-forget — sync is enqueued but not awaited):
 - `create`, `update`, `rename`, `delete`
@@ -26,11 +26,9 @@ Clients always start with syincing being disabled.
 
 **Server control:**
 - `pause-server` / `resume-server` — SIGSTOP/SIGCONT the server process
-- `wait` — sleep for N milliseconds
 
 **Assertions:**
-- `assert-content`, `assert-exists`, `assert-not-exists`
-- `assert-consistent` — all clients have identical files; optionally takes a custom verify function
+- `assert-consistent` — all clients have identical files; optionally takes a custom `verify(state: AssertableState)` callback
 
 ## Running
 
@@ -56,16 +54,29 @@ npm run test -w deterministic-tests -- -j 4
 import type { TestDefinition } from "../test-definition";
 
 export const myScenarioTest: TestDefinition = {
-    name: "My Scenario",
-    description: "What this test verifies",
+    description: "Client 0 creates A.md offline. After syncing, both clients should have the file.",
     clients: 2,
     steps: [
         { type: "create", client: 0, path: "A.md", content: "hello" },
-        { type: "sync" },
+        { type: "enable-sync", client: 0 },
+        { type: "enable-sync", client: 1 },
         { type: "barrier" },
-        { type: "assert-consistent" }
+        { type: "assert-consistent", verify: (s) => s.assertFileCount(1).assertContent("A.md", "hello") }
     ]
 };
+```
+
+The `verify` callback receives an `AssertableState` object with chainable assertion methods:
+
+```typescript
+s.assertFileCount(n)                   // exact file count
+s.assertFileExists("path")             // file must exist
+s.assertFileNotExists("path")          // file must not exist
+s.assertContent("path", "expected")    // exact content match
+s.assertContains("path", "a", "b")    // all substrings present
+s.assertAnyFileContains("text")        // substring in any file
+s.assertContentInAtMostOneFile("text") // no duplicate content
+s.ifFileExists("path", (s) => ...)    // conditional assertion
 ```
 
 2. Register it in `src/test-registry.ts`:
@@ -78,4 +89,3 @@ const TESTS = {
     "my-scenario": myScenarioTest
 };
 ```
-

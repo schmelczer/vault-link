@@ -104,7 +104,7 @@ export class ServerControl {
     public async waitForReady(maxAttempts = 50): Promise<void> {
         const pingUrl = `${this.remoteUri}/vaults/test/ping`;
         for (let i = 0; i < maxAttempts; i++) {
-            if (this.process === null || this.process.exitCode !== null) {
+            if (this.process?.exitCode !== null) {
                 throw new Error(
                     "Server process died while waiting for it to become ready"
                 );

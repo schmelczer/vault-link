@@ -1,4 +1,4 @@
-import type { StoredDatabase, SyncSettings, RelativePath } from "sync-client";
+import type { StoredDatabase, SyncSettings, RelativePath, TextWithCursors } from "sync-client";
 import { SyncClient, debugging, LogLevel } from "sync-client";
 import { assert } from "./utils/assert";
 import { sleep } from "./utils/sleep";
@@ -16,6 +16,8 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
         database: Partial<StoredDatabase>;
     }> = {};
     private isSyncEnabled = IS_SYNC_ENABLED_DEFAULT;
+    private readonly syncErrors: Error[] = [];
+    private readonly pendingSyncOperations = new Set<Promise<void>>();
 
     public constructor(
         clientId: number,
@@ -81,9 +83,11 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
         const contentBytes = new TextEncoder().encode(content);
         this.files.set(path, contentBytes);
 
-        this.enqueueSync(async () =>
-            this.client.syncLocallyCreatedFile(path)
-        );
+        if (this.isSyncEnabled) {
+            this.enqueueSync(async () =>
+                this.client.syncLocallyCreatedFile(path)
+            );
+        }
     }
 
     public async updateFile(path: string, content: string): Promise<void> {
@@ -96,9 +100,11 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
         const contentBytes = new TextEncoder().encode(content);
         this.files.set(path, contentBytes);
 
-        this.enqueueSync(async () =>
-            this.client.syncLocallyUpdatedFile({ relativePath: path })
-        );
+        if (this.isSyncEnabled) {
+            this.enqueueSync(async () =>
+                this.client.syncLocallyUpdatedFile({ relativePath: path })
+            );
+        }
     }
 
     public async renameFile(oldPath: string, newPath: string): Promise<void> {
@@ -107,11 +113,6 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
         if (!file) {
             throw new Error(
                 `File ${oldPath} does not exist on client ${this.clientId}`
-            );
-        }
-        if (oldPath !== newPath && this.files.has(newPath)) {
-            this.log(
-                `Target path ${newPath} already exists, will be overwritten (ensureClearPath)`
             );
         }
         this.files.set(newPath, file);
@@ -140,18 +141,47 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
 
     public async waitForSync(): Promise<void> {
         this.log("Waiting for sync to complete...");
+        // Drain agent-level sync operations first. These are the fire-and-forget
+        // promises from enqueueSync() that call into the SyncClient's methods.
+        // Without this, waitUntilFinished() might return before the SyncClient
+        // has even been told about the operation.
+        await this.drainPendingSyncOperations();
         await withTimeout(
             this.client.waitUntilFinished(),
             WAIT_TIMEOUT_MS,
             `Client ${this.clientId} waitForSync timed out after ${WAIT_TIMEOUT_MS}ms`
         );
+        if (this.syncErrors.length > 0) {
+            const errors = this.syncErrors.splice(0);
+            throw new Error(
+                `Client ${this.clientId} had ${errors.length} sync error(s):\n${errors.map((e) => e.message).join("\n")}`
+            );
+        }
         this.log("Sync complete");
     }
 
     public async disableSync(): Promise<void> {
         this.log("Disabling sync");
+        // Drain pending enqueued operations before disabling so the SyncClient
+        // knows about all operations that were enqueued while sync was enabled.
+        await this.drainPendingSyncOperations();
         await this.client.setSetting("isSyncEnabled", false);
         this.isSyncEnabled = false;
+        // Wait for in-flight operations to drain. Disabling sync triggers
+        // a reset, which aborts in-flight fetches with SyncResetError.
+        try {
+            await withTimeout(
+                this.client.waitUntilFinished(),
+                WAIT_TIMEOUT_MS,
+                `Client ${this.clientId} disableSync drain timed out`
+            );
+        } catch (error) {
+            if (error instanceof Error && error.name === "SyncResetError") {
+                this.log("Disable sync drain interrupted by reset (expected)");
+            } else {
+                throw error;
+            }
+        }
     }
 
     public async enableSync(): Promise<void> {
@@ -159,44 +189,6 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
         await this.client.setSetting("isSyncEnabled", true);
         this.isSyncEnabled = true;
         await this.waitForWebSocket();
-    }
-
-    public async assertContent(
-        path: string,
-        expectedContent: string
-    ): Promise<void> {
-        this.log(`Asserting content of ${path} equals "${expectedContent}"`);
-        const actualBytes = await this.read(path).catch(() => {
-            throw new Error(
-                `File ${path} does not exist on client ${this.clientId}`
-            );
-        });
-        const actualContent = new TextDecoder().decode(actualBytes);
-        assert(
-            actualContent === expectedContent,
-            `Content mismatch on client ${this.clientId} for ${path}:\nExpected: "${expectedContent}"\nActual: "${actualContent}"`
-        );
-        this.log(`✓ Content assertion passed for ${path}`);
-    }
-
-    public async assertExists(path: string): Promise<void> {
-        this.log(`Asserting ${path} exists`);
-        const exists = await this.exists(path);
-        assert(
-            exists,
-            `File ${path} does not exist on client ${this.clientId}`
-        );
-        this.log(`✓ File ${path} exists`);
-    }
-
-    public async assertNotExists(path: string): Promise<void> {
-        this.log(`Asserting ${path} does not exist`);
-        const exists = await this.exists(path);
-        assert(
-            !exists,
-            `File ${path} exists on client ${this.clientId} but should not`
-        );
-        this.log(`✓ File ${path} does not exist`);
     }
 
     public async getFiles(): Promise<RelativePath[]> {
@@ -217,6 +209,7 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
             return;
         }
         try {
+            await this.drainPendingSyncOperations();
             await withTimeout(
                 this.client.waitUntilFinished(),
                 WAIT_TIMEOUT_MS,
@@ -233,6 +226,49 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
         this.log("Cleanup complete");
     }
 
+    // Yield the event loop before each FS operation so that the SyncClient's
+    // async calls create real interleaving points, matching the behavior of
+    // actual disk I/O. Without this, all FS operations resolve in the same
+    // microtask, hiding concurrency bugs that only manifest with real latency.
+    public override async read(path: RelativePath): Promise<Uint8Array> {
+        await Promise.resolve();
+        return super.read(path);
+    }
+
+    public override async write(
+        path: RelativePath,
+        content: Uint8Array
+    ): Promise<void> {
+        await Promise.resolve();
+        return super.write(path, content);
+    }
+
+    public override async atomicUpdateText(
+        path: RelativePath,
+        updater: (current: TextWithCursors) => TextWithCursors
+    ): Promise<string> {
+        await Promise.resolve();
+        return super.atomicUpdateText(path, updater);
+    }
+
+    public override async exists(path: RelativePath): Promise<boolean> {
+        await Promise.resolve();
+        return super.exists(path);
+    }
+
+    public override async delete(path: RelativePath): Promise<void> {
+        await Promise.resolve();
+        return super.delete(path);
+    }
+
+    public override async rename(
+        oldPath: RelativePath,
+        newPath: RelativePath
+    ): Promise<void> {
+        await Promise.resolve();
+        return super.rename(oldPath, newPath);
+    }
+
     private async waitForWebSocket(): Promise<void> {
         const deadline = Date.now() + WEBSOCKET_CONNECT_TIMEOUT_MS;
         while (!this.client.isWebSocketConnected && Date.now() < deadline) {
@@ -244,11 +280,28 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
         );
     }
 
+    /**
+     * Wait until all agent-level enqueued sync operations have completed.
+     * Uses a loop because completing one operation can trigger new enqueues.
+     */
+    private async drainPendingSyncOperations(): Promise<void> {
+        while (this.pendingSyncOperations.size > 0) {
+            await Promise.all(this.pendingSyncOperations);
+        }
+    }
+
     private enqueueSync(operation: () => Promise<void>): void {
-        void this.executeSyncOperation(operation).catch((error) => {
-            this.log(
-                `Background sync failed (will retry on reconnect): ${error}`
-            );
+        const promise = this.executeSyncOperation(operation).catch(
+            (error: unknown) => {
+                const err =
+                    error instanceof Error ? error : new Error(String(error));
+                this.log(`Background sync failed: ${err.message}`);
+                this.syncErrors.push(err);
+            }
+        );
+        this.pendingSyncOperations.add(promise);
+        void promise.finally(() => {
+            this.pendingSyncOperations.delete(promise);
         });
     }
 

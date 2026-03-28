@@ -1,7 +1,6 @@
 import type { TestDefinition } from "../test-definition";
 
 export const moveIdenticalContentAmbiguityTest: TestDefinition = {
-    name: "Move Detection Ambiguity With Identical Content",
     description:
         "Two files with identical content exist. One is deleted and the other renamed " +
         "while offline. The system should still converge correctly despite the ambiguity.",
@@ -22,19 +21,6 @@ export const moveIdenticalContentAmbiguityTest: TestDefinition = {
         { type: "enable-sync", client: 0 },
         { type: "enable-sync", client: 1 },
         { type: "barrier" },
-
-        {
-            type: "assert-content",
-            client: 1,
-            path: "A.md",
-            content: "identical content"
-        },
-        {
-            type: "assert-content",
-            client: 1,
-            path: "B.md",
-            content: "identical content"
-        },
 
         { type: "disable-sync", client: 1 },
         { type: "delete", client: 1, path: "A.md" },

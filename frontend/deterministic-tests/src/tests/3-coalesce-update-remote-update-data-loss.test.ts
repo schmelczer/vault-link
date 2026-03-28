@@ -1,7 +1,6 @@
 import type { TestDefinition } from "../test-definition";
 
 export const coalesceUpdateRemoteUpdateDataLossTest: TestDefinition = {
-    name: "Local and remote edits to the same file are both preserved",
     description:
         "Client 0 edits a file while client 1 is offline. Client 1 reconnects " +
         "and immediately edits the same file. Both edits should be preserved.",

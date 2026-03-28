@@ -1,7 +1,6 @@
 import type { TestDefinition } from "../test-definition";
 
 export const createUpdateCoalesceServerPauseTest: TestDefinition = {
-    name: "Create and Immediate Update While Server Is Paused",
     description:
         "Client creates a file and immediately updates it while the server is " +
         "paused. When the server resumes, both clients should have the final " +

@@ -1,7 +1,6 @@
 import type { TestDefinition } from "../test-definition";
 
 export const concurrentUpdateDiffConsistencyTest: TestDefinition = {
-    name: "Concurrent edits to different sections merge correctly",
     description:
         "Both clients edit different sections of the same file while offline. " +
         "After syncing, the merged file should contain both edits.",

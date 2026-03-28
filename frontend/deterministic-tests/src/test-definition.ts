@@ -1,5 +1,8 @@
+import type { AssertableState } from "./utils/assertable-state";
+
 export interface ClientState {
     files: Map<string, string>;
+    clientFiles: Map<string, string>[];
 }
 
 export type TestStep =
@@ -13,13 +16,9 @@ export type TestStep =
     | { type: "pause-server" }
     | { type: "resume-server" }
     | { type: "barrier" }
-    | { type: "assert-content"; client: number; path: string; content: string }
-    | { type: "assert-exists"; client: number; path: string }
-    | { type: "assert-not-exists"; client: number; path: string }
-    | { type: "assert-consistent"; verify?: (state: ClientState) => void };
+    | { type: "assert-consistent"; verify?: (state: AssertableState) => void };
 
 export interface TestDefinition {
-    name: string;
     description?: string;
     clients: number;
     steps: TestStep[];

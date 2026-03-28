@@ -1,7 +1,6 @@
 import type { TestDefinition } from "../test-definition";
 
 export const createDeleteNoopTest: TestDefinition = {
-    name: "Offline create then delete results in no file",
     description:
         "A client creates a file, updates it multiple times, then deletes it, all while " +
         "offline. After syncing, neither client should have the file.",
@@ -17,8 +16,6 @@ export const createDeleteNoopTest: TestDefinition = {
         { type: "enable-sync", client: 0 },
         { type: "barrier" },
 
-        { type: "assert-not-exists", client: 0, path: "temp.md" },
-        { type: "assert-not-exists", client: 1, path: "temp.md" },
-        { type: "assert-consistent" }
+        { type: "assert-consistent", verify: (s) => s.assertFileNotExists("temp.md") }
     ]
 };

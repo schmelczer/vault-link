@@ -1,7 +1,6 @@
 import type { TestDefinition } from "../test-definition";
 
 export const concurrentRenameSameTargetTest: TestDefinition = {
-    name: "Two clients rename different files to the same target path",
     description:
         "One client renames A to C while the other renames B to C, both offline. " +
         "After syncing, both file contents should be preserved via path deconfliction.",

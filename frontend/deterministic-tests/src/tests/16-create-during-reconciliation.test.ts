@@ -1,7 +1,6 @@
 import type { TestDefinition } from "../test-definition";
 
 export const createDuringReconciliationTest: TestDefinition = {
-    name: "File Created Right After Reconnect Syncs Correctly",
     description:
         "Client creates two files while offline, reconnects, then immediately " +
         "creates a third file. All three files should sync to the other client.",

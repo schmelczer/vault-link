@@ -1,7 +1,6 @@
 import type { TestDefinition } from "../test-definition";
 
 export const concurrentRenameAndCreateAtTargetTest: TestDefinition = {
-    name: "Rename to path where another client creates a file",
     description:
         "One client renames X to Y while another creates a new file at Y, " +
         "both offline. After syncing, Y should contain merged content from " +

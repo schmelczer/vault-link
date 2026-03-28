@@ -34,7 +34,7 @@ function testUsesPauseServer(test: TestDefinition): boolean {
 }
 
 interface NamedTestResult {
-    test: TestDefinition;
+    name: string;
     result: TestResult;
 }
 
@@ -64,13 +64,13 @@ async function main(): Promise<void> {
     const filterArg = process.argv.find((a) => a.startsWith("--filter="));
     const filter = filterArg?.slice("--filter=".length);
 
-    const testsToRun: TestDefinition[] = [];
+    const testsToRun: [string, TestDefinition][] = [];
     for (const [key, test] of Object.entries(TESTS)) {
         if (test) {
-            if (filter && !key.includes(filter) && !test.name.toLowerCase().includes(filter.toLowerCase())) {
+            if (filter && !key.includes(filter)) {
                 continue;
             }
-            testsToRun.push(test);
+            testsToRun.push([key, test]);
         }
     }
 
@@ -84,8 +84,10 @@ async function main(): Promise<void> {
     }
 
     const concurrency = parseConcurrency();
-    const regularTests = testsToRun.filter((t) => !testUsesPauseServer(t));
-    const pauseTests = testsToRun.filter((t) => testUsesPauseServer(t));
+    const regularTests = testsToRun.filter(
+        ([, t]) => !testUsesPauseServer(t)
+    );
+    const pauseTests = testsToRun.filter(([, t]) => testUsesPauseServer(t));
 
     logger.info(`Server: ${serverPath}`);
     logger.info(`Config: ${configPath}`);
@@ -113,7 +115,8 @@ async function main(): Promise<void> {
             const results = await runWithConcurrency(
                 regularTests,
                 concurrency,
-                async (test) => runSharedServerTest(test, sharedServer)
+                async ([name, test]) =>
+                    runSharedServerTest(name, test, sharedServer)
             );
 
             allResults.push(...results);
@@ -137,7 +140,8 @@ async function main(): Promise<void> {
         const results = await runWithConcurrency(
             pauseTests,
             concurrency,
-            async (test) => runDedicatedServerTest(test, serverPath, configPath)
+            async ([name, test]) =>
+                runDedicatedServerTest(name, test, serverPath, configPath)
         );
 
         allResults.push(...results);
@@ -149,8 +153,8 @@ async function main(): Promise<void> {
     logger.info(`\n--- Results: ${passed.length}/${allResults.length} passed ---`);
 
     if (failed.length > 0) {
-        for (const { test, result } of failed) {
-            logger.error(`  FAILED: ${test.name}: ${result.error}`);
+        for (const { name, result } of failed) {
+            logger.error(`  FAILED: ${name}: ${result.error}`);
         }
         process.exit(1);
     } else {
@@ -165,27 +169,25 @@ main().catch((err: unknown) => {
 });
 
 
-/**
- * Run a test on a shared server (for tests that don't use pause-server).
- */
 async function runSharedServerTest(
+    name: string,
     test: TestDefinition,
     sharedServer: ServerControl
 ): Promise<NamedTestResult> {
-    const testLogger = new PrefixedLogger(logger, test.name);
+    const testLogger = new PrefixedLogger(logger, name);
     const runner = new TestRunner(
         sharedServer,
         testLogger,
         TOKEN,
         sharedServer.remoteUri
     );
-    const result = await runner.runTest(test);
+    const result = await runner.runTest(name, test);
     if (result.success) {
-        logger.info(`PASSED: ${test.name} (${result.duration}ms)`);
+        logger.info(`PASSED: ${name} (${result.duration}ms)`);
     } else {
-        logger.error(`FAILED: ${test.name} - ${result.error}`);
+        logger.error(`FAILED: ${name} - ${result.error}`);
     }
-    return { test, result };
+    return { name, result };
 }
 
 /**
@@ -194,11 +196,12 @@ async function runSharedServerTest(
  * isolated servers to avoid interfering with other tests.
  */
 async function runDedicatedServerTest(
+    name: string,
     test: TestDefinition,
     serverPath: string,
     configPath: string
 ): Promise<NamedTestResult> {
-    const testLogger = new PrefixedLogger(logger, test.name);
+    const testLogger = new PrefixedLogger(logger, name);
     const server = new ServerControl(serverPath, configPath, testLogger);
     serverManager.track(server);
 
@@ -210,13 +213,13 @@ async function runDedicatedServerTest(
             TOKEN,
             server.remoteUri
         );
-        const result = await runner.runTest(test);
+        const result = await runner.runTest(name, test);
         if (result.success) {
-            logger.info(`PASSED: ${test.name} (${result.duration}ms)`);
+            logger.info(`PASSED: ${name} (${result.duration}ms)`);
         } else {
-            logger.error(`FAILED: ${test.name} - ${result.error}`);
+            logger.error(`FAILED: ${name} - ${result.error}`);
         }
-        return { test, result };
+        return { name, result };
     } finally {
         try {
             await server.stop();

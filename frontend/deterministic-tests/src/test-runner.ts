@@ -1,13 +1,13 @@
 import type {
     TestDefinition,
     TestResult,
-    TestStep,
-    ClientState
+    TestStep
 } from "./test-definition";
 import { DeterministicAgent } from "./deterministic-agent";
 import type { ServerControl } from "./server-control";
 import type { SyncSettings, Logger } from "sync-client";
 import { assert } from "./utils/assert";
+import { AssertableState } from "./utils/assertable-state";
 import { sleep } from "./utils/sleep";
 import { withTimeout } from "./utils/with-timeout";
 import {
@@ -37,9 +37,12 @@ export class TestRunner {
         this.remoteUri = remoteUri;
     }
 
-    public async runTest(test: TestDefinition): Promise<TestResult> {
+    public async runTest(
+        name: string,
+        test: TestDefinition
+    ): Promise<TestResult> {
         const startTime = Date.now();
-        this.logger.info(`Running test: ${test.name}`);
+        this.logger.info(`Running test: ${name}`);
         if (test.description !== undefined && test.description !== "") {
             this.logger.info(`Description: ${test.description}`);
         }
@@ -65,7 +68,7 @@ export class TestRunner {
             await this.cleanup();
 
             const duration = Date.now() - startTime;
-            this.logger.info(`\n✓ Test passed: ${test.name} (${duration}ms)`);
+            this.logger.info(`\n✓ Test passed: ${name} (${duration}ms)`);
 
             return {
                 success: true,
@@ -75,7 +78,7 @@ export class TestRunner {
             const duration = Date.now() - startTime;
             const errorMessage =
                 error instanceof Error ? error.message : String(error);
-            this.logger.info(`\n✗ Test failed: ${test.name}`);
+            this.logger.info(`\n✗ Test failed: ${name}`);
             this.logger.info(`Error: ${errorMessage}`);
 
             await this.cleanup();
@@ -192,21 +195,6 @@ export class TestRunner {
                 await this.waitForConvergence();
                 break;
 
-            case "assert-content":
-                await this.getAgent(step.client).assertContent(
-                    step.path,
-                    step.content
-                );
-                break;
-
-            case "assert-exists":
-                await this.getAgent(step.client).assertExists(step.path);
-                break;
-
-            case "assert-not-exists":
-                await this.getAgent(step.client).assertNotExists(step.path);
-                break;
-
             case "assert-consistent":
                 await this.assertConsistent(step.verify);
                 break;
@@ -263,17 +251,21 @@ export class TestRunner {
     }
 
     /**
-     * Wait for all agents to be simultaneously idle. Two full rounds are
-     * needed because completing work on agent A can trigger a server
-     * broadcast that enqueues new work on agent B, and vice versa.
-     * 
-     * However, the 2nd sync may result in merges which can trigger another
-     * round of syncs, so this function should be called in a loop with a
-     * timeout to ensure true convergence rather than just waiting for the
-     * current round of syncs to complete.
+     * Wait for all agents to be simultaneously idle.
+     *
+     * Completing work on agent A can trigger a server broadcast that
+     * enqueues new work on agent B, which can cascade further. With N
+     * agents the worst-case cascade depth is N (a chain A→B→C→…→A),
+     * so we run N+1 sequential passes to drain it. Extra passes are
+     * essentially free when there is no outstanding work.
+     *
+     * The outer {@link waitForConvergence} loop with consistency checks
+     * remains the ultimate guarantee — this method just minimizes how
+     * many slow retry iterations are needed.
      */
     private async waitAllAgentsSettled(): Promise<void> {
-        for (let round = 0; round < 2; round++) {
+        const rounds = this.agents.length + 1;
+        for (let round = 0; round < rounds; round++) {
             for (const agent of this.agents) {
                 await agent.waitForSync();
             }
@@ -281,47 +273,52 @@ export class TestRunner {
     }
 
     private async assertConsistent(
-        verify?: (state: ClientState) => void
+        verify?: (state: AssertableState) => void
     ): Promise<void> {
         this.logger.info("Asserting all clients are consistent...");
         assert(this.agents.length >= 2, "Need at least 2 agents for consistency check");
 
-        const [referenceAgent] = this.agents;
-        const referenceFiles = (await referenceAgent.getFiles()).sort();
-        const referenceState: ClientState = { files: new Map() };
-
-        for (const file of referenceFiles) {
-            const content = await referenceAgent.getFileContent(file);
-            referenceState.files.set(file, content);
+        // Snapshot all agents' file states upfront to minimize the window
+        // where background sync could mutate state between reads.
+        const clientFiles: Map<string, string>[] = [];
+        for (const agent of this.agents) {
+            const sortedFiles = (await agent.getFiles()).sort();
+            const fileMap = new Map<string, string>();
+            for (const file of sortedFiles) {
+                const content = await agent.getFileContent(file);
+                fileMap.set(file, content);
+            }
+            clientFiles.push(fileMap);
         }
+
+        const referenceFiles = Array.from(clientFiles[0].keys());
 
         this.logger.info(
             `Reference client has ${referenceFiles.length} files: ${referenceFiles.join(", ")}`
         );
 
-        for (let i = 1; i < this.agents.length; i++) {
-            const agent = this.agents[i];
-            const files = (await agent.getFiles()).sort();
+        for (let i = 1; i < clientFiles.length; i++) {
+            const agentFileKeys = Array.from(clientFiles[i].keys());
 
             this.logger.info(
-                `Client ${i} has ${files.length} files: ${files.join(", ")}`
+                `Client ${i} has ${agentFileKeys.length} files: ${agentFileKeys.join(", ")}`
             );
 
             assert(
-                files.length === referenceFiles.length,
-                `File count mismatch: client 0 has ${referenceFiles.length} files, client ${i} has ${files.length} files`
+                agentFileKeys.length === referenceFiles.length,
+                `File count mismatch: client 0 has ${referenceFiles.length} files, client ${i} has ${agentFileKeys.length} files`
             );
 
-            for (let j = 0; j < files.length; j++) {
+            for (let j = 0; j < agentFileKeys.length; j++) {
                 assert(
-                    files[j] === referenceFiles[j],
-                    `File list mismatch at index ${j}: client 0 has "${referenceFiles[j]}", client ${i} has "${files[j]}"`
+                    agentFileKeys[j] === referenceFiles[j],
+                    `File list mismatch at index ${j}: client 0 has "${referenceFiles[j]}", client ${i} has "${agentFileKeys[j]}"`
                 );
             }
 
             for (const file of referenceFiles) {
-                const referenceContent = referenceState.files.get(file);
-                const agentContent = await agent.getFileContent(file);
+                const referenceContent = clientFiles[0].get(file);
+                const agentContent = clientFiles[i].get(file);
 
                 assert(
                     referenceContent === agentContent,
@@ -335,7 +332,12 @@ export class TestRunner {
         if (verify) {
             this.logger.info("Running custom verification...");
             try {
-                verify(referenceState);
+                verify(
+                    new AssertableState({
+                        files: clientFiles[0],
+                        clientFiles
+                    })
+                );
             } catch (error) {
                 const msg =
                     error instanceof Error ? error.message : String(error);

@@ -1,8 +1,6 @@
-import { AssertableState } from "src/utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const concurrentDeleteDuringRemoteUpdateTest: TestDefinition = {
-    name: "Delete and remote update of same file do not crash",
     description:
         "One client updates a file while the other deletes it at the same " +
         "time. Both clients should converge without errors.",
