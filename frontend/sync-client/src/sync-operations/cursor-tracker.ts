@@ -142,7 +142,7 @@ export class CursorTracker {
             const record = this.database.getLatestDocumentByRelativePath(
                 doc.relative_path
             );
-            if (record?.metadata?.hash !== hash(readContent)) {
+            if (record?.metadata?.hash !== (await hash(readContent))) {
                 doc.vault_update_id = null;
             }
         }
@@ -255,7 +255,7 @@ export class CursorTracker {
 
         return this.database.getLatestDocumentByRelativePath(
             document.relative_path
-        )?.metadata?.hash === hash(currentContent)
+        )?.metadata?.hash === (await hash(currentContent))
             ? DocumentUpToDateness.UpToDate
             : DocumentUpToDateness.Prior;
     }
