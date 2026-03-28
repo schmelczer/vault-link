@@ -70,7 +70,6 @@ pub struct WebSocketVaultUpdate {
 pub enum WebSocketClientMessage {
     Handshake(WebSocketHandshake),
     CursorPositions(CursorPositionFromClient),
-    Ping {},
 }
 
 #[derive(TS, Serialize, Clone, Debug)]

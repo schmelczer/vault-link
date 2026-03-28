@@ -2,6 +2,8 @@ use std::time::Duration;
 
 use crate::utils::log_level::LogLevel;
 
+pub const DURATION_ZERO: Duration = Duration::from_secs(0);
+
 pub const DEFAULT_CONFIG_PATH: &str = "config.yml";
 
 pub const DEFAULT_DATABASES_DIRECTORY_PATH: &str = "databases";

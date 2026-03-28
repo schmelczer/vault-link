@@ -5,7 +5,7 @@ use log::debug;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    consts::{DEFAULT_LOG_DIRECTORY, DEFAULT_LOG_LEVEL, DEFAULT_LOG_ROTATION_INTERVAL},
+    consts::{DEFAULT_LOG_DIRECTORY, DEFAULT_LOG_LEVEL, DEFAULT_LOG_ROTATION_INTERVAL, DURATION_ZERO},
     utils::log_level::LogLevel,
 };
 
@@ -27,7 +27,7 @@ impl LoggingConfig {
             !self.log_directory.is_empty(),
             "log_directory must not be an empty string"
         );
-        ensure!(self.log_rotation > 0, "log_rotation must be greater than 0");
+        ensure!(self.log_rotation > DURATION_ZERO, "log_rotation must be greater than 0");
         Ok(())
     }
 }

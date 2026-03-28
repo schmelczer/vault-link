@@ -5,7 +5,6 @@ use axum::{
 };
 use axum_extra::TypedHeader;
 use axum_typed_multipart::TypedMultipart;
-use futures::io::Write;
 use log::{debug, info};
 use reconcile_text::{BuiltinTokenizer, EditedText, reconcile};
 use serde::Deserialize;
@@ -56,7 +55,7 @@ pub async fn update_binary(
         get_parent_document(&state, &vault_id, &document_id, request.parent_version_id).await?;
     let content = request.content.contents.to_vec();
 
-    let mut transaction = state
+    let transaction = state
         .database
         .create_write_transaction(&vault_id)
         .await
@@ -102,7 +101,7 @@ pub async fn update_text(
 
     let content = edited_text.apply().text().into_bytes();
 
-    let mut transaction = state
+    let transaction = state
         .database
         .create_write_transaction(&vault_id)
         .await

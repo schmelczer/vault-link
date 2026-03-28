@@ -7,7 +7,7 @@ use crate::consts::{
     DEFAULT_ALLOWED_ORIGINS, DEFAULT_BROADCAST_CHANNEL_CAPACITY, DEFAULT_HOST,
     DEFAULT_MAX_BODY_SIZE_MB, DEFAULT_MAX_CLIENTS_PER_VAULT, DEFAULT_MAX_PENDING_WS_CONNECTIONS,
     DEFAULT_MERGEABLE_FILE_EXTENSIONS, DEFAULT_PORT, DEFAULT_RATE_LIMIT_PER_USER_PER_SECOND,
-    DEFAULT_RESPONSE_TIMEOUT_SECONDS,
+    DEFAULT_RESPONSE_TIMEOUT_SECONDS, DURATION_ZERO,
 };
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
@@ -35,7 +35,7 @@ pub struct ServerConfig {
 
     /// Per-user maximum requests per second (keyed by bearer token).
     /// `None` disables rate limiting.
-    #[serde(default = "DEFAULT_RATE_LIMIT_PER_USER_PER_SECOND")]
+    #[serde(default = "default_rate_limit_per_user_per_second")]
     pub rate_limit_per_user_per_second: Option<u64>,
 
     /// Allowed CORS origins. Default: `["*"]` (allow all).
@@ -52,7 +52,7 @@ pub struct ServerConfig {
 impl ServerConfig {
     pub fn validate(&self) -> Result<()> {
         ensure!(
-            self.response_timeout > 0,
+            self.response_timeout > DURATION_ZERO,
             "response_timeout must be greater than 0"
         );
         ensure!(
@@ -114,7 +114,7 @@ fn default_mergeable_file_extensions() -> Vec<String> {
         .collect()
 }
 
-fn DEFAULT_RATE_LIMIT_PER_USER_PER_SECOND() -> Option<u64> {
+fn default_rate_limit_per_user_per_second() -> Option<u64> {
     debug!("Using default rate limit per second: {DEFAULT_RATE_LIMIT_PER_USER_PER_SECOND:?}");
     DEFAULT_RATE_LIMIT_PER_USER_PER_SECOND
 }
