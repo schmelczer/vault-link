@@ -3,7 +3,8 @@ import { SyncClient, debugging, LogLevel } from "sync-client";
 import { assert } from "./utils/assert";
 import { sleep } from "./utils/sleep";
 import { withTimeout } from "./utils/with-timeout";
-import { IS_SYNC_ENABLED_DEFAULT, WAIT_TIMEOUT_MS, WEBSOCKET_CONNECT_TIMEOUT_MS, WEBSOCKET_POLL_INTERVAL_MS } from "./consts";
+import { IS_SYNC_ENABLED_BY_DEFAULT, WAIT_TIMEOUT_MS, WEBSOCKET_CONNECT_TIMEOUT_MS, WEBSOCKET_POLL_INTERVAL_MS } from "./consts";
+import { ManagedWebSocketFactory } from "./managed-websocket";
 
 
 
@@ -15,9 +16,10 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
         settings: Partial<SyncSettings>;
         database: Partial<StoredDatabase>;
     }> = {};
-    private isSyncEnabled = IS_SYNC_ENABLED_DEFAULT;
+    private isSyncEnabled = IS_SYNC_ENABLED_BY_DEFAULT;
     private readonly syncErrors: Error[] = [];
     private readonly pendingSyncOperations = new Set<Promise<void>>();
+    private readonly wsFactory = new ManagedWebSocketFactory();
 
     public constructor(
         clientId: number,
@@ -32,7 +34,6 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
 
     public async init(
         fetchImplementation: typeof globalThis.fetch,
-        webSocketImplementation: typeof globalThis.WebSocket
     ): Promise<void> {
         this.client = await SyncClient.create({
             fs: this,
@@ -41,7 +42,7 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
                 save: async (data) => void (this.data = data)
             },
             fetch: fetchImplementation,
-            webSocket: webSocketImplementation
+            webSocket: this.wsFactory.constructorFn
         });
 
         this.client.logger.onLogEmitted.add((line) => {
@@ -75,68 +76,14 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
         }
     }
 
-    public async createFile(path: string, content: string): Promise<void> {
-        this.log(`Creating file ${path} with content: ${content}`);
-        if (this.files.has(path)) {
-            throw new Error(`File ${path} already exists`);
-        }
-        const contentBytes = new TextEncoder().encode(content);
-        this.files.set(path, contentBytes);
-
-        if (this.isSyncEnabled) {
-            this.enqueueSync(async () =>
-                this.client.syncLocallyCreatedFile(path)
-            );
-        }
+    public pauseWebSocket(): void {
+        this.log("Pausing WebSocket message delivery");
+        this.wsFactory.pause();
     }
 
-    public async updateFile(path: string, content: string): Promise<void> {
-        this.log(`Updating file ${path} with content: ${content}`);
-        if (!this.files.has(path)) {
-            throw new Error(
-                `File ${path} does not exist on client ${this.clientId}`
-            );
-        }
-        const contentBytes = new TextEncoder().encode(content);
-        this.files.set(path, contentBytes);
-
-        if (this.isSyncEnabled) {
-            this.enqueueSync(async () =>
-                this.client.syncLocallyUpdatedFile({ relativePath: path })
-            );
-        }
-    }
-
-    public async renameFile(oldPath: string, newPath: string): Promise<void> {
-        this.log(`Renaming file ${oldPath} to ${newPath}`);
-        const file = this.files.get(oldPath);
-        if (!file) {
-            throw new Error(
-                `File ${oldPath} does not exist on client ${this.clientId}`
-            );
-        }
-        this.files.set(newPath, file);
-        if (oldPath !== newPath) {
-            this.files.delete(oldPath);
-        }
-        if (this.isSyncEnabled) {
-            this.enqueueSync(async () =>
-                this.client.syncLocallyUpdatedFile({
-                    oldPath,
-                    relativePath: newPath
-                })
-            );
-        }
-    }
-
-    public async deleteFile(path: string): Promise<void> {
-        this.log(`Deleting file ${path}`);
-        this.files.delete(path);
-        if (this.isSyncEnabled) {
-            this.enqueueSync(async () =>
-                this.client.syncLocallyDeletedFile(path)
-            );
-        }
+    public resumeWebSocket(): void {
+        this.log("Resuming WebSocket message delivery");
+        this.wsFactory.resume();
     }
 
     public async waitForSync(): Promise<void> {
@@ -191,9 +138,6 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
         await this.waitForWebSocket();
     }
 
-    public async getFiles(): Promise<RelativePath[]> {
-        return this.listFilesRecursively();
-    }
 
     public async getFileContent(path: string): Promise<string> {
         const bytes = await this.read(path);
@@ -226,10 +170,6 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
         this.log("Cleanup complete");
     }
 
-    // Yield the event loop before each FS operation so that the SyncClient's
-    // async calls create real interleaving points, matching the behavior of
-    // actual disk I/O. Without this, all FS operations resolve in the same
-    // microtask, hiding concurrency bugs that only manifest with real latency.
     public override async read(path: RelativePath): Promise<Uint8Array> {
         await Promise.resolve();
         return super.read(path);
@@ -240,33 +180,50 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
         content: Uint8Array
     ): Promise<void> {
         await Promise.resolve();
-        return super.write(path, content);
+        const isNew = !this.files.has(path);
+        await super.write(path, content);
+
+        if (isNew) {
+            this.enqueueSync(async () => this.client.syncLocallyCreatedFile(path)
+            );
+        } else {
+            this.enqueueSync(async () => this.client.syncLocallyUpdatedFile({ relativePath: path })
+            );
+        }
     }
 
     public override async atomicUpdateText(
         path: RelativePath,
         updater: (current: TextWithCursors) => TextWithCursors
     ): Promise<string> {
-        await Promise.resolve();
-        return super.atomicUpdateText(path, updater);
+        const result = await super.atomicUpdateText(path, updater);
+        this.enqueueSync(async () => this.client.syncLocallyUpdatedFile({ relativePath: path })
+        );
+        return result;
+
     }
 
-    public override async exists(path: RelativePath): Promise<boolean> {
-        await Promise.resolve();
-        return super.exists(path);
-    }
 
     public override async delete(path: RelativePath): Promise<void> {
-        await Promise.resolve();
-        return super.delete(path);
+        await super.delete(path);
+        if (this.isSyncEnabled) {
+            this.enqueueSync(async () => { this.client.syncLocallyDeletedFile(path); }
+            );
+        }
     }
 
     public override async rename(
         oldPath: RelativePath,
         newPath: RelativePath
     ): Promise<void> {
-        await Promise.resolve();
-        return super.rename(oldPath, newPath);
+        await super.rename(oldPath, newPath);
+        this.enqueueSync(async () => {
+            this.client.syncLocallyUpdatedFile({
+                oldPath,
+                relativePath: newPath
+            });
+        }
+        );
     }
 
     private async waitForWebSocket(): Promise<void> {

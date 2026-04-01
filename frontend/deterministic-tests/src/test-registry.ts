@@ -65,6 +65,7 @@ import { createRenameResponseSkipsFileTest } from "./tests/create-rename-respons
 import { onlineCreateRenameConcurrentCreateOrphanTest } from "./tests/online-create-rename-concurrent-create-orphan.test";
 import { concurrentRenameFirstWinsTest } from "./tests/concurrent-rename-first-wins.test";
 import { binaryToTextTransitionTest } from "./tests/binary-to-text-transition.test";
+import { updateThenRenameContentLostTest } from "./tests/update-then-rename-content-lost.test";
 
 export const TESTS: Partial<Record<string, TestDefinition>> = {
     "rename-create-conflict": renameCreateConflictTest,
@@ -133,4 +134,5 @@ export const TESTS: Partial<Record<string, TestDefinition>> = {
     "online-create-rename-concurrent-create-orphan": onlineCreateRenameConcurrentCreateOrphanTest,
     "concurrent-rename-first-wins": concurrentRenameFirstWinsTest,
     "binary-to-text-transition": binaryToTextTransitionTest,
+    "update-then-rename-content-lost": updateThenRenameContentLostTest,
 };

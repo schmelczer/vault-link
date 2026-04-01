@@ -6,7 +6,7 @@ export const STOP_TIMEOUT_MS = 5_000;
 export const CONVERGENCE_TIMEOUT_MS = 60_000;
 export const CONVERGENCE_RETRY_DELAY_MS = 500;
 export const AGENT_INIT_TIMEOUT_MS = 30_000;
-export const IS_SYNC_ENABLED_DEFAULT = false;
+export const IS_SYNC_ENABLED_BY_DEFAULT = false;
 
 export const WAIT_TIMEOUT_MS = 60_000;
 export const WEBSOCKET_CONNECT_TIMEOUT_MS = 10_000;

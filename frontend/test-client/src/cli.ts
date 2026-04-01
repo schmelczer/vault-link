@@ -104,11 +104,8 @@ async function runTest({
             }
         }
 
-        // Settling rounds to drain cascading broadcasts between agents.
-        // Completing work on agent A can trigger broadcasts to agent B,
-        // which can cascade further. With N agents the worst case is N
-        // hops, so N+1 passes guarantees all cascades are drained.
-        for (let round = 0; round <= clients.length; round++) {
+        // Settling rounds: drain cascading broadcasts between agents
+        for (let round = 0; round < 10; round++) {
             for (const client of clients) {
                 try {
                     await client.waitUntilSynced();
@@ -118,7 +115,12 @@ async function runTest({
                     }
                 }
             }
+            // TODO: it's very ugly, let's remove this
+            await sleep(2000);
         }
+
+
+
 
         for (const client of clients) {
             try {

@@ -24,6 +24,9 @@ Clients always start with syncing disabled.
 - `barrier` — retry until all clients converge to identical file state (60s timeout)
 - `enable-sync` / `disable-sync` — simulate going online/offline
 
+**WebSocket control** (per-client):
+- `pause-websocket` / `resume-websocket` — buffer/release WebSocket messages for a specific client
+
 **Server control:**
 - `pause-server` / `resume-server` — SIGSTOP/SIGCONT the server process
 

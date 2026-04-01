@@ -45,10 +45,18 @@ export class MockClient extends debugging.InMemoryFileSystem {
         path: RelativePath,
         content: Uint8Array
     ): Promise<void> {
+        const isNew = !this.files.has(path);
+
         this.files.set(path, content);
-        this.executeFileOperation(
-            async () => this.client.syncLocallyUpdatedFile({ relativePath: path }),
-        );
+
+        if (isNew) {
+            this.executeFileOperation(async () => { this.client.syncLocallyCreatedFile(path); }
+            );
+        } else {
+            this.executeFileOperation(
+                async () => { this.client.syncLocallyUpdatedFile({ relativePath: path }); },
+            );
+        }
 
     }
 
@@ -66,7 +74,7 @@ export class MockClient extends debugging.InMemoryFileSystem {
         this.files.set(path, newContentUint8Array);
 
         this.executeFileOperation(
-            async () => this.client.syncLocallyUpdatedFile({ relativePath: path }),
+            async () => { this.client.syncLocallyUpdatedFile({ relativePath: path }); },
         );
 
         return newContent;
@@ -77,7 +85,7 @@ export class MockClient extends debugging.InMemoryFileSystem {
     public override async delete(path: RelativePath): Promise<void> {
         this.files.delete(path);
         this.executeFileOperation(
-            async () => this.client.syncLocallyDeletedFile(path),
+            async () => { this.client.syncLocallyDeletedFile(path); },
         );
     }
 
@@ -94,10 +102,10 @@ export class MockClient extends debugging.InMemoryFileSystem {
             this.files.delete(oldPath);
         }
         this.executeFileOperation(
-            async () => this.client.syncLocallyUpdatedFile({
+            async () => { this.client.syncLocallyUpdatedFile({
                 oldPath,
                 relativePath: newPath
-            }),
+            }); },
         );
     }
 

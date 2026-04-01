@@ -16,7 +16,9 @@ export type TestStep =
     | { type: "pause-server" }
     | { type: "resume-server" }
     | { type: "barrier" }
-    | { type: "assert-consistent"; verify?: (state: AssertableState) => void };
+    | { type: "assert-consistent"; verify?: (state: AssertableState) => void }
+    | { type: "pause-websocket"; client: number }
+    | { type: "resume-websocket"; client: number };
 
 export interface TestDefinition {
     description?: string;

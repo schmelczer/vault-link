@@ -333,16 +333,19 @@ export class MockAgent extends MockClient {
                     .includes(content);
             });
 
-            if (
-                !this.useSlowFileEvents
-
-            ) {
+            if (!this.useSlowFileEvents) {
                 assert(
                     found.length <= 1,
                     `[${this.name}] Binary content ${content} found in multiple files: ${found.join(", ")}`
                 );
             }
 
+            if (!this.useSlowFileEvents && !this.doDeletes) {
+                assert(
+                    found.length >= 1,
+                    `[${this.name}] Binary content ${content} not found in any files`
+                );
+            }
         }
     }
 
@@ -510,9 +513,7 @@ export class MockAgent extends MockClient {
             `Decided to update binary file ${file}`
         );
         this.doNotTouchWhileOffline.push(file);
-        this.files.set(file, bytes);
-
-
+        await this.write(file, bytes);
     }
 
     private async deleteFileAction(): Promise<void> {

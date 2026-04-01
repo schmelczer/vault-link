@@ -40,8 +40,10 @@ export class ServerControl {
 
         const reservation = await findFreePort();
         this._port = reservation.port;
+        // Prefer tmpfs (/host/tmp) over disk-backed /tmp for faster SQLite I/O
+        const tmpBase = fs.existsSync("/host/tmp") ? "/host/tmp" : os.tmpdir();
         this.tempDir = fs.mkdtempSync(
-            path.join(os.tmpdir(), "vault-link-test-")
+            path.join(tmpBase, "vault-link-test-")
         );
         const tempConfigPath = path.join(this.tempDir, "config.yml");
         const dbDir = path.join(this.tempDir, "databases");

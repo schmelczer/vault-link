@@ -14,7 +14,7 @@ import {
     CONVERGENCE_TIMEOUT_MS,
     CONVERGENCE_RETRY_DELAY_MS,
     AGENT_INIT_TIMEOUT_MS,
-    IS_SYNC_ENABLED_DEFAULT
+    IS_SYNC_ENABLED_BY_DEFAULT
 } from "./consts";
 import { randomUUID } from "node:crypto";
 
@@ -100,7 +100,7 @@ export class TestRunner {
 
         for (let i = 0; i < count; i++) {
             const settings: Partial<SyncSettings> = {
-                isSyncEnabled: IS_SYNC_ENABLED_DEFAULT,
+                isSyncEnabled: IS_SYNC_ENABLED_BY_DEFAULT,
                 token: this.token,
                 vaultName,
                 remoteUri: this.remoteUri
@@ -115,8 +115,6 @@ export class TestRunner {
             await withTimeout(
                 agent.init(
                     fetch,
-                    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-                    WebSocket as unknown as typeof globalThis.WebSocket
                 ),
                 AGENT_INIT_TIMEOUT_MS,
                 `Client ${i} init timed out after ${AGENT_INIT_TIMEOUT_MS}ms`
@@ -138,28 +136,22 @@ export class TestRunner {
     private async executeStep(step: TestStep): Promise<void> {
         switch (step.type) {
             case "create":
-                await this.getAgent(step.client).createFile(
-                    step.path,
-                    step.content
-                );
-                break;
-
             case "update":
-                await this.getAgent(step.client).updateFile(
+                await this.getAgent(step.client).write(
                     step.path,
-                    step.content
+                    new TextEncoder().encode(step.content)
                 );
                 break;
 
             case "rename":
-                await this.getAgent(step.client).renameFile(
+                await this.getAgent(step.client).rename(
                     step.oldPath,
                     step.newPath
                 );
                 break;
 
             case "delete":
-                await this.getAgent(step.client).deleteFile(step.path);
+                await this.getAgent(step.client).delete(step.path);
                 break;
 
             case "sync":
@@ -197,6 +189,14 @@ export class TestRunner {
 
             case "assert-consistent":
                 await this.assertConsistent(step.verify);
+                break;
+
+            case "pause-websocket":
+                this.getAgent(step.client).pauseWebSocket();
+                break;
+
+            case "resume-websocket":
+                this.getAgent(step.client).resumeWebSocket();
                 break;
 
             default: {
@@ -282,7 +282,7 @@ export class TestRunner {
         // where background sync could mutate state between reads.
         const clientFiles: Map<string, string>[] = [];
         for (const agent of this.agents) {
-            const sortedFiles = (await agent.getFiles()).sort();
+            const sortedFiles = (await agent.listFilesRecursively()).sort();
             const fileMap = new Map<string, string>();
             for (const file of sortedFiles) {
                 const content = await agent.getFileContent(file);
