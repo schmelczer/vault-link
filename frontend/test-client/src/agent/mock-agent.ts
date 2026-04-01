@@ -307,7 +307,7 @@ export class MockAgent extends MockClient {
                 );
                 if (fileContent.split(content).length > 2) {
                     if (this.useSlowFileEvents) {
-                        logger.warn(
+                        this.client.logger.warn(
                             `Content ${content} (of ${this.name}) found more than once in '${file}'. File content:\n${fileContent}`
                         );
                     } else {
@@ -369,9 +369,8 @@ export class MockAgent extends MockClient {
             `Decided to create file ${file} with content ${content}`
         );
 
-        return this.create(file, new TextEncoder().encode(` ${content} `), {
-            ignoreSlowFileEvents: true
-        });
+
+        return this.write(file, new TextEncoder().encode(` ${content} `),);
     }
 
     // Binary file creation — exercises the putBinary server path (not in mergeable_file_extensions)
@@ -388,12 +387,10 @@ export class MockAgent extends MockClient {
 
         const { uuid, bytes } = this.getBinaryContent();
         this.client.logger.info(
-            `Decided to create binary file ${file}`
+            `Decided to create binary file ${file}: ${uuid}`
         );
 
-        return this.create(file, bytes, {
-            ignoreSlowFileEvents: true
-        });
+        return this.write(file, bytes,);
     }
 
     private async disableSyncAction(): Promise<void> {
@@ -450,14 +447,6 @@ export class MockAgent extends MockClient {
 
         this.client.logger.info(`Renamed file: ${file} -> ${newName}`);
         await this.rename(file, newName);
-        this.executeFileOperation(
-            async () =>
-                this.client.syncLocallyUpdatedFile({
-                    oldPath: file,
-                    relativePath: newName
-                }),
-            true
-        );
     }
 
     private async updateFileAction(): Promise<void> {
@@ -495,13 +484,6 @@ export class MockAgent extends MockClient {
             })
         );
 
-        this.executeFileOperation(
-            async () =>
-                this.client.syncLocallyUpdatedFile({
-                    relativePath: file
-                }),
-            true
-        );
     }
 
     private async updateBinaryFileAction(): Promise<void> {
@@ -530,13 +512,7 @@ export class MockAgent extends MockClient {
         this.doNotTouchWhileOffline.push(file);
         this.files.set(file, bytes);
 
-        this.executeFileOperation(
-            async () =>
-                this.client.syncLocallyUpdatedFile({
-                    relativePath: file
-                }),
-            true
-        );
+
     }
 
     private async deleteFileAction(): Promise<void> {
@@ -554,10 +530,7 @@ export class MockAgent extends MockClient {
             `Deleting file: ${file} with:\n  content '${new TextDecoder().decode(this.files.get(file))}'`
         );
         await this.delete(file);
-        this.executeFileOperation(
-            async () => this.client.syncLocallyDeletedFile(file),
-            true
-        );
+
     }
 
     private getContent(): string {
