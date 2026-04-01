@@ -237,16 +237,27 @@ pub async fn update_document(
         let new_text = str::from_utf8(&content)
             .context("New content is not valid UTF-8")
             .map_err(client_error)?;
-        let merged = reconcile(
-            parent_text,
-            &latest_text.into(),
-            &new_text.into(),
-            &*BuiltinTokenizer::Word,
-        )
-        .apply()
-        .text()
-        .into_bytes();
-        let is_different = merged != content;
+        let parent_owned = parent_text.to_owned();
+        let latest_owned = latest_text.to_owned();
+        let new_owned = new_text.to_owned();
+        let content_clone = content.clone();
+
+        let (merged, is_different) = tokio::task::spawn_blocking(move || {
+            let merged = reconcile(
+                &parent_owned,
+                &latest_owned.into(),
+                &new_owned.into(),
+                &*BuiltinTokenizer::Word,
+            )
+            .apply()
+            .text()
+            .into_bytes();
+            let is_different = merged != content_clone;
+            (merged, is_different)
+        })
+        .await
+        .map_err(|e| server_error(anyhow::anyhow!("Reconcile task failed: {e}")))?;
+
         (merged, is_different)
     } else {
         (content, false) // false means that the client doesn't need to refetch the file as we can ensure the remote and local versions are the same as LWW is the merging method for binary files
