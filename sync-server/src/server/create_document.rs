@@ -1,4 +1,3 @@
-use anyhow::Context as _;
 use axum::{
     Extension, Json,
     extract::{Path, State},
@@ -6,7 +5,6 @@ use axum::{
 use axum_extra::TypedHeader;
 use axum_typed_multipart::TypedMultipart;
 use log::{debug, info};
-use reconcile_text::{BuiltinTokenizer, reconcile};
 use serde::Deserialize;
 
 use super::{device_id_header::DeviceIdHeader, requests::CreateDocumentVersion};

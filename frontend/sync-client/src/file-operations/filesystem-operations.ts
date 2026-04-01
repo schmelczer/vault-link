@@ -1,4 +1,4 @@
-import type { RelativePath } from "../persistence/database";
+import type { RelativePath } from "../sync-operations/types";
 
 import type { TextWithCursors } from "reconcile-text";
 

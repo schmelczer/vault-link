@@ -1,4 +1,4 @@
-import type { RelativePath } from "../persistence/database";
+import type { RelativePath } from "../sync-operations/types";
 import type { FileSystemOperations } from "./filesystem-operations";
 import type { Logger } from "../tracing/logger";
 import { Locks } from "../utils/data-structures/locks";

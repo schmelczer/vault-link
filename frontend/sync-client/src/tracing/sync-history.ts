@@ -2,7 +2,7 @@ import {
     MAX_HISTORY_ENTRY_COUNT,
     TIMEOUT_FOR_MERGING_HISTORY_ENTRIES_IN_SECONDS
 } from "../consts";
-import type { RelativePath } from "../persistence/database";
+import type { RelativePath } from "../sync-operations/types";
 import type { Logger } from "./logger";
 import { removeFromArray } from "../utils/remove-from-array";
 import { EventListeners } from "../utils/data-structures/event-listeners";

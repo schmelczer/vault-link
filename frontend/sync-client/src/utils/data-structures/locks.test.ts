@@ -1,7 +1,7 @@
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert";
 import { Logger } from "../../tracing/logger";
-import type { RelativePath } from "../../persistence/database";
+import type { RelativePath } from "../../sync-operations/types";
 import { Locks } from "./locks";
 import { awaitAll } from "../await-all";
 import { sleep } from "../sleep";
