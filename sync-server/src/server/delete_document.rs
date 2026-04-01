@@ -1,4 +1,4 @@
-use anyhow::{Context, anyhow};
+use anyhow::Context;
 use axum::{
     Extension, Json,
     extract::{Path, State},
@@ -16,8 +16,8 @@ use crate::{
         },
     },
     config::user_config::User,
-    errors::{SyncServerError, client_error, not_found_error, server_error, write_transaction_error},
-    utils::{normalize::normalize, sanitize_path::sanitize_path},
+    errors::{SyncServerError, server_error, write_transaction_error},
+    utils::normalize::normalize,
 };
 
 #[derive(Deserialize)]
@@ -72,12 +72,15 @@ pub async fn delete_document(
         return Ok(Json(latest_version.clone().into()));
     }
 
-    let latest_content = latest_version.map_or_else(Vec::new, |version| version.content); // in case the document has never existed before deleting it
+    let (latest_relative_path, latest_content) = latest_version.map_or_else(
+        || (String::new(), Vec::new()),
+        |version| (version.relative_path, version.content),
+    );
 
     let new_version = StoredDocumentVersion {
         vault_update_id: last_update_id + 1,
         document_id,
-        relative_path: sanitize_path(&request.relative_path).map_err(client_error)?,
+        relative_path: latest_relative_path,
         content: latest_content, // copy the content from the latest version
         updated_date: chrono::Utc::now(),
         is_deleted: true,
