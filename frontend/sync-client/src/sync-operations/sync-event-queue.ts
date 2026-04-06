@@ -207,7 +207,7 @@ export class SyncEventQueue {
                 (e.type === SyncEventType.Delete &&
                     e.documentId === docId) ||
                 (e.type === SyncEventType.SyncRemote &&
-                    e.remoteVersion.relativePath === path)
+                    this.getDocumentByDocumentId(e.remoteVersion.documentId as DocumentId)?.path === path)
         );
     }
 
@@ -237,6 +237,40 @@ export class SyncEventQueue {
 
     public enqueue(event: SyncEvent): void {
         if (this.isIgnored(event)) return;
+
+        if (event.type === SyncEventType.SyncLocal) {
+            const { path: newPath } = event;
+
+            if (typeof event.documentId === "string") {
+                const existing = this.getDocumentByDocumentId(event.documentId);
+                if (!existing) {
+                    throw new Error(`SyncLocal event for unknown documentId ${event.documentId}`);
+                }
+
+                if (this.documents.has(newPath)) {
+                    throw new Error(`SyncLocal event for documentId ${event.documentId} has newPath ${newPath} which is already tracked by another document`);
+                }
+
+                if (existing.path !== newPath) {
+                    this.documents.delete(existing.path);
+                    this.documents.set(newPath, existing.record);
+                    for (const e of this.events) {
+                        if (
+                            e.type === SyncEventType.SyncLocal &&
+                            e.documentId === event.documentId
+                        ) {
+                            e.path = newPath;
+                        }
+                    }
+                    this.saveInTheBackground();
+                }
+            } else {
+                const oldPath = this.findCreatePathByPromise(event.documentId);
+                if (oldPath !== undefined && oldPath !== newPath) {
+                    this.updatePendingCreatePath(oldPath, newPath);
+                }
+            }
+        }
 
         this.events.push(event);
     }
@@ -286,7 +320,7 @@ export class SyncEventQueue {
                 (e) =>
                     e.type === SyncEventType.SyncLocal &&
                     e.documentId === documentId &&
-                    e.originalPath === first.originalPath
+                    e.originalPath === first.originalPath // can't coalesce moves as they can depend on each other so we have to sync them in the same order, could do topological sort but let's keep it simple for now
             );
             const result = matching[matching.length - 1];
             for (const item of matching) {
@@ -364,6 +398,21 @@ export class SyncEventQueue {
                 }
             }
         }
+    }
+
+    private findCreatePathByPromise(
+        promise: Promise<DocumentId>
+    ): RelativePath | undefined {
+        for (let i = this.events.length - 1; i >= 0; i--) {
+            const e = this.events[i];
+            if (
+                e.type === SyncEventType.Create &&
+                e.resolvers?.promise === promise
+            ) {
+                return e.path;
+            }
+        }
+        return undefined;
     }
 
     private findLastCreate(
