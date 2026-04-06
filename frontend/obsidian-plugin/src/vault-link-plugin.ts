@@ -269,9 +269,9 @@ export default class VaultLinkPlugin extends Plugin {
                 path,
                 rateLimit(
                     async () =>
-                        client.syncLocallyUpdatedFile({
+                        { client.syncLocallyUpdatedFile({
                             relativePath: path
-                        }),
+                        }); },
                     MIN_WAIT_BETWEEN_UPDATES_IN_MS
                 )
             );

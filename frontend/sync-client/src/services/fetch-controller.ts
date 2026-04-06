@@ -1,5 +1,4 @@
 import type { Logger } from "../tracing/logger";
-import { createPromise } from "../utils/create-promise";
 import { SyncResetError } from "../errors/sync-reset-error";
 
 /**
@@ -13,15 +12,14 @@ export class FetchController {
 
     // Promise resolves on the next state change: sync enabled/disabled or reset started/ended
     private until: Promise<symbol>;
-    private resolveUntil: (result: symbol) => unknown;
-    private rejectUntil: (reason: unknown) => unknown;
+    private resolveUntil: (value: symbol | PromiseLike<symbol>) => void;
+    private rejectUntil: (reason?: unknown) => void;
 
     public constructor(
         private _canFetch: boolean,
         private readonly logger: Logger
     ) {
-        [this.until, this.resolveUntil, this.rejectUntil] =
-            createPromise<symbol>();
+        ({ promise: this.until, resolve: this.resolveUntil, reject: this.rejectUntil } = Promise.withResolvers<symbol>());
     }
 
     /**
@@ -42,8 +40,7 @@ export class FetchController {
 
         if (!this.isResetting) {
             const previousResolve = this.resolveUntil;
-            [this.until, this.resolveUntil, this.rejectUntil] =
-                createPromise<symbol>();
+            ({ promise: this.until, resolve: this.resolveUntil, reject: this.rejectUntil } = Promise.withResolvers<symbol>());
             previousResolve(FetchController.UNTIL_RESOLUTION);
         }
     }
@@ -81,7 +78,7 @@ export class FetchController {
         }
 
         this.isResetting = false;
-        [this.until, this.resolveUntil, this.rejectUntil] = createPromise();
+        ({ promise: this.until, resolve: this.resolveUntil, reject: this.rejectUntil } = Promise.withResolvers<symbol>());
     }
 
     /**

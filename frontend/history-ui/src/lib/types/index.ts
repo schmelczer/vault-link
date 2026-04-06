@@ -1,7 +1,9 @@
 export type { DocumentVersion } from "./DocumentVersion";
 export type { DocumentVersionWithoutContent } from "./DocumentVersionWithoutContent";
 export type { FetchLatestDocumentsResponse } from "./FetchLatestDocumentsResponse";
+export type { ListVaultsResponse } from "./ListVaultsResponse";
 export type { PingResponse } from "./PingResponse";
+export type { VaultInfo } from "./VaultInfo";
 export type { VaultHistoryResponse } from "./VaultHistoryResponse";
 
 export type ActionType =
