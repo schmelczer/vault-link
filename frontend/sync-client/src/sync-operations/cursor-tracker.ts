@@ -1,5 +1,6 @@
 import type { FileOperations } from "../file-operations/file-operations";
-import type { Database, RelativePath } from "../persistence/database";
+import type { RelativePath } from "./types";
+import type { SyncEventQueue } from "./sync-event-queue";
 import type { ClientCursors } from "../services/types/ClientCursors";
 import type { CursorSpan } from "../services/types/CursorSpan";
 import type { DocumentWithCursors } from "../services/types/DocumentWithCursors";
@@ -35,7 +36,7 @@ export class CursorTracker {
 
     public constructor(
         private readonly logger: Logger,
-        private readonly database: Database,
+        private readonly queue: SyncEventQueue,
         private readonly webSocketManager: WebSocketManager,
         private readonly fileOperations: FileOperations,
         private readonly fileChangeNotifier: FileChangeNotifier
@@ -104,21 +105,16 @@ export class CursorTracker {
         for (const [relativePath, cursors] of Object.entries(
             documentToCursors
         )) {
-            const record =
-                this.database.getLatestDocumentByRelativePath(relativePath);
+            const record = this.queue.getDocument(relativePath);
 
             if (!record) {
                 continue; // Let's wait for the file to be created before sending cursors
             }
 
-            if (!record.metadata) {
-                continue; // this is a new document, no need to sync the cursors
-            }
-
             documentsWithCursors.push({
                 relative_path: relativePath,
-                document_id: record.metadata.documentId,
-                vault_update_id: record.metadata.parentVersionId,
+                document_id: record.documentId,
+                vault_update_id: record.parentVersionId,
                 cursors: cursors.map(({ start, end }) => ({
                     start: Math.min(start, end),
                     end: Math.max(start, end)
@@ -139,10 +135,8 @@ export class CursorTracker {
             const readContent = await this.fileOperations.read(
                 doc.relative_path
             );
-            const record = this.database.getLatestDocumentByRelativePath(
-                doc.relative_path
-            );
-            if (record?.metadata?.hash !== (await hash(readContent))) {
+            const record = this.queue.getDocument(doc.relative_path);
+            if (record?.hash !== (await hash(readContent))) {
                 doc.vault_update_id = null;
             }
         }
@@ -227,9 +221,7 @@ export class CursorTracker {
     private async getDocumentUpToDateness(
         document: DocumentWithCursors
     ): Promise<DocumentUpToDateness> {
-        const record = this.database.getLatestDocumentByRelativePath(
-            document.relative_path
-        );
+        const record = this.queue.getDocument(document.relative_path);
 
         if (!record) {
             // the document of the cursor must be from the future
@@ -237,13 +229,11 @@ export class CursorTracker {
         }
 
         if (
-            (record.metadata?.parentVersionId ?? 0) <
-            (document.vault_update_id ?? 0)
+            record.parentVersionId < (document.vault_update_id ?? 0)
         ) {
             return DocumentUpToDateness.Later;
         } else if (
-            (document.vault_update_id ?? 0) <
-            (record.metadata?.parentVersionId ?? 0)
+            (document.vault_update_id ?? 0) < record.parentVersionId
         ) {
             // the document of the cursor must be from the past
             return DocumentUpToDateness.Prior;
@@ -253,9 +243,8 @@ export class CursorTracker {
             document.relative_path
         );
 
-        return this.database.getLatestDocumentByRelativePath(
-            document.relative_path
-        )?.metadata?.hash === (await hash(currentContent))
+        const currentRecord = this.queue.getDocument(document.relative_path);
+        return currentRecord?.hash === (await hash(currentContent))
             ? DocumentUpToDateness.UpToDate
             : DocumentUpToDateness.Prior;
     }

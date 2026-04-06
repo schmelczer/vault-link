@@ -29,9 +29,9 @@ echo "Stopping existing server..."
 pkill -f "sync_server" 2>/dev/null || true
 sleep 1
 
-# Clean databases
+# Clean databases (uses tmpfs via /dev/shm for zero disk I/O)
 echo "Cleaning databases..."
-rm -rf databases
+rm -rf /host/tmp/vaultlink-e2e-databases
 
 # Start the server in the background
 echo "Starting server..."

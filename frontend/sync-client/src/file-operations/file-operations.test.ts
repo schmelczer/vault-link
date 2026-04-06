@@ -1,9 +1,6 @@
 import { describe, it } from "node:test";
-import type {
-    Database,
-    DocumentRecord,
-    RelativePath
-} from "../persistence/database";
+import type { DocumentId, DocumentRecord, RelativePath } from "../sync-operations/types";
+import type { SyncEventQueue } from "../sync-operations/sync-event-queue";
 import { FileOperations } from "./file-operations";
 import { Logger } from "../tracing/logger";
 import { assertSetContainsExactly } from "../utils/assert-set-contains-exactly";
@@ -21,19 +18,18 @@ class MockServerConfig implements Pick<ServerConfig, "getConfig"> {
     }
 }
 
-class MockDatabase implements Partial<Database> {
-    public getLatestDocumentByRelativePath(
-        _target: RelativePath
+class MockQueue implements Pick<SyncEventQueue, "getDocument" | "moveDocument"> {
+    public getDocument(
+        _path: RelativePath
     ): DocumentRecord | undefined {
-        // no-op
         return undefined;
     }
 
-    public move(
-        _oldRelativePath: RelativePath,
-        _newRelativePath: RelativePath
-    ): void {
-        // no-op
+    public moveDocument(
+        _oldPath: RelativePath,
+        _newPath: RelativePath
+    ): DocumentId | undefined {
+        return undefined;
     }
 }
 
@@ -89,7 +85,7 @@ describe("File operations", () => {
         const fileSystemOperations = new FakeFileSystemOperations();
         const fileOperations = new FileOperations(
             new Logger(),
-            new MockDatabase() as Database, // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+            new MockQueue() as SyncEventQueue, // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
             fileSystemOperations,
             new MockServerConfig() as ServerConfig // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
         );
@@ -119,7 +115,7 @@ describe("File operations", () => {
         const fileSystemOperations = new FakeFileSystemOperations();
         const fileOperations = new FileOperations(
             new Logger(),
-            new MockDatabase() as Database, // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+            new MockQueue() as SyncEventQueue, // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
             fileSystemOperations,
             new MockServerConfig() as ServerConfig // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
         );
@@ -159,7 +155,7 @@ describe("File operations", () => {
         const fileSystemOperations = new FakeFileSystemOperations();
         const fileOperations = new FileOperations(
             new Logger(),
-            new MockDatabase() as Database, // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+            new MockQueue() as SyncEventQueue, // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
             fileSystemOperations,
             new MockServerConfig() as ServerConfig // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
         );
@@ -178,7 +174,7 @@ describe("File operations", () => {
         const fileSystemOperations = new FakeFileSystemOperations();
         const fileOperations = new FileOperations(
             new Logger(),
-            new MockDatabase() as Database, // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+            new MockQueue() as SyncEventQueue, // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
             fileSystemOperations,
             new MockServerConfig() as ServerConfig // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
         );
@@ -207,7 +203,7 @@ describe("File operations", () => {
         const fileSystemOperations = new FakeFileSystemOperations();
         const fileOperations = new FileOperations(
             new Logger(),
-            new MockDatabase() as Database, // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+            new MockQueue() as SyncEventQueue, // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
             fileSystemOperations,
             new MockServerConfig() as ServerConfig // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
         );

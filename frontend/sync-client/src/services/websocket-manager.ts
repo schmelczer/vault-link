@@ -4,7 +4,6 @@ import type { WebSocketServerMessage } from "./types/WebSocketServerMessage";
 import type { WebSocketClientMessage } from "./types/WebSocketClientMessage";
 import type { CursorPositionFromClient } from "./types/CursorPositionFromClient";
 import type { ClientCursors } from "./types/ClientCursors";
-import { createPromise } from "../utils/create-promise";
 import type { WebSocketVaultUpdate } from "./types/WebSocketVaultUpdate";
 import {
     WEBSOCKET_DISCONNECT_TIMEOUT_IN_SECONDS,
@@ -42,6 +41,10 @@ export class WebSocketManager {
         private readonly webSocketFactoryImplementation: typeof globalThis.WebSocket = WebSocket
     ) {}
 
+    public get hasOutstandingWork(): boolean {
+        return this.outstandingPromises.length > 0;
+    }
+
     public get isWebSocketConnected(): boolean {
         return (
             this.webSocket?.readyState ===
@@ -55,7 +58,7 @@ export class WebSocketManager {
     }
 
     public async stop(): Promise<void> {
-        const [promise, resolve] = createPromise();
+        const { promise, resolve } = Promise.withResolvers<void>();
         this.resolveDisconnectingPromise = resolve;
 
         this.isStopped = true;

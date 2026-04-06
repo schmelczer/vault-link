@@ -2,8 +2,8 @@ import type { PersistenceProvider } from "./persistence/persistence";
 import type { HistoryEntry, HistoryStats } from "./tracing/sync-history";
 import { SyncHistory } from "./tracing/sync-history";
 import { Logger, LogLevel, LogLine } from "./tracing/logger";
-import type { RelativePath, StoredDatabase } from "./persistence/database";
-import { Database } from "./persistence/database";
+import type { RelativePath, StoredSyncState } from "./sync-operations/types";
+import { SyncEventQueue } from "./sync-operations/sync-event-queue";
 import * as Sentry from "@sentry/browser";
 import type { SyncSettings } from "./persistence/settings";
 import { DEFAULT_SETTINGS, Settings } from "./persistence/settings";
@@ -12,7 +12,6 @@ import { Syncer } from "./sync-operations/syncer";
 import type { FileSystemOperations } from "./file-operations/filesystem-operations";
 import { FileOperations } from "./file-operations/file-operations";
 import { FetchController } from "./services/fetch-controller";
-import { UnrestrictedSyncer } from "./sync-operations/unrestricted-syncer";
 import { rateLimit } from "./utils/rate-limit";
 import type { NetworkConnectionStatus } from "./types/network-connection-status";
 import { DocumentSyncStatus } from "./types/document-sync-status";
@@ -40,7 +39,7 @@ export class SyncClient {
         public readonly logger: Logger,
         private readonly history: SyncHistory,
         private readonly settings: Settings,
-        private readonly database: Database,
+        private readonly syncEventQueue: SyncEventQueue,
         private readonly syncer: Syncer,
         private readonly webSocketManager: WebSocketManager,
         private readonly fetchController: FetchController,
@@ -52,13 +51,13 @@ export class SyncClient {
         private readonly persistence: PersistenceProvider<
             Partial<{
                 settings: Partial<SyncSettings>;
-                database: Partial<StoredDatabase>;
+                database: Partial<StoredSyncState>;
             }>
         >
     ) { }
 
     public get documentCount(): number {
-        return this.database.length;
+        return this.syncEventQueue.documentCount;
     }
 
     public get isWebSocketConnected(): boolean {
@@ -111,7 +110,7 @@ export class SyncClient {
         persistence: PersistenceProvider<
             Partial<{
                 settings: Partial<SyncSettings>;
-                database: Partial<StoredDatabase>;
+                database: Partial<StoredSyncState>;
             }>
         >;
         fetch?: typeof globalThis.fetch;
@@ -136,8 +135,6 @@ export class SyncClient {
             state.settings,
             async (data): Promise<void> => {
                 state = { ...state, settings: data };
-                // we're not rate-limiting settings saves as (1) we need to initialise the settings to know the rate limit
-                // and (2) settings changes are infrequent enough that rate-limiting is not necessary
                 await persistence.save(state);
             }
         );
@@ -147,7 +144,8 @@ export class SyncClient {
             () => settings.getSettings().minimumSaveIntervalMs
         );
 
-        const database = new Database(
+        const syncEventQueue = new SyncEventQueue(
+            settings,
             logger,
             state.database,
             async (data): Promise<void> => {
@@ -173,7 +171,7 @@ export class SyncClient {
 
         const fileOperations = new FileOperations(
             logger,
-            database,
+            syncEventQueue,
             fs,
             serverConfig,
             nativeLineEndings
@@ -181,16 +179,6 @@ export class SyncClient {
 
         const contentCache = new FixedSizeDocumentCache(
             1024 * 1024 * DIFF_CACHE_SIZE_MB
-        );
-        const unrestrictedSyncer = new UnrestrictedSyncer(
-            logger,
-            database,
-            settings,
-            syncService,
-            fileOperations,
-            history,
-            contentCache,
-            serverConfig
         );
 
         const webSocketManager = new WebSocketManager(
@@ -202,17 +190,20 @@ export class SyncClient {
         const syncer = new Syncer(
             deviceId,
             logger,
-            database,
             settings,
             webSocketManager,
             fileOperations,
-            unrestrictedSyncer
+            syncService,
+            history,
+            contentCache,
+            serverConfig,
+            syncEventQueue
         );
 
         const fileChangeNotifier = new FileChangeNotifier();
         const cursorTracker = new CursorTracker(
             logger,
-            database,
+            syncEventQueue,
             webSocketManager,
             fileOperations,
             fileChangeNotifier
@@ -221,7 +212,7 @@ export class SyncClient {
             logger,
             history,
             settings,
-            database,
+            syncEventQueue,
             syncer,
             webSocketManager,
             fetchController,
@@ -319,7 +310,7 @@ export class SyncClient {
 
     /**
      * Wait for the in-flight operations to finish, reset all tracking,
-     * and the local database but retain the settings.
+     * and the local state but retain the settings.
      * The SyncClient can be used again after calling this method.
      */
     public async reset(): Promise<void> {
@@ -330,10 +321,9 @@ export class SyncClient {
         );
         await this.pause();
 
-        // clear all local state
         this.logger.info("Resetting SyncClient's local state");
-        this.database.reset();
-        await this.database.save(); // ensure the new database reads as empty
+        this.syncEventQueue.resetState();
+        await this.syncEventQueue.save();
         this.resetInMemoryState();
         this.hasFinishedOfflineSync = false;
         this.serverConfig.reset();
@@ -362,38 +352,45 @@ export class SyncClient {
         await this.settings.setSettings(value);
     }
 
-    public async syncLocallyCreatedFile(
+    public syncLocallyCreatedFile(
         relativePath: RelativePath
-    ): Promise<void> {
+    ): void {
         this.checkIfDestroyed("syncLocallyCreatedFile");
 
         this.fileChangeNotifier.notifyOfFileChange(relativePath);
-        return this.syncer.syncLocallyCreatedFile(relativePath);
+        this.syncer.syncLocallyCreatedFile(relativePath);
     }
 
-    public async syncLocallyDeletedFile(
+    public syncLocallyDeletedFile(
         relativePath: RelativePath
-    ): Promise<void> {
+    ): void {
         this.checkIfDestroyed("syncLocallyDeletedFile");
 
         this.fileChangeNotifier.notifyOfFileChange(relativePath);
-        return this.syncer.syncLocallyDeletedFile(relativePath);
+        this.syncer.syncLocallyDeletedFile(relativePath);
     }
 
-    public async syncLocallyUpdatedFile({
+    public syncLocallyUpdatedFile({
         oldPath,
         relativePath
     }: {
         oldPath?: RelativePath;
         relativePath: RelativePath;
-    }): Promise<void> {
+    }): void {
         this.checkIfDestroyed("syncLocallyUpdatedFile");
 
         this.fileChangeNotifier.notifyOfFileChange(relativePath);
-        return this.syncer.syncLocallyUpdatedFile({
+        this.syncer.syncLocallyUpdatedFile({
             oldPath,
             relativePath
         });
+    }
+
+    public get hasPendingWork(): boolean {
+        return (
+            this.syncEventQueue.size > 0 ||
+            this.webSocketManager.hasOutstandingWork
+        );
     }
 
     public getDocumentSyncingStatus(
@@ -426,7 +423,7 @@ export class SyncClient {
         this.checkIfDestroyed("waitUntilIdle");
         await this.syncer.waitUntilFinished();
         await this.webSocketManager.waitUntilFinished();
-        await this.database.save(); // flush all changes to disk
+        await this.syncEventQueue.save();
     }
 
     /**
@@ -436,7 +433,6 @@ export class SyncClient {
     public async destroy(): Promise<void> {
         this.checkIfDestroyed("destroy");
 
-        // Prevent concurrent destroy calls
         if (this.isDestroying) {
             this.logger.warn(
                 "destroy() called while already destroying, ignoring"
@@ -445,14 +441,12 @@ export class SyncClient {
         }
         this.isDestroying = true;
 
-        // cancel everything that's in progress
         await this.pause();
 
         this.hasBeenDestroyed = true;
 
         this.resetInMemoryState();
 
-        // Clean up event listeners to prevent memory leaks
         this.eventUnsubscribers.forEach((unsubscribe) => {
             unsubscribe();
         });
@@ -467,7 +461,6 @@ export class SyncClient {
         this.checkIfDestroyed("startSyncing");
         this.fetchController.finishReset();
 
-        // warm the cache
         await this.serverConfig.getConfig();
 
         await this.syncer.scheduleSyncForOfflineChanges();
@@ -486,7 +479,6 @@ export class SyncClient {
     private resetInMemoryState(): void {
         this.history.reset();
         this.contentCache.reset();
-        // don't reset the logger
         this.cursorTracker.reset();
         this.syncer.reset();
         this.fileOperations.reset();

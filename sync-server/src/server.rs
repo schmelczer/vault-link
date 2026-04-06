@@ -4,24 +4,27 @@ mod delete_document;
 mod device_id_header;
 mod fetch_document_version;
 mod fetch_document_version_content;
+mod fetch_document_versions;
 mod fetch_latest_document_version;
 mod fetch_latest_documents;
+mod fetch_vault_history;
 mod index;
+mod list_vaults;
 mod ping;
 mod rate_limit;
 mod requests;
 mod responses;
+mod restore_document_version;
 mod update_document;
 mod websocket;
 
-use anyhow::{Context as _, Result, anyhow};
+use anyhow::{Context as _, Result};
 use auth::auth_middleware;
 use axum::{
     Router,
     extract::{DefaultBodyLimit, Request},
     http::{self, HeaderValue, Method},
     middleware,
-    response::IntoResponse,
     routing::{IntoMakeService, delete, get, post, put},
 };
 use device_id_header::DEVICE_ID_HEADER_NAME;
@@ -52,7 +55,7 @@ pub async fn create_server(config: Config) -> Result<()> {
 
     let server_config = app_state.config.server.clone();
 
-    let app = Router::new()
+    let mut app = Router::new()
         .nest("/", get_authed_routes(app_state.clone()))
         .route("/", get(index::index))
         .route("/assets/*path", get(index::spa_assets))
@@ -156,6 +159,10 @@ fn get_authed_routes(app_state: AppState) -> Router<AppState> {
             put(update_document::update_text),
         )
         .route(
+            "/vaults/:vault_id/documents/:document_id/versions",
+            get(fetch_document_versions::fetch_document_versions),
+        )
+        .route(
             "/vaults/:vault_id/documents/:document_id/versions/:vault_update_id",
             get(fetch_document_version::fetch_document_version),
         )
@@ -166,6 +173,14 @@ fn get_authed_routes(app_state: AppState) -> Router<AppState> {
         .route(
             "/vaults/:vault_id/documents/:document_id",
             delete(delete_document::delete_document),
+        )
+        .route(
+            "/vaults/:vault_id/documents/:document_id/restore",
+            post(restore_document_version::restore_document_version),
+        )
+        .route(
+            "/vaults/:vault_id/history",
+            get(fetch_vault_history::fetch_vault_history),
         )
         .layer(middleware::from_fn_with_state(app_state, auth_middleware))
 }

@@ -1,6 +1,7 @@
 import type { Logger } from "../tracing/logger";
 import type { FileSystemOperations } from "./filesystem-operations";
-import type { Database, RelativePath } from "../persistence/database";
+import type { RelativePath } from "../sync-operations/types";
+import type { SyncEventQueue } from "../sync-operations/sync-event-queue";
 import { SafeFileSystemOperations } from "./safe-filesystem-operations";
 import type { TextWithCursors } from "reconcile-text";
 import { reconcile } from "reconcile-text";
@@ -14,7 +15,7 @@ export class FileOperations {
 
     public constructor(
         private readonly logger: Logger,
-        private readonly database: Database,
+        private readonly queue: SyncEventQueue,
         fs: FileSystemOperations,
         private readonly serverConfig: ServerConfig,
         private readonly nativeLineEndings = "\n"
@@ -58,7 +59,10 @@ export class FileOperations {
         return this.fs.write(path, this.toNativeLineEndings(newContent));
     }
 
-    public async ensureClearPath(path: RelativePath): Promise<void> {
+    // Returns the deconflicted path if a file was moved, undefined otherwise
+    public async ensureClearPath(
+        path: RelativePath
+    ): Promise<RelativePath | undefined> {
         if (await this.fs.exists(path)) {
             const deconflictedPath = await this.deconflictPath(path);
             try {
@@ -66,14 +70,16 @@ export class FileOperations {
                     `Didn't expect ${path} to exist, deconflicting by moving it to '${deconflictedPath}'`
                 );
 
-                this.database.move(path, deconflictedPath);
+                this.queue.moveDocument(path, deconflictedPath);
                 await this.fs.rename(path, deconflictedPath, true);
+                return deconflictedPath;
             } finally {
                 this.fs.unlock(deconflictedPath);
             }
         } else {
             await this.createParentDirectories(path);
         }
+        return undefined;
     }
 
     /**
@@ -160,20 +166,23 @@ export class FileOperations {
         return this.fs.exists(path);
     }
 
+    // Returns the deconflicted path if a file at the target was displaced
     public async move(
         oldPath: RelativePath,
         newPath: RelativePath
-    ): Promise<void> {
+    ): Promise<RelativePath | undefined> {
         if (oldPath === newPath) {
-            return;
+            return undefined;
         }
 
-        await this.ensureClearPath(newPath);
-        this.database.move(oldPath, newPath);
+        const deconflictedPath = await this.ensureClearPath(newPath);
+        this.queue.moveDocument(oldPath, newPath);
         await this.fs.rename(oldPath, newPath);
 
         await this.deletingEmptyParentDirectoriesOfDeletedFile(oldPath);
+        return deconflictedPath;
     }
+
 
     public reset(): void {
         this.fs.reset();
@@ -274,17 +283,15 @@ export class FileOperations {
             newName = `${directory}${stem} (${currentCount})${extension}`;
 
             // Avoid multiple deconflictPath calls returning the same path
-            if (this.fs.tryLock(newName)) {
-                const newDocument =
-                    this.database.getLatestDocumentByRelativePath(newName);
-                if (
-                    newDocument?.isDeleted === false || // the document might have been confirmed by the server at a new path but haven't yet moved there locally
-                    (await this.fs.exists(newName, true))
-                ) {
-                    this.fs.unlock(newName);
-                } else {
-                    return newName;
-                }
+            await this.fs.waitForLock(newName);
+            const existingRecord = this.queue.getDocument(newName);
+            if (
+                existingRecord !== undefined || // the document might have been confirmed by the server at a new path but haven't yet moved there locally
+                (await this.fs.exists(newName, true))
+            ) {
+                this.fs.unlock(newName);
+            } else {
+                return newName;
             }
         }
     }

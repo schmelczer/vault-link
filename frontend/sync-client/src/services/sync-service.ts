@@ -2,13 +2,14 @@ import type {
     DocumentId,
     RelativePath,
     VaultUpdateId
-} from "../persistence/database";
+} from "../sync-operations/types";
 
 import type { Logger } from "../tracing/logger";
 import type { Settings } from "../persistence/settings";
 import type { FetchController } from "./fetch-controller";
 import { sleep } from "../utils/sleep";
 import { SyncResetError } from "../errors/sync-reset-error";
+import { HttpClientError } from "../errors/http-client-error";
 import type { SerializedError } from "./types/SerializedError";
 import type { DocumentVersionWithoutContent } from "./types/DocumentVersionWithoutContent";
 import type { DocumentUpdateResponse } from "./types/DocumentUpdateResponse";
@@ -139,13 +140,7 @@ export class SyncService {
                 }
             );
 
-            if (!response.ok) {
-                throw new Error(
-                    `Failed to update document: ${await SyncService.errorFromResponse(
-                        response
-                    )}`
-                );
-            }
+            await SyncService.throwIfNotOk(response, "update document");
 
             const result: DocumentUpdateResponse =
                 (await response.json()) as DocumentUpdateResponse; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
@@ -192,13 +187,7 @@ export class SyncService {
                 }
             );
 
-            if (!response.ok) {
-                throw new Error(
-                    `Failed to update document: ${await SyncService.errorFromResponse(
-                        response
-                    )}`
-                );
-            }
+            await SyncService.throwIfNotOk(response, "update document");
 
             const result: DocumentUpdateResponse =
                 (await response.json()) as DocumentUpdateResponse; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
@@ -413,8 +402,10 @@ export class SyncService {
             try {
                 return await fn();
             } catch (e) {
-                // We must not retry errors coming from reset
-                if (e instanceof SyncResetError) {
+                if (
+                    e instanceof SyncResetError ||
+                    e instanceof HttpClientError
+                ) {
                     throw e;
                 }
 
@@ -426,5 +417,17 @@ export class SyncService {
                 await sleep(retryInterval);
             }
         }
+    }
+
+    private static async throwIfNotOk(
+        response: Response,
+        operation: string
+    ): Promise<void> {
+        if (response.ok) return;
+        const message = `Failed to ${operation}: ${await SyncService.errorFromResponse(response)}`;
+        if (response.status >= 400 && response.status < 500) {
+            throw new HttpClientError(response.status, message);
+        }
+        throw new Error(message);
     }
 }
