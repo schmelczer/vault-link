@@ -10,19 +10,19 @@ export const textPendingCreateNotDisplacedTest: TestDefinition = {
             type: "create",
             client: 0,
             path: "data.txt",
-            content: "text data from client 0"
+            content: "text data from client-0"
         },
         {
             type: "create",
             client: 1,
             path: "data.txt",
-            content: "text data from client 1"
+            content: "text data from client-1"
         },
 
         { type: "enable-sync", client: 0 },
         { type: "enable-sync", client: 1 },
         { type: "barrier" },
 
-        { type: "assert-consistent", verify: (s) => s.assertFileCount(1).assertFileExists("data.txt").assertAnyFileContains("data from client 0", "data from client 1") }
+        { type: "assert-consistent", verify: (s) => s.assertFileCount(1).assertFileExists("data.txt").assertAnyFileContains("client-0", "client-1") }
     ]
 };

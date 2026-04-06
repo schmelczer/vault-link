@@ -49,7 +49,7 @@ import { offlineMoveThenRemoteDeleteTest } from "./tests/offline-move-then-remot
 import { resetClearsRecentlyDeletedResurrectionTest } from "./tests/reset-clears-recently-deleted-resurrection.test";
 import { moveThenDeleteStalePathTest } from "./tests/move-then-delete-stale-path.test";
 import { interruptedDeleteRetryTest } from "./tests/interrupted-delete-retry.test";
-import { updateSurvivesRemoteDeleteTest } from "./tests/update-survives-remote-delete.test";
+import { updateDoesNotSurvivesRemoteDeleteTest } from "./tests/update-survives-remote-delete.test";
 import { movePreservesRemoteUpdateTest } from "./tests/move-preserves-remote-update.test";
 import { recentlyDeletedClearedOnReconnectTest } from "./tests/recently-deleted-cleared-on-reconnect.test";
 import { migrateKeyPreservesExistingTest } from "./tests/migrate-key-preserves-existing.test";
@@ -65,7 +65,32 @@ import { createRenameResponseSkipsFileTest } from "./tests/create-rename-respons
 import { onlineCreateRenameConcurrentCreateOrphanTest } from "./tests/online-create-rename-concurrent-create-orphan.test";
 import { concurrentRenameFirstWinsTest } from "./tests/concurrent-rename-first-wins.test";
 import { binaryToTextTransitionTest } from "./tests/binary-to-text-transition.test";
-import { updateThenRenameContentLostTest } from "./tests/update-then-rename-content-lost.test";
+import { textPendingCreateNotDisplacedTest } from "./tests/1-text-pending-create-not-displaced.test";
+import { binaryPendingCreateNotDisplacedTest } from "./tests/2-binary-pending-create-not-displaced.test";
+import { coalesceUpdateRemoteUpdateDataLossTest } from "./tests/3-coalesce-update-remote-update-data-loss.test";
+import { coalescedRemoteUpdateWatermarkLossTest } from "./tests/4-coalesced-remote-update-watermark-loss.test";
+import { concurrentDeleteDuringRemoteUpdateTest } from "./tests/5-concurrent-delete-during-remote-update.test";
+import { concurrentEditExactSamePositionTest } from "./tests/6-concurrent-edit-exact-same-position.test";
+import { concurrentRenameAndCreateAtTargetTest as concurrentRenameAndCreateAtTargetRenameFirstTest } from "./tests/7-concurrent-rename-and-create-at-target.test";
+import { concurrentRenameAndCreateAtTargetTest as concurrentRenameAndCreateAtTargetCreateFirstTest } from "./tests/8-concurrent-rename-and-create-at-target.test";
+import { concurrentRenameSameTargetTest } from "./tests/9-concurrent-rename-same-target.test";
+import { concurrentUpdateDiffConsistencyTest } from "./tests/10-concurrent-update-diff-consistency.test";
+import { userParenthesizedFileNotDeletedTest } from "./tests/10-user-parenthesized-file-not-deleted.test";
+import { createDeleteNoopTest } from "./tests/11-create-delete-noop.test";
+import { createMergeDeleteTest } from "./tests/12-create-merge-delete.test";
+import { moveIdenticalContentAmbiguityTest } from "./tests/13-move-identical-content-ambiguity.test";
+import { createUpdateCoalesceServerPauseTest } from "./tests/15-create-update-coalesce-server-pause.test";
+import { createDuringReconciliationTest } from "./tests/16-create-during-reconciliation.test";
+import { createMergePreservesRenamedUpdateTest } from "./tests/17-create-merge-preserves-renamed-update.test";
+import { createRenameCreateSamePathTest } from "./tests/18-create-rename-create-same-path.test";
+import { moveChainThreeFilesTest } from "./tests/19-move-chain-three-files.test";
+import { deleteByOtherClientThenRecreateTest } from "./tests/delete-by-other-client-then-recreate.test";
+import { onlineDeleteRecreateRapidCycleTest } from "./tests/online-delete-recreate-rapid-cycle.test";
+import { onlineEditVsDeleteConvergenceTest } from "./tests/online-edit-vs-delete-convergence.test";
+import { rapidEditDeleteOnlineConvergenceTest } from "./tests/rapid-edit-delete-online-convergence.test";
+import { serverPauseDeleteRecreateTest } from "./tests/server-pause-delete-recreate.test";
+import { onlineBothCreateSamePathDeconflictTest } from "./tests/online-both-create-same-path-deconflict.test";
+import { onlineCreateUpdateWhileOtherCreatesSamePathTest } from "./tests/online-create-update-while-other-creates-same-path.test";
 
 export const TESTS: Partial<Record<string, TestDefinition>> = {
     "rename-create-conflict": renameCreateConflictTest,
@@ -118,7 +143,7 @@ export const TESTS: Partial<Record<string, TestDefinition>> = {
     "move-then-delete-stale-path": moveThenDeleteStalePathTest,
     "offline-delete-vs-remote-update": offlineDeleteVsRemoteUpdateTest,
     "interrupted-delete-retry": interruptedDeleteRetryTest,
-    "update-survives-remote-delete": updateSurvivesRemoteDeleteTest,
+    "update-survives-remote-delete": updateDoesNotSurvivesRemoteDeleteTest,
     "move-preserves-remote-update": movePreservesRemoteUpdateTest,
     "recently-deleted-cleared-on-reconnect": recentlyDeletedClearedOnReconnectTest,
     "migrate-key-preserves-existing": migrateKeyPreservesExistingTest,
@@ -134,5 +159,30 @@ export const TESTS: Partial<Record<string, TestDefinition>> = {
     "online-create-rename-concurrent-create-orphan": onlineCreateRenameConcurrentCreateOrphanTest,
     "concurrent-rename-first-wins": concurrentRenameFirstWinsTest,
     "binary-to-text-transition": binaryToTextTransitionTest,
-    "update-then-rename-content-lost": updateThenRenameContentLostTest,
+    "text-pending-create-not-displaced": textPendingCreateNotDisplacedTest,
+    "binary-pending-create-not-displaced": binaryPendingCreateNotDisplacedTest,
+    "coalesce-update-remote-update-data-loss": coalesceUpdateRemoteUpdateDataLossTest,
+    "coalesced-remote-update-watermark-loss": coalescedRemoteUpdateWatermarkLossTest,
+    "concurrent-delete-during-remote-update": concurrentDeleteDuringRemoteUpdateTest,
+    "concurrent-edit-exact-same-position": concurrentEditExactSamePositionTest,
+    "concurrent-rename-and-create-at-target-rename-first": concurrentRenameAndCreateAtTargetRenameFirstTest,
+    "concurrent-rename-and-create-at-target-create-first": concurrentRenameAndCreateAtTargetCreateFirstTest,
+    "concurrent-rename-same-target": concurrentRenameSameTargetTest,
+    "concurrent-update-diff-consistency": concurrentUpdateDiffConsistencyTest,
+    "user-parenthesized-file-not-deleted": userParenthesizedFileNotDeletedTest,
+    "create-delete-noop": createDeleteNoopTest,
+    "create-merge-delete": createMergeDeleteTest,
+    "move-identical-content-ambiguity": moveIdenticalContentAmbiguityTest,
+    "create-update-coalesce-server-pause": createUpdateCoalesceServerPauseTest,
+    "create-during-reconciliation": createDuringReconciliationTest,
+    "create-merge-preserves-renamed-update": createMergePreservesRenamedUpdateTest,
+    "create-rename-create-same-path": createRenameCreateSamePathTest,
+    "move-chain-three-files": moveChainThreeFilesTest,
+    "delete-by-other-client-then-recreate": deleteByOtherClientThenRecreateTest,
+    "online-delete-recreate-rapid-cycle": onlineDeleteRecreateRapidCycleTest,
+    "online-edit-vs-delete-convergence": onlineEditVsDeleteConvergenceTest,
+    "rapid-edit-delete-online-convergence": rapidEditDeleteOnlineConvergenceTest,
+    "server-pause-delete-recreate": serverPauseDeleteRecreateTest,
+    "online-both-create-same-path-deconflict": onlineBothCreateSamePathDeconflictTest,
+    "online-create-update-while-other-creates-same-path": onlineCreateUpdateWhileOtherCreatesSamePathTest,
 };

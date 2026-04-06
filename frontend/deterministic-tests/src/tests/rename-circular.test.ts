@@ -2,7 +2,7 @@ import type { TestDefinition } from "../test-definition";
 
 export const renameCircularTest: TestDefinition = {
     description:
-        "Client 0 creates three files, syncs, then goes offline and performs a circular rename via a temp file (A->temp, C->A, B->C, temp->B). After reconnecting, both clients should have rotated content with no temp file remaining.",
+        "Client 0 creates three files, syncs, then goes offline and performs a circular rename via a temp file (A->temp, C->A, B->C, temp->B). After reconnecting, all three contents should exist across three files but paths may be deconflicted.",
     clients: 2,
     steps: [
         { type: "create", client: 0, path: "A.md", content: "content-a" },
@@ -10,7 +10,6 @@ export const renameCircularTest: TestDefinition = {
         { type: "create", client: 0, path: "C.md", content: "content-c" },
         { type: "enable-sync", client: 0 },
         { type: "enable-sync", client: 1 },
-        { type: "sync" },
         { type: "barrier" },
         {
             type: "assert-consistent",

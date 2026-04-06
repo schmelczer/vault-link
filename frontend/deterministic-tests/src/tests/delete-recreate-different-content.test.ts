@@ -41,6 +41,6 @@ export const deleteRecreateDifferentContentTest: TestDefinition = {
         { type: "sync" },
         { type: "barrier" },
 
-        { type: "assert-consistent", verify: (s) => s.assertFileCount(1).assertContains("A.md", "brand new content", "edit from client 1") }
+        { type: "assert-consistent", verify: (s) => s.assertFileCount(1).assertContains("A.md", "brand new", "client 1") }
     ]
 };

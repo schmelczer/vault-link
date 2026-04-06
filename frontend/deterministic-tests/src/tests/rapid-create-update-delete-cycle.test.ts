@@ -27,6 +27,9 @@ export const rapidCreateUpdateDeleteCycleTest: TestDefinition = {
         },
         { type: "delete", client: 0, path: "cycle.md" },
 
+        { type: "resume-server" },
+        { type: "sync" },
+
         {
             type: "create",
             client: 0,
@@ -34,8 +37,6 @@ export const rapidCreateUpdateDeleteCycleTest: TestDefinition = {
             content: "final creation"
         },
 
-        { type: "resume-server" },
-        { type: "sync" },
         { type: "barrier" },
 
         {
