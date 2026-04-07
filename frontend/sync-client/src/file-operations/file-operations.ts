@@ -284,7 +284,7 @@ export class FileOperations {
 
             // Avoid multiple deconflictPath calls returning the same path
             await this.fs.waitForLock(newName);
-            const existingRecord = this.queue.getDocument(newName);
+            const existingRecord = this.queue.getSettledDocumentByPath(newName);
             if (
                 existingRecord !== undefined || // the document might have been confirmed by the server at a new path but haven't yet moved there locally
                 (await this.fs.exists(newName, true))

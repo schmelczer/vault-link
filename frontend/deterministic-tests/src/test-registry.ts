@@ -91,6 +91,7 @@ import { rapidEditDeleteOnlineConvergenceTest } from "./tests/rapid-edit-delete-
 import { serverPauseDeleteRecreateTest } from "./tests/server-pause-delete-recreate.test";
 import { onlineBothCreateSamePathDeconflictTest } from "./tests/online-both-create-same-path-deconflict.test";
 import { onlineCreateUpdateWhileOtherCreatesSamePathTest } from "./tests/online-create-update-while-other-creates-same-path.test";
+import { displacedFileNotMarkedDeletedTest } from "./tests/displaced-file-not-marked-deleted.test";
 
 export const TESTS: Partial<Record<string, TestDefinition>> = {
     "rename-create-conflict": renameCreateConflictTest,
@@ -185,4 +186,5 @@ export const TESTS: Partial<Record<string, TestDefinition>> = {
     "server-pause-delete-recreate": serverPauseDeleteRecreateTest,
     "online-both-create-same-path-deconflict": onlineBothCreateSamePathDeconflictTest,
     "online-create-update-while-other-creates-same-path": onlineCreateUpdateWhileOtherCreatesSamePathTest,
+    "displaced-file-not-marked-deleted": displacedFileNotMarkedDeletedTest,
 };

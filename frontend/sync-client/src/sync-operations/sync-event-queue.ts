@@ -14,20 +14,31 @@ import {
 } from "./types";
 
 export class SyncEventQueue {
-    // latest state of the filesystem as we know it, excluding
-    // unconfirmed creates but including pending deletes,
-    // it's always indexed by the latest path on disk
+    // Latest state of the filesystem as we know it, excluding
+    // unconfirmed creates but including pending deletes.
+    //
+    // It's always indexed by the latest path on disk.
+    // 
+    // It maps a subset of the remote state onto the local filesystem.
     private readonly documents = new Map<RelativePath, DocumentRecord>();
 
-    // all outstanding operations in order of occurrence,
+    // All outstanding operations in order of occurrence,
     // can include multiple generations of the same document, 
     // e.g.: a create, delete, create sequence for the same path.
+    //
     // The paths for the events must always correspond to the latest
     // path on disk, so the path of each event may be updated multiple
     // times. 
+    //
+    // It maps pending changes onto the local filesystem.
     private readonly events: SyncEvent[] = [];
 
+    // TODO: remove
+    // Log the last seen update before which we've seen all ids so that
+    // on the next startup, we can skip re-syncing what we have already 
     private lastSeenUpdateIds: CoveredValues;
+
+    // file creations for paths matching any of these patterns will be ignored
     private ignorePatterns: RegExp[];
 
     public constructor(
@@ -57,6 +68,8 @@ export class SyncEventQueue {
         }
 
         const { lastSeenUpdateId } = initialState;
+
+
         this.lastSeenUpdateIds = new CoveredValues(
             Math.max(0, lastSeenUpdateId ?? 0)
         );
@@ -93,7 +106,7 @@ export class SyncEventQueue {
         }
     }
 
-
+    // todo: let's remove
     public getSettledDocumentByPath(path: RelativePath): DocumentRecord | undefined {
         return this.documents.get(path);
     }
@@ -120,9 +133,7 @@ export class SyncEventQueue {
     }
 
     /**
-     * Settle a Create event: add the document to the settled map,
-     * resolve the create promise, and replace promise-based documentId
-     * references in the event queue with the actual string documentId.
+     * Call once a create has been acknowledged by the server.
      */
     public resolveCreate(
         event: Extract<SyncEvent, { type: SyncEventType.Create }>,
@@ -207,6 +218,7 @@ export class SyncEventQueue {
                 (e.type === SyncEventType.Delete &&
                     e.documentId === docId) ||
                 (e.type === SyncEventType.SyncRemote &&
+                    // we care about the local path not the remote
                     this.getDocumentByDocumentId(e.remoteVersion.documentId as DocumentId)?.path === path)
         );
     }
@@ -235,7 +247,8 @@ export class SyncEventQueue {
         this.events.length = 0;
     }
 
-    public enqueue(event: SyncEvent): void {
+    // todo: maybe move next() logic here to stop storing rubbish 
+    public enqueue(event: SyncEvent): void { // new type
         if (this.isIgnored(event)) return;
 
         if (event.type === SyncEventType.SyncLocal) {
@@ -309,8 +322,7 @@ export class SyncEventQueue {
                     e.documentId === documentId
             );
             if (deleteEvent !== undefined) {
-                this.removeAllSyncLocalsForDocumentId(await documentId);
-                removeFromArray(this.events, deleteEvent);
+                this.removeAllEventsForDocumentId(await documentId);
                 return deleteEvent;
             }
 
@@ -344,7 +356,9 @@ export class SyncEventQueue {
     }
 
     private isIgnored(event: SyncEvent): boolean {
-        if (event.type !== SyncEventType.Create) return false;
+        if (event.type !== SyncEventType.Create) {
+            return false;
+        }
         return this.ignorePatterns.some((pattern) => pattern.test(event.path));
     }
 
@@ -358,19 +372,6 @@ export class SyncEventQueue {
                     e.remoteVersion.documentId === documentId) ||
                 (e.type === SyncEventType.Delete &&
                     e.documentId === documentId)
-            ) {
-                // eslint-disable-next-line no-restricted-syntax -- Bulk removal by predicate, not single-item removal
-                this.events.splice(i, 1);
-            }
-        }
-    }
-
-    private removeAllSyncLocalsForDocumentId(documentId: DocumentId): void {
-        for (let i = this.events.length - 1; i >= 0; i--) {
-            const e = this.events[i];
-            if (
-                e.type === SyncEventType.SyncLocal &&
-                e.documentId === documentId
             ) {
                 // eslint-disable-next-line no-restricted-syntax -- Bulk removal by predicate, not single-item removal
                 this.events.splice(i, 1);

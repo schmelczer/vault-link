@@ -105,7 +105,7 @@ export class CursorTracker {
         for (const [relativePath, cursors] of Object.entries(
             documentToCursors
         )) {
-            const record = this.queue.getDocument(relativePath);
+            const record = this.queue.getSettledDocumentByPath(relativePath);
 
             if (!record) {
                 continue; // Let's wait for the file to be created before sending cursors
@@ -135,8 +135,8 @@ export class CursorTracker {
             const readContent = await this.fileOperations.read(
                 doc.relative_path
             );
-            const record = this.queue.getDocument(doc.relative_path);
-            if (record?.hash !== (await hash(readContent))) {
+            const record = this.queue.getSettledDocumentByPath(doc.relative_path);
+            if (record?.remoteHash !== (await hash(readContent))) {
                 doc.vault_update_id = null;
             }
         }
@@ -221,7 +221,7 @@ export class CursorTracker {
     private async getDocumentUpToDateness(
         document: DocumentWithCursors
     ): Promise<DocumentUpToDateness> {
-        const record = this.queue.getDocument(document.relative_path);
+        const record = this.queue.getSettledDocumentByPath(document.relative_path);
 
         if (!record) {
             // the document of the cursor must be from the future
@@ -243,8 +243,8 @@ export class CursorTracker {
             document.relative_path
         );
 
-        const currentRecord = this.queue.getDocument(document.relative_path);
-        return currentRecord?.hash === (await hash(currentContent))
+        const currentRecord = this.queue.getSettledDocumentByPath(document.relative_path);
+        return currentRecord?.remoteHash === (await hash(currentContent))
             ? DocumentUpToDateness.UpToDate
             : DocumentUpToDateness.Prior;
     }

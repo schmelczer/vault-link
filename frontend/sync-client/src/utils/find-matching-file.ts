@@ -10,5 +10,5 @@ export async function findMatchingFile(
         return undefined;
     }
 
-    return candidates.find(({ record }) => record.hash === contentHash);
+    return candidates.find(({ record }) => record.remoteHash === contentHash);
 }

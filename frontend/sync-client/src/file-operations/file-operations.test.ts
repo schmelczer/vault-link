@@ -19,7 +19,7 @@ class MockServerConfig implements Pick<ServerConfig, "getConfig"> {
 }
 
 class MockQueue implements Pick<SyncEventQueue, "getDocument" | "moveDocument"> {
-    public getDocument(
+    public getDocumentByPath(
         _path: RelativePath
     ): DocumentRecord | undefined {
         return undefined;
