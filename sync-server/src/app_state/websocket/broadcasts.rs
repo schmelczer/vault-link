@@ -10,6 +10,7 @@ use crate::{app_state::database::models::VaultId, config::server_config::ServerC
 pub struct Broadcasts {
     broadcast_channel_capacity: usize,
     tx: Arc<Mutex<HashMap<VaultId, broadcast::Sender<WebSocketServerMessageWithOrigin>>>>,
+    send_locks: Arc<Mutex<HashMap<VaultId, Arc<tokio::sync::Mutex<()>>>>>,
 }
 
 type TxMap = HashMap<VaultId, broadcast::Sender<WebSocketServerMessageWithOrigin>>;
@@ -19,7 +20,21 @@ impl Broadcasts {
         Self {
             broadcast_channel_capacity: server_config.broadcast_channel_capacity,
             tx: Arc::new(Mutex::new(HashMap::new())),
+            send_locks: Arc::new(Mutex::new(HashMap::new())),
         }
+    }
+
+    /// Acquire a per-vault lock that serializes broadcasts in commit order.
+    /// Must be acquired before the insert, held through commit and broadcast.
+    pub async fn acquire_send_lock(&self, vault: &VaultId) -> tokio::sync::OwnedMutexGuard<()> {
+        let lock = {
+            let mut locks = self.send_locks.lock().await;
+            locks
+                .entry(vault.clone())
+                .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
+                .clone()
+        };
+        lock.lock_owned().await
     }
 
     /// Remove senders for vaults with no active receivers

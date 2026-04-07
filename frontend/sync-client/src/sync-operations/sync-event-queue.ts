@@ -1,12 +1,12 @@
 import type { Settings } from "../persistence/settings";
 import type { Logger } from "../tracing/logger";
 import { globsToRegexes } from "../utils/globs-to-regexes";
-import { CoveredValues } from "../utils/data-structures/min-covered";
 import { removeFromArray } from "../utils/remove-from-array";
 import {
     SyncEventType,
     type DocumentId,
     type DocumentRecord,
+    type FileSyncEvent,
     type RelativePath,
     type StoredSyncState,
     type SyncEvent,
@@ -32,11 +32,6 @@ export class SyncEventQueue {
     //
     // It maps pending changes onto the local filesystem.
     private readonly events: SyncEvent[] = [];
-
-    // TODO: remove
-    // Log the last seen update before which we've seen all ids so that
-    // on the next startup, we can skip re-syncing what we have already 
-    private lastSeenUpdateIds: CoveredValues;
 
     // file creations for paths matching any of these patterns will be ignored
     private ignorePatterns: RegExp[];
@@ -67,18 +62,7 @@ export class SyncEventQueue {
             }
         }
 
-        const { lastSeenUpdateId } = initialState;
-
-
-        this.lastSeenUpdateIds = new CoveredValues(
-            Math.max(0, lastSeenUpdateId ?? 0)
-        );
-
-        for (const [, record] of this.documents) {
-            this.lastSeenUpdateIds.add(record.parentVersionId);
-        }
-
-        this.logger.debug(`Loaded ${this.documents.size} documents and lastSeenUpdateId=${this.lastSeenUpdateIds.min}`);
+        this.logger.debug(`Loaded ${this.documents.size} documents`);
     }
 
     public get size(): number {
@@ -90,21 +74,15 @@ export class SyncEventQueue {
     }
 
     public get lastSeenUpdateId(): VaultUpdateId {
-        return this.lastSeenUpdateIds.min;
-    }
-
-    public set lastSeenUpdateId(value: number) {
-        this.lastSeenUpdateIds.min = value;
-        this.saveInTheBackground();
-    }
-
-    public addSeenUpdateId(value: number): void {
-        const previousMin = this.lastSeenUpdateIds.min;
-        this.lastSeenUpdateIds.add(value);
-        if (previousMin !== this.lastSeenUpdateIds.min) {
-            this.saveInTheBackground();
+        let max = 0;
+        for (const record of this.documents.values()) {
+            if (record.parentVersionId > max) {
+                max = record.parentVersionId;
+            }
         }
+        return max;
     }
+
 
     // todo: let's remove
     public getSettledDocumentByPath(path: RelativePath): DocumentRecord | undefined {
@@ -231,14 +209,13 @@ export class SyncEventQueue {
                     ...record
                 })
             ),
-            lastSeenUpdateId: this.lastSeenUpdateIds.min
+            lastSeenUpdateId: this.lastSeenUpdateId
         });
     }
 
     public resetState(): void {
         this.rejectAllPendingCreates();
         this.documents.clear();
-        this.lastSeenUpdateIds = new CoveredValues(0);
         this.saveInTheBackground();
     }
 
@@ -247,45 +224,49 @@ export class SyncEventQueue {
         this.events.length = 0;
     }
 
-    // todo: maybe move next() logic here to stop storing rubbish 
-    public enqueue(event: SyncEvent): void { // new type
-        if (this.isIgnored(event)) return;
-
-        if (event.type === SyncEventType.SyncLocal) {
-            const { path: newPath } = event;
-
-            if (typeof event.documentId === "string") {
-                const existing = this.getDocumentByDocumentId(event.documentId);
-                if (!existing) {
-                    throw new Error(`SyncLocal event for unknown documentId ${event.documentId}`);
-                }
-
-                if (this.documents.has(newPath)) {
-                    throw new Error(`SyncLocal event for documentId ${event.documentId} has newPath ${newPath} which is already tracked by another document`);
-                }
-
-                if (existing.path !== newPath) {
-                    this.documents.delete(existing.path);
-                    this.documents.set(newPath, existing.record);
-                    for (const e of this.events) {
-                        if (
-                            e.type === SyncEventType.SyncLocal &&
-                            e.documentId === event.documentId
-                        ) {
-                            e.path = newPath;
-                        }
-                    }
-                    this.saveInTheBackground();
-                }
-            } else {
-                const oldPath = this.findCreatePathByPromise(event.documentId);
-                if (oldPath !== undefined && oldPath !== newPath) {
-                    this.updatePendingCreatePath(oldPath, newPath);
-                }
-            }
+    public enqueue(input: FileSyncEvent): void {
+        if (input.type === SyncEventType.SyncRemote) {
+            this.events.push(input);
+            return;
         }
 
-        this.events.push(event);
+        const { path } = input;
+
+        if (input.type === SyncEventType.Create) {
+            if (this.isIgnored(path)) {
+                this.logger.info(`Ignoring create for ${path} as it matches ignore patterns`);
+                return;
+            }
+            this.events.push({ type: SyncEventType.Create, path, originalPath: path });
+            return;
+        }
+
+        const lookupPath = (input.type === SyncEventType.SyncLocal && input.oldPath) ? input.oldPath : path;
+        const record = this.documents.get(lookupPath);
+        const documentId: DocumentId | Promise<DocumentId> | undefined =
+            record?.documentId ?? this.getCreatePromise(lookupPath);
+        if (documentId === undefined) return;
+
+        if (input.type === SyncEventType.Delete) {
+            this.events.push({ type: SyncEventType.Delete, documentId });
+            return;
+        }
+
+        if (input.oldPath !== undefined) {
+            if (typeof documentId === "string") {
+                this.documents.delete(input.oldPath);
+                this.documents.set(path, record!);
+                for (const e of this.events) {
+                    if (e.type === SyncEventType.SyncLocal && e.documentId === documentId) {
+                        e.path = path;
+                    }
+                }
+                this.saveInTheBackground();
+            } else {
+                this.updatePendingCreatePath(input.oldPath, path);
+            }
+        }
+        this.events.push({ type: SyncEventType.SyncLocal, documentId, path, originalPath: path });
     }
 
 
@@ -355,11 +336,8 @@ export class SyncEventQueue {
         return result;
     }
 
-    private isIgnored(event: SyncEvent): boolean {
-        if (event.type !== SyncEventType.Create) {
-            return false;
-        }
-        return this.ignorePatterns.some((pattern) => pattern.test(event.path));
+    private isIgnored(path: RelativePath): boolean {
+        return this.ignorePatterns.some((pattern) => pattern.test(path));
     }
 
     private removeAllEventsForDocumentId(documentId: DocumentId): void {

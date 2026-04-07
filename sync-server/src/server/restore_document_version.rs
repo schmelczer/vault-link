@@ -134,7 +134,7 @@ pub async fn restore_document_version(
 
     state
         .database
-        .insert_document_version(&vault_id, &new_version, Some(transaction))
+        .insert_document_version(&vault_id, &new_version, transaction)
         .await
         .map_err(server_error)?;
 

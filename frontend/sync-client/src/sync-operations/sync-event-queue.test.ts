@@ -38,12 +38,9 @@ describe("SyncEventQueue", () => {
             remoteHash: "hash-a"
         });
 
-        queue.enqueue({ type: SyncEventType.SyncLocal, documentId: "A", path: "a.md", originalPath: "a.md" });
-        queue.enqueue({ type: SyncEventType.SyncLocal, documentId: "A", path: "a.md", originalPath: "a.md" });
-        queue.enqueue({
-            type: SyncEventType.Delete,
-            documentId: "A",
-        });
+        queue.enqueue({ type: SyncEventType.SyncLocal, path: "a.md" });
+        queue.enqueue({ type: SyncEventType.SyncLocal, path: "a.md" });
+        queue.enqueue({ type: SyncEventType.Delete, path: "a.md" });
 
         const event = await queue.next();
         assert.strictEqual(event?.type, SyncEventType.Delete);
@@ -61,9 +58,9 @@ describe("SyncEventQueue", () => {
             remoteHash: "hash-a"
         });
 
-        queue.enqueue({ type: SyncEventType.SyncLocal, documentId: "A", path: "a.md", originalPath: "a.md" });
-        queue.enqueue({ type: SyncEventType.SyncLocal, documentId: "A", path: "a.md", originalPath: "a.md" });
-        queue.enqueue({ type: SyncEventType.SyncLocal, documentId: "A", path: "a.md", originalPath: "a.md" });
+        queue.enqueue({ type: SyncEventType.SyncLocal, path: "a.md" });
+        queue.enqueue({ type: SyncEventType.SyncLocal, path: "a.md" });
+        queue.enqueue({ type: SyncEventType.SyncLocal, path: "a.md" });
 
         const event = await queue.next();
         assert.strictEqual(event?.type, SyncEventType.SyncLocal);
@@ -96,8 +93,8 @@ describe("SyncEventQueue", () => {
 
     it("create events are returned FIFO", async () => {
         const queue = createQueue();
-        queue.enqueue({ type: SyncEventType.Create, path: "a.md", originalPath: "a.md" });
-        queue.enqueue({ type: SyncEventType.Create, path: "b.md", originalPath: "b.md" });
+        queue.enqueue({ type: SyncEventType.Create, path: "a.md" });
+        queue.enqueue({ type: SyncEventType.Create, path: "b.md" });
 
         const first = await queue.next();
         assert.strictEqual(first?.type, SyncEventType.Create);
@@ -112,19 +109,27 @@ describe("SyncEventQueue", () => {
         }
     });
 
-    it("delete uses the provided documentId", async () => {
+    it("delete resolves documentId from path", async () => {
         const queue = createQueue();
-
-        queue.enqueue({
-            type: SyncEventType.Delete,
+        queue.setDocument("a.md", {
             documentId: "A",
+            parentVersionId: 1,
+            remoteHash: "hash-a"
         });
+
+        queue.enqueue({ type: SyncEventType.Delete, path: "a.md" });
 
         const event = await queue.next();
         assert.strictEqual(event?.type, SyncEventType.Delete);
         if (event?.type === SyncEventType.Delete) {
             assert.strictEqual(event.documentId, "A");
         }
+    });
+
+    it("delete for unknown path is silently ignored", () => {
+        const queue = createQueue();
+        queue.enqueue({ type: SyncEventType.Delete, path: "unknown.md" });
+        assert.strictEqual(queue.size, 0);
     });
 
     it("document store CRUD operations work correctly", () => {
@@ -154,36 +159,16 @@ describe("SyncEventQueue", () => {
         assert.strictEqual(queue.getSettledDocumentByPath("a.md"), undefined);
     });
 
-    it("moveDocument moves a document and returns displaced documentId", () => {
+    it("SyncLocal with oldPath moves the document in the store", () => {
         const queue = createQueue();
         queue.setDocument("a.md", {
             documentId: "A",
             parentVersionId: 1,
             remoteHash: "hash-a"
         });
-        queue.setDocument("b.md", {
-            documentId: "B",
-            parentVersionId: 2,
-            remoteHash: "hash-b"
-        });
 
-        const displacedId = queue.moveDocument("a.md", "b.md");
-        assert.strictEqual(displacedId, "B");
+        queue.enqueue({ type: SyncEventType.SyncLocal, path: "b.md", oldPath: "a.md" });
         assert.strictEqual(queue.getSettledDocumentByPath("a.md"), undefined);
-        assert.strictEqual(queue.getSettledDocumentByPath("b.md")?.documentId, "A");
-        assert.strictEqual(queue.documentCount, 1);
-    });
-
-    it("moveDocument returns undefined when target is unoccupied", () => {
-        const queue = createQueue();
-        queue.setDocument("a.md", {
-            documentId: "A",
-            parentVersionId: 1,
-            remoteHash: "hash-a"
-        });
-
-        const displacedId = queue.moveDocument("a.md", "b.md");
-        assert.strictEqual(displacedId, undefined);
         assert.strictEqual(queue.getSettledDocumentByPath("b.md")?.documentId, "A");
     });
 
@@ -200,13 +185,10 @@ describe("SyncEventQueue", () => {
             remoteHash: "hash-b"
         });
 
-        queue.enqueue({ type: SyncEventType.SyncLocal, documentId: "A", path: "a.md", originalPath: "a.md" });
-        queue.enqueue({ type: SyncEventType.SyncLocal, documentId: "B", path: "b.md", originalPath: "b.md" });
-        queue.enqueue({
-            type: SyncEventType.Delete,
-            documentId: "A",
-        });
-        queue.enqueue({ type: SyncEventType.SyncLocal, documentId: "B", path: "b.md", originalPath: "b.md" });
+        queue.enqueue({ type: SyncEventType.SyncLocal, path: "a.md" });
+        queue.enqueue({ type: SyncEventType.SyncLocal, path: "b.md" });
+        queue.enqueue({ type: SyncEventType.Delete, path: "a.md" });
+        queue.enqueue({ type: SyncEventType.SyncLocal, path: "b.md" });
 
         // First next() should see the delete for A (coalescing sync-local + delete)
         const first = await queue.next();
@@ -227,11 +209,13 @@ describe("SyncEventQueue", () => {
 
     it("delete discards subsequent sync-remote events for the same document", async () => {
         const queue = createQueue();
-
-        queue.enqueue({
-            type: SyncEventType.Delete,
+        queue.setDocument("a.md", {
             documentId: "A",
+            parentVersionId: 1,
+            remoteHash: "hash-a"
         });
+
+        queue.enqueue({ type: SyncEventType.Delete, path: "a.md" });
         queue.enqueue({
             type: SyncEventType.SyncRemote,
             remoteVersion: fakeRemoteVersion("A", { vaultUpdateId: 5 })
@@ -250,12 +234,9 @@ describe("SyncEventQueue", () => {
             remoteHash: "hash-a"
         });
 
-        queue.enqueue({
-            type: SyncEventType.Delete,
-            documentId: "A",
-        });
-        queue.enqueue({ type: SyncEventType.SyncLocal, documentId: "A", path: "a.md", originalPath: "a.md" });
-        queue.enqueue({ type: SyncEventType.Create, path: "b.md", originalPath: "b.md" });
+        queue.enqueue({ type: SyncEventType.Delete, path: "a.md" });
+        queue.enqueue({ type: SyncEventType.SyncLocal, path: "a.md" });
+        queue.enqueue({ type: SyncEventType.Create, path: "b.md" });
         queue.enqueue({
             type: SyncEventType.SyncRemote,
             remoteVersion: fakeRemoteVersion("A", { vaultUpdateId: 5 })
@@ -278,19 +259,15 @@ describe("SyncEventQueue", () => {
             remoteHash: "hash-a"
         });
 
-        queue.enqueue({ type: SyncEventType.Create, path: "unknown.md", originalPath: "unknown.md" });
-        const createPromise = queue.getCreatePromise("unknown.md");
-        assert.ok(createPromise !== undefined);
-        const event = await queue.next(); // dequeue the create
-        assert.ok(event?.type === SyncEventType.Create);
-        // Resolve so the delete's await doesn't hang
-        event.resolvers!.resolve("NEW");
+        // Create is pending — Delete for same path gets a promise documentId
+        queue.enqueue({ type: SyncEventType.Create, path: "unknown.md" });
+        queue.enqueue({ type: SyncEventType.Delete, path: "unknown.md" });
+        queue.enqueue({ type: SyncEventType.SyncLocal, path: "a.md" });
 
-        queue.enqueue({
-            type: SyncEventType.Delete,
-            documentId: createPromise,
-        });
-        queue.enqueue({ type: SyncEventType.SyncLocal, documentId: "A", path: "a.md", originalPath: "a.md" });
+        // Dequeue and resolve the Create
+        const event = await queue.next();
+        assert.ok(event?.type === SyncEventType.Create);
+        event.resolvers!.resolve("NEW");
 
         await queue.next(); // delete
         const second = await queue.next();
@@ -299,7 +276,7 @@ describe("SyncEventQueue", () => {
 
     it("getCreatePromise returns a promise resolved by the event's resolvers", async () => {
         const queue = createQueue();
-        queue.enqueue({ type: SyncEventType.Create, path: "a.md", originalPath: "a.md" });
+        queue.enqueue({ type: SyncEventType.Create, path: "a.md" });
 
         const promise = queue.getCreatePromise("a.md");
         assert.ok(promise !== undefined);
@@ -315,7 +292,7 @@ describe("SyncEventQueue", () => {
 
     it("rejecting the event's resolvers rejects the create promise", async () => {
         const queue = createQueue();
-        queue.enqueue({ type: SyncEventType.Create, path: "a.md", originalPath: "a.md" });
+        queue.enqueue({ type: SyncEventType.Create, path: "a.md" });
 
         const promise = queue.getCreatePromise("a.md");
         assert.ok(promise !== undefined);
@@ -331,8 +308,8 @@ describe("SyncEventQueue", () => {
 
     it("clear rejects all pending create promises", async () => {
         const queue = createQueue();
-        queue.enqueue({ type: SyncEventType.Create, path: "a.md", originalPath: "a.md" });
-        queue.enqueue({ type: SyncEventType.Create, path: "b.md", originalPath: "b.md" });
+        queue.enqueue({ type: SyncEventType.Create, path: "a.md" });
+        queue.enqueue({ type: SyncEventType.Create, path: "b.md" });
 
         const promiseA = queue.getCreatePromise("a.md");
         const promiseB = queue.getCreatePromise("b.md");
@@ -347,25 +324,21 @@ describe("SyncEventQueue", () => {
 
     it("create can be re-enqueued after being dequeued", async () => {
         const queue = createQueue();
-        queue.enqueue({ type: SyncEventType.Create, path: "a.md", originalPath: "a.md" });
+        queue.enqueue({ type: SyncEventType.Create, path: "a.md" });
         await queue.next();
 
-        queue.enqueue({ type: SyncEventType.Create, path: "a.md", originalPath: "a.md" });
+        queue.enqueue({ type: SyncEventType.Create, path: "a.md" });
         assert.strictEqual(queue.size, 1);
     });
 
     it("silently ignores create events matching ignore patterns", () => {
         const queue = createQueue(["*.tmp", ".hidden/**"]);
 
-        queue.enqueue({ type: SyncEventType.Create, path: "scratch.tmp", originalPath: "scratch.tmp" });
-        queue.enqueue({
-            type: SyncEventType.Create,
-            path: ".hidden/secret.md",
-            originalPath: ".hidden/secret.md",
-        });
+        queue.enqueue({ type: SyncEventType.Create, path: "scratch.tmp" });
+        queue.enqueue({ type: SyncEventType.Create, path: ".hidden/secret.md" });
         assert.strictEqual(queue.size, 0);
 
-        queue.enqueue({ type: SyncEventType.Create, path: "notes-new.md", originalPath: "notes-new.md" });
+        queue.enqueue({ type: SyncEventType.Create, path: "notes-new.md" });
         assert.strictEqual(queue.size, 1);
 
         queue.enqueue({
@@ -382,8 +355,8 @@ describe("SyncEventQueue", () => {
             parentVersionId: 1,
             remoteHash: "hash-a"
         });
-        queue.enqueue({ type: SyncEventType.Create, path: "b.md", originalPath: "b.md" });
-        queue.enqueue({ type: SyncEventType.SyncLocal, documentId: "A", path: "a.md", originalPath: "a.md" });
+        queue.enqueue({ type: SyncEventType.Create, path: "b.md" });
+        queue.enqueue({ type: SyncEventType.SyncLocal, path: "a.md" });
 
         assert.strictEqual(queue.size, 2);
 
@@ -454,12 +427,9 @@ describe("SyncEventQueue", () => {
         });
 
         // Pending create adds a path
-        queue.enqueue({ type: SyncEventType.Create, path: "c.md", originalPath: "c.md" });
+        queue.enqueue({ type: SyncEventType.Create, path: "c.md" });
         // Pending delete removes a path
-        queue.enqueue({
-            type: SyncEventType.Delete,
-            documentId: "A",
-        });
+        queue.enqueue({ type: SyncEventType.Delete, path: "a.md" });
 
         const paths = queue.trackedPaths();
         assert.deepStrictEqual(
@@ -471,30 +441,22 @@ describe("SyncEventQueue", () => {
     it("trackedPaths handles create-delete-create for the same path", () => {
         const queue = createQueue();
 
-        queue.enqueue({ type: SyncEventType.Create, path: "a.md", originalPath: "a.md" });
-        queue.enqueue({
-            type: SyncEventType.Delete,
-            documentId: Promise.resolve("X"),
-        });
-        queue.enqueue({ type: SyncEventType.Create, path: "a.md", originalPath: "a.md" });
+        queue.enqueue({ type: SyncEventType.Create, path: "a.md" });
+        // Delete gets promise documentId from pending Create
+        queue.enqueue({ type: SyncEventType.Delete, path: "a.md" });
+        queue.enqueue({ type: SyncEventType.Create, path: "a.md" });
 
         const paths = queue.trackedPaths();
         assert.ok(paths.has("a.md"));
     });
 
-    it("trackedPaths applies moves for promise-based SyncLocal events", () => {
+    it("trackedPaths applies moves for pending SyncLocal events", () => {
         const queue = createQueue();
 
-        queue.enqueue({ type: SyncEventType.Create, path: "a.md", originalPath: "a.md" });
-        const createPromise = queue.getCreatePromise("a.md")!;
+        queue.enqueue({ type: SyncEventType.Create, path: "a.md" });
 
         // File was renamed from a.md to b.md
-        queue.enqueue({
-            type: SyncEventType.SyncLocal,
-            documentId: createPromise,
-            path: "b.md",
-            originalPath: "a.md",
-        });
+        queue.enqueue({ type: SyncEventType.SyncLocal, path: "b.md", oldPath: "a.md" });
 
         const paths = queue.trackedPaths();
         assert.ok(!paths.has("a.md"));
@@ -504,21 +466,10 @@ describe("SyncEventQueue", () => {
     it("trackedPaths tracks multiple moves for the same pending create", () => {
         const queue = createQueue();
 
-        queue.enqueue({ type: SyncEventType.Create, path: "a.md", originalPath: "a.md" });
-        const createPromise = queue.getCreatePromise("a.md")!;
+        queue.enqueue({ type: SyncEventType.Create, path: "a.md" });
 
-        queue.enqueue({
-            type: SyncEventType.SyncLocal,
-            documentId: createPromise,
-            path: "b.md",
-            originalPath: "a.md",
-        });
-        queue.enqueue({
-            type: SyncEventType.SyncLocal,
-            documentId: createPromise,
-            path: "c.md",
-            originalPath: "a.md",
-        });
+        queue.enqueue({ type: SyncEventType.SyncLocal, path: "b.md", oldPath: "a.md" });
+        queue.enqueue({ type: SyncEventType.SyncLocal, path: "c.md", oldPath: "b.md" });
 
         const paths = queue.trackedPaths();
         assert.ok(!paths.has("a.md"));
@@ -529,20 +480,12 @@ describe("SyncEventQueue", () => {
     it("resolveCreate settles the document and replaces promise documentIds in the queue", async () => {
         const queue = createQueue();
 
-        queue.enqueue({ type: SyncEventType.Create, path: "a.md", originalPath: "a.md" });
+        queue.enqueue({ type: SyncEventType.Create, path: "a.md" });
         const createPromise = queue.getCreatePromise("a.md")!;
 
-        // Dependent events enqueued while create is in flight
-        queue.enqueue({
-            type: SyncEventType.SyncLocal,
-            documentId: createPromise,
-            path: "a.md",
-            originalPath: "a.md",
-        });
-        queue.enqueue({
-            type: SyncEventType.Delete,
-            documentId: createPromise,
-        });
+        // Dependent events enqueued while create is still pending
+        queue.enqueue({ type: SyncEventType.SyncLocal, path: "a.md" });
+        queue.enqueue({ type: SyncEventType.Delete, path: "a.md" });
 
         const event = await queue.next(); // dequeue the create
         assert.ok(event?.type === SyncEventType.Create);

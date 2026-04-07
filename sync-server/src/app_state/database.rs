@@ -663,12 +663,12 @@ impl Database {
         .context("Cannot fetch document version")
     }
 
-    // inserting the document must be the last step of the transaction if there's one
+    // inserting the document must be the last step of the transaction
     pub async fn insert_document_version(
         &self,
         vault_id: &VaultId,
         version: &StoredDocumentVersion,
-        transaction: Option<WriteTransaction>,
+        mut transaction: WriteTransaction,
     ) -> Result<()> {
         let document_id = version.document_id.as_hyphenated();
         let query = sqlx::query!(
@@ -697,22 +697,20 @@ impl Database {
             version.has_been_merged
         );
 
-        if let Some(mut transaction) = transaction {
-            query
-                .execute(&mut *transaction)
-                .await
-                .context("Cannot insert document version")?;
+        // Acquire the broadcast send lock before the insert so that
+        // broadcasts are serialized in vault_update_id order even after
+        // the write transaction (and its per-vault lock) is released.
+        let _send_guard = self.broadcasts.acquire_send_lock(vault_id).await;
 
-            transaction
-                .commit()
-                .await
-                .context("Failed to commit transaction")?;
-        } else {
-            query
-                .execute(&self.get_connection_pool(vault_id).await?)
-                .await
-                .context("Cannot insert document version")?;
-        }
+        query
+            .execute(&mut *transaction)
+            .await
+            .context("Cannot insert document version")?;
+
+        transaction
+            .commit()
+            .await
+            .context("Failed to commit transaction")?;
 
         self.broadcasts
             .send_document_update(

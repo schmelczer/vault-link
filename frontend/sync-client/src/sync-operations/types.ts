@@ -27,6 +27,12 @@ export enum SyncEventType {
     SyncRemote = "sync-remote",
 }
 
+export type FileSyncEvent =
+    | { type: SyncEventType.Create; path: RelativePath }
+    | { type: SyncEventType.SyncLocal; path: RelativePath; oldPath?: RelativePath }
+    | { type: SyncEventType.Delete; path: RelativePath }
+    | { type: SyncEventType.SyncRemote; remoteVersion: DocumentVersionWithoutContent };
+
 export type SyncEvent =
     | {
         type: SyncEventType.Create;
