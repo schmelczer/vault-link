@@ -115,7 +115,6 @@ async fn websocket(
     let mut broadcast_receiver = match state
         .broadcasts
         .get_receiver(vault_id.clone(), max_clients)
-        .await
     {
         Ok(receiver) => receiver,
         Err(err) => {

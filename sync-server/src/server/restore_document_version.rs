@@ -147,7 +147,14 @@ pub async fn restore_document_version(
     let (content_changed, path_changed) = match &current_latest {
         Some(prev) => (
             prev.content != new_version.content || prev.is_deleted,
-            prev.relative_path != new_version.relative_path,
+            // Mirror `update_document`: `path_changed` is true when the
+            // stored path differs from either the prior stored path (peers
+            // need to learn about the move) *or* from the path the caller
+            // implicitly requested (`target_version.relative_path`, so the
+            // origin learns if the server deduped its requested restore
+            // path).
+            prev.relative_path != new_version.relative_path
+                || target_version.relative_path != new_version.relative_path,
         ),
         // No prior version (shouldn't happen in practice — target_version
         // already proved the document exists — but treat defensively).

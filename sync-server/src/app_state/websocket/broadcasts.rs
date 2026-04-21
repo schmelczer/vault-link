@@ -1,4 +1,7 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex as StdMutex},
+};
 
 use log::{debug, warn};
 use tokio::sync::{Mutex, broadcast};
@@ -9,7 +12,12 @@ use crate::{app_state::database::models::VaultId, config::server_config::ServerC
 #[derive(Debug, Clone)]
 pub struct Broadcasts {
     broadcast_channel_capacity: usize,
-    tx: Arc<Mutex<HashMap<VaultId, broadcast::Sender<WebSocketServerMessageWithOrigin>>>>,
+    // `tx` uses a blocking std::sync::Mutex because the critical section is
+    // a HashMap lookup plus a synchronous `broadcast::Sender::send`. Making
+    // this non-async lets `send_document_update` run without an `.await`,
+    // so an axum handler that is cancelled between `transaction.commit()`
+    // and the broadcast can never drop the notification mid-flight.
+    tx: Arc<StdMutex<HashMap<VaultId, broadcast::Sender<WebSocketServerMessageWithOrigin>>>>,
     send_locks: Arc<Mutex<HashMap<VaultId, Arc<tokio::sync::Mutex<()>>>>>,
 }
 
@@ -19,7 +27,7 @@ impl Broadcasts {
     pub fn new(server_config: &ServerConfig) -> Self {
         Self {
             broadcast_channel_capacity: server_config.broadcast_channel_capacity,
-            tx: Arc::new(Mutex::new(HashMap::new())),
+            tx: Arc::new(StdMutex::new(HashMap::new())),
             send_locks: Arc::new(Mutex::new(HashMap::new())),
         }
     }
@@ -42,19 +50,25 @@ impl Broadcasts {
         tx_map.retain(|_, sender| sender.receiver_count() > 0);
     }
 
-    pub async fn get_receiver(
+    pub fn get_receiver(
         &self,
         vault: VaultId,
         max_clients: usize,
     ) -> Result<broadcast::Receiver<WebSocketServerMessageWithOrigin>, crate::errors::SyncServerError>
     {
-        let mut tx_map = self.tx.lock().await;
+        let mut tx_map = self
+            .tx
+            .lock()
+            .expect("broadcasts.tx mutex poisoned — a previous holder panicked");
         Self::prune_inactive_vaults(&mut tx_map);
 
         let sender = tx_map
             .entry(vault)
             .or_insert_with(|| broadcast::channel(self.broadcast_channel_capacity).0);
 
+        // Hold the lock across the count check *and* the subscribe so the
+        // `max_clients` cap is atomic: two concurrent callers can't both
+        // observe `receiver_count() < max_clients` and both subscribe.
         if sender.receiver_count() >= max_clients {
             return Err(crate::errors::client_error(anyhow::anyhow!(
                 "Vault has reached the maximum number of clients ({max_clients})"
@@ -65,13 +79,18 @@ impl Broadcasts {
     }
 
     /// Notify all clients (who are subscribed to the vault) about an update.
-    /// We only log failures and don't propagate them.
-    pub async fn send_document_update(
+    /// Synchronous: safe to invoke from a handler between `commit()` and
+    /// function return without worrying about task cancellation dropping
+    /// the broadcast mid-flight. Failures are logged, never propagated.
+    pub fn send_document_update(
         &self,
         vault: VaultId,
         document: WebSocketServerMessageWithOrigin,
     ) {
-        let mut tx_map = self.tx.lock().await;
+        let mut tx_map = self
+            .tx
+            .lock()
+            .expect("broadcasts.tx mutex poisoned — a previous holder panicked");
         Self::prune_inactive_vaults(&mut tx_map);
 
         let sender = tx_map

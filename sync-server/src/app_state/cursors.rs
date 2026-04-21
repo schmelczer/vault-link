@@ -117,16 +117,14 @@ impl Cursors {
                 .unwrap_or_default()
         };
 
-        self.broadcasts
-            .send_document_update(
-                vault_id.clone(),
-                WebSocketServerMessageWithOrigin::new(WebSocketServerMessage::CursorPositions(
-                    CursorPositionFromServer {
-                        clients: client_cursors,
-                    },
-                )),
-            )
-            .await;
+        self.broadcasts.send_document_update(
+            vault_id.clone(),
+            WebSocketServerMessageWithOrigin::new(WebSocketServerMessage::CursorPositions(
+                CursorPositionFromServer {
+                    clients: client_cursors,
+                },
+            )),
+        );
     }
 
     pub async fn remove_cursors_of_device(&self, vault_id: &VaultId, device_id: &DeviceId) {

@@ -11,6 +11,9 @@ use crate::app_state::database::models::VaultUpdateId;
 pub struct CreateDocumentVersion {
     pub relative_path: String,
 
+    #[ts(type = "number")]
+    pub last_seen_vault_update_id: VaultUpdateId,
+
     #[ts(as = "Vec<u8>")]
     #[form_data(limit = "unlimited")]
     pub content: FieldData<Bytes>,

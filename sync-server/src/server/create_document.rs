@@ -69,31 +69,40 @@ pub async fn create_document(
         .map_err(server_error)?;
 
     if let Some(latest_version) = latest_version {
-        let is_mergeable_text = is_file_type_mergable(
-            &sanitized_relative_path,
-            &state.config.server.mergeable_file_extensions,
-        ) && !is_binary(&latest_version.content)
-            && !is_binary(&new_content);
-
-        if is_mergeable_text || new_content == latest_version.content {
-            return update_document::update_document(
+        // Only merge with an existing document the client couldn't have
+        // known about: its creation is newer than the client's last seen
+        // vault update to avoid creating cycles by merging two documents into one.
+        // This could happen if both clients know of document A at path P1,
+        // but client 2 moves it to P2 while client 1 creates a new document at P2,
+        // then client 1 would merge its new document with the moved version of A at P2
+        // that client 2 resulting in two files (P1 and P2) with the same doc id (A).
+        if latest_version.creation_vault_update_id > request.last_seen_vault_update_id {
+            let is_mergeable_text = is_file_type_mergable(
                 &sanitized_relative_path,
-                Vec::new(),
-                vault_id,
-                latest_version.document_id,
-                &request.relative_path,
-                new_content,
-                user,
-                device_id,
-                state,
-                transaction,
-            )
-            .await;
-        }
+                &state.config.server.mergeable_file_extensions,
+            ) && !is_binary(&latest_version.content)
+                && !is_binary(&new_content);
 
-        // For non-mergeable (binary) files with different content, don't
-        // merge, create a separate document at a deconflicted path so
-        // neither client's data is silently overwritten.
+            if is_mergeable_text || new_content == latest_version.content {
+                return update_document::update_document(
+                    &sanitized_relative_path,
+                    Vec::new(),
+                    vault_id,
+                    latest_version.document_id,
+                    &request.relative_path,
+                    new_content,
+                    user,
+                    device_id,
+                    state,
+                    transaction,
+                )
+                .await;
+            }
+
+            // For non-mergeable (binary) files with different content, don't
+            // merge, create a separate document at a deconflicted path so
+            // neither client's data is silently overwritten.
+        }
     }
 
     let document_id = uuid::Uuid::new_v4();

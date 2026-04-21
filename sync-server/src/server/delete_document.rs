@@ -1,4 +1,4 @@
-use anyhow::Context;
+use anyhow::{Context, anyhow};
 use axum::{
     Extension, Json,
     extract::{Path, State},
@@ -17,7 +17,7 @@ use crate::{
         },
     },
     config::user_config::User,
-    errors::{SyncServerError, server_error, write_transaction_error},
+    errors::{SyncServerError, not_found_error, server_error, write_transaction_error},
     utils::normalize::normalize,
 };
 
@@ -60,9 +60,18 @@ pub async fn delete_document(
         .await
         .map_err(server_error)?;
 
-    if let Some(latest_version) = &latest_version
-        && latest_version.is_deleted
-    {
+    let Some(latest_version) = latest_version else {
+        transaction
+            .rollback()
+            .await
+            .context("Failed to roll back transaction")
+            .map_err(server_error)?;
+        return Err(not_found_error(anyhow!(
+            "Document `{document_id}` not found in vault `{vault_id}`"
+        )));
+    };
+
+    if latest_version.is_deleted {
         transaction
             .rollback()
             .await
@@ -70,15 +79,13 @@ pub async fn delete_document(
             .map_err(server_error)?;
 
         info!("Document `{document_id}` has already been deleted",);
-        return Ok(Json(latest_version.clone().into()));
+        return Ok(Json(latest_version.into()));
     }
 
     let new_vault_update_id = last_update_id + 1;
-    let (latest_relative_path, latest_content, creation_vault_update_id) =
-        latest_version.map_or_else(
-            || (String::new(), Vec::new(), new_vault_update_id),
-            |version| (version.relative_path, version.content, version.creation_vault_update_id),
-        );
+    let latest_relative_path = latest_version.relative_path;
+    let latest_content = latest_version.content;
+    let creation_vault_update_id = latest_version.creation_vault_update_id;
 
     let new_version = StoredDocumentVersion {
         vault_update_id: new_vault_update_id,

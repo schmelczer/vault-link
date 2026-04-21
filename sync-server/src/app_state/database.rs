@@ -739,22 +739,23 @@ impl Database {
             .await
             .context("Failed to commit transaction")?;
 
+        // Both sends are synchronous: there's no `.await` between the
+        // `commit()` above and function return, so a task cancellation
+        // can't drop the broadcast and leave peers permanently behind.
         if broadcast.content_changed {
             // Content events are filtered out for the origin device — the
             // origin already has the content (or learns about the merge
             // via the HTTP response).
-            self.broadcasts
-                .send_document_update(
-                    vault_id.clone(),
-                    WebSocketServerMessageWithOrigin::with_origin(
-                        version.device_id.clone(),
-                        WebSocketServerMessage::VaultUpdate(WebSocketVaultUpdate {
-                            documents: vec![version.clone().into()],
-                            is_initial_sync: false,
-                        }),
-                    ),
-                )
-                .await;
+            self.broadcasts.send_document_update(
+                vault_id.clone(),
+                WebSocketServerMessageWithOrigin::with_origin(
+                    version.device_id.clone(),
+                    WebSocketServerMessage::VaultUpdate(WebSocketVaultUpdate {
+                        documents: vec![version.clone().into()],
+                        is_initial_sync: false,
+                    }),
+                ),
+            );
         }
 
         if broadcast.path_changed {
@@ -763,18 +764,19 @@ impl Database {
             // receives them. The create/update HTTP response no longer
             // carries `relative_path`, so the origin device relies on this
             // event to learn the server-canonical path.
-            self.broadcasts
-                .send_document_update(
-                    vault_id.clone(),
-                    WebSocketServerMessageWithOrigin::new(WebSocketServerMessage::PathChange(
-                        WebSocketVaultPathChange {
-                            vault_update_id: version.vault_update_id,
-                            document_id: version.document_id,
-                            relative_path: version.relative_path.clone(),
-                        },
-                    )),
-                )
-                .await;
+            self.broadcasts.send_document_update(
+                vault_id.clone(),
+                WebSocketServerMessageWithOrigin::new(WebSocketServerMessage::PathChange(
+                    WebSocketVaultPathChange {
+                        vault_update_id: version.vault_update_id,
+                        document_id: version.document_id,
+                        relative_path: version.relative_path.clone(),
+                        updated_date: version.updated_date,
+                        user_id: version.user_id.clone(),
+                        device_id: version.device_id.clone(),
+                    },
+                )),
+            );
         }
 
         Ok(())
