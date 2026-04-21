@@ -340,7 +340,7 @@ export class SyncEventQueue {
         return this.ignorePatterns.some((pattern) => pattern.test(path));
     }
 
-    private removeAllEventsForDocumentId(documentId: DocumentId): void {
+    public removeAllEventsForDocumentId(documentId: DocumentId): void {
         for (let i = this.events.length - 1; i >= 0; i--) {
             const e = this.events[i];
             if (
