@@ -11,9 +11,12 @@ use super::device_id_header::DeviceIdHeader;
 use crate::{
     app_state::{
         AppState,
-        database::models::{
-            DocumentId, DocumentVersionWithoutContent, StoredDocumentVersion, VaultId,
-            VaultUpdateId,
+        database::{
+            InsertBroadcast,
+            models::{
+                DocumentId, DocumentVersionWithoutContent, StoredDocumentVersion, VaultId,
+                VaultUpdateId,
+            },
         },
     },
     config::user_config::User,
@@ -120,6 +123,14 @@ pub async fn restore_document_version(
         .await
         .map_err(server_error)?;
 
+    // The current latest (pre-restore) is our baseline for deciding
+    // whether content and/or path actually change.
+    let current_latest = state
+        .database
+        .get_latest_document(&vault_id, &document_id, Some(&mut *transaction))
+        .await
+        .map_err(server_error)?;
+
     let new_version = StoredDocumentVersion {
         vault_update_id: last_update_id + 1,
         document_id,
@@ -132,9 +143,27 @@ pub async fn restore_document_version(
         has_been_merged: false,
     };
 
+    let (content_changed, path_changed) = match &current_latest {
+        Some(prev) => (
+            prev.content != new_version.content || prev.is_deleted,
+            prev.relative_path != new_version.relative_path,
+        ),
+        // No prior version (shouldn't happen in practice — target_version
+        // already proved the document exists — but treat defensively).
+        None => (true, true),
+    };
+
     state
         .database
-        .insert_document_version(&vault_id, &new_version, transaction)
+        .insert_document_version(
+            &vault_id,
+            &new_version,
+            transaction,
+            InsertBroadcast {
+                content_changed,
+                path_changed,
+            },
+        )
         .await
         .map_err(server_error)?;
 

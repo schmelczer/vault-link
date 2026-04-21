@@ -64,6 +64,15 @@ pub struct WebSocketVaultUpdate {
     pub is_initial_sync: bool,
 }
 
+#[derive(TS, Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct WebSocketVaultPathChange {
+    #[ts(type = "number")]
+    pub vault_update_id: VaultUpdateId,
+    pub document_id: DocumentId,
+    pub relative_path: String,
+}
+
 #[derive(TS, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase", tag = "type")]
 #[ts(export)]
@@ -77,6 +86,7 @@ pub enum WebSocketClientMessage {
 #[ts(export)]
 pub enum WebSocketServerMessage {
     VaultUpdate(WebSocketVaultUpdate),
+    PathChange(WebSocketVaultPathChange),
     CursorPositions(CursorPositionFromServer),
 }
 

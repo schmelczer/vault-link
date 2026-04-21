@@ -16,6 +16,24 @@ pub mod models;
 #[error("Database is busy")]
 pub struct WriteBusyError;
 
+/// Tells [`Database::insert_document_version`] which WebSocket events the
+/// just-committed version should produce. The caller is the only party
+/// with enough context to decide this (the DB layer has no access to
+/// "what the client sent" or "what the prior version looked like").
+#[derive(Debug, Clone, Copy, Default)]
+pub struct InsertBroadcast {
+    /// Emit a `VaultUpdate` (filtered from the origin device). Set when
+    /// the stored bytes differ from the prior version's bytes — i.e.
+    /// peers need to pull new content.
+    pub content_changed: bool,
+
+    /// Emit a `PathChange` (delivered to every client, origin included).
+    /// Set when the stored path differs from the prior stored path *or*
+    /// from the path the origin client sent — i.e. someone needs to
+    /// reconcile a dedupe, rename, or first-rename-wins outcome.
+    pub path_changed: bool,
+}
+
 use sqlx::{
     Pool, Sqlite, pool::PoolConnection, sqlite::SqliteConnection, sqlite::SqlitePoolOptions,
 };
@@ -25,7 +43,10 @@ use uuid::fmt::Hyphenated;
 
 use super::websocket::{
     broadcasts::Broadcasts,
-    models::{WebSocketServerMessage, WebSocketServerMessageWithOrigin, WebSocketVaultUpdate},
+    models::{
+        WebSocketServerMessage, WebSocketServerMessageWithOrigin, WebSocketVaultPathChange,
+        WebSocketVaultUpdate,
+    },
 };
 use crate::config::database_config::DatabaseConfig;
 use crate::consts::IDLE_POOL_TIMEOUT;
@@ -669,6 +690,7 @@ impl Database {
         vault_id: &VaultId,
         version: &StoredDocumentVersion,
         mut transaction: WriteTransaction,
+        broadcast: InsertBroadcast,
     ) -> Result<()> {
         let document_id = version.document_id.as_hyphenated();
         let query = sqlx::query!(
@@ -712,18 +734,43 @@ impl Database {
             .await
             .context("Failed to commit transaction")?;
 
-        self.broadcasts
-            .send_document_update(
-                vault_id.clone(),
-                WebSocketServerMessageWithOrigin::with_origin(
-                    version.device_id.clone(),
-                    WebSocketServerMessage::VaultUpdate(WebSocketVaultUpdate {
-                        documents: vec![version.clone().into()],
-                        is_initial_sync: false,
-                    }),
-                ),
-            )
-            .await;
+        if broadcast.content_changed {
+            // Content events are filtered out for the origin device — the
+            // origin already has the content (or learns about the merge
+            // via the HTTP response).
+            self.broadcasts
+                .send_document_update(
+                    vault_id.clone(),
+                    WebSocketServerMessageWithOrigin::with_origin(
+                        version.device_id.clone(),
+                        WebSocketServerMessage::VaultUpdate(WebSocketVaultUpdate {
+                            documents: vec![version.clone().into()],
+                            is_initial_sync: false,
+                        }),
+                    ),
+                )
+                .await;
+        }
+
+        if broadcast.path_changed {
+            // Path change events intentionally carry no origin so *every*
+            // connected client (including the one that made the write)
+            // receives them. The create/update HTTP response no longer
+            // carries `relative_path`, so the origin device relies on this
+            // event to learn the server-canonical path.
+            self.broadcasts
+                .send_document_update(
+                    vault_id.clone(),
+                    WebSocketServerMessageWithOrigin::new(WebSocketServerMessage::PathChange(
+                        WebSocketVaultPathChange {
+                            vault_update_id: version.vault_update_id,
+                            document_id: version.document_id,
+                            relative_path: version.relative_path.clone(),
+                        },
+                    )),
+                )
+                .await;
+        }
 
         Ok(())
     }

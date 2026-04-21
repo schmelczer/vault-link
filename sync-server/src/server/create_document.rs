@@ -11,7 +11,10 @@ use super::{device_id_header::DeviceIdHeader, requests::CreateDocumentVersion};
 use crate::{
     app_state::{
         AppState,
-        database::models::{StoredDocumentVersion, VaultId},
+        database::{
+            InsertBroadcast,
+            models::{StoredDocumentVersion, VaultId},
+        },
     },
     config::user_config::User,
     errors::{SyncServerError, client_error, server_error, write_transaction_error},
@@ -116,6 +119,8 @@ pub async fn create_document(
         );
     }
 
+    let path_changed = deduped_path != sanitized_relative_path;
+
     let new_version = StoredDocumentVersion {
         vault_update_id: last_update_id + 1,
         document_id,
@@ -130,7 +135,17 @@ pub async fn create_document(
 
     state
         .database
-        .insert_document_version(&vault_id, &new_version, transaction)
+        .insert_document_version(
+            &vault_id,
+            &new_version,
+            transaction,
+            InsertBroadcast {
+                // A brand-new document is always a content change for peers.
+                content_changed: true,
+                // Origin needs to know if the server deduped its requested path.
+                path_changed,
+            },
+        )
         .await
         .map_err(server_error)?;
 

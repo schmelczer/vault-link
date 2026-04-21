@@ -179,7 +179,8 @@ async fn websocket(
                                 .filter(|client| client.device_id != device_id)
                                 .collect(),
                         }),
-                        WebSocketServerMessage::VaultUpdate(_) => update.message,
+                        WebSocketServerMessage::VaultUpdate(_)
+                        | WebSocketServerMessage::PathChange(_) => update.message,
                     };
 
                     send_update_over_websocket(&message, &mut sender).await?;
