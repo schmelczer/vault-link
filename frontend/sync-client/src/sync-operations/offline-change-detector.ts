@@ -45,7 +45,7 @@ export async function scheduleOfflineChanges(
     const allDocuments = new Map(queue.allSettledDocuments());
     const locallyRenamedPaths = enqueueRenamedDocuments(deps, allDocuments);
 
-    let deletedCandidates = await findLocallyDeletedFiles(operations, allDocuments);
+    const deletedCandidates = await findLocallyDeletedFiles(operations, allDocuments);
 
     const instructions = await buildSyncInstructions(
         deps,

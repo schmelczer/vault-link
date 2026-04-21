@@ -199,9 +199,9 @@ export class Syncer {
     private async internalScheduleSyncForOfflineChanges(): Promise<void> {
         await scheduleOfflineChanges(
             { logger: this.logger, operations: this.operations, queue: this.queue },
-            (path) => this.syncLocallyCreatedFile(path),
-            (args) => this.syncLocallyUpdatedFile(args),
-            (path) => this.syncLocallyDeletedFile(path),
+            (path) => { this.syncLocallyCreatedFile(path); },
+            (args) => { this.syncLocallyUpdatedFile(args); },
+            (path) => { this.syncLocallyDeletedFile(path); },
         );
 
         await this.scheduleDrain();

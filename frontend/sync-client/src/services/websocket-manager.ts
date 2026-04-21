@@ -283,7 +283,7 @@ export class WebSocketManager {
         if (message.type === "vaultUpdate") {
             await this.onRemoteVaultUpdateReceived.triggerAsync(message);
 
-            // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+             
         } else if (message.type === "cursorPositions") {
             this.logger.debug(
                 `Received cursor positions for ${JSON.stringify(message.clients)}`

@@ -197,7 +197,7 @@ export class SyncEventQueue {
                     e.documentId === docId) ||
                 (e.type === SyncEventType.SyncRemote &&
                     // we care about the local path not the remote
-                    this.getDocumentByDocumentId(e.remoteVersion.documentId as DocumentId)?.path === path)
+                    this.getDocumentByDocumentId(e.remoteVersion.documentId)?.path === path)
         );
     }
 
