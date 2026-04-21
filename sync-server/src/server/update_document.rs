@@ -303,6 +303,7 @@ pub async fn update_document(
     let new_version = StoredDocumentVersion {
         document_id,
         vault_update_id: last_update_id + 1,
+        creation_vault_update_id: latest_version.creation_vault_update_id,
         relative_path: new_relative_path,
         content: merged_content,
         updated_date: chrono::Utc::now(),

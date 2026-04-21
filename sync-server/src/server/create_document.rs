@@ -121,8 +121,10 @@ pub async fn create_document(
 
     let path_changed = deduped_path != sanitized_relative_path;
 
+    let new_vault_update_id = last_update_id + 1;
     let new_version = StoredDocumentVersion {
-        vault_update_id: last_update_id + 1,
+        vault_update_id: new_vault_update_id,
+        creation_vault_update_id: new_vault_update_id,
         document_id,
         relative_path: deduped_path,
         content: new_content,

@@ -14,6 +14,7 @@ import { scheduleOfflineChanges } from "./offline-change-detector";
 import { SyncResetError } from "../errors/sync-reset-error";
 import type { DocumentVersionWithoutContent } from "../services/types/DocumentVersionWithoutContent";
 import type { WebSocketVaultUpdate } from "../services/types/WebSocketVaultUpdate";
+import type { WebSocketVaultPathChange } from "../services/types/WebSocketVaultPathChange";
 import type { WebSocketManager } from "../services/websocket-manager";
 import type { WebSocketClientMessage } from "../services/types/WebSocketClientMessage";
 import { EventListeners } from "../utils/data-structures/event-listeners";
@@ -72,6 +73,9 @@ export class Syncer {
         });
         this.webSocketManager.onRemoteVaultUpdateReceived.add(
             this.syncRemotelyUpdatedFile.bind(this)
+        );
+        this.webSocketManager.onRemotePathChangeReceived.add(
+            this.syncRemotelyChangedPath.bind(this)
         );
     }
 
@@ -170,6 +174,63 @@ export class Syncer {
                 return;
             }
             this.logger.error(`Failed to sync remotely updated file: ${e}`);
+        }
+    }
+
+    // A PathChange notifies us that a document now lives at a new server-
+    // canonical path. It's delivered to every client (origin included)
+    // because the create/update HTTP response no longer carries the path,
+    // so the only way the origin learns about dedupe or first-rename-wins
+    // is via this event.
+    public async syncRemotelyChangedPath(
+        pathChange: WebSocketVaultPathChange
+    ): Promise<void> {
+        try {
+            const existing = this.queue.getDocumentByDocumentId(
+                pathChange.documentId
+            );
+            if (existing === undefined) {
+                throw new Error(
+                    `Received path change for unknown document ${pathChange.documentId}`
+                );
+            }
+
+            const { path: currentPath, record } = existing;
+            const newPath = pathChange.relativePath;
+
+            if (currentPath !== newPath) {
+                await this.operations.move(currentPath, newPath);
+
+                this.history.addHistoryEntry({
+                    status: SyncStatus.SUCCESS,
+                    details: {
+                        type: SyncType.MOVE,
+                        relativePath: newPath,
+                        movedFrom: currentPath
+                    },
+                    message: "Applied remote path change"
+                });
+            }
+
+            // `operations.move` updates the queue's path index, but
+            // doesn't touch `remoteRelativePath`. Refresh it so offline
+            // change detection compares against the server's path.
+            // parentVersionId intentionally stays at its prior value:
+            // if the write also changed content, the corresponding
+            // VaultUpdate handles that; advancing it here would make us
+            // skip fetching content we don't yet have.
+            this.queue.setDocument(newPath, {
+                ...record,
+                remoteRelativePath: newPath
+            });
+        } catch (e) {
+            if (e instanceof SyncResetError) {
+                this.logger.info(
+                    "Failed to apply remote path change due to a reset"
+                );
+                return;
+            }
+            this.logger.error(`Failed to apply remote path change: ${e}`);
         }
     }
 

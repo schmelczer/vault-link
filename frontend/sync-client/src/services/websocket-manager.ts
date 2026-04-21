@@ -5,6 +5,7 @@ import type { WebSocketClientMessage } from "./types/WebSocketClientMessage";
 import type { CursorPositionFromClient } from "./types/CursorPositionFromClient";
 import type { ClientCursors } from "./types/ClientCursors";
 import type { WebSocketVaultUpdate } from "./types/WebSocketVaultUpdate";
+import type { WebSocketVaultPathChange } from "./types/WebSocketVaultPathChange";
 import {
     WEBSOCKET_DISCONNECT_TIMEOUT_IN_SECONDS,
     WEBSOCKET_CONNECTION_TIMEOUT_IN_SECONDS
@@ -20,6 +21,10 @@ export class WebSocketManager {
 
     public readonly onRemoteVaultUpdateReceived = new EventListeners<
         (update: WebSocketVaultUpdate) => Promise<void>
+    >();
+
+    public readonly onRemotePathChangeReceived = new EventListeners<
+        (pathChange: WebSocketVaultPathChange) => Promise<void>
     >();
 
     public readonly onRemoteCursorsUpdateReceived = new EventListeners<
@@ -280,22 +285,28 @@ export class WebSocketManager {
     private async handleWebSocketMessage(
         message: WebSocketServerMessage
     ): Promise<void> {
-        if (message.type === "vaultUpdate") {
-            await this.onRemoteVaultUpdateReceived.triggerAsync(message);
-
-             
-        } else if (message.type === "cursorPositions") {
-            this.logger.debug(
-                `Received cursor positions for ${JSON.stringify(message.clients)}`
-            );
-
-            await this.onRemoteCursorsUpdateReceived.triggerAsync(
-                message.clients
-            );
-        } else {
-            this.logger.warn(
-                `Received unknown message type: ${JSON.stringify(message)}`
-            );
+        switch (message.type) {
+            case "vaultUpdate":
+                await this.onRemoteVaultUpdateReceived.triggerAsync(message);
+                return;
+            case "pathChange":
+                this.logger.debug(
+                    `Received path change for document ${message.documentId} → ${message.relativePath}`
+                );
+                await this.onRemotePathChangeReceived.triggerAsync(message);
+                return;
+            case "cursorPositions":
+                this.logger.debug(
+                    `Received cursor positions for ${JSON.stringify(message.clients)}`
+                );
+                await this.onRemoteCursorsUpdateReceived.triggerAsync(
+                    message.clients
+                );
+                return;
+            default:
+                this.logger.warn(
+                    `Received unknown message type: ${JSON.stringify(message)}`
+                );
         }
     }
 }

@@ -586,6 +586,7 @@ impl Database {
             r#"
             select
                 vault_update_id,
+                creation_vault_update_id,
                 document_id as "document_id: Hyphenated",
                 relative_path,
                 updated_date as "updated_date: chrono::DateTime<Utc>",
@@ -626,6 +627,7 @@ impl Database {
             r#"
             select
                 vault_update_id,
+                creation_vault_update_id,
                 document_id as "document_id: Hyphenated",
                 relative_path,
                 updated_date as "updated_date: chrono::DateTime<Utc>",
@@ -661,6 +663,7 @@ impl Database {
             r#"
             select
                 vault_update_id,
+                creation_vault_update_id,
                 document_id as "document_id: Hyphenated",
                 relative_path,
                 updated_date as "updated_date: chrono::DateTime<Utc>",
@@ -697,6 +700,7 @@ impl Database {
             r#"
             insert into documents (
                 vault_update_id,
+                creation_vault_update_id,
                 document_id,
                 relative_path,
                 updated_date,
@@ -706,9 +710,10 @@ impl Database {
                 device_id,
                 has_been_merged
             )
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
             version.vault_update_id,
+            version.creation_vault_update_id,
             document_id,
             version.relative_path,
             version.updated_date,

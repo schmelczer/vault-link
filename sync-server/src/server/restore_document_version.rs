@@ -133,6 +133,7 @@ pub async fn restore_document_version(
 
     let new_version = StoredDocumentVersion {
         vault_update_id: last_update_id + 1,
+        creation_vault_update_id: target_version.creation_vault_update_id,
         document_id,
         relative_path: restore_path,
         content: target_version.content,

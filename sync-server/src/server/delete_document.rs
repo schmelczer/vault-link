@@ -73,13 +73,16 @@ pub async fn delete_document(
         return Ok(Json(latest_version.clone().into()));
     }
 
-    let (latest_relative_path, latest_content) = latest_version.map_or_else(
-        || (String::new(), Vec::new()),
-        |version| (version.relative_path, version.content),
-    );
+    let new_vault_update_id = last_update_id + 1;
+    let (latest_relative_path, latest_content, creation_vault_update_id) =
+        latest_version.map_or_else(
+            || (String::new(), Vec::new(), new_vault_update_id),
+            |version| (version.relative_path, version.content, version.creation_vault_update_id),
+        );
 
     let new_version = StoredDocumentVersion {
-        vault_update_id: last_update_id + 1,
+        vault_update_id: new_vault_update_id,
+        creation_vault_update_id,
         document_id,
         relative_path: latest_relative_path,
         content: latest_content, // copy the content from the latest version

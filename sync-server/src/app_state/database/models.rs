@@ -13,6 +13,7 @@ pub type DeviceId = String;
 #[derive(Debug, Clone)]
 pub struct StoredDocumentVersion {
     pub vault_update_id: VaultUpdateId,
+    pub creation_vault_update_id: VaultUpdateId,
     pub document_id: DocumentId,
     pub relative_path: String,
     pub updated_date: DateTime<Utc>,
