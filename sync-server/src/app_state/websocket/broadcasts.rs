@@ -82,11 +82,7 @@ impl Broadcasts {
     /// Synchronous: safe to invoke from a handler between `commit()` and
     /// function return without worrying about task cancellation dropping
     /// the broadcast mid-flight. Failures are logged, never propagated.
-    pub fn send_document_update(
-        &self,
-        vault: VaultId,
-        document: WebSocketServerMessageWithOrigin,
-    ) {
+    pub fn send_document_update(&self, vault: VaultId, document: WebSocketServerMessageWithOrigin) {
         let mut tx_map = self
             .tx
             .lock()

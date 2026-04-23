@@ -14,7 +14,7 @@ use sqlx::{ConnectOptions, Connection, sqlite::SqliteConnectOptions, types::chro
 
 pub mod models;
 
-/// Sentinel error indicating the SQLite database is busy (SQLITE_BUSY).
+/// Sentinel error indicating the `SQLite` database is busy (`SQLITE_BUSY`).
 /// Handlers can downcast to this to return 429 instead of 500.
 #[derive(Debug, thiserror::Error)]
 #[error("Database is busy")]
@@ -76,11 +76,11 @@ pub struct Database {
     config: DatabaseConfig,
     broadcasts: Broadcasts,
     connection_pools: Arc<Mutex<HashMap<VaultId, Arc<VaultPool>>>>,
-    /// Per-vault write serialization. SQLite allows only one writer at a
+    /// Per-vault write serialization. `SQLite` allows only one writer at a
     /// time; `BEGIN IMMEDIATE` on a second connection blocks until the first
     /// commits (up to `busy_timeout`). Under concurrent load the blocked
     /// connections consume the pool, starving even read-only requests.
-    /// This mutex moves the wait from the SQLite layer (where it holds a
+    /// This mutex moves the wait from the `SQLite` layer (where it holds a
     /// pool connection) to the Tokio layer (where it holds nothing).
     write_locks: Arc<Mutex<HashMap<VaultId, Arc<tokio::sync::Mutex<()>>>>>,
     /// Monotonic epoch for lock-free `last_accessed_ms` timestamps
@@ -768,9 +768,6 @@ impl Database {
                         vault_update_id: version.vault_update_id,
                         document_id: version.document_id,
                         relative_path: version.relative_path.clone(),
-                        updated_date: version.updated_date,
-                        user_id: version.user_id.clone(),
-                        device_id: version.device_id.clone(),
                     },
                 )),
             );

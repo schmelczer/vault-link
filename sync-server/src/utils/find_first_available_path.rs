@@ -4,7 +4,6 @@ use anyhow::Result;
 use log::{debug, info};
 use sqlx::sqlite::SqliteConnection;
 
-
 pub async fn find_first_available_path(
     vault_id: &VaultId,
     sanitized_relative_path: &str,

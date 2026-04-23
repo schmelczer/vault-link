@@ -33,9 +33,9 @@ pub fn get_authenticated_handshake(
                 let user = auth(state, handshake.token.trim(), vault_id)?;
                 Ok(AuthenticatedWebSocketHandshake { handshake, user })
             }
-            WebSocketClientMessage::CursorPositions(_) => Err(
-                unauthenticated_error(anyhow::anyhow!("Expected a handshake message")),
-            ),
+            WebSocketClientMessage::CursorPositions(_) => Err(unauthenticated_error(
+                anyhow::anyhow!("Expected a handshake message"),
+            )),
         }
     } else {
         Err(unauthenticated_error(anyhow::anyhow!(

@@ -38,7 +38,7 @@ fn default_cursor_timeout() -> Duration {
 impl DatabaseConfig {
     pub fn validate(&self) -> Result<()> {
         ensure!(
-            self.databases_directory_path.as_os_str().len() > 0,
+            !self.databases_directory_path.as_os_str().is_empty(),
             "databases_directory_path must not be empty"
         );
         ensure!(

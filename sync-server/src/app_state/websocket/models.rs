@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::app_state::database::models::{
-    DeviceId, DocumentId, DocumentVersionWithoutContent, UserId, VaultUpdateId,
+    DeviceId, DocumentId, DocumentVersionWithoutContent, VaultUpdateId,
 };
 
 #[derive(TS, Deserialize, Clone, Debug)]

@@ -1,15 +1,3 @@
-use anyhow::Context;
-use axum::{
-    extract::{
-        Path, State,
-        ws::{Message, WebSocket, WebSocketUpgrade},
-    },
-    response::Response,
-};
-use futures::sink::SinkExt;
-use futures::stream::StreamExt;
-use log::{debug, info, warn};
-use serde::Deserialize;
 use crate::{
     app_state::{
         AppState,
@@ -25,12 +13,23 @@ use crate::{
         },
     },
     consts::{
-        HANDSHAKE_TIMEOUT, MAX_CURSORS_PER_DOCUMENT, MAX_CURSOR_DOCUMENTS,
-        MAX_RELATIVE_PATH_LEN,
+        HANDSHAKE_TIMEOUT, MAX_CURSOR_DOCUMENTS, MAX_CURSORS_PER_DOCUMENT, MAX_RELATIVE_PATH_LEN,
     },
     errors::{SyncServerError, client_error, server_error},
     utils::normalize::normalize,
 };
+use anyhow::Context;
+use axum::{
+    extract::{
+        Path, State,
+        ws::{Message, WebSocket, WebSocketUpgrade},
+    },
+    response::Response,
+};
+use futures::sink::SinkExt;
+use futures::stream::StreamExt;
+use log::{debug, info, warn};
+use serde::Deserialize;
 
 /// Tracks a pending (not yet authenticated) WebSocket connection.
 /// Decrements the counter when dropped, ensuring cleanup even if
@@ -39,8 +38,7 @@ struct PendingWsGuard(std::sync::Arc<std::sync::atomic::AtomicUsize>);
 
 impl Drop for PendingWsGuard {
     fn drop(&mut self) {
-        self.0
-            .fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+        self.0.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
     }
 }
 
@@ -112,9 +110,7 @@ async fn websocket(
     drop(pending_guard);
 
     let max_clients = state.config.server.max_clients_per_vault;
-    let mut broadcast_receiver = match state
-        .broadcasts
-        .get_receiver(vault_id.clone(), max_clients)
+    let mut broadcast_receiver = match state.broadcasts.get_receiver(vault_id.clone(), max_clients)
     {
         Ok(receiver) => receiver,
         Err(err) => {
@@ -229,7 +225,9 @@ async fn websocket(
                                     && doc.relative_path.len() <= MAX_RELATIVE_PATH_LEN
                             });
                             if !valid {
-                                warn!("Cursor update rejected: a document exceeds cursor or path length limits");
+                                warn!(
+                                    "Cursor update rejected: a document exceeds cursor or path length limits"
+                                );
                                 continue;
                             }
 

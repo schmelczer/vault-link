@@ -20,7 +20,9 @@ use crate::{
         },
     },
     config::user_config::User,
-    errors::{SyncServerError, client_error, not_found_error, server_error, write_transaction_error},
+    errors::{
+        SyncServerError, client_error, not_found_error, server_error, write_transaction_error,
+    },
     utils::{find_first_available_path::find_first_available_path, normalize::normalize},
 };
 

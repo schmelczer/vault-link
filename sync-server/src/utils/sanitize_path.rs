@@ -34,7 +34,10 @@ pub fn sanitize_path(path: &str) -> Result<String> {
         .collect::<Vec<_>>()
         .join("/");
 
-    ensure!(!result.is_empty(), "Relative path is empty after sanitization");
+    ensure!(
+        !result.is_empty(),
+        "Relative path is empty after sanitization"
+    );
     Ok(result)
 }
 

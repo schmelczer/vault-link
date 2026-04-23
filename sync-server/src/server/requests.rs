@@ -40,4 +40,3 @@ pub struct UpdateTextDocumentVersion {
     #[ts(type = "Array<number | string>")]
     pub content: Vec<NumberOrText>,
 }
-

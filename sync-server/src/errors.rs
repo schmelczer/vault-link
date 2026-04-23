@@ -98,9 +98,7 @@ impl IntoResponse for SyncServerError {
             Self::NotFound(_) => (StatusCode::NOT_FOUND, body).into_response(),
             Self::Unauthenticated(_) => (StatusCode::UNAUTHORIZED, body).into_response(),
             Self::PermissionDeniedError(_) => (StatusCode::FORBIDDEN, body).into_response(),
-            Self::TooManyRequests(_) => {
-                (StatusCode::TOO_MANY_REQUESTS, body).into_response()
-            }
+            Self::TooManyRequests(_) => (StatusCode::TOO_MANY_REQUESTS, body).into_response(),
         }
     }
 }
@@ -171,7 +169,10 @@ pub fn too_many_requests_error(error: anyhow::Error) -> SyncServerError {
 /// Maps a `create_write_transaction` error to 429 if the database is busy,
 /// or 500 for all other failures.
 pub fn write_transaction_error(error: anyhow::Error) -> SyncServerError {
-    if error.downcast_ref::<crate::app_state::database::WriteBusyError>().is_some() {
+    if error
+        .downcast_ref::<crate::app_state::database::WriteBusyError>()
+        .is_some()
+    {
         too_many_requests_error(error)
     } else {
         server_error(error)
