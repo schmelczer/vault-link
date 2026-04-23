@@ -4,9 +4,5 @@ import type { DocumentUpdateMetadata } from "./DocumentUpdateMetadata";
 
 /**
  * Response to a create/update document request.
- *
- * Neither variant contains `relative_path`: the client tracks the document's
- * on-disk path locally and the server is the authority on document identity
- * (`document_id`), not on its path.
  */
 export type DocumentUpdateResponse = { "type": "FastForwardUpdate" } & DocumentUpdateMetadata | { "type": "MergingUpdate" } & DocumentUpdateMergedContent;

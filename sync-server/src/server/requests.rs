@@ -41,5 +41,3 @@ pub struct UpdateTextDocumentVersion {
     pub content: Vec<NumberOrText>,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct DeleteDocumentVersion {}

@@ -181,6 +181,12 @@ export class WebSocketManager {
                     `Failed to close previous WebSocket connection: ${e}`
                 );
             }
+            // Abandon any outstanding handler promises from the previous
+            // connection. They'll still resolve in the background, but we
+            // no longer want `waitUntilFinished` / `stop` to block on
+            // post-reconnect state — and we definitely don't want their
+            // results applied against a now-stale socket.
+            this.outstandingPromises.length = 0;
         }
 
         const wsUri = new URL(this.settings.getSettings().remoteUri);

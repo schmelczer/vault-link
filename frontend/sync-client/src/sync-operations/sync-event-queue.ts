@@ -1,6 +1,7 @@
 import type { Settings } from "../persistence/settings";
 import type { Logger } from "../tracing/logger";
 import { globsToRegexes } from "../utils/globs-to-regexes";
+import { isConflictPath } from "../utils/conflict-path";
 import { removeFromArray } from "../utils/remove-from-array";
 import {
     SyncEventType,
@@ -108,6 +109,59 @@ export class SyncEventQueue {
     public removeDocument(path: RelativePath): void {
         this.documents.delete(path);
         this.saveInTheBackground();
+    }
+
+    /**
+     * Reflect a local rename in the queue's disk-path index.
+     *
+     * Mirrors the `input.oldPath !== undefined` branch of `enqueue`, but
+     * without emitting a new `SyncLocal` — used by `FileOperations.move`
+     * when the rename is a byproduct of another sync operation (e.g. the
+     * user dragging a file) and the caller will push the resulting event
+     * separately, or not at all.
+     *
+     * If the rename targets a path that already holds a settled record
+     * (e.g. concurrent clobber), the destination's record is dropped: the
+     * caller is expected to have moved the displaced file out of the way
+     * via `ensureClearPath` already, so the dropped record reflects the
+     * now-orphaned disk state.
+     */
+    public moveDocument(
+        oldPath: RelativePath,
+        newPath: RelativePath
+    ): void {
+        if (oldPath === newPath) return;
+
+        const record = this.documents.get(oldPath);
+        if (record !== undefined) {
+            // If `newPath` already holds a settled record, overwriting it
+            // silently would orphan that document's identity. Warn so the
+            // bug is visible; the caller is expected to have freed the
+            // destination via `ensureClearPath` first.
+            const clobbered = this.documents.get(newPath);
+            if (clobbered !== undefined) {
+                this.logger.warn(
+                    `moveDocument(${oldPath} → ${newPath}) is overwriting a settled record for document ${clobbered.documentId}; caller should have displaced it first`
+                );
+            }
+
+            this.documents.delete(oldPath);
+            this.documents.set(newPath, record);
+            for (const e of this.events) {
+                if (
+                    e.type === SyncEventType.SyncLocal &&
+                    e.documentId === record.documentId
+                ) {
+                    e.path = newPath;
+                }
+            }
+            this.saveInTheBackground();
+            return;
+        }
+
+        // No settled record — the rename may be over a pending Create
+        // whose document hasn't been persisted on the server yet.
+        this.updatePendingCreatePath(oldPath, newPath);
     }
 
     /**
@@ -232,11 +286,24 @@ export class SyncEventQueue {
 
         const { path } = input;
 
+        // Conflict-displaced files are local-only bookkeeping so a conflict
+        // hit is a debug-level event. A hit against a user-configured glob
+        // is a higher-signal "we're deliberately not syncing this" and
+        // stays at info.
+        if (isConflictPath(path)) {
+            this.logger.debug(
+                `Ignoring ${input.type} for ${path}: conflict-displaced file`
+            );
+            return;
+        }
+        if (this.matchesUserIgnorePattern(path)) {
+            this.logger.info(
+                `Ignoring ${input.type} for ${path} as it matches ignore patterns`
+            );
+            return;
+        }
+
         if (input.type === SyncEventType.Create) {
-            if (this.isIgnored(path)) {
-                this.logger.info(`Ignoring create for ${path} as it matches ignore patterns`);
-                return;
-            }
             this.events.push({ type: SyncEventType.Create, path, originalPath: path });
             return;
         }
@@ -284,11 +351,23 @@ export class SyncEventQueue {
 
         // Deletes are returned immediately; also discard any subsequent
         // events for the same documentId so stale broadcasts don't
-        // resurrect the document
+        // resurrect the document. If the documentId is still a pending
+        // `Promise<DocumentId>` (the originating Create hasn't landed
+        // yet), awaiting it may reject — handle that: the Create was
+        // cancelled, so the Delete has nothing to delete, just drop it.
         if (first.type === SyncEventType.Delete) {
             this.events.shift();
             const { documentId } = first;
-            this.removeAllEventsForDocumentId(await documentId);
+            let resolvedId: DocumentId;
+            try {
+                resolvedId = await documentId;
+            } catch {
+                this.logger.debug(
+                    "Dropping Delete whose Create was cancelled before it could be synced"
+                );
+                return this.next();
+            }
+            this.removeAllEventsForDocumentId(resolvedId);
             return first;
         }
 
@@ -303,7 +382,16 @@ export class SyncEventQueue {
                     e.documentId === documentId
             );
             if (deleteEvent !== undefined) {
-                this.removeAllEventsForDocumentId(await documentId);
+                let resolvedId: DocumentId;
+                try {
+                    resolvedId = await documentId;
+                } catch {
+                    this.logger.debug(
+                        "Dropping SyncLocal+Delete whose Create was cancelled before it could be synced"
+                    );
+                    return this.next();
+                }
+                this.removeAllEventsForDocumentId(resolvedId);
                 return deleteEvent;
             }
 
@@ -336,8 +424,12 @@ export class SyncEventQueue {
         return result;
     }
 
-    private isIgnored(path: RelativePath): boolean {
+    private matchesUserIgnorePattern(path: RelativePath): boolean {
         return this.ignorePatterns.some((pattern) => pattern.test(path));
+    }
+
+    private isIgnored(path: RelativePath): boolean {
+        return isConflictPath(path) || this.matchesUserIgnorePattern(path);
     }
 
     public removeAllEventsForDocumentId(documentId: DocumentId): void {
@@ -406,6 +498,41 @@ export class SyncEventQueue {
         return undefined;
     }
 
+    /**
+     * Returns whether there is an unsynced Create event queued at `path`.
+     * A caller uses this to decide between displacing the local file vs.
+     * merging it with a concurrent remote create.
+     */
+    public hasPendingCreateAt(path: RelativePath): boolean {
+        return this.findLastCreate(path) !== undefined;
+    }
+
+    /**
+     * Cancel the latest queued Create for `path`. Rejects its resolver
+     * promise (so any dependent SyncLocal/Delete events that `await`ed
+     * the future documentId skip themselves gracefully) and removes the
+     * Create event from the queue. Returns true if a Create was found
+     * and cancelled.
+     */
+    public cancelPendingCreate(path: RelativePath): boolean {
+        const event = this.findLastCreate(path);
+        if (event === undefined) return false;
+
+        if (event.resolvers !== undefined) {
+            event.resolvers.promise.catch(() => {
+                /* suppressed — consumer may not be listening */
+            });
+            event.resolvers.reject(
+                new Error(
+                    "Create was cancelled — merged with concurrent remote create"
+                )
+            );
+        }
+
+        removeFromArray(this.events, event);
+        return true;
+    }
+
     private rejectAllPendingCreates(): void {
         for (const event of this.events) {
             if (event.type === SyncEventType.Create && event.resolvers !== undefined) {
@@ -415,9 +542,45 @@ export class SyncEventQueue {
         }
     }
 
+    private savePending = false;
+
+    // Coalesce bursts of mutations into one persist per microtask. A drain
+    // iteration can easily produce 10+ mutations; without this, we'd fire
+    // 10 overlapping `save()` calls racing on the persistence backend.
+    //
+    // On failure, retry with bounded exponential backoff instead of
+    // silently dropping the write — otherwise a transient IDB/fs error
+    // leaves the in-memory state permanently diverged from persisted state
+    // and the user loses queue progress on restart.
     private saveInTheBackground(): void {
-        void this.save().catch((error: unknown) => {
-            this.logger.error(`Error saving sync state: ${error}`);
+        if (this.savePending) return;
+        this.savePending = true;
+        queueMicrotask(() => {
+            this.savePending = false;
+            void this.saveWithRetry();
         });
+    }
+
+    private async saveWithRetry(): Promise<void> {
+        const maxAttempts = 3;
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                await this.save();
+                return;
+            } catch (error) {
+                if (attempt === maxAttempts) {
+                    this.logger.error(
+                        `Error saving sync state after ${maxAttempts} attempts: ${error}`
+                    );
+                    return;
+                }
+                this.logger.warn(
+                    `Error saving sync state (attempt ${attempt}/${maxAttempts}): ${error}; retrying`
+                );
+                await new Promise((resolve) =>
+                    setTimeout(resolve, 50 * attempt)
+                );
+            }
+        }
     }
 }

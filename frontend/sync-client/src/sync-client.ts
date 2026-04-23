@@ -48,6 +48,7 @@ export class SyncClient {
         private readonly contentCache: FixedSizeDocumentCache,
         private readonly fileOperations: FileOperations,
         private readonly serverConfig: ServerConfig,
+        private readonly syncService: SyncService,
         private readonly persistence: PersistenceProvider<
             Partial<{
                 settings: Partial<SyncSettings>;
@@ -221,6 +222,7 @@ export class SyncClient {
             contentCache,
             fileOperations,
             serverConfig,
+            syncService,
             persistence
         );
 
@@ -460,6 +462,8 @@ export class SyncClient {
     private async startSyncing(): Promise<void> {
         this.checkIfDestroyed("startSyncing");
         this.fetchController.finishReset();
+        // Undo any earlier `pause()` stop so retryForever keeps retrying.
+        this.syncService.resume();
 
         await this.serverConfig.getConfig();
 
@@ -472,6 +476,10 @@ export class SyncClient {
     private async pause(): Promise<void> {
         this.hasFinishedOfflineSync = false;
         this.fetchController.startReset();
+        // Signal the service so any `retryForever` loop exits at its next
+        // iteration instead of continuing to retry a network request while
+        // the rest of the client is winding down.
+        this.syncService.stop();
         await this.webSocketManager.stop();
         await this.waitUntilFinished();
     }

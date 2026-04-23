@@ -7,7 +7,7 @@ use axum_extra::TypedHeader;
 use log::{debug, info};
 use serde::Deserialize;
 
-use super::{device_id_header::DeviceIdHeader, requests::DeleteDocumentVersion};
+use super::device_id_header::DeviceIdHeader;
 use crate::{
     app_state::{
         AppState,
@@ -38,7 +38,6 @@ pub async fn delete_document(
     Extension(user): Extension<User>,
     TypedHeader(device_id): TypedHeader<DeviceIdHeader>,
     State(state): State<AppState>,
-    Json(_request): Json<DeleteDocumentVersion>,
 ) -> Result<Json<DocumentVersionWithoutContent>, SyncServerError> {
     debug!("Deleting document `{document_id}` in vault `{vault_id}`");
 

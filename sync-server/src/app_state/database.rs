@@ -1,5 +1,9 @@
 use core::time::Duration;
-use std::{collections::HashMap, sync::Arc, sync::atomic::{AtomicU64, Ordering}};
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    sync::atomic::{AtomicU64, Ordering},
+};
 
 use anyhow::{Context as _, Result};
 use log::info;
@@ -96,21 +100,21 @@ pub struct WriteTransaction {
 }
 
 impl WriteTransaction {
-    async fn new(pool: &Pool<Sqlite>, write_guard: tokio::sync::OwnedMutexGuard<()>) -> Result<Self> {
+    async fn new(
+        pool: &Pool<Sqlite>,
+        write_guard: tokio::sync::OwnedMutexGuard<()>,
+    ) -> Result<Self> {
         let mut conn = pool
             .acquire()
             .await
             .context("Cannot acquire connection for write transaction")?;
-        if let Err(e) = sqlx::query("BEGIN IMMEDIATE")
-            .execute(&mut *conn)
-            .await
-        {
+        if let Err(e) = sqlx::query("BEGIN IMMEDIATE").execute(&mut *conn).await {
             let is_busy = match &e {
                 sqlx::Error::Database(db_err) => {
                     // SQLITE_BUSY base code is 5. Extended codes share base 5.
-                    let busy_by_code = db_err.code().is_some_and(|c| {
-                        c.parse::<u32>().is_ok_and(|n| n & 0xFF == 5)
-                    });
+                    let busy_by_code = db_err
+                        .code()
+                        .is_some_and(|c| c.parse::<u32>().is_ok_and(|n| n & 0xFF == 5));
                     busy_by_code || db_err.message().contains("database is locked")
                 }
                 _ => false,
@@ -120,7 +124,10 @@ impl WriteTransaction {
             }
             return Err(e).context("Cannot begin immediate transaction");
         }
-        Ok(Self { conn: Some(conn), _write_guard: write_guard })
+        Ok(Self {
+            conn: Some(conn),
+            _write_guard: write_guard,
+        })
     }
 
     pub async fn commit(mut self) -> Result<()> {
@@ -215,10 +222,7 @@ impl Database {
         Ok(vaults)
     }
 
-    pub async fn get_vault_stats(
-        &self,
-        vault: &VaultId,
-    ) -> Result<models::VaultStats> {
+    pub async fn get_vault_stats(&self, vault: &VaultId) -> Result<models::VaultStats> {
         let pool = self.get_connection_pool(vault).await?;
         let row = sqlx::query!(
             r#"
@@ -295,10 +299,7 @@ impl Database {
         Ok(database)
     }
 
-    async fn create_vault_database(
-        config: &DatabaseConfig,
-        vault: &VaultId,
-    ) -> Result<VaultPools> {
+    async fn create_vault_database(config: &DatabaseConfig, vault: &VaultId) -> Result<VaultPools> {
         let file_name = config
             .databases_directory_path
             .join(format!("{vault}.sqlite"));
@@ -384,7 +385,6 @@ impl Database {
         Ok(VaultPools { reader, writer })
     }
 
-
     fn validate_vault_id(vault: &VaultId) -> Result<()> {
         if vault.is_empty() {
             anyhow::bail!("Vault ID must not be empty");
@@ -427,12 +427,12 @@ impl Database {
         let vault_clone = vault.clone();
         let pools = vault_pool
             .cell
-            .get_or_try_init(|| async {
-                Self::create_vault_database(&config, &vault_clone).await
-            })
+            .get_or_try_init(|| async { Self::create_vault_database(&config, &vault_clone).await })
             .await?;
 
-        vault_pool.last_accessed_ms.store(self.now_ms(), Ordering::Relaxed);
+        vault_pool
+            .last_accessed_ms
+            .store(self.now_ms(), Ordering::Relaxed);
         Ok(pools.clone())
     }
 
@@ -739,9 +739,6 @@ impl Database {
             .await
             .context("Failed to commit transaction")?;
 
-        // Both sends are synchronous: there's no `.await` between the
-        // `commit()` above and function return, so a task cancellation
-        // can't drop the broadcast and leave peers permanently behind.
         if broadcast.content_changed {
             // Content events are filtered out for the origin device — the
             // origin already has the content (or learns about the merge
@@ -945,7 +942,11 @@ impl Database {
         let closures: Vec<_> = idle_pools
             .into_iter()
             .filter_map(|(vault_id, vault_pool)| {
-                vault_pool.cell.get().cloned().map(|pools| (vault_id, pools))
+                vault_pool
+                    .cell
+                    .get()
+                    .cloned()
+                    .map(|pools| (vault_id, pools))
             })
             .collect();
 
@@ -958,8 +959,7 @@ impl Database {
                     let writer_clone = pools.writer.clone();
                     let ckpt_result = tokio::task::spawn_blocking(move || {
                         futures::executor::block_on(
-                            sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
-                                .execute(&writer_clone),
+                            sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)").execute(&writer_clone),
                         )
                     })
                     .await;

@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::app_state::database::models::{
-    DeviceId, DocumentId, DocumentVersionWithoutContent, VaultUpdateId,
+    DeviceId, DocumentId, DocumentVersionWithoutContent, UserId, VaultUpdateId,
 };
 
 #[derive(TS, Deserialize, Clone, Debug)]
@@ -22,6 +22,7 @@ pub struct CursorPositionFromClient {
 }
 
 #[derive(TS, Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct DocumentWithCursors {
     // It's None in case the document is dirty.
     // We still want to sync the cursor to mark

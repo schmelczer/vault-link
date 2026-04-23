@@ -7,10 +7,10 @@ import type { TextWithCursors } from "reconcile-text";
 import { reconcile } from "reconcile-text";
 import { isFileTypeMergable } from "../utils/is-file-type-mergable";
 import { isBinary } from "../utils/is-binary";
+import { buildConflictFileName } from "../utils/conflict-path";
 import type { ServerConfig } from "../services/server-config";
 
 export class FileOperations {
-    private static readonly PARENTHESES_REGEX = / \((?<count>\d+)\)$/;
     private readonly fs: SafeFileSystemOperations;
 
     public constructor(
@@ -59,26 +59,34 @@ export class FileOperations {
         return this.fs.write(path, this.toNativeLineEndings(newContent));
     }
 
-    // Returns the deconflicted path if a file was moved, undefined otherwise
+    /**
+     * Ensure nothing sits at `path` so the caller can write to it.
+     *
+     * If a file is already there, it is moved aside to a `conflict-<uuid>-<name>`
+     * path in the same directory. The sync layer treats conflict-named files
+     * as invisible (see `isConflictPath`), so no events are enqueued and no
+     * document records are touched — any pre-existing record or pending
+     * events for the displaced path are left behind for the caller to
+     * overwrite as part of whatever operation prompted the displacement.
+     *
+     * Returns the conflict path the existing file was moved to, or `undefined`
+     * if the path was already clear.
+     */
     public async ensureClearPath(
         path: RelativePath
     ): Promise<RelativePath | undefined> {
         if (await this.fs.exists(path)) {
-            const deconflictedPath = await this.deconflictPath(path);
-            try {
-                this.logger.debug(
-                    `Didn't expect ${path} to exist, deconflicting by moving it to '${deconflictedPath}'`
-                );
+            const conflictPath = FileOperations.buildConflictPath(path);
+            this.logger.debug(
+                `Displacing existing file at ${path} to '${conflictPath}' to make room`
+            );
 
-                this.queue.moveDocument(path, deconflictedPath);
-                await this.fs.rename(path, deconflictedPath, true);
-                return deconflictedPath;
-            } finally {
-                this.fs.unlock(deconflictedPath);
-            }
-        } else {
-            await this.createParentDirectories(path);
+            this.queue.moveDocument(path, conflictPath);
+            await this.fs.rename(path, conflictPath, true);
+            return conflictPath;
         }
+
+        await this.createParentDirectories(path);
         return undefined;
     }
 
@@ -119,8 +127,22 @@ export class FileOperations {
             return;
         }
 
-        const expectedText = new TextDecoder().decode(expectedContent); // this comes from a previous read which must only have \n line endings
-        const newText = new TextDecoder().decode(newContent); // this comes from the server which stores text with \n line endings
+        let expectedText: string;
+        let newText: string;
+        try {
+            expectedText = new TextDecoder("utf-8", { fatal: true }).decode(
+                expectedContent
+            ); // this comes from a previous read which must only have \n line endings
+            newText = new TextDecoder("utf-8", { fatal: true }).decode(
+                newContent
+            ); // this comes from the server which stores text with \n line endings
+        } catch (decodeError) {
+            this.logger.warn(
+                `3-way merge aborted for ${path}: one of expected/new is not valid UTF-8 (${decodeError}); falling back to overwrite`
+            );
+            await this.fs.write(path, this.toNativeLineEndings(newContent));
+            return;
+        }
 
         await this.fs.atomicUpdateText(
             path,
@@ -166,7 +188,7 @@ export class FileOperations {
         return this.fs.exists(path);
     }
 
-    // Returns the deconflicted path if a file at the target was displaced
+    // Returns the conflict path a displaced file was moved to, or undefined.
     public async move(
         oldPath: RelativePath,
         newPath: RelativePath
@@ -175,12 +197,16 @@ export class FileOperations {
             return undefined;
         }
 
-        const deconflictedPath = await this.ensureClearPath(newPath);
-        this.queue.moveDocument(oldPath, newPath);
+        const conflictPath = await this.ensureClearPath(newPath);
+        // Do the disk rename *before* updating the queue. If the rename
+        // throws (permissions, concurrent deletion, …), the queue still
+        // reflects the actual on-disk state instead of claiming the doc
+        // has already moved.
         await this.fs.rename(oldPath, newPath);
+        this.queue.moveDocument(oldPath, newPath);
 
         await this.deletingEmptyParentDirectoriesOfDeletedFile(oldPath);
-        return deconflictedPath;
+        return conflictPath;
     }
 
 
@@ -248,51 +274,14 @@ export class FileOperations {
     }
 
     /**
-     * Deconflicts the given path by appending (1), (2), etc. before the file extension until a non-existent path is found.
-     * The returned path has a lock acquired on it; it must be released by the caller when no longer needed.
-     *
-     * @param path The starting path to deconflict
-     * @returns a non-existent path with a lock acquired on it
+     * Build a local-only conflict path for a file the client has to set aside.
+     * Format: `<dir>/conflict-<uuid>-<originalName>` — UUID makes collisions
+     * statistically impossible, so no disk probe / lock dance is needed.
      */
-    private async deconflictPath(path: RelativePath): Promise<RelativePath> {
-        // eslint-disable-next-line prefer-const
-        let [directory, fileName] = FileOperations.getParentDirAndFile(path);
-
-        if (directory) {
-            directory += "/";
-        }
-
-        const nameParts = fileName.split(".");
-        // Handle dotfiles: ".gitignore" should have no extension, ".config.json" should have ".json"
-        const isDotfile = fileName.startsWith(".") && nameParts[0] === "";
-        const extension =
-            nameParts.length > 1 && !(isDotfile && nameParts.length === 2)
-                ? "." + nameParts[nameParts.length - 1]
-                : "";
-        let stem = extension ? nameParts.slice(0, -1).join(".") : fileName;
-        let currentCount = Number.parseInt(
-            FileOperations.PARENTHESES_REGEX.exec(stem)?.groups?.count ?? "0"
-        );
-        stem = stem.replace(FileOperations.PARENTHESES_REGEX, "");
-
-        let newName = path;
-
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-        while (true) {
-            currentCount++;
-            newName = `${directory}${stem} (${currentCount})${extension}`;
-
-            // Avoid multiple deconflictPath calls returning the same path
-            await this.fs.waitForLock(newName);
-            const existingRecord = this.queue.getSettledDocumentByPath(newName);
-            if (
-                existingRecord !== undefined || // the document might have been confirmed by the server at a new path but haven't yet moved there locally
-                (await this.fs.exists(newName, true))
-            ) {
-                this.fs.unlock(newName);
-            } else {
-                return newName;
-            }
-        }
+    private static buildConflictPath(path: RelativePath): RelativePath {
+        const [directory, fileName] =
+            FileOperations.getParentDirAndFile(path);
+        const conflictName = buildConflictFileName(fileName);
+        return directory ? `${directory}/${conflictName}` : conflictName;
     }
 }

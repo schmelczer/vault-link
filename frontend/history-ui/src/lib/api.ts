@@ -81,7 +81,12 @@ export class ApiClient {
     ): Promise<ArrayBuffer> {
         const response = await fetch(
             `${this.baseUrl}/documents/${documentId}/versions/${vaultUpdateId}/content`,
-            { headers: this.headers() }
+            {
+                headers: {
+                    Authorization: `Bearer ${this.token}`,
+                    "device-id": "history-ui"
+                }
+            }
         );
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);

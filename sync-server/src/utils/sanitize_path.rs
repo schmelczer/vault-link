@@ -1,9 +1,20 @@
 use anyhow::{Result, ensure};
 
+use crate::consts::MAX_RELATIVE_PATH_LEN;
+
 /// Sanitize the document's path to allow all clients to create the same path in
 /// their filesystem. If we didn't do this server-side, client's would need to
 /// deal with mapping invalid names to valid ones and then back.
 pub fn sanitize_path(path: &str) -> Result<String> {
+    // Enforce the length cap at the single chokepoint every create/update
+    // handler goes through, so clients can't blow up axum's JSON/multipart
+    // parser with a 1 MB `relative_path` before the handler ever runs.
+    // The WebSocket cursor handler enforces this separately.
+    ensure!(
+        path.len() <= MAX_RELATIVE_PATH_LEN,
+        "Relative path exceeds the maximum length of {MAX_RELATIVE_PATH_LEN} bytes"
+    );
+
     let options = sanitize_filename::Options {
         truncate: true,
         windows: true, // Windows is the lowest common denominator
