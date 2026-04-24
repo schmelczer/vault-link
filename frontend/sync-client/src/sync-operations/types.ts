@@ -16,7 +16,7 @@ export interface StoredDocument extends DocumentRecord {
 }
 
 export interface StoredSyncState {
-    documents: StoredDocument[];
+    documents: StoredDocument[] | undefined;
     lastSeenUpdateId: VaultUpdateId | undefined;
 }
 

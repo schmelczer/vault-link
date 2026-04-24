@@ -278,7 +278,7 @@ describe("SyncEventQueue", () => {
         const queue = createQueue();
         queue.enqueue({ type: SyncEventType.LocalCreate, path: "a.md" });
 
-        const promise = queue.getCreatePromise("a.md");
+        const promise = queue.getLatestCreatePromise("a.md");
         assert.ok(promise !== undefined);
 
         // The syncer resolves via event.resolvers after dequeuing
@@ -294,7 +294,7 @@ describe("SyncEventQueue", () => {
         const queue = createQueue();
         queue.enqueue({ type: SyncEventType.LocalCreate, path: "a.md" });
 
-        const promise = queue.getCreatePromise("a.md");
+        const promise = queue.getLatestCreatePromise("a.md");
         assert.ok(promise !== undefined);
 
         const event = await queue.next();
@@ -311,8 +311,8 @@ describe("SyncEventQueue", () => {
         queue.enqueue({ type: SyncEventType.LocalCreate, path: "a.md" });
         queue.enqueue({ type: SyncEventType.LocalCreate, path: "b.md" });
 
-        const promiseA = queue.getCreatePromise("a.md");
-        const promiseB = queue.getCreatePromise("b.md");
+        const promiseA = queue.getLatestCreatePromise("a.md");
+        const promiseB = queue.getLatestCreatePromise("b.md");
         assert.ok(promiseA !== undefined);
         assert.ok(promiseB !== undefined);
 
@@ -481,7 +481,7 @@ describe("SyncEventQueue", () => {
         const queue = createQueue();
 
         queue.enqueue({ type: SyncEventType.LocalCreate, path: "a.md" });
-        const createPromise = queue.getCreatePromise("a.md")!;
+        const createPromise = queue.getLatestCreatePromise("a.md")!;
 
         // Dependent events enqueued while create is still pending
         queue.enqueue({ type: SyncEventType.LocalUpdate, path: "a.md" });

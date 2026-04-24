@@ -152,13 +152,32 @@
 
     async function executeRestore() {
         const api = auth.api;
-        if (!api || !restoreTarget) return;
+        if (!api || !restoreTarget || !latest) return;
         restoring = true;
         try {
-            await api.restoreVersion(
+            // Restore = re-submit the target version's bytes at its path
+            // as if it were a fresh edit. `update_document` short-circuits
+            // on `is_deleted`, so resurrecting a deleted doc has to go
+            // through `create_document`; a live doc takes the normal
+            // update path with the current latest as its parent.
+            const bytes = await api.fetchDocumentVersionContent(
                 documentId,
                 restoreTarget.vaultUpdateId
             );
+            if (latest.isDeleted) {
+                await api.createDocument(
+                    latest.vaultUpdateId,
+                    restoreTarget.relativePath,
+                    bytes
+                );
+            } else {
+                await api.updateBinaryDocument(
+                    documentId,
+                    latest.vaultUpdateId,
+                    restoreTarget.relativePath,
+                    bytes
+                );
+            }
             toasts.add(
                 `Restored to version #${restoreTarget.vaultUpdateId}`,
                 "success"

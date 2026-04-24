@@ -1,4 +1,5 @@
 import type {
+    DocumentUpdateResponse,
     DocumentVersion,
     DocumentVersionWithoutContent,
     FetchLatestDocumentsResponse,
@@ -108,19 +109,47 @@ export class ApiClient {
         );
     }
 
-    async restoreVersion(
+    /**
+     * Upload a new version of an existing (non-deleted) document. The
+     * server treats this like any other edit — server-side merging,
+     * path dedupe, and broadcast still apply. Used by the UI to restore
+     * an old version by re-submitting its bytes on top of the latest.
+     */
+    async updateBinaryDocument(
         documentId: string,
-        vaultUpdateId: number
-    ): Promise<DocumentVersionWithoutContent> {
+        parentVersionId: number,
+        relativePath: string,
+        content: ArrayBuffer
+    ): Promise<DocumentUpdateResponse> {
+        const form = new FormData();
+        form.append("parent_version_id", String(parentVersionId));
+        form.append("relative_path", relativePath);
+        form.append("content", new Blob([content]));
         return this.fetchJson(
-            `${this.baseUrl}/documents/${documentId}/restore`,
-            {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({ vaultUpdateId })
-            }
+            `${this.baseUrl}/documents/${documentId}/binary`,
+            { method: "PUT", body: form }
         );
+    }
+
+    /**
+     * Create a new document. Used by the UI to restore a deleted
+     * document: `update_document` short-circuits on `is_deleted`, so
+     * resurrection has to go through `create_document` — which detects
+     * an existing doc at the same path, merges or dedupes as needed,
+     * and returns the resulting version.
+     */
+    async createDocument(
+        lastSeenVaultUpdateId: number,
+        relativePath: string,
+        content: ArrayBuffer
+    ): Promise<DocumentUpdateResponse> {
+        const form = new FormData();
+        form.append("last_seen_vault_update_id", String(lastSeenVaultUpdateId));
+        form.append("relative_path", relativePath);
+        form.append("content", new Blob([content]));
+        return this.fetchJson(`${this.baseUrl}/documents`, {
+            method: "POST",
+            body: form
+        });
     }
 }

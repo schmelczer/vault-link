@@ -3,9 +3,12 @@ import type { RelativePath } from "./types";
 // Local-only files displaced by `FileOperations.ensureClearPath` are named
 // `conflict-<uuid>-<originalName>`. The UUID is a full RFC-4122 v4 value so
 // a user-authored filename that happens to start with `conflict-` doesn't
-// get misclassified.
-const CONFLICT_UUID_REGEX =
-    /^conflict-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-/u;
+// get misclassified. The leading `(?:^|\/)` and trailing `[^/]*$` anchor the
+// match to the final path segment so intermediate directories named after
+// old conflict files (if a user renames one into a directory) don't ignore
+// everything beneath them.
+export const CONFLICT_PATH_REGEX =
+    /(?:^|\/)conflict-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-[^/]*$/u;
 
 // Safe segment length for common filesystems (ext4 / NTFS / APFS all cap
 // at 255 bytes). `conflict-<36-char-uuid>-` adds 46 bytes; reserve a few
@@ -61,6 +64,5 @@ function truncateFileNameToByteLimit(
  * strictly local and must stay invisible to the server.
  */
 export function isConflictPath(path: RelativePath): boolean {
-    const fileName = path.substring(path.lastIndexOf("/") + 1);
-    return CONFLICT_UUID_REGEX.test(fileName);
+    return CONFLICT_PATH_REGEX.test(path);
 }

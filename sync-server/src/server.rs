@@ -14,7 +14,6 @@ mod ping;
 mod rate_limit;
 mod requests;
 mod responses;
-mod restore_document_version;
 mod update_document;
 mod websocket;
 
@@ -173,10 +172,6 @@ fn get_authed_routes(app_state: AppState) -> Router<AppState> {
         .route(
             "/vaults/:vault_id/documents/:document_id",
             delete(delete_document::delete_document),
-        )
-        .route(
-            "/vaults/:vault_id/documents/:document_id/restore",
-            post(restore_document_version::restore_document_version),
         )
         .route(
             "/vaults/:vault_id/history",

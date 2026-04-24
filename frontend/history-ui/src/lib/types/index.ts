@@ -1,5 +1,6 @@
 import type { DocumentVersionWithoutContent } from "./DocumentVersionWithoutContent";
 
+export type { DocumentUpdateResponse } from "./DocumentUpdateResponse";
 export type { DocumentVersion } from "./DocumentVersion";
 export type { DocumentVersionWithoutContent } from "./DocumentVersionWithoutContent";
 export type { FetchLatestDocumentsResponse } from "./FetchLatestDocumentsResponse";

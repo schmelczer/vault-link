@@ -44,7 +44,7 @@ export class Syncer {
 
     private readonly queue: SyncEventQueue;
 
-    private _isFirstSyncComplete = false;
+    private _isFirstSyncStarted = false;
     private runningScheduleSyncForOfflineChanges: Promise<void> | undefined;
     private draining: Promise<void> | undefined;
     private previousRemainingOperationsCount = 0;
@@ -66,14 +66,6 @@ export class Syncer {
         this.webSocketManager.onWebSocketStatusChanged.add((isConnected) => {
             if (isConnected) {
                 this.sendHandshakeMessage();
-                // The server no longer carries an `is_initial_sync`
-                // terminator: it streams missed versions as individual
-                // VaultUpdates and then behaves like a live subscription.
-                // Mark first-sync as complete once we've observed the
-                // transition to "connected" — per-path sync status still
-                // relies on `hasPendingEventsForPath`, which correctly
-                // shows SYNCING while catch-up events are in flight.
-                this._isFirstSyncComplete = true;
             }
         });
         this.webSocketManager.onRemoteVaultUpdateReceived.add(
@@ -82,7 +74,7 @@ export class Syncer {
     }
 
     public get isFirstSyncComplete(): boolean {
-        return this._isFirstSyncComplete;
+        return this._isFirstSyncStarted;
     }
 
     public syncLocallyCreatedFile(relativePath: RelativePath): void {
@@ -110,11 +102,7 @@ export class Syncer {
     }
 
 
-    // Handler for every `WebSocketVaultUpdate` the server emits. The
-    // server filters out messages authored by this device, so every
-    // update here comes from a peer (or is part of the catch-up stream
-    // the server replays on connect for versions we missed while
-    // offline).
+
     public async syncRemotelyUpdatedFile(
         message: WebSocketVaultUpdate
     ): Promise<void> {
@@ -126,6 +114,8 @@ export class Syncer {
         });
 
         this.ensureDraining();
+
+        this._isFirstSyncStarted = true;
     }
 
     public async scheduleSyncForOfflineChanges(): Promise<void> {
@@ -167,7 +157,7 @@ export class Syncer {
 
 
     public reset(): void {
-        this._isFirstSyncComplete = false;
+        this._isFirstSyncStarted = false;
         this.queue.clear();
         // Don't null the reference synchronously — if the scan is
         // still in flight, the next reconnect would spawn a second
@@ -220,14 +210,12 @@ export class Syncer {
             );
         });
 
-        await this.scheduleDrain();
+        this.ensureDraining();
+        await this.draining;
     }
 
 
 
-    private ensureDraining(): void {
-        void this.chainOntoDrain(async () => this.drain());
-    }
 
     /**
      * Serialize a unit of work onto the same promise chain the drain
@@ -248,11 +236,10 @@ export class Syncer {
         );
         return chained;
     }
-
-    private async scheduleDrain(): Promise<void> {
-        this.ensureDraining();
-        await this.draining;
+    private ensureDraining(): void {
+        void this.chainOntoDrain(async () => this.drain());
     }
+
 
     private async drain(): Promise<void> {
         let event = await this.queue.next();
