@@ -5,7 +5,6 @@ import type { WebSocketClientMessage } from "./types/WebSocketClientMessage";
 import type { CursorPositionFromClient } from "./types/CursorPositionFromClient";
 import type { ClientCursors } from "./types/ClientCursors";
 import type { WebSocketVaultUpdate } from "./types/WebSocketVaultUpdate";
-import type { WebSocketVaultPathChange } from "./types/WebSocketVaultPathChange";
 import {
     WEBSOCKET_DISCONNECT_TIMEOUT_IN_SECONDS,
     WEBSOCKET_CONNECTION_TIMEOUT_IN_SECONDS
@@ -21,10 +20,6 @@ export class WebSocketManager {
 
     public readonly onRemoteVaultUpdateReceived = new EventListeners<
         (update: WebSocketVaultUpdate) => Promise<void>
-    >();
-
-    public readonly onRemotePathChangeReceived = new EventListeners<
-        (pathChange: WebSocketVaultPathChange) => Promise<void>
     >();
 
     public readonly onRemoteCursorsUpdateReceived = new EventListeners<
@@ -294,12 +289,6 @@ export class WebSocketManager {
         switch (message.type) {
             case "vaultUpdate":
                 await this.onRemoteVaultUpdateReceived.triggerAsync(message);
-                return;
-            case "pathChange":
-                this.logger.debug(
-                    `Received path change for document ${message.documentId} → ${message.relativePath}`
-                );
-                await this.onRemotePathChangeReceived.triggerAsync(message);
                 return;
             case "cursorPositions":
                 this.logger.debug(

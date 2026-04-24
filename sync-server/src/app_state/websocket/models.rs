@@ -58,23 +58,15 @@ pub struct CursorPositionFromServer {
     pub clients: Vec<ClientCursors>,
 }
 
-// Clients only get notified of other clients' updates through WebSocketVaultUpdate.
+// One committed version, broadcast to every connected client *except*
+// the device that authored it — that device already has the new state
+// via its HTTP response. The server also emits these one-at-a-time to
+// catch up a freshly-connected client on versions committed while it
+// was offline, in ascending `vault_update_id` order.
 #[derive(TS, Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct WebSocketVaultUpdate {
-    pub documents: Vec<DocumentVersionWithoutContent>,
-    pub is_initial_sync: bool,
-}
-
-// Clients get notified of both their own and other clients' path changes through WebSocketVaultPathChange.
-// This is becuase we must absolutely order path updates as they may all depend on all previous updates.
-#[derive(TS, Serialize, Clone, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct WebSocketVaultPathChange {
-    #[ts(type = "number")]
-    pub vault_update_id: VaultUpdateId,
-    pub document_id: DocumentId,
-    pub relative_path: String,
+    pub document: DocumentVersionWithoutContent,
 }
 
 #[derive(TS, Deserialize, Clone, Debug)]
@@ -90,10 +82,13 @@ pub enum WebSocketClientMessage {
 #[ts(export)]
 pub enum WebSocketServerMessage {
     VaultUpdate(WebSocketVaultUpdate),
-    PathChange(WebSocketVaultPathChange),
     CursorPositions(CursorPositionFromServer),
 }
 
+/// Broadcast envelope carrying the message plus the device that produced
+/// it. The per-recipient send task compares `origin_device_id` against
+/// its own device id to fill in `originates_from_self` before the message
+/// is serialized on the wire.
 #[derive(Clone, Debug)]
 pub struct WebSocketServerMessageWithOrigin {
     pub origin_device_id: Option<DeviceId>,

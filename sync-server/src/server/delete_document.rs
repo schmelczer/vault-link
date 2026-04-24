@@ -11,10 +11,7 @@ use super::device_id_header::DeviceIdHeader;
 use crate::{
     app_state::{
         AppState,
-        database::{
-            InsertBroadcast,
-            models::{DocumentId, DocumentVersionWithoutContent, StoredDocumentVersion, VaultId},
-        },
+        database::models::{DocumentId, DocumentVersionWithoutContent, StoredDocumentVersion, VaultId},
     },
     config::user_config::User,
     errors::{SyncServerError, not_found_error, server_error, write_transaction_error},
@@ -101,17 +98,7 @@ pub async fn delete_document(
 
     state
         .database
-        .insert_document_version(
-            &vault_id,
-            &new_version,
-            transaction,
-            InsertBroadcast {
-                // Deletion is a content change peers must learn about.
-                content_changed: true,
-                // Delete never renames.
-                path_changed: false,
-            },
-        )
+        .insert_document_version(&vault_id, &new_version, transaction)
         .await
         .map_err(server_error)?;
 

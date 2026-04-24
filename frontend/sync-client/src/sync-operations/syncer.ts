@@ -14,7 +14,6 @@ import { scheduleOfflineChanges } from "./offline-change-detector";
 import { SyncResetError } from "../errors/sync-reset-error";
 import type { DocumentVersionWithoutContent } from "../services/types/DocumentVersionWithoutContent";
 import type { WebSocketVaultUpdate } from "../services/types/WebSocketVaultUpdate";
-import type { WebSocketVaultPathChange } from "../services/types/WebSocketVaultPathChange";
 import type { WebSocketManager } from "../services/websocket-manager";
 import type { WebSocketClientMessage } from "../services/types/WebSocketClientMessage";
 import { EventListeners } from "../utils/data-structures/event-listeners";
@@ -67,13 +66,18 @@ export class Syncer {
         this.webSocketManager.onWebSocketStatusChanged.add((isConnected) => {
             if (isConnected) {
                 this.sendHandshakeMessage();
+                // The server no longer carries an `is_initial_sync`
+                // terminator: it streams missed versions as individual
+                // VaultUpdates and then behaves like a live subscription.
+                // Mark first-sync as complete once we've observed the
+                // transition to "connected" — per-path sync status still
+                // relies on `hasPendingEventsForPath`, which correctly
+                // shows SYNCING while catch-up events are in flight.
+                this._isFirstSyncComplete = true;
             }
         });
         this.webSocketManager.onRemoteVaultUpdateReceived.add(
             this.syncRemotelyUpdatedFile.bind(this)
-        );
-        this.webSocketManager.onRemotePathChangeReceived.add(
-            this.syncRemotelyChangedPath.bind(this)
         );
     }
 
@@ -106,63 +110,22 @@ export class Syncer {
     }
 
 
+    // Handler for every `WebSocketVaultUpdate` the server emits. The
+    // server filters out messages authored by this device, so every
+    // update here comes from a peer (or is part of the catch-up stream
+    // the server replays on connect for versions we missed while
+    // offline).
     public async syncRemotelyUpdatedFile(
         message: WebSocketVaultUpdate
     ): Promise<void> {
         await this.scheduleSyncForOfflineChanges();
 
-        for (const remoteVersion of message.documents) {
-            this.queue.enqueue({
-                type: SyncEventType.RemoteUpdate,
-                remoteVersion
-            });
-        }
-
-        if (message.isInitialSync) {
-            this._isFirstSyncComplete = true;
-        }
+        this.queue.enqueue({
+            type: SyncEventType.RemoteUpdate,
+            remoteVersion: message.document
+        });
 
         this.ensureDraining();
-
-    }
-
-    // A PathChange notifies us that a document now lives at a new server-
-    // canonical path. It's delivered to every client (origin included)
-    // because the create/update HTTP response no longer carries the path,
-    // so the only way the origin learns about dedupe or first-rename-wins
-    // is via this event.
-    //
-    // Algorithmic assumptions:
-    //   (1) Per-vault broadcast ordering is preserved by the server, so if
-    //       the same write produced a `VaultUpdate` (content change) and a
-    //       `PathChange` (path change), the `VaultUpdate` is handled first
-    //       — that's what lets us skip advancing `parentVersionId` here
-    //       without risking a stuck "already up-to-date" check later.
-    //   (2) On a lag-induced disconnect (`broadcast::error::Lagged`) the
-    //       server disconnects the client for a full resync, so out-of-
-    //       order delivery across a reconnect boundary can't leave us with
-    //       a stale PathChange overwriting a newer one.
-    public async syncRemotelyChangedPath(
-        pathChange: WebSocketVaultPathChange
-    ): Promise<void> {
-        try {
-            await this.scheduleSyncForOfflineChanges();
-
-            this.queue.enqueue({
-                type: SyncEventType.RemotePathChange,
-                pathChange
-            });
-
-            await this.scheduleDrain();
-        } catch (e) {
-            if (e instanceof SyncResetError) {
-                this.logger.info(
-                    "Failed to apply remote path change due to a reset"
-                );
-                return;
-            }
-            this.logger.error(`Failed to apply remote path change: ${e}`);
-        }
     }
 
     public async scheduleSyncForOfflineChanges(): Promise<void> {
@@ -331,9 +294,6 @@ export class Syncer {
                     break;
                 case SyncEventType.RemoteUpdate:
                     await this.processSyncRemoteContent(event);
-                    break;
-                case SyncEventType.RemotePathChange:
-                    await this.processSyncRemotePath(event);
                     break;
             }
         } catch (e) {
@@ -594,51 +554,6 @@ export class Syncer {
         await this.processRemoteUpdateForNewDocument(remoteVersion);
     }
 
-    private async processSyncRemotePath(
-        event: Extract<SyncEvent, { type: SyncEventType.RemotePathChange }>
-    ): Promise<void> {
-        const { pathChange } = event;
-        const existing = this.queue.getDocumentByDocumentId(
-            pathChange.documentId
-        );
-        if (existing === undefined) {
-            throw new Error(
-                `Received path change for unknown document ${pathChange.documentId}`
-            );
-        }
-
-        const { path: currentPath, record } = existing;
-        const newPath = pathChange.relativePath;
-
-        if (currentPath !== newPath) {
-            await this.operations.move(currentPath, newPath);
-
-            this.history.addHistoryEntry({
-                status: SyncStatus.SUCCESS,
-                details: {
-                    type: SyncType.MOVE,
-                    relativePath: newPath,
-                    movedFrom: currentPath
-                },
-                message: "Applied remote path change",
-                author: pathChange.userId,
-                timestamp: new Date(pathChange.updatedDate)
-            });
-        }
-
-        // `operations.move` updates the queue's path index, but doesn't
-        // touch `remoteRelativePath`. Refresh it so offline change
-        // detection compares against the server's path. parentVersionId
-        // intentionally stays at its prior value: if the write also
-        // changed content, the corresponding VaultUpdate handles that;
-        // advancing it here would make us skip fetching content we don't
-        // yet have.
-        this.queue.setDocument(newPath, {
-            ...record,
-            remoteRelativePath: newPath
-        });
-    }
-
     private async processRemoteUpdateForExistingDocument(
         currentPath: RelativePath,
         record: DocumentRecord,
@@ -734,14 +649,14 @@ export class Syncer {
 
             // Path reconciliation fallback for the reconnect case.
             //
-            // In steady-state streaming, server-initiated renames arrive as
-            // dedicated `PathChange` WebSocket events and are handled by
-            // `syncRemotelyChangedPath`. But the reconnect catch-up path
-            // (`get_unseen_documents` → `VaultUpdate(is_initial_sync=…)`)
-            // replays *versions* from the DB — `PathChange` is emission-
-            // only and not replayed. Without this branch, a pure rename
-            // that happened while we were disconnected would leave our
-            // local file stuck at its old path forever.
+            // In steady-state streaming, server-initiated renames arrive
+            // as `VaultUpdate` events with `originatesFromSelf=true` for
+            // the author and drive `processSyncRemotePath`. The reconnect
+            // catch-up (`get_unseen_documents` → `is_initial_sync=true`)
+            // replays versions authored by any device with
+            // `originatesFromSelf=false`, so those take the full remote-
+            // sync branch and we need this in-branch path reconciliation
+            // to avoid leaving the local file stuck at its old path.
             //
             // Only apply the server's path when the record's
             // `remoteRelativePath` still matches `currentPath` — that means
@@ -1107,8 +1022,8 @@ export class Syncer {
                 }
             }
             // Only delete on disk if the record at `path` is still the one
-            // we expected — if a PathChange moved another doc here, we
-            // shouldn't delete its file.
+            // we expected — if a self-origin path-change moved another doc
+            // here, we shouldn't delete its file.
             const finalRecord = this.queue.getSettledDocumentByPath(path);
             if (
                 finalRecord === undefined ||
@@ -1121,9 +1036,10 @@ export class Syncer {
         }
 
         // The response carries content only — path reconciliation is the
-        // sole responsibility of the `PathChange` WebSocket event, which
-        // fires independently for renames/dedupes. We therefore always
-        // record the current local `path` here; an in-flight `PathChange`
+        // sole responsibility of the self-origin `VaultUpdate` echo (the
+        // `originatesFromSelf=true` branch of `syncRemoteVaultUpdate`),
+        // which fires independently for renames/dedupes. We therefore
+        // always record the current local `path` here; an in-flight echo
         // will move the file and fix `remoteRelativePath` if the server
         // placed the document somewhere else.
         const existingRecord = this.queue.getSettledDocumentByPath(path);

@@ -134,19 +134,21 @@ async fn websocket(
         }
     };
 
-    send_update_over_websocket(
-        &WebSocketServerMessage::VaultUpdate(WebSocketVaultUpdate {
-            documents: get_unseen_documents(
-                &state,
-                &vault_id,
-                authed_handshake.handshake.last_seen_vault_update_id,
-            )
-            .await?,
-            is_initial_sync: true,
-        }),
-        &mut sender,
+    // Catch-up on versions committed while this client was offline,
+    // streamed one-at-a-time in ascending `vault_update_id` order
+    let unseen_documents = get_unseen_documents(
+        &state,
+        &vault_id,
+        authed_handshake.handshake.last_seen_vault_update_id,
     )
     .await?;
+    for document in unseen_documents {
+        send_update_over_websocket(
+            &WebSocketServerMessage::VaultUpdate(WebSocketVaultUpdate { document }),
+            &mut sender,
+        )
+        .await?;
+    }
 
     send_update_over_websocket(
         &WebSocketServerMessage::CursorPositions(CursorPositionFromServer {
@@ -161,6 +163,8 @@ async fn websocket(
         loop {
             match broadcast_receiver.recv().await {
                 Ok(update) => {
+                    // Drop messages this device authored because the HTTP
+                    // response already carried authoritative state back.
                     if Some(&device_id) == update.origin_device_id.as_ref() {
                         continue;
                     }
@@ -174,8 +178,7 @@ async fn websocket(
                                 .filter(|client| client.device_id != device_id)
                                 .collect(),
                         }),
-                        WebSocketServerMessage::VaultUpdate(_)
-                        | WebSocketServerMessage::PathChange(_) => update.message,
+                        WebSocketServerMessage::VaultUpdate(_) => update.message,
                     };
 
                     send_update_over_websocket(&message, &mut sender).await?;

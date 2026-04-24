@@ -17,7 +17,7 @@ use crate::{
     app_state::{
         AppState,
         database::{
-            InsertBroadcast, WriteTransaction,
+            WriteTransaction,
             models::{DocumentId, StoredDocumentVersion, VaultId, VaultUpdateId},
         },
     },
@@ -292,14 +292,6 @@ pub async fn update_document(
         latest_version.relative_path.clone()
     };
 
-    let content_changed = merged_content != latest_version.content;
-    // Stored path differs from either the prior stored path (peers need
-    // to learn about the rename) or from the path the origin sent
-    // (origin needs to learn if its rename was deduped or rejected by
-    // first-rename-wins).
-    let path_changed = new_relative_path != latest_version.relative_path
-        || new_relative_path != sanitized_relative_path;
-
     let new_version = StoredDocumentVersion {
         document_id,
         vault_update_id: last_update_id + 1,
@@ -315,15 +307,7 @@ pub async fn update_document(
 
     state
         .database
-        .insert_document_version(
-            &vault_id,
-            &new_version,
-            transaction,
-            InsertBroadcast {
-                content_changed,
-                path_changed,
-            },
-        )
+        .insert_document_version(&vault_id, &new_version, transaction)
         .await
         .map_err(server_error)?;
 

@@ -44,7 +44,7 @@ export class SyncEventQueue {
     private savePending = false;
 
 
-    private lastSeenUpdateId: VaultUpdateId;
+    private readonly lastSeenUpdateId: VaultUpdateId;
 
     public constructor(
         private readonly settings: Settings,
@@ -250,9 +250,7 @@ export class SyncEventQueue {
                     e.documentId === docId) ||
                 (e.type === SyncEventType.RemoteUpdate &&
                     // we care about the local path not the remote
-                    this.getDocumentByDocumentId(e.remoteVersion.documentId)?.path === path) ||
-                (e.type === SyncEventType.RemotePathChange &&
-                    this.getDocumentByDocumentId(e.pathChange.documentId)?.path === path)
+                    this.getDocumentByDocumentId(e.remoteVersion.documentId)?.path === path)
         );
     }
 
@@ -280,10 +278,7 @@ export class SyncEventQueue {
     }
 
     public enqueue(input: FileSyncEvent): void {
-        if (
-            input.type === SyncEventType.RemoteUpdate ||
-            input.type === SyncEventType.RemotePathChange
-        ) {
+        if (input.type === SyncEventType.RemoteUpdate) {
             this.events.push(input);
             return;
         }
@@ -414,31 +409,15 @@ export class SyncEventQueue {
             return result;
         }
 
-        // Coalesce multiple events of the same remote kind for the same
-        // documentId to the last one. Kinds are coalesced independently so
-        // that an interleaved content+path stream (e.g. VaultUpdate →
-        // PathChange) still preserves the VaultUpdate-before-PathChange
-        // ordering invariant the syncer relies on.
-        if (first.type === SyncEventType.RemoteUpdate) {
-            const { documentId } = first.remoteVersion;
-            const matching = this.events.filter(
-                (e) =>
-                    e.type === SyncEventType.RemoteUpdate &&
-                    e.remoteVersion.documentId === documentId
-            );
-            const result = matching[matching.length - 1];
-            for (const item of matching) {
-                removeFromArray(this.events, item);
-            }
-            return result;
-        }
-
-        // SyncRemotePath
-        const { documentId } = first.pathChange;
+        // Coalesce multiple RemoteUpdate events for the same documentId
+        // down to the last one — the `.next` walk already short-circuits
+        // on obsolete versions via `parentVersionId` checks, but compacting
+        // here keeps the queue bounded under burst remote activity.
+        const { documentId } = first.remoteVersion;
         const matching = this.events.filter(
             (e) =>
-                e.type === SyncEventType.RemotePathChange &&
-                e.pathChange.documentId === documentId
+                e.type === SyncEventType.RemoteUpdate &&
+                e.remoteVersion.documentId === documentId
         );
         const result = matching[matching.length - 1];
         for (const item of matching) {
@@ -463,8 +442,6 @@ export class SyncEventQueue {
                     e.documentId === documentId) ||
                 (e.type === SyncEventType.RemoteUpdate &&
                     e.remoteVersion.documentId === documentId) ||
-                (e.type === SyncEventType.RemotePathChange &&
-                    e.pathChange.documentId === documentId) ||
                 (e.type === SyncEventType.LocalDelete &&
                     e.documentId === documentId)
             ) {

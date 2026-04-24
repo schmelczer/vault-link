@@ -1,5 +1,4 @@
 import type { DocumentVersionWithoutContent } from "../services/types/DocumentVersionWithoutContent";
-import type { WebSocketVaultPathChange } from "../services/types/WebSocketVaultPathChange";
 
 export type VaultUpdateId = number;
 export type DocumentId = string;
@@ -25,16 +24,14 @@ export enum SyncEventType {
     LocalCreate = "local-create",
     LocalUpdate = "local-update", // includes both content and path changes
     LocalDelete = "local-delete",
-    RemoteUpdate = "remote-update",
-    RemotePathChange = "remote-path-change",
+    RemoteUpdate = "remote-update", // includes every type of update coming from the server
 }
 
 export type FileSyncEvent =
     | { type: SyncEventType.LocalCreate; path: RelativePath }
     | { type: SyncEventType.LocalUpdate; path: RelativePath; oldPath?: RelativePath }
     | { type: SyncEventType.LocalDelete; path: RelativePath }
-    | { type: SyncEventType.RemoteUpdate; remoteVersion: DocumentVersionWithoutContent }
-    | { type: SyncEventType.RemotePathChange; pathChange: WebSocketVaultPathChange };
+    | { type: SyncEventType.RemoteUpdate; remoteVersion: DocumentVersionWithoutContent };
 
 export type SyncEvent =
     | {
@@ -57,8 +54,4 @@ export type SyncEvent =
     | {
         type: SyncEventType.RemoteUpdate;
         remoteVersion: DocumentVersionWithoutContent;
-    }
-    | {
-        type: SyncEventType.RemotePathChange;
-        pathChange: WebSocketVaultPathChange;
     };
