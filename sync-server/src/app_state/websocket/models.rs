@@ -58,6 +58,7 @@ pub struct CursorPositionFromServer {
     pub clients: Vec<ClientCursors>,
 }
 
+// Clients only get notified of other clients' updates through WebSocketVaultUpdate.
 #[derive(TS, Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct WebSocketVaultUpdate {
@@ -65,6 +66,8 @@ pub struct WebSocketVaultUpdate {
     pub is_initial_sync: bool,
 }
 
+// Clients get notified of both their own and other clients' path changes through WebSocketVaultPathChange.
+// This is becuase we must absolutely order path updates as they may all depend on all previous updates.
 #[derive(TS, Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct WebSocketVaultPathChange {

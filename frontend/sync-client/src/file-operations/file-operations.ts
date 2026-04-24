@@ -7,7 +7,7 @@ import type { TextWithCursors } from "reconcile-text";
 import { reconcile } from "reconcile-text";
 import { isFileTypeMergable } from "../utils/is-file-type-mergable";
 import { isBinary } from "../utils/is-binary";
-import { buildConflictFileName } from "../utils/conflict-path";
+import { buildConflictFileName } from "../sync-operations/conflict-path";
 import type { ServerConfig } from "../services/server-config";
 
 export class FileOperations {

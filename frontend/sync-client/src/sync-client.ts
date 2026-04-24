@@ -57,8 +57,8 @@ export class SyncClient {
         >
     ) { }
 
-    public get documentCount(): number {
-        return this.syncEventQueue.documentCount;
+    public get syncedDocumentCount(): number {
+        return this.syncEventQueue.syncedDocumentCount;
     }
 
     public get isWebSocketConnected(): boolean {
@@ -390,7 +390,7 @@ export class SyncClient {
 
     public get hasPendingWork(): boolean {
         return (
-            this.syncEventQueue.size > 0 ||
+            this.syncEventQueue.pendingUpdateCount > 0 ||
             this.webSocketManager.hasOutstandingWork
         );
     }
@@ -408,7 +408,7 @@ export class SyncClient {
             return DocumentSyncStatus.SYNCING;
         }
 
-        return this.syncer.hasPendingOperationsForDocument(relativePath)
+        return this.syncEventQueue.hasPendingEventsForPath(relativePath)
             ? DocumentSyncStatus.SYNCING
             : DocumentSyncStatus.UP_TO_DATE;
     }

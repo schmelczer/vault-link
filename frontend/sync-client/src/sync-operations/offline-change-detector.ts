@@ -89,7 +89,7 @@ function enqueueRenamedDocuments(
         const hasLocalRename = remoteRelPath !== undefined && remoteRelPath !== path;
 
         if (hasLocalRename) {
-            queue.enqueue({ type: SyncEventType.SyncLocal, path });
+            queue.enqueue({ type: SyncEventType.LocalUpdate, path });
             locallyRenamedPaths.add(path);
             logger.debug(`Document ${path} was renamed locally (from ${remoteRelPath}), scheduling sync`);
         }
@@ -243,5 +243,5 @@ async function handleNewFile(
     }
 
     logger.debug(`Document ${relativePath} not found in database, scheduling sync to create it`);
-    return { instruction: { type: SyncEventType.Create, relativePath } };
+    return { instruction: { type: SyncEventType.LocalCreate, relativePath } };
 }

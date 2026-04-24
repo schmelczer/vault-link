@@ -1,4 +1,5 @@
 import type { DocumentVersionWithoutContent } from "../services/types/DocumentVersionWithoutContent";
+import type { WebSocketVaultPathChange } from "../services/types/WebSocketVaultPathChange";
 
 export type VaultUpdateId = number;
 export type DocumentId = string;
@@ -21,36 +22,43 @@ export interface StoredSyncState {
 }
 
 export enum SyncEventType {
-    Create = "create",
-    SyncLocal = "sync-local",
-    Delete = "delete",
-    SyncRemote = "sync-remote",
+    LocalCreate = "local-create",
+    LocalUpdate = "local-update", // includes both content and path changes
+    LocalDelete = "local-delete",
+    RemoteUpdate = "remote-update",
+    RemotePathChange = "remote-path-change",
 }
 
 export type FileSyncEvent =
-    | { type: SyncEventType.Create; path: RelativePath }
-    | { type: SyncEventType.SyncLocal; path: RelativePath; oldPath?: RelativePath }
-    | { type: SyncEventType.Delete; path: RelativePath }
-    | { type: SyncEventType.SyncRemote; remoteVersion: DocumentVersionWithoutContent };
+    | { type: SyncEventType.LocalCreate; path: RelativePath }
+    | { type: SyncEventType.LocalUpdate; path: RelativePath; oldPath?: RelativePath }
+    | { type: SyncEventType.LocalDelete; path: RelativePath }
+    | { type: SyncEventType.RemoteUpdate; remoteVersion: DocumentVersionWithoutContent }
+    | { type: SyncEventType.RemotePathChange; pathChange: WebSocketVaultPathChange };
 
 export type SyncEvent =
     | {
-        type: SyncEventType.Create;
+        type: SyncEventType.LocalCreate;
         path: RelativePath;   // current path on disk
-        originalPath: RelativePath; // original path on disk when the event was created
+        originalPath: RelativePath; // original path on disk when the event was queued
         resolvers?: PromiseWithResolvers<DocumentId>
     }
     | {
-        type: SyncEventType.SyncLocal;
+        type: SyncEventType.LocalUpdate;
         documentId: DocumentId | Promise<DocumentId>; // if it's a promise, the promise is fulfilled once the document's create event is processed
         path: RelativePath; // current path on disk
-        originalPath: RelativePath; // original path on disk when the event was created
+        originalPath: RelativePath; // original path on disk when the event was queued
+        // no need to store the old path in case of a rename; the server will figure it out from the parent's path
     }
     | {
-        type: SyncEventType.Delete;
+        type: SyncEventType.LocalDelete;
         documentId: DocumentId | Promise<DocumentId>;  // if it's a promise, the promise is fulfilled once the document's create event is processed
     }
     | {
-        type: SyncEventType.SyncRemote;
+        type: SyncEventType.RemoteUpdate;
         remoteVersion: DocumentVersionWithoutContent;
+    }
+    | {
+        type: SyncEventType.RemotePathChange;
+        pathChange: WebSocketVaultPathChange;
     };

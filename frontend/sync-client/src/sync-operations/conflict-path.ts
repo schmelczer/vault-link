@@ -1,4 +1,4 @@
-import type { RelativePath } from "../sync-operations/types";
+import type { RelativePath } from "./types";
 
 // Local-only files displaced by `FileOperations.ensureClearPath` are named
 // `conflict-<uuid>-<originalName>`. The UUID is a full RFC-4122 v4 value so

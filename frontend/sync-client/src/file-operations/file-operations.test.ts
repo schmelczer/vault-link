@@ -8,7 +8,7 @@ import { assertSetContainsExactly } from "../utils/assert-set-contains-exactly";
 import type { FileSystemOperations } from "./filesystem-operations";
 import type { TextWithCursors } from "reconcile-text";
 import type { ServerConfig, ServerConfigData } from "../services/server-config";
-import { isConflictPath } from "../utils/conflict-path";
+import { isConflictPath } from "../sync-operations/conflict-path";
 
 class MockServerConfig implements Pick<ServerConfig, "getConfig"> {
     public async getConfig(): Promise<ServerConfigData> {

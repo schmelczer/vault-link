@@ -1,7 +1,7 @@
 import type { Settings } from "../persistence/settings";
 import type { Logger } from "../tracing/logger";
 import { globsToRegexes } from "../utils/globs-to-regexes";
-import { isConflictPath } from "../utils/conflict-path";
+import { isConflictPath } from "./conflict-path";
 import { removeFromArray } from "../utils/remove-from-array";
 import {
     SyncEventType,
@@ -13,6 +13,10 @@ import {
     type SyncEvent,
     type VaultUpdateId,
 } from "./types";
+import { sleep } from "../utils/sleep";
+
+export const SAVE_RETRY_BASE_DELAY_MS = 50;
+export const SAVE_RETRY_MAX_ATTEMPTS = 3;
 
 export class SyncEventQueue {
     // Latest state of the filesystem as we know it, excluding
@@ -27,7 +31,7 @@ export class SyncEventQueue {
     // can include multiple generations of the same document, 
     // e.g.: a create, delete, create sequence for the same path.
     //
-    // The paths for the events must always correspond to the latest
+    // The paths within the events must always correspond to the latest
     // path on disk, so the path of each event may be updated multiple
     // times. 
     //
@@ -36,6 +40,11 @@ export class SyncEventQueue {
 
     // file creations for paths matching any of these patterns will be ignored
     private ignorePatterns: RegExp[];
+
+    private savePending = false;
+
+
+    private lastSeenUpdateId: VaultUpdateId;
 
     public constructor(
         private readonly settings: Settings,
@@ -62,28 +71,18 @@ export class SyncEventQueue {
                 this.documents.set(relativePath, record);
             }
         }
+        this.lastSeenUpdateId = initialState.lastSeenUpdateId ?? -1;
 
-        this.logger.debug(`Loaded ${this.documents.size} documents`);
+        this.logger.debug(`Loaded ${this.documents.size} documents and lastSeenUpdateId=${this.lastSeenUpdateId} from storage`);
     }
 
-    public get size(): number {
+    public get pendingUpdateCount(): number {
         return this.events.length;
     }
 
-    public get documentCount(): number {
+    public get syncedDocumentCount(): number {
         return this.documents.size;
     }
-
-    public get lastSeenUpdateId(): VaultUpdateId {
-        let max = 0;
-        for (const record of this.documents.values()) {
-            if (record.parentVersionId > max) {
-                max = record.parentVersionId;
-            }
-        }
-        return max;
-    }
-
 
     // todo: let's remove
     public getSettledDocumentByPath(path: RelativePath): DocumentRecord | undefined {
@@ -149,7 +148,7 @@ export class SyncEventQueue {
             this.documents.set(newPath, record);
             for (const e of this.events) {
                 if (
-                    e.type === SyncEventType.SyncLocal &&
+                    e.type === SyncEventType.LocalUpdate &&
                     e.documentId === record.documentId
                 ) {
                     e.path = newPath;
@@ -168,7 +167,7 @@ export class SyncEventQueue {
      * Call once a create has been acknowledged by the server.
      */
     public resolveCreate(
-        event: Extract<SyncEvent, { type: SyncEventType.Create }>,
+        event: Extract<SyncEvent, { type: SyncEventType.LocalCreate }>,
         record: DocumentRecord
     ): void {
         const promise = event.resolvers?.promise;
@@ -179,7 +178,7 @@ export class SyncEventQueue {
         if (promise !== undefined) {
             for (const e of this.events) {
                 if (
-                    (e.type === SyncEventType.SyncLocal || e.type === SyncEventType.Delete) &&
+                    (e.type === SyncEventType.LocalUpdate || e.type === SyncEventType.LocalDelete) &&
                     e.documentId === promise
                 ) {
                     (e as { documentId: DocumentId | Promise<DocumentId> }).documentId = record.documentId;
@@ -211,12 +210,12 @@ export class SyncEventQueue {
         const pendingPaths = new Map<Promise<DocumentId>, RelativePath>();
 
         for (const event of this.events) {
-            if (event.type === SyncEventType.Create) {
+            if (event.type === SyncEventType.LocalCreate) {
                 paths.add(event.path);
                 if (event.resolvers !== undefined) {
                     pendingPaths.set(event.resolvers.promise, event.path);
                 }
-            } else if (event.type === SyncEventType.Delete) {
+            } else if (event.type === SyncEventType.LocalDelete) {
                 if (typeof event.documentId === "string") {
                     const path = this.getDocumentByDocumentId(event.documentId)?.path;
                     if (path) {
@@ -244,14 +243,16 @@ export class SyncEventQueue {
         const docId = record.documentId;
         return this.events.some(
             (e) =>
-                (e.type === SyncEventType.Create && e.path === path) ||
-                (e.type === SyncEventType.SyncLocal &&
+                (e.type === SyncEventType.LocalCreate && e.path === path) ||
+                (e.type === SyncEventType.LocalUpdate &&
                     e.documentId === docId) ||
-                (e.type === SyncEventType.Delete &&
+                (e.type === SyncEventType.LocalDelete &&
                     e.documentId === docId) ||
-                (e.type === SyncEventType.SyncRemote &&
+                (e.type === SyncEventType.RemoteUpdate &&
                     // we care about the local path not the remote
-                    this.getDocumentByDocumentId(e.remoteVersion.documentId)?.path === path)
+                    this.getDocumentByDocumentId(e.remoteVersion.documentId)?.path === path) ||
+                (e.type === SyncEventType.RemotePathChange &&
+                    this.getDocumentByDocumentId(e.pathChange.documentId)?.path === path)
         );
     }
 
@@ -279,7 +280,10 @@ export class SyncEventQueue {
     }
 
     public enqueue(input: FileSyncEvent): void {
-        if (input.type === SyncEventType.SyncRemote) {
+        if (
+            input.type === SyncEventType.RemoteUpdate ||
+            input.type === SyncEventType.RemotePathChange
+        ) {
             this.events.push(input);
             return;
         }
@@ -303,19 +307,19 @@ export class SyncEventQueue {
             return;
         }
 
-        if (input.type === SyncEventType.Create) {
-            this.events.push({ type: SyncEventType.Create, path, originalPath: path });
+        if (input.type === SyncEventType.LocalCreate) {
+            this.events.push({ type: SyncEventType.LocalCreate, path, originalPath: path });
             return;
         }
 
-        const lookupPath = (input.type === SyncEventType.SyncLocal && input.oldPath) ? input.oldPath : path;
+        const lookupPath = (input.type === SyncEventType.LocalUpdate && input.oldPath) ? input.oldPath : path;
         const record = this.documents.get(lookupPath);
         const documentId: DocumentId | Promise<DocumentId> | undefined =
             record?.documentId ?? this.getCreatePromise(lookupPath);
         if (documentId === undefined) return;
 
-        if (input.type === SyncEventType.Delete) {
-            this.events.push({ type: SyncEventType.Delete, documentId });
+        if (input.type === SyncEventType.LocalDelete) {
+            this.events.push({ type: SyncEventType.LocalDelete, documentId });
             return;
         }
 
@@ -324,7 +328,7 @@ export class SyncEventQueue {
                 this.documents.delete(input.oldPath);
                 this.documents.set(path, record!);
                 for (const e of this.events) {
-                    if (e.type === SyncEventType.SyncLocal && e.documentId === documentId) {
+                    if (e.type === SyncEventType.LocalUpdate && e.documentId === documentId) {
                         e.path = path;
                     }
                 }
@@ -333,7 +337,7 @@ export class SyncEventQueue {
                 this.updatePendingCreatePath(input.oldPath, path);
             }
         }
-        this.events.push({ type: SyncEventType.SyncLocal, documentId, path, originalPath: path });
+        this.events.push({ type: SyncEventType.LocalUpdate, documentId, path, originalPath: path });
     }
 
 
@@ -344,7 +348,7 @@ export class SyncEventQueue {
         const [first] = this.events;
 
         // Creates are always returned immediately (FIFO)
-        if (first.type === SyncEventType.Create) {
+        if (first.type === SyncEventType.LocalCreate) {
             this.events.shift();
             return first;
         }
@@ -355,7 +359,7 @@ export class SyncEventQueue {
         // `Promise<DocumentId>` (the originating Create hasn't landed
         // yet), awaiting it may reject — handle that: the Create was
         // cancelled, so the Delete has nothing to delete, just drop it.
-        if (first.type === SyncEventType.Delete) {
+        if (first.type === SyncEventType.LocalDelete) {
             this.events.shift();
             const { documentId } = first;
             let resolvedId: DocumentId;
@@ -371,14 +375,14 @@ export class SyncEventQueue {
             return first;
         }
 
-        if (first.type === SyncEventType.SyncLocal) {
+        if (first.type === SyncEventType.LocalUpdate) {
             const { documentId } = first;
 
             // If there's a later delete for the same documentId, discard
             // all sync-locals for that document and return the delete
             const deleteEvent = this.events.find(
                 (e) =>
-                    e.type === SyncEventType.Delete &&
+                    e.type === SyncEventType.LocalDelete &&
                     e.documentId === documentId
             );
             if (deleteEvent !== undefined) {
@@ -399,7 +403,7 @@ export class SyncEventQueue {
             // original path to the last one
             const matching = this.events.filter(
                 (e) =>
-                    e.type === SyncEventType.SyncLocal &&
+                    e.type === SyncEventType.LocalUpdate &&
                     e.documentId === documentId &&
                     e.originalPath === first.originalPath // can't coalesce moves as they can depend on each other so we have to sync them in the same order, could do topological sort but let's keep it simple for now
             );
@@ -410,12 +414,31 @@ export class SyncEventQueue {
             return result;
         }
 
-        // SyncRemote: coalesce multiple events for the same documentId to the last one
-        const { documentId } = first.remoteVersion;
+        // Coalesce multiple events of the same remote kind for the same
+        // documentId to the last one. Kinds are coalesced independently so
+        // that an interleaved content+path stream (e.g. VaultUpdate →
+        // PathChange) still preserves the VaultUpdate-before-PathChange
+        // ordering invariant the syncer relies on.
+        if (first.type === SyncEventType.RemoteUpdate) {
+            const { documentId } = first.remoteVersion;
+            const matching = this.events.filter(
+                (e) =>
+                    e.type === SyncEventType.RemoteUpdate &&
+                    e.remoteVersion.documentId === documentId
+            );
+            const result = matching[matching.length - 1];
+            for (const item of matching) {
+                removeFromArray(this.events, item);
+            }
+            return result;
+        }
+
+        // SyncRemotePath
+        const { documentId } = first.pathChange;
         const matching = this.events.filter(
             (e) =>
-                e.type === SyncEventType.SyncRemote &&
-                e.remoteVersion.documentId === documentId
+                e.type === SyncEventType.RemotePathChange &&
+                e.pathChange.documentId === documentId
         );
         const result = matching[matching.length - 1];
         for (const item of matching) {
@@ -436,11 +459,13 @@ export class SyncEventQueue {
         for (let i = this.events.length - 1; i >= 0; i--) {
             const e = this.events[i];
             if (
-                (e.type === SyncEventType.SyncLocal &&
+                (e.type === SyncEventType.LocalUpdate &&
                     e.documentId === documentId) ||
-                (e.type === SyncEventType.SyncRemote &&
+                (e.type === SyncEventType.RemoteUpdate &&
                     e.remoteVersion.documentId === documentId) ||
-                (e.type === SyncEventType.Delete &&
+                (e.type === SyncEventType.RemotePathChange &&
+                    e.pathChange.documentId === documentId) ||
+                (e.type === SyncEventType.LocalDelete &&
                     e.documentId === documentId)
             ) {
                 // eslint-disable-next-line no-restricted-syntax -- Bulk removal by predicate, not single-item removal
@@ -462,7 +487,7 @@ export class SyncEventQueue {
         if (promise !== undefined) {
             for (const e of this.events) {
                 if (
-                    e.type === SyncEventType.SyncLocal &&
+                    e.type === SyncEventType.LocalUpdate &&
                     e.documentId === promise
                 ) {
                     e.path = newPath;
@@ -477,7 +502,7 @@ export class SyncEventQueue {
         for (let i = this.events.length - 1; i >= 0; i--) {
             const e = this.events[i];
             if (
-                e.type === SyncEventType.Create &&
+                e.type === SyncEventType.LocalCreate &&
                 e.resolvers?.promise === promise
             ) {
                 return e.path;
@@ -488,10 +513,10 @@ export class SyncEventQueue {
 
     private findLastCreate(
         path: RelativePath
-    ): Extract<SyncEvent, { type: SyncEventType.Create }> | undefined {
+    ): Extract<SyncEvent, { type: SyncEventType.LocalCreate }> | undefined {
         for (let i = this.events.length - 1; i >= 0; i--) {
             const e = this.events[i];
-            if (e.type === SyncEventType.Create && e.path === path) {
+            if (e.type === SyncEventType.LocalCreate && e.path === path) {
                 return e;
             }
         }
@@ -535,52 +560,23 @@ export class SyncEventQueue {
 
     private rejectAllPendingCreates(): void {
         for (const event of this.events) {
-            if (event.type === SyncEventType.Create && event.resolvers !== undefined) {
+            if (event.type === SyncEventType.LocalCreate && event.resolvers !== undefined) {
                 event.resolvers.promise.catch(() => { /* suppressed — consumer may not be listening */ });
                 event.resolvers.reject(new Error("Create was cancelled"));
             }
         }
     }
 
-    private savePending = false;
 
     // Coalesce bursts of mutations into one persist per microtask. A drain
     // iteration can easily produce 10+ mutations; without this, we'd fire
     // 10 overlapping `save()` calls racing on the persistence backend.
-    //
-    // On failure, retry with bounded exponential backoff instead of
-    // silently dropping the write — otherwise a transient IDB/fs error
-    // leaves the in-memory state permanently diverged from persisted state
-    // and the user loses queue progress on restart.
     private saveInTheBackground(): void {
         if (this.savePending) return;
         this.savePending = true;
         queueMicrotask(() => {
             this.savePending = false;
-            void this.saveWithRetry();
+            this.save();
         });
-    }
-
-    private async saveWithRetry(): Promise<void> {
-        const maxAttempts = 3;
-        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-            try {
-                await this.save();
-                return;
-            } catch (error) {
-                if (attempt === maxAttempts) {
-                    this.logger.error(
-                        `Error saving sync state after ${maxAttempts} attempts: ${error}`
-                    );
-                    return;
-                }
-                this.logger.warn(
-                    `Error saving sync state (attempt ${attempt}/${maxAttempts}): ${error}; retrying`
-                );
-                await new Promise((resolve) =>
-                    setTimeout(resolve, 50 * attempt)
-                );
-            }
-        }
     }
 }
