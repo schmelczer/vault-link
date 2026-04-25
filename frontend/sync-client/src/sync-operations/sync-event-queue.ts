@@ -169,6 +169,7 @@ export class SyncEventQueue {
             return;
         }
 
+        let needsSave = false;
         if (input.oldPath !== undefined) {
             if (pendingDocumentId !== undefined) {
                 this.updatePendingCreatePath(input.oldPath, path);
@@ -189,16 +190,25 @@ export class SyncEventQueue {
                         e.path = path;
                     }
                 }
-                await this.save();
+                needsSave = true;
             }
         }
 
+        // Push BEFORE awaiting `save()`. Callers fire `enqueue` with `void`
+        // and immediately call `ensureDraining()`, which starts a drain that
+        // synchronously shifts off the queue. If we awaited save first the
+        // shift would see the queue empty, drain would exit, and the event
+        // would never get processed until the next unrelated trigger.
         this.events.push({
             type: SyncEventType.LocalUpdate,
             documentId: (pendingDocumentId ?? documentId)!,
             path,
             originalPath: path
         });
+
+        if (needsSave) {
+            await this.save();
+        }
     }
 
     public async next(): Promise<SyncEvent | undefined> {

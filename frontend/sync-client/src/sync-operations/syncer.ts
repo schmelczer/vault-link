@@ -531,7 +531,21 @@ export class Syncer {
                 remoteHash
             });
         } else {
-            // The response to a create must contain the path from the create request
+            // The server may have deconflicted the path on create (e.g.
+            // another client raced us to the same path and won). Move the
+            // local file to match the server-assigned path so the queue's
+            // disk-path key, the on-disk path, and `remoteRelativePath` stay
+            // consistent. Without this, a later remote create at the
+            // originally-requested path would see a phantom local conflict
+            // and stash the new file under a `conflict-<uuid>-` path.
+            if (response.relativePath !== createEvent.path) {
+                await this.operations.move(
+                    createEvent.path,
+                    response.relativePath,
+                    MoveOnConflict.EXISTING
+                );
+                createEvent.path = response.relativePath;
+            }
             await this.queue.resolveCreate(createEvent, {
                 ...record,
                 remoteHash
@@ -637,20 +651,33 @@ export class Syncer {
                 remoteVersion.documentId
             )
         ) {
-            // no local changes
-            const currentContent = await this.operations.read(path);
+            // no local changes — operations.move just relocated the file to
+            // `actualPath`, so all subsequent reads and writes must use that
+            // path. Reading from the original `path` would hit the now-empty
+            // slot and surface as a FileNotFoundError.
+            const currentContent = await this.operations.read(actualPath);
             const remoteContent =
                 await this.syncService.getDocumentVersionContent({
                     documentId: remoteVersion.documentId,
                     vaultUpdateId: remoteVersion.vaultUpdateId
                 });
-            await this.operations.write(path, currentContent, remoteContent);
+            await this.operations.write(
+                actualPath,
+                currentContent,
+                remoteContent
+            );
 
             await this.updateCache(
                 remoteVersion.vaultUpdateId,
                 remoteContent,
-                path
+                actualPath
             );
+            await this.queue.setDocument(actualPath, {
+                ...record,
+                parentVersionId: remoteVersion.vaultUpdateId,
+                remoteRelativePath: actualPath,
+                remoteHash: await hash(remoteContent)
+            });
             this.queue.lastSeenUpdateId = remoteVersion.vaultUpdateId;
         } // else we don't need to update the content, a subsequent local update will do that
         else {
