@@ -1,24 +1,18 @@
 import type { RelativePath } from "../sync-operations/types";
 import type { FileSystemOperations } from "./filesystem-operations";
 import type { Logger } from "../tracing/logger";
-import { Locks } from "../utils/data-structures/locks";
 import { FileNotFoundError } from "../errors/file-not-found-error";
 import type { TextWithCursors } from "reconcile-text";
 
 /**
  * Decorates `FileSystemOperations` to replace errors with `FileNotFoundError`
- * if the accessed file doesn't exist. It also ensures that there's at most a
- * single request in-flight for any one file through the use of locks.
+ * if the accessed file doesn't exist.
  */
 export class SafeFileSystemOperations implements FileSystemOperations {
-    private readonly locks: Locks<RelativePath>;
-
     public constructor(
         private readonly fs: FileSystemOperations,
         private readonly logger: Logger
-    ) {
-        this.locks = new Locks(SafeFileSystemOperations.name, logger);
-    }
+    ) {}
 
     public async listFilesRecursively(
         root: RelativePath | undefined
@@ -31,19 +25,12 @@ export class SafeFileSystemOperations implements FileSystemOperations {
 
     public async read(path: RelativePath): Promise<Uint8Array> {
         this.logger.debug(`Reading file '${path}'`);
-        return this.safeOperation(
-            path,
-            async () =>
-                this.locks.withLock(path, async () => this.fs.read(path)),
-            "read"
-        );
+        return this.safeOperation(path, async () => this.fs.read(path), "read");
     }
 
     public async write(path: RelativePath, content: Uint8Array): Promise<void> {
         this.logger.debug(`Writing to file '${path}'`);
-        return this.locks.withLock(path, async () =>
-            this.fs.write(path, content)
-        );
+        return this.fs.write(path, content);
     }
 
     public async atomicUpdateText(
@@ -53,10 +40,7 @@ export class SafeFileSystemOperations implements FileSystemOperations {
         this.logger.debug(`Atomically updating file '${path}'`);
         return this.safeOperation(
             path,
-            async () =>
-                this.locks.withLock(path, async () =>
-                    this.fs.atomicUpdateText(path, updater)
-                ),
+            async () => this.fs.atomicUpdateText(path, updater),
             "atomicUpdateText"
         );
     }
@@ -65,73 +49,36 @@ export class SafeFileSystemOperations implements FileSystemOperations {
         // Logging this would be too noisy
         return this.safeOperation(
             path,
-            async () =>
-                this.locks.withLock(path, async () =>
-                    this.fs.getFileSize(path)
-                ),
+            async () => this.fs.getFileSize(path),
             "getFileSize"
         );
     }
 
-    public async exists(
-        path: RelativePath,
-        skipLock = false
-    ): Promise<boolean> {
+    public async exists(path: RelativePath): Promise<boolean> {
         this.logger.debug(`Checking if file '${path}' exists`);
-        if (skipLock) {
-            return this.fs.exists(path);
-        } else {
-            return this.locks.withLock(path, async () => this.fs.exists(path));
-        }
+        return this.fs.exists(path);
     }
 
     public async createDirectory(path: RelativePath): Promise<void> {
         this.logger.debug(`Creating directory '${path}'`);
-        return this.locks.withLock(path, async () =>
-            this.fs.createDirectory(path)
-        );
+        return this.fs.createDirectory(path);
     }
 
     public async delete(path: RelativePath): Promise<void> {
         this.logger.debug(`Deleting file '${path}'`);
-        return this.locks.withLock(path, async () => this.fs.delete(path));
+        return this.fs.delete(path);
     }
 
     public async rename(
         oldPath: RelativePath,
-        newPath: RelativePath,
-        skipLock = false
+        newPath: RelativePath
     ): Promise<void> {
         this.logger.debug(`Renaming file '${oldPath}' to '${newPath}'`);
         return this.safeOperation(
             oldPath,
-            async () => {
-                if (skipLock) {
-                    return this.fs.rename(oldPath, newPath);
-                } else {
-                    return this.locks.withLock([oldPath, newPath], async () =>
-                        this.fs.rename(oldPath, newPath)
-                    );
-                }
-            },
+            async () => this.fs.rename(oldPath, newPath),
             "rename"
         );
-    }
-
-    public tryLock(path: RelativePath): boolean {
-        return this.locks.tryLock(path);
-    }
-
-    public async waitForLock(path: RelativePath): Promise<void> {
-        return this.locks.waitForLock(path);
-    }
-
-    public unlock(path: RelativePath): void {
-        this.locks.unlock(path);
-    }
-
-    public reset(): void {
-        this.locks.reset();
     }
 
     /**
@@ -154,9 +101,6 @@ export class SafeFileSystemOperations implements FileSystemOperations {
         try {
             return await operation();
         } catch (error) {
-            // Without locking the file, this isn't atomic, however, it's good enough in practice.
-            // This will only break if the file exists, gets deleted and then immediately
-            // recreated while `operation` is running.
             if (await this.fs.exists(path)) {
                 throw error;
             } else {

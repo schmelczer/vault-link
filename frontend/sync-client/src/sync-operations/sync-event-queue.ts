@@ -221,7 +221,7 @@ export class SyncEventQueue {
                     ...record
                 })
             ),
-            lastSeenUpdateId: this._lastSeenUpdateId
+            lastSeenUpdateId: this.lastSeenUpdateId
         });
     }
 
@@ -229,6 +229,7 @@ export class SyncEventQueue {
     public getSettledDocumentByPath(path: RelativePath): DocumentRecord | undefined {
         return this.documents.get(path);
     }
+
 
     public allSettledDocuments(): Map<RelativePath, DocumentRecord> {
         return new Map(this.documents.entries());

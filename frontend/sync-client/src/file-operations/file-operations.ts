@@ -10,12 +10,17 @@ import { isBinary } from "../utils/is-binary";
 import { buildConflictFileName } from "../sync-operations/conflict-path";
 import type { ServerConfig } from "../services/server-config";
 
+
+export enum MoveOnConflict {
+    EXISTING = "EXISTING",
+    NEW = "NEW",
+}
+
 export class FileOperations {
     private readonly fs: SafeFileSystemOperations;
 
     public constructor(
         private readonly logger: Logger,
-        private readonly queue: SyncEventQueue,
         fs: FileSystemOperations,
         private readonly serverConfig: ServerConfig,
         private readonly nativeLineEndings = "\n"
@@ -50,44 +55,44 @@ export class FileOperations {
      *
      * If a file with the same name already exists, it is moved before creating the new one.
      * Parent directories are created if necessary.
+     * 
+     * Returns the actual path the file was created at.
      */
     public async create(
         path: RelativePath,
-        newContent: Uint8Array
-    ): Promise<void> {
-        await this.ensureClearPath(path);
-        return this.fs.write(path, this.toNativeLineEndings(newContent));
+        newContent: Uint8Array,
+        moveOnConflict: MoveOnConflict
+    ): Promise<RelativePath> {
+        const actualPath = await this.ensureClearPath(path, moveOnConflict);
+        await this.fs.write(actualPath, this.toNativeLineEndings(newContent));
+        return actualPath;
     }
 
     /**
      * Ensure nothing sits at `path` so the caller can write to it.
-     *
-     * If a file is already there, it is moved aside to a `conflict-<uuid>-<name>`
-     * path in the same directory. The sync layer treats conflict-named files
-     * as invisible (see `CONFLICT_PATH_REGEX`), so no events are enqueued and no
-     * document records are touched — any pre-existing record or pending
-     * events for the displaced path are left behind for the caller to
-     * overwrite as part of whatever operation prompted the displacement.
-     *
-     * Returns the conflict path the existing file was moved to, or `undefined`
-     * if the path was already clear.
      */
-    public async ensureClearPath(
-        path: RelativePath
-    ): Promise<RelativePath | undefined> {
+    private async ensureClearPath(
+        path: RelativePath,
+        moveOnConflict: MoveOnConflict
+    ): Promise<RelativePath> {
         if (await this.fs.exists(path)) {
             const conflictPath = FileOperations.buildConflictPath(path);
+
+            if (moveOnConflict === MoveOnConflict.NEW) {
+                return conflictPath;
+            }
+
             this.logger.debug(
                 `Displacing existing file at ${path} to '${conflictPath}' to make room`
             );
 
-            this.queue.moveDocument(path, conflictPath);
-            await this.fs.rename(path, conflictPath, true);
+            await this.fs.rename(path, conflictPath);
             return conflictPath;
         }
 
+        this.logger.debug(`No existing file at ${path}, creating parent directories if needed`);
         await this.createParentDirectories(path);
-        return undefined;
+        return path;
     }
 
     /**
@@ -188,31 +193,22 @@ export class FileOperations {
         return this.fs.exists(path);
     }
 
-    // Returns the conflict path a displaced file was moved to, or undefined.
+    // Returns the actual path the file got moved to.
     public async move(
         oldPath: RelativePath,
-        newPath: RelativePath
-    ): Promise<RelativePath | undefined> {
+        newPath: RelativePath,
+        moveOnConflict: MoveOnConflict
+    ): Promise<RelativePath> {
         if (oldPath === newPath) {
-            return undefined;
+            return oldPath;
         }
 
-        const conflictPath = await this.ensureClearPath(newPath);
-        // Do the disk rename *before* updating the queue. If the rename
-        // throws (permissions, concurrent deletion, …), the queue still
-        // reflects the actual on-disk state instead of claiming the doc
-        // has already moved.
-        await this.fs.rename(oldPath, newPath);
-        this.queue.moveDocument(oldPath, newPath);
-
+        const actualPath = await this.ensureClearPath(newPath, moveOnConflict);
+        await this.fs.rename(oldPath, actualPath);
         await this.deletingEmptyParentDirectoriesOfDeletedFile(oldPath);
-        return conflictPath;
+        return actualPath;
     }
 
-
-    public reset(): void {
-        this.fs.reset();
-    }
 
     private async deletingEmptyParentDirectoriesOfDeletedFile(
         path: RelativePath

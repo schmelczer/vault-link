@@ -172,7 +172,6 @@ export class SyncClient {
 
         const fileOperations = new FileOperations(
             logger,
-            syncEventQueue,
             fs,
             serverConfig,
             nativeLineEndings
@@ -489,7 +488,6 @@ export class SyncClient {
         this.contentCache.reset();
         this.cursorTracker.reset();
         this.syncer.reset();
-        this.fileOperations.reset();
     }
 
     private async onSettingsChange(

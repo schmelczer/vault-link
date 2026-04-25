@@ -87,7 +87,6 @@ function makeOps(): {
     const fs = new FakeFileSystemOperations();
     const ops = new FileOperations(
         new Logger(),
-        new MockQueue() as SyncEventQueue, // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
         fs,
         new MockServerConfig() as ServerConfig // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
     );

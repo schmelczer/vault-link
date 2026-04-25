@@ -9,7 +9,7 @@ import {
 import type { Logger } from "../tracing/logger";
 import { hash } from "../utils/hash";
 import type { Settings } from "../persistence/settings";
-import type { FileOperations } from "../file-operations/file-operations";
+import { MoveOnConflict, type FileOperations } from "../file-operations/file-operations";
 import { scheduleOfflineChanges } from "./offline-change-detector";
 import { SyncResetError } from "../errors/sync-reset-error";
 import type { DocumentVersionWithoutContent } from "../services/types/DocumentVersionWithoutContent";
@@ -523,7 +523,9 @@ export class Syncer {
         }
 
         if (createEvent === undefined) {
-            this.ensurePath(path, response.relativePath, Move.Existing);
+            // a http response will always be more up-to-date than any queued remote update
+            this.operations.move(path, response.relativePath, MoveOnConflict.EXISTING);
+
             await this.queue.setDocument(response.relativePath, {
                 ...record,
                 remoteHash
@@ -633,22 +635,23 @@ export class Syncer {
 
 
         // wait for a local edit to do the actual updating here, so we can't even update the lastSeenUpdateId here
-        this.ensurePath(path, remoteVersion.relativePath);
+        const conflictingDoc = this.queue.getSettledDocumentByPath(remoteVersion.relativePath);
+        const actualRelativePath = await this.operations.move(path, remoteVersion.relativePath, conflictingDoc?.parentVersionId ?? 0 < remoteVersion.vaultUpdateId ? MoveOnConflict.EXISTING : MoveOnConflict.NEW);
 
-        this.queue.setDocument(remoteVersion.relativePath, {
+        this.queue.setDocument(actualRelativePath, {
             ...record,
-            remoteRelativePath: remoteVersion.relativePath
+            remoteRelativePath: actualRelativePath
         });
 
         this.history.addHistoryEntry({
             status: SyncStatus.SUCCESS,
             details: {
                 type: SyncType.MOVE,
-                relativePath: remoteVersion.relativePath,
+                relativePath: actualRelativePath,
                 movedFrom: path
             },
             // todo: eh
-            message: `File was renamed remotely from ${path} to ${remoteVersion.relativePath}`,
+            message: `File was renamed remotely from ${path} to ${actualRelativePath}`,
         });
     }
 
@@ -658,19 +661,22 @@ export class Syncer {
             vaultUpdateId: remoteVersion.vaultUpdateId
         });
 
-        await this.operations.create(
+        const conflictingDoc = this.queue.getSettledDocumentByPath(remoteVersion.relativePath);
+
+        const actualPath = await this.operations.create(
             remoteVersion.relativePath,
-            remoteContent
+            remoteContent,
+            conflictingDoc?.parentVersionId ?? 0 < remoteVersion.vaultUpdateId ? MoveOnConflict.EXISTING : MoveOnConflict.NEW
         );
 
         await this.updateCache(
             remoteVersion.vaultUpdateId,
             remoteContent,
-            remoteVersion.relativePath
+            actualPath
         );
 
         const contentHash = await hash(remoteContent);
-        await this.queue.setDocument(remoteVersion.relativePath, {
+        await this.queue.setDocument(actualPath, {
             documentId: remoteVersion.documentId,
             parentVersionId: remoteVersion.vaultUpdateId,
             remoteHash: contentHash,
@@ -683,7 +689,7 @@ export class Syncer {
             status: SyncStatus.SUCCESS,
             details: {
                 type: SyncType.CREATE,
-                relativePath: remoteVersion.relativePath
+                relativePath: actualPath
             },
             message:
                 "Successfully downloaded remote file which hadn't existed locally",
@@ -706,72 +712,35 @@ export class Syncer {
         const remoteHash = await hash(remoteContent);
 
         const path = remoteVersion.relativePath;
-        const localContent = await this.operations.read(path);
+        const currentContent = await this.operations.read(pendingCreateEvent.path);
 
-        const canMergeText =
-            isFileTypeMergable(
-                path,
-                (await this.serverConfig.getConfig()).mergeableFileExtensions
-            ) &&
-            !isBinary(localContent) &&
-            !isBinary(remoteContent);
+        await this.operations.write(path, currentContent, remoteContent);
+        await this.updateCache(
+            remoteVersion.vaultUpdateId,
+            remoteContent,
+            path
+        );
 
-        if (canMergeText) {
-            const currentContent = await this.operations.read(pendingCreateEvent.path);
+        await this.queue.resolveCreate(pendingCreateEvent, {
+            documentId: remoteVersion.documentId,
+            parentVersionId: remoteVersion.vaultUpdateId,
+            remoteHash,
+            remoteRelativePath: path
+        });
+        this.queue.lastSeenUpdateId = remoteVersion.vaultUpdateId;
 
+        this.history.addHistoryEntry({
+            status: SyncStatus.SUCCESS,
+            details: {
+                type: SyncType.UPDATE,
+                relativePath: path
+            },
+            message:
+                `Adopted remote create at ${path}`,
+            author: remoteVersion.userId,
+            timestamp: new Date(remoteVersion.updatedDate)
+        });
 
-
-            const merged = reconcile("", new TextDecoder().decode(currentContent), new TextDecoder().decode(remoteContent)).text;
-            await this.operations.write(path, currentContent, new TextEncoder().encode(merged));
-            await this.updateCache(
-                remoteVersion.vaultUpdateId,
-                remoteContent,
-                path
-            );
-
-            await this.queue.resolveCreate(pendingCreateEvent, {
-                documentId: remoteVersion.documentId,
-                parentVersionId: remoteVersion.vaultUpdateId,
-                remoteHash,
-                remoteRelativePath: path
-            });
-            this.queue.lastSeenUpdateId = remoteVersion.vaultUpdateId;
-
-            this.history.addHistoryEntry({
-                status: SyncStatus.SUCCESS,
-                details: {
-                    type: SyncType.UPDATE,
-                    relativePath: path
-                },
-                message:
-                    `Adopted remote create at ${path}`,
-                author: remoteVersion.userId,
-                timestamp: new Date(remoteVersion.updatedDate)
-            });
-            return;
-        } else {
-            await this.operations.ensureClearPath(path);
-            await this.operations.create(path, remoteContent);
-            await this.queue.setDocument(path, {
-                documentId: remoteVersion.documentId,
-                parentVersionId: remoteVersion.vaultUpdateId,
-                remoteHash,
-                remoteRelativePath: path
-            });
-            this.queue.lastSeenUpdateId = remoteVersion.vaultUpdateId;
-
-            this.history.addHistoryEntry({
-                status: SyncStatus.SUCCESS,
-                details: {
-                    type: SyncType.CREATE,
-                    relativePath: path
-                },
-                message:
-                    `Created remotly created file at ${path}`,
-                author: remoteVersion.userId,
-                timestamp: new Date(remoteVersion.updatedDate)
-            });
-        }
     }
 
 
