@@ -136,7 +136,6 @@ export class SyncEventQueue {
         if (input.oldPath !== undefined) {
             if (pendingDocumentId !== undefined) {
                 this.updatePendingCreatePath(input.oldPath, path);
-                this.events.push({ type: SyncEventType.LocalUpdate, documentId: pendingDocumentId, path, originalPath: path });
             } else {
                 this.documents.delete(input.oldPath);
                 this.documents.set(path, record!);
@@ -146,11 +145,13 @@ export class SyncEventQueue {
                         e.path = path;
                     }
                 }
-                this.events.push({ type: SyncEventType.LocalUpdate, documentId: documentId!, path, originalPath: path });
                 await this.save();
 
             }
+            return
         }
+
+        this.events.push({ type: SyncEventType.LocalUpdate, documentId: pendingDocumentId ?? documentId!, path, originalPath: path });
     }
 
 

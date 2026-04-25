@@ -68,9 +68,6 @@ export class FileOperations {
         return actualPath;
     }
 
-    /**
-     * Ensure nothing sits at `path` so the caller can write to it.
-     */
     private async ensureClearPath(
         path: RelativePath,
         moveOnConflict: MoveOnConflict
@@ -87,7 +84,7 @@ export class FileOperations {
             );
 
             await this.fs.rename(path, conflictPath);
-            return conflictPath;
+            return path;
         }
 
         this.logger.debug(`No existing file at ${path}, creating parent directories if needed`);

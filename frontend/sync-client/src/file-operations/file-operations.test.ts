@@ -1,8 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { RelativePath } from "../sync-operations/types";
-import type { SyncEventQueue } from "../sync-operations/sync-event-queue";
-import { FileOperations } from "./file-operations";
+import { FileOperations, MoveOnConflict } from "./file-operations";
 import { Logger } from "../tracing/logger";
 import { assertSetContainsExactly } from "../utils/assert-set-contains-exactly";
 import type { FileSystemOperations } from "./filesystem-operations";
@@ -17,22 +16,6 @@ class MockServerConfig implements Pick<ServerConfig, "getConfig"> {
             supportedApiVersion: 1,
             isAuthenticated: true
         };
-    }
-}
-
-// The queue only receives `moveDocument`/`removeDocument` from file-ops; for
-// these tests we just need no-op implementations that let the type-check
-// pass when cast to `SyncEventQueue`.
-class MockQueue implements Pick<SyncEventQueue, "moveDocument" | "removeDocument"> {
-    public moveDocument(
-        _oldPath: RelativePath,
-        _newPath: RelativePath
-    ): void {
-        // no-op
-    }
-
-    public removeDocument(_path: RelativePath): void {
-        // no-op
     }
 }
 
@@ -62,14 +45,14 @@ class FakeFileSystemOperations implements FileSystemOperations {
     public async getFileSize(_path: RelativePath): Promise<number> {
         throw new Error("Method not implemented.");
     }
-    public async getModificationTime(_path: RelativePath): Promise<Date> {
-        throw new Error("Method not implemented.");
-    }
     public async exists(path: RelativePath): Promise<boolean> {
         return this.names.has(path);
     }
-    public async delete(_path: RelativePath): Promise<void> {
-        throw new Error("Method not implemented.");
+    public async createDirectory(_path: RelativePath): Promise<void> {
+        // no-op for the in-memory fake; we only track files
+    }
+    public async delete(path: RelativePath): Promise<void> {
+        this.names.delete(path);
     }
     public async rename(
         oldPath: RelativePath,
@@ -117,19 +100,21 @@ describe("File operations", () => {
     it("move to empty target just renames the file", async () => {
         const { fs, ops } = makeOps();
 
-        await ops.create("a", new Uint8Array());
+        await ops.create("a", new Uint8Array(), MoveOnConflict.EXISTING);
         assertSetContainsExactly(fs.names, "a");
 
-        await ops.move("a", "b");
+        await ops.move("a", "b", MoveOnConflict.EXISTING);
         assertSetContainsExactly(fs.names, "b");
     });
 
-    it("create at an occupied path displaces the existing file to a conflict-uuid path", async () => {
+    it("create with EXISTING displaces the existing file to a conflict path", async () => {
         const { fs, ops } = makeOps();
 
-        await ops.create("note.md", new Uint8Array());
-        await ops.create("note.md", new Uint8Array());
+        await ops.create("note.md", new Uint8Array(), MoveOnConflict.EXISTING);
+        await ops.create("note.md", new Uint8Array(), MoveOnConflict.EXISTING);
 
+        // The original `note.md` location now holds the new file; the previous
+        // contents were displaced to a conflict path.
         const conflict = singleConflictPath(fs.names, ["note.md"]);
         assert.ok(
             conflict.endsWith("-note.md"),
@@ -137,13 +122,27 @@ describe("File operations", () => {
         );
     });
 
-    it("move to an occupied target displaces the target to a conflict-uuid path", async () => {
+    it("create with NEW redirects the new file to a conflict path", async () => {
         const { fs, ops } = makeOps();
 
-        await ops.create("source.md", new Uint8Array());
-        await ops.create("dest.md", new Uint8Array());
+        await ops.create("note.md", new Uint8Array(), MoveOnConflict.EXISTING);
+        await ops.create("note.md", new Uint8Array(), MoveOnConflict.NEW);
 
-        await ops.move("source.md", "dest.md");
+        // The original `note.md` is untouched; the new file went to a conflict path.
+        const conflict = singleConflictPath(fs.names, ["note.md"]);
+        assert.ok(
+            conflict.endsWith("-note.md"),
+            `conflict name should preserve the original filename, got ${conflict}`
+        );
+    });
+
+    it("move with EXISTING displaces the target to a conflict path", async () => {
+        const { fs, ops } = makeOps();
+
+        await ops.create("source.md", new Uint8Array(), MoveOnConflict.EXISTING);
+        await ops.create("dest.md", new Uint8Array(), MoveOnConflict.EXISTING);
+
+        await ops.move("source.md", "dest.md", MoveOnConflict.EXISTING);
 
         // `dest.md` now holds what used to be at `source.md`; the original
         // `dest.md` moved to a conflict path in the same directory.
@@ -154,12 +153,28 @@ describe("File operations", () => {
         );
     });
 
+    it("move with NEW redirects the moved file to a conflict path", async () => {
+        const { fs, ops } = makeOps();
+
+        await ops.create("source.md", new Uint8Array(), MoveOnConflict.EXISTING);
+        await ops.create("dest.md", new Uint8Array(), MoveOnConflict.EXISTING);
+
+        await ops.move("source.md", "dest.md", MoveOnConflict.NEW);
+
+        // The original `dest.md` is untouched; the moved file went to a conflict path.
+        const conflict = singleConflictPath(fs.names, ["dest.md"]);
+        assert.ok(
+            conflict.endsWith("-dest.md"),
+            `conflict should preserve the original filename, got ${conflict}`
+        );
+    });
+
     it("preserves the parent directory when generating a conflict path", async () => {
         const { fs, ops } = makeOps();
 
-        await ops.create("a/b.c/d", new Uint8Array());
-        await ops.create("a/b.c/e", new Uint8Array());
-        await ops.move("a/b.c/d", "a/b.c/e");
+        await ops.create("a/b.c/d", new Uint8Array(), MoveOnConflict.EXISTING);
+        await ops.create("a/b.c/e", new Uint8Array(), MoveOnConflict.EXISTING);
+        await ops.move("a/b.c/d", "a/b.c/e", MoveOnConflict.EXISTING);
 
         const conflict = singleConflictPath(fs.names, ["a/b.c/e"]);
         assert.ok(
@@ -175,9 +190,9 @@ describe("File operations", () => {
     it("handles dotfiles without mangling the extension", async () => {
         const { fs, ops } = makeOps();
 
-        await ops.create(".gitignore", new Uint8Array());
-        await ops.create("temp", new Uint8Array());
-        await ops.move("temp", ".gitignore");
+        await ops.create(".gitignore", new Uint8Array(), MoveOnConflict.EXISTING);
+        await ops.create("temp", new Uint8Array(), MoveOnConflict.EXISTING);
+        await ops.move("temp", ".gitignore", MoveOnConflict.EXISTING);
 
         const conflict = singleConflictPath(fs.names, [".gitignore"]);
         assert.ok(
@@ -185,9 +200,9 @@ describe("File operations", () => {
             `conflict should preserve the dotfile name verbatim, got ${conflict}`
         );
 
-        await ops.create(".config.json", new Uint8Array());
-        await ops.create("temp2", new Uint8Array());
-        await ops.move("temp2", ".config.json");
+        await ops.create(".config.json", new Uint8Array(), MoveOnConflict.EXISTING);
+        await ops.create("temp2", new Uint8Array(), MoveOnConflict.EXISTING);
+        await ops.move("temp2", ".config.json", MoveOnConflict.EXISTING);
 
         // Now one conflict for .gitignore, one for .config.json.
         const conflicts = Array.from(fs.names).filter(
@@ -202,9 +217,9 @@ describe("File operations", () => {
     it("generates a fresh conflict path on every displacement", async () => {
         const { fs, ops } = makeOps();
 
-        await ops.create("x", new Uint8Array());
-        await ops.create("x", new Uint8Array());
-        await ops.create("x", new Uint8Array());
+        await ops.create("x", new Uint8Array(), MoveOnConflict.EXISTING);
+        await ops.create("x", new Uint8Array(), MoveOnConflict.EXISTING);
+        await ops.create("x", new Uint8Array(), MoveOnConflict.EXISTING);
 
         const conflicts = Array.from(fs.names).filter((n) => n !== "x");
         assert.equal(conflicts.length, 2);
