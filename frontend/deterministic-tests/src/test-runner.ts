@@ -15,6 +15,10 @@ import {
 } from "./consts";
 import { randomUUID } from "node:crypto";
 
+class ConflictFilesDetectedError extends Error {
+    public override readonly name = "ConflictFilesDetectedError";
+}
+
 export class TestRunner {
     private agents: DeterministicAgent[] = [];
     private readonly serverControl: ServerControl;
@@ -224,6 +228,9 @@ export class TestRunner {
                 this.logger.info("Barrier complete: all clients converged");
                 return;
             } catch (error) {
+                if (error instanceof ConflictFilesDetectedError) {
+                    throw error;
+                }
                 lastError =
                     error instanceof Error ? error : new Error(String(error));
                 this.logger.info("Barrier: not yet converged, retrying...");
@@ -289,6 +296,25 @@ export class TestRunner {
             clientFiles.push(fileMap);
         }
 
+        const conflictsByClient = clientFiles.map((files) =>
+            Array.from(files.keys()).filter((path) =>
+                CONFLICT_PATH_REGEX.test(path)
+            )
+        );
+        if (conflictsByClient.some((conflicts) => conflicts.length > 0)) {
+            const summary = conflictsByClient
+                .map((conflicts, i) =>
+                    conflicts.length > 0
+                        ? `client ${i}: [${conflicts.join(", ")}]`
+                        : null
+                )
+                .filter((s): s is string => s !== null)
+                .join("; ");
+            throw new ConflictFilesDetectedError(
+                `Found local conflict file(s): ${summary}`
+            );
+        }
+
         const referenceFiles = Array.from(clientFiles[0].keys());
 
         this.logger.info(
@@ -326,15 +352,6 @@ export class TestRunner {
         }
 
         this.logger.info("✓ All clients are consistent");
-
-        const conflictFiles = referenceFiles.filter((path) =>
-            CONFLICT_PATH_REGEX.test(path)
-        );
-        if (conflictFiles.length > 0) {
-            throw new Error(
-                `Found ${conflictFiles.length} conflict file(s) — local displacements indicate a reconciliation regression: [${conflictFiles.join(", ")}]`
-            );
-        }
 
         if (verify) {
             this.logger.info("Running custom verification...");

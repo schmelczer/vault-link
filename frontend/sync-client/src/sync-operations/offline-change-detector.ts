@@ -24,14 +24,18 @@ export async function scheduleOfflineChanges(
     }) => void,
     enqueueDelete: (path: RelativePath) => void
 ): Promise<void> {
-    const allLocalFiles = await operations.listFilesRecursively();
-    logger.info(`Scheduling sync for ${allLocalFiles.length} local files`);
+    const allLocalFiles = new Set(await operations.listFilesRecursively());
+    logger.info(`Scheduling sync for ${allLocalFiles.size} local files`);
     const allDocuments = queue.allSettledDocuments();
 
+    // A doc is "possibly deleted" only if it has no local file. Including
+    // docs that still exist locally would queue a spurious delete alongside
+    // the update below.
     const locallyPossiblyDeletedFiles: DocumentWithPath[] = [];
-
     for (const [path, record] of allDocuments.entries()) {
-        locallyPossiblyDeletedFiles.push({ path, record });
+        if (!allLocalFiles.has(path)) {
+            locallyPossiblyDeletedFiles.push({ path, record });
+        }
     }
 
     const locallyPossibleCreatedFiles: RelativePath[] = [];

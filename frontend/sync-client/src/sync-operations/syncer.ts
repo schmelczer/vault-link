@@ -154,6 +154,17 @@ export class Syncer {
 
     public reset(): void {
         this.queue.clearPending();
+        this.clearOfflineScanGate();
+    }
+
+    /**
+     * Reset the "have we already scanned this session" gate so a later
+     * `scheduleSyncForOfflineChanges()` actually performs a fresh scan
+     * instead of returning the previous (resolved) promise. Called when
+     * sync is paused so the next start picks up any offline edits made
+     * while sync was off.
+     */
+    public clearOfflineScanGate(): void {
         const current = this.runningScheduleSyncForOfflineChanges;
         if (current !== undefined) {
             void current.finally(() => {

@@ -9,6 +9,7 @@ import type { TextWithCursors } from "reconcile-text";
 import type { ServerConfig, ServerConfigData } from "../services/server-config";
 import { CONFLICT_PATH_REGEX } from "../sync-operations/conflict-path";
 import { removeFromArray } from "../utils/remove-from-array";
+import { ExpectedFsEvents } from "../sync-operations/expected-fs-events";
 
 class MockServerConfig implements Pick<ServerConfig, "getConfig"> {
     public async getConfig(): Promise<ServerConfigData> {
@@ -72,7 +73,8 @@ function makeOps(): {
     const ops = new FileOperations(
         new Logger(),
         fs,
-        new MockServerConfig() as ServerConfig // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+        new MockServerConfig() as ServerConfig, // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+        new ExpectedFsEvents()
     );
     return { fs, ops };
 }

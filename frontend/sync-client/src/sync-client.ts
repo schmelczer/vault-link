@@ -27,6 +27,7 @@ import { DIFF_CACHE_SIZE_MB } from "./consts";
 import { ServerConfig } from "./services/server-config";
 import type { EventListeners } from "./utils/data-structures/event-listeners";
 import { Lock } from "./utils/data-structures/locks";
+import { ExpectedFsEvents } from "./sync-operations/expected-fs-events";
 
 export class SyncClient {
     private hasFinishedOfflineSync = false;
@@ -50,6 +51,7 @@ export class SyncClient {
         private readonly contentCache: FixedSizeDocumentCache,
         private readonly serverConfig: ServerConfig,
         private readonly syncService: SyncService,
+        private readonly expectedFsEvents: ExpectedFsEvents,
         private readonly persistence: PersistenceProvider<
             Partial<{
                 settings: Partial<SyncSettings>;
@@ -178,10 +180,13 @@ export class SyncClient {
 
         const serverConfig = new ServerConfig(syncService);
 
+        const expectedFsEvents = new ExpectedFsEvents();
+
         const fileOperations = new FileOperations(
             logger,
             fs,
             serverConfig,
+            expectedFsEvents,
             nativeLineEndings
         );
 
@@ -229,6 +234,7 @@ export class SyncClient {
             contentCache,
             serverConfig,
             syncService,
+            expectedFsEvents,
             persistence
         );
 
@@ -363,14 +369,22 @@ export class SyncClient {
     public syncLocallyCreatedFile(relativePath: RelativePath): void {
         this.checkIfDestroyed("syncLocallyCreatedFile");
 
-        this.fileChangeNotifier.notifyOfFileChange(relativePath);
+        this.fileChangeNotifier.notifyOfFileChange(relativePath); // this is for updating cursors
+        if (this.expectedFsEvents.matchCreate(relativePath)) {
+            return;
+        }
+
         this.syncer.syncLocallyCreatedFile(relativePath);
     }
 
     public syncLocallyDeletedFile(relativePath: RelativePath): void {
         this.checkIfDestroyed("syncLocallyDeletedFile");
 
-        this.fileChangeNotifier.notifyOfFileChange(relativePath);
+        this.fileChangeNotifier.notifyOfFileChange(relativePath); // this is for updating cursors
+        if (this.expectedFsEvents.matchDelete(relativePath)) {
+            return;
+        }
+
         this.syncer.syncLocallyDeletedFile(relativePath);
     }
 
@@ -383,7 +397,11 @@ export class SyncClient {
     }): void {
         this.checkIfDestroyed("syncLocallyUpdatedFile");
 
-        this.fileChangeNotifier.notifyOfFileChange(relativePath);
+        this.fileChangeNotifier.notifyOfFileChange(relativePath); // this is for updating cursors
+        if (this.expectedFsEvents.matchUpdate(relativePath, oldPath)) {
+            return;
+        }
+
         this.syncer.syncLocallyUpdatedFile({
             oldPath,
             relativePath
@@ -485,6 +503,15 @@ export class SyncClient {
         this.syncService.stop();
         await this.webSocketManager.stop();
         await this.waitUntilFinished();
+        // Clear the offline-scan gate so a subsequent `startSyncing()`
+        // re-runs the scan; otherwise any local changes made while sync was
+        // paused (offline edits, deletes, renames) wouldn't be detected, and
+        // an incoming remote update would silently overwrite them.
+        this.syncer.clearOfflineScanGate();
+        // Drop any expected fs events that were registered but never matched
+        // (e.g. an op aborted by SyncResetError). Otherwise a real user edit
+        // at the same path after re-enable would be swallowed.
+        this.expectedFsEvents.clear();
     }
 
     private resetInMemoryState(): void {

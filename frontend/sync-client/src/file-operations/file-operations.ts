@@ -9,6 +9,7 @@ import { isBinary } from "../utils/is-binary";
 import { buildConflictFileName } from "../sync-operations/conflict-path";
 import type { ServerConfig } from "../services/server-config";
 import { FileNotFoundError } from "../errors/file-not-found-error";
+import type { ExpectedFsEvents } from "../sync-operations/expected-fs-events";
 
 export enum MoveOnConflict {
     EXISTING = "EXISTING",
@@ -22,6 +23,7 @@ export class FileOperations {
         private readonly logger: Logger,
         fs: FileSystemOperations,
         private readonly serverConfig: ServerConfig,
+        private readonly expectedFsEvents: ExpectedFsEvents,
         private readonly nativeLineEndings = "\n"
     ) {
         this.fs = new SafeFileSystemOperations(fs, logger);
@@ -74,6 +76,10 @@ export class FileOperations {
         moveOnConflict: MoveOnConflict
     ): Promise<RelativePath> {
         const actualPath = await this.ensureClearPath(path, moveOnConflict);
+        // ensureClearPath leaves actualPath empty: either the file never
+        // existed, or it was just renamed away. The upcoming write therefore
+        // looks like a fresh create to the watcher.
+        this.expectedFsEvents.expectCreate(actualPath);
         await this.fs.write(actualPath, this.toNativeLineEndings(newContent));
         return actualPath;
     }
@@ -114,6 +120,7 @@ export class FileOperations {
                 this.logger.debug(
                     `The expected content is not mergable, so we won't perform a 3-way merge, just overwrite it`
                 );
+                this.expectedFsEvents.expectUpdate(path);
                 await this.fs.write(
                     path,
                     // `newContent` might not be binary so we still have to ensure the line endings are correct
@@ -135,10 +142,12 @@ export class FileOperations {
                 this.logger.warn(
                     `3-way merge aborted for ${path}: one of expected/new is not valid UTF-8 (${decodeError}); falling back to overwrite`
                 );
+                this.expectedFsEvents.expectUpdate(path);
                 await this.fs.write(path, this.toNativeLineEndings(newContent));
                 return;
             }
 
+            this.expectedFsEvents.expectUpdate(path);
             await this.fs.atomicUpdateText(
                 path,
                 ({ text, cursors }: TextWithCursors): TextWithCursors => {
@@ -177,6 +186,7 @@ export class FileOperations {
 
     public async delete(path: RelativePath): Promise<void> {
         if (await this.exists(path)) {
+            this.expectedFsEvents.expectDelete(path);
             await this.fs.delete(path);
             await this.deletingEmptyParentDirectoriesOfDeletedFile(path);
         } else {
@@ -203,6 +213,7 @@ export class FileOperations {
         }
 
         const actualPath = await this.ensureClearPath(newPath, moveOnConflict);
+        this.expectedFsEvents.expectRename(oldPath, actualPath);
         await this.fs.rename(oldPath, actualPath);
         await this.deletingEmptyParentDirectoriesOfDeletedFile(oldPath);
         return actualPath;
@@ -223,6 +234,7 @@ export class FileOperations {
                 `Displacing existing file at ${path} to '${conflictPath}' to make room`
             );
 
+            this.expectedFsEvents.expectRename(path, conflictPath);
             await this.fs.rename(path, conflictPath);
             return path;
         }
