@@ -9,8 +9,6 @@ export const createRenameResponseSkipsFileTest: TestDefinition = {
     steps: [
         { type: "enable-sync", client: 0 },
         { type: "enable-sync", client: 1 },
-        { type: "sync" },
-        { type: "barrier" },
 
         {
             type: "create",
@@ -26,8 +24,6 @@ export const createRenameResponseSkipsFileTest: TestDefinition = {
             newPath: "renamed.md"
         },
 
-        { type: "sync" },
-        { type: "sync" },
         { type: "barrier" },
 
         {

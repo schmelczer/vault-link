@@ -24,9 +24,7 @@ export const onlineEditVsDeleteConvergenceTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (state: AssertableState): void => {
-                state.ifFileExists("A.md", (s) =>
-                    s.assertContainsAny("A.md", "edited by client 0")
-                );
+                state.assertFileCount(0);
             }
         }
     ]

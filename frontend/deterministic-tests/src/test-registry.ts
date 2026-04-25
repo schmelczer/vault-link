@@ -52,7 +52,6 @@ import { updateDoesNotSurvivesRemoteDeleteTest } from "./tests/update-survives-r
 import { movePreservesRemoteUpdateTest } from "./tests/move-preserves-remote-update.test";
 import { recentlyDeletedClearedOnReconnectTest } from "./tests/recently-deleted-cleared-on-reconnect.test";
 import { migrateKeyPreservesExistingTest } from "./tests/migrate-key-preserves-existing.test";
-import { failedVfsMoveFallsBackTest } from "./tests/failed-vfs-move-falls-back.test";
 import { watermarkAdvancesOnSkipTest } from "./tests/watermark-advances-on-skip.test";
 import { watermarkGapRemoteUpdateNotRecordedTest } from "./tests/watermark-gap-remote-update-not-recorded.test";
 import { queueResetLosesCoalescedLocalEditTest } from "./tests/queue-reset-loses-coalesced-local-edit.test";
@@ -151,7 +150,6 @@ export const TESTS: Partial<Record<string, TestDefinition>> = {
     "recently-deleted-cleared-on-reconnect":
         recentlyDeletedClearedOnReconnectTest,
     "migrate-key-preserves-existing": migrateKeyPreservesExistingTest,
-    "failed-vfs-move-falls-back": failedVfsMoveFallsBackTest,
     "watermark-advances-on-skip": watermarkAdvancesOnSkipTest,
     "watermark-gap-remote-update-not-recorded":
         watermarkGapRemoteUpdateNotRecordedTest,

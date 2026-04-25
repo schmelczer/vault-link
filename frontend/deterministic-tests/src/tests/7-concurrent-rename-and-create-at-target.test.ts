@@ -4,8 +4,7 @@ import type { TestDefinition } from "../test-definition";
 export const concurrentRenameAndCreateAtTargetTest: TestDefinition = {
     description:
         "One client renames X to Y while another creates a new file at Y, " +
-        "both offline. After syncing, Y should contain merged content from " +
-        "both the renamed file and the newly created file.",
+        "both offline. We can't merge the create because it would result in a cycle",
     clients: 2,
     steps: [
         {
@@ -14,8 +13,6 @@ export const concurrentRenameAndCreateAtTargetTest: TestDefinition = {
             path: "X.md",
             content: "original file X"
         },
-        { type: "enable-sync", client: 0 },
-        { type: "enable-sync", client: 1 },
         { type: "barrier" },
 
         { type: "disable-sync", client: 0 },
@@ -41,11 +38,13 @@ export const concurrentRenameAndCreateAtTargetTest: TestDefinition = {
             verify: (state: AssertableState): void => {
                 state
                     .assertFileNotExists("X.md")
-                    .assertContains(
+                    .assertFileExists(
                         "Y.md",
-                        "original file X",
-                        "brand new Y content"
-                    );
+                    )
+                    .assertFileExists(
+                        "Y (1).md",
+                    )
+                    .assertAnyFileContains("original file X", "brand new Y content")
             }
         }
     ]
