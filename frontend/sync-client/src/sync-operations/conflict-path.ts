@@ -1,5 +1,3 @@
-import type { RelativePath } from "./types";
-
 // Local-only files displaced by `FileOperations.ensureClearPath` are named
 // `conflict-<uuid>-<originalName>`. The UUID is a full RFC-4122 v4 value so
 // a user-authored filename that happens to start with `conflict-` doesn't
@@ -54,15 +52,4 @@ function truncateFileNameToByteLimit(
         usedBytes += segmentBytes;
     }
     return truncatedStem + extension;
-}
-
-/**
- * Is `path`'s final segment a conflict-displaced filename?
- *
- * Any sync code that would otherwise create/update/delete/sync the path
- * should short-circuit when this returns true: conflict-displaced files are
- * strictly local and must stay invisible to the server.
- */
-export function isConflictPath(path: RelativePath): boolean {
-    return CONFLICT_PATH_REGEX.test(path);
 }

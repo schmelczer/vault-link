@@ -3,8 +3,7 @@ use serde::{self, Serialize};
 use ts_rs::TS;
 
 use crate::app_state::database::models::{
-    DocumentUpdateMergedContent, DocumentUpdateMetadata, DocumentVersionWithoutContent,
-    VaultUpdateId,
+    DocumentVersion, DocumentVersionWithoutContent, VaultUpdateId,
 };
 
 /// Response to a ping request.
@@ -75,9 +74,9 @@ pub enum DocumentUpdateResponse {
     /// Returned when the created/updated document's content is the same as was
     /// sent in the create/update request and thus the response doesn't contain
     /// the content because the client must already have it.
-    FastForwardUpdate(DocumentUpdateMetadata),
+    FastForwardUpdate(DocumentVersionWithoutContent),
 
     /// Returned when the created/updated document's content is different from
     /// what was sent in the create/update request.
-    MergingUpdate(DocumentUpdateMergedContent),
+    MergingUpdate(DocumentVersion),
 }

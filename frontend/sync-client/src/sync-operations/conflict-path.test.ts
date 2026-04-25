@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert";
-import { buildConflictFileName, isConflictPath } from "./conflict-path";
+import { buildConflictFileName, CONFLICT_PATH_REGEX } from "./conflict-path";
 
 describe("buildConflictFileName", () => {
     it("truncates to the filesystem byte limit while preserving the extension", () => {
@@ -59,20 +59,20 @@ describe("buildConflictFileName", () => {
     });
 });
 
-describe("isConflictPath", () => {
+describe("CONFLICT_PATH_REGEX", () => {
     it("does not misclassify user-authored names that start with `conflict-`", () => {
-        assert.strictEqual(isConflictPath("conflict-resolution.md"), false);
+        assert.strictEqual(CONFLICT_PATH_REGEX.test("conflict-resolution.md"), false);
     });
 
     it("only inspects the final path segment", () => {
         assert.strictEqual(
-            isConflictPath(
+            CONFLICT_PATH_REGEX.test(
                 "conflict-12345678-1234-1234-1234-123456789abc-x/note.md"
             ),
             false
         );
         assert.strictEqual(
-            isConflictPath(
+            CONFLICT_PATH_REGEX.test(
                 "a/b/conflict-12345678-1234-1234-1234-123456789abc-note.md"
             ),
             true
@@ -80,6 +80,6 @@ describe("isConflictPath", () => {
     });
 
     it("round-trips with buildConflictFileName", () => {
-        assert.strictEqual(isConflictPath(buildConflictFileName("note.md")), true);
+        assert.strictEqual(CONFLICT_PATH_REGEX.test(buildConflictFileName("note.md")), true);
     });
 });

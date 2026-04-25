@@ -64,7 +64,7 @@ export class FileOperations {
      *
      * If a file is already there, it is moved aside to a `conflict-<uuid>-<name>`
      * path in the same directory. The sync layer treats conflict-named files
-     * as invisible (see `isConflictPath`), so no events are enqueued and no
+     * as invisible (see `CONFLICT_PATH_REGEX`), so no events are enqueued and no
      * document records are touched — any pre-existing record or pending
      * events for the displaced path are left behind for the caller to
      * overwrite as part of whatever operation prompted the displacement.

@@ -8,7 +8,7 @@ import { assertSetContainsExactly } from "../utils/assert-set-contains-exactly";
 import type { FileSystemOperations } from "./filesystem-operations";
 import type { TextWithCursors } from "reconcile-text";
 import type { ServerConfig, ServerConfigData } from "../services/server-config";
-import { isConflictPath } from "../sync-operations/conflict-path";
+import { CONFLICT_PATH_REGEX } from "../sync-operations/conflict-path";
 
 class MockServerConfig implements Pick<ServerConfig, "getConfig"> {
     public async getConfig(): Promise<ServerConfigData> {
@@ -108,7 +108,7 @@ function singleConflictPath(
         `expected exactly one conflict-path entry, got ${JSON.stringify(conflicts)}`
     );
     assert.ok(
-        isConflictPath(conflicts[0]),
+        CONFLICT_PATH_REGEX.test(conflicts[0]),
         `expected ${conflicts[0]} to match the conflict-path pattern`
     );
     return conflicts[0];
@@ -195,7 +195,7 @@ describe("File operations", () => {
             (name) => name !== ".gitignore" && name !== ".config.json"
         );
         assert.equal(conflicts.length, 2);
-        assert.ok(conflicts.every(isConflictPath));
+        assert.ok(conflicts.every((c) => CONFLICT_PATH_REGEX.test(c)));
         assert.ok(conflicts.some((c) => c.endsWith("-.gitignore")));
         assert.ok(conflicts.some((c) => c.endsWith("-.config.json")));
     });
@@ -209,7 +209,7 @@ describe("File operations", () => {
 
         const conflicts = Array.from(fs.names).filter((n) => n !== "x");
         assert.equal(conflicts.length, 2);
-        assert.ok(conflicts.every(isConflictPath));
+        assert.ok(conflicts.every((c) => CONFLICT_PATH_REGEX.test(c)));
         assert.notEqual(
             conflicts[0],
             conflicts[1],
