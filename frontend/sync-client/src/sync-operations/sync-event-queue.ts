@@ -39,7 +39,6 @@ export class SyncEventQueue {
     // file creations for paths matching any of these patterns will be ignored
     private ignorePatterns: RegExp[];
 
-    private savePending = false;
 
 
     public readonly lastSeenUpdateId: VaultUpdateId;
@@ -85,7 +84,7 @@ export class SyncEventQueue {
         return this.documents.size;
     }
 
-    public enqueue(input: FileSyncEvent): void {
+    public async enqueue(input: FileSyncEvent): Promise<void> {
         const path = (input.type === SyncEventType.RemoteChange) ? input.remoteVersion.relativePath : input.path;
 
         if (this.ignorePatterns.some((pattern) => pattern.test(path))) {
@@ -108,21 +107,30 @@ export class SyncEventQueue {
 
         const lookupPath = (input.type === SyncEventType.LocalUpdate && input.oldPath) ? input.oldPath : path;
         const record = this.documents.get(lookupPath);
-        const documentId: DocumentId | Promise<DocumentId> | undefined =
-            this.findLatestCreateForPath(lookupPath)?.resolvers.promise ?? record?.documentId;
 
-        if (documentId === undefined) {
+        // latest creation must take precedence as it's from the doc's latest generation
+        const pendingDocumentId: Promise<DocumentId> | undefined =
+            this.findLatestCreateForPath(lookupPath)?.resolvers.promise;
+
+        const documentId: DocumentId | undefined =
+            record?.documentId;
+
+
+        if (pendingDocumentId === undefined && documentId === undefined) {
             // we can get here when deleting a local document after a remote update
             return;
         }
 
         if (input.type === SyncEventType.LocalDelete) {
-            this.events.push({ type: SyncEventType.LocalDelete, documentId });
+            this.events.push({ type: SyncEventType.LocalDelete, documentId: pendingDocumentId ?? documentId! });
             return;
         }
 
         if (input.oldPath !== undefined) {
-            if (typeof documentId === "string") {
+            if (pendingDocumentId !== undefined) {
+                this.updatePendingCreatePath(input.oldPath, path);
+                this.events.push({ type: SyncEventType.LocalUpdate, documentId: pendingDocumentId, path, originalPath: path });
+            } else {
                 this.documents.delete(input.oldPath);
                 this.documents.set(path, record!);
                 for (const e of this.events) {
@@ -131,12 +139,11 @@ export class SyncEventQueue {
                         e.path = path;
                     }
                 }
-                this.saveInTheBackground();
-            } else {
-                this.updatePendingCreatePath(input.oldPath, path);
+                this.events.push({ type: SyncEventType.LocalUpdate, documentId: documentId!, path, originalPath: path });
+                await this.save();
+
             }
         }
-        this.events.push({ type: SyncEventType.LocalUpdate, documentId, path, originalPath: path });
     }
 
 
@@ -312,15 +319,4 @@ export class SyncEventQueue {
     }
 
 
-    // Coalesce bursts of mutations into one persist per microtask. A drain
-    // iteration can easily produce 10+ mutations; without this, we'd fire
-    // 10 overlapping `save()` calls racing on the persistence backend.
-    private saveInTheBackground(): void {
-        if (this.savePending) return;
-        this.savePending = true;
-        queueMicrotask(() => {
-            this.savePending = false;
-            this.save();
-        });
-    }
 }

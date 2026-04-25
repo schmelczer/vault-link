@@ -79,7 +79,7 @@ export class Syncer {
     }
 
     public syncLocallyCreatedFile(relativePath: RelativePath): void {
-        this.queue.enqueue({ type: SyncEventType.LocalCreate, path: relativePath });
+        void this.queue.enqueue({ type: SyncEventType.LocalCreate, path: relativePath });
         this.ensureDraining();
     }
 
@@ -90,12 +90,12 @@ export class Syncer {
         oldPath?: RelativePath;
         relativePath: RelativePath;
     }): void {
-        this.queue.enqueue({ type: SyncEventType.LocalUpdate, path: relativePath, oldPath });
+        void this.queue.enqueue({ type: SyncEventType.LocalUpdate, path: relativePath, oldPath });
         this.ensureDraining();
     }
 
     public syncLocallyDeletedFile(relativePath: RelativePath): void {
-        this.queue.enqueue({
+        void this.queue.enqueue({
             type: SyncEventType.LocalDelete,
             path: relativePath,
         });
@@ -107,7 +107,7 @@ export class Syncer {
     ): Promise<void> {
         await this.scheduleSyncForOfflineChanges();
 
-        this.queue.enqueue({
+        void this.queue.enqueue({
             type: SyncEventType.RemoteChange,
             remoteVersion: message.document
         });
@@ -189,18 +189,13 @@ export class Syncer {
 
 
     private async internalScheduleSyncForOfflineChanges(): Promise<void> {
-        // Offline scan wipes the event queue via `queue.clear()` and then
-        // rebuilds events from disk. That MUST NOT race against an
-        // in-flight drain iteration that may already hold a reference to
-        // a freshly-cleared event — wait for any drain to finish, and
-        // suppress new drains for the duration of the scan.
         this.isScanning = true;
         try {
             while (this.drainPromise !== undefined) {
                 await this.drainPromise;
             }
             await scheduleOfflineChanges(
-                { logger: this.logger, operations: this.operations, queue: this.queue },
+                this.logger, this.operations, this.queue,
                 (path) => { this.syncLocallyCreatedFile(path); },
                 (args) => { this.syncLocallyUpdatedFile(args); },
                 (path) => { this.syncLocallyDeletedFile(path); },
@@ -210,7 +205,6 @@ export class Syncer {
         }
 
         this.ensureDraining();
-        await this.drainPromise;
     }
 
 
