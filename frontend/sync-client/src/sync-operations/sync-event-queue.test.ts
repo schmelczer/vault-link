@@ -410,7 +410,7 @@ describe("SyncEventQueue", () => {
         assert.strictEqual(queue.syncedDocumentCount, 2);
         assert.strictEqual(queue.getSettledDocumentByPath("a.md")?.documentId, "A");
         assert.strictEqual(queue.getSettledDocumentByPath("b.md")?.documentId, "B");
-        assert.strictEqual(queue.lastSeenUpdateId, 5);
+        assert.strictEqual(queue._lastSeenUpdateId, 5);
     });
 
     it("trackedPaths combines documents and pending events", () => {

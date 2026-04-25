@@ -378,6 +378,7 @@ export class Syncer {
             createEvent: event
         });
 
+
         this.history.addHistoryEntry({
             status: SyncStatus.SUCCESS,
             details: { type: SyncType.CREATE, relativePath: effectivePath },
@@ -403,6 +404,8 @@ export class Syncer {
         });
 
         await this.queue.removeDocument(doc.path);
+        this.queue.lastSeenUpdateId = response.vaultUpdateId;
+
 
         this.history.addHistoryEntry({
             status: SyncStatus.SUCCESS,
@@ -442,6 +445,9 @@ export class Syncer {
             contentBytes
         }
         );
+
+        this.queue.lastSeenUpdateId = response.vaultUpdateId;
+
 
         await this.handleMaybeMergingResponse({
             path: diskPath,
@@ -530,6 +536,8 @@ export class Syncer {
                 remoteHash
             });
         }
+
+        this.queue.lastSeenUpdateId = response.vaultUpdateId;
     }
 
 
@@ -549,7 +557,13 @@ export class Syncer {
             return this.processRemoteDelete(documentWithPath.path, remoteVersion);
         }
 
-
+        if (documentWithPath?.record.parentVersionId ?? 0 >= remoteVersion.vaultUpdateId) {
+            this.queue.lastSeenUpdateId = remoteVersion.vaultUpdateId;
+            this.logger.debug(
+                `Document ${remoteVersion.relativePath} is already up-to-date or has newer local changes; skipping remote update`
+            );
+            return;
+        }
 
         if (documentWithPath !== undefined) {
             // must be the update to an existing doc
@@ -569,6 +583,9 @@ export class Syncer {
     private async processRemoteDelete(path: RelativePath, remoteVersion: DocumentVersionWithoutContent): Promise<void> {
         await this.operations.delete(path);
         await this.queue.removeDocument(path);
+
+        this.queue.lastSeenUpdateId = remoteVersion.vaultUpdateId;
+
 
         this.history.addHistoryEntry({
             status: SyncStatus.SUCCESS,
@@ -599,11 +616,29 @@ export class Syncer {
             const currentContent = await this.operations.read(path);
             const remoteContent = await this.syncService.getDocumentVersionContent({ documentId: remoteVersion.documentId, vaultUpdateId: remoteVersion.vaultUpdateId });
             this.operations.write(path, currentContent, remoteContent);
-            // todo: update last seen id
+
+            await this.updateCache(
+                remoteVersion.vaultUpdateId,
+                remoteContent,
+                path
+            );
+            this.queue.lastSeenUpdateId = remoteVersion.vaultUpdateId;
 
         } // else we don't need to update the content, a subsequent local update will do that 
 
+        this.syncRemotelyUpdatedFile({ // schedule it so that the lastSeenUpdateId remains consistent
+            document:
+                remoteVersion
+        })
+
+
+        // wait for a local edit to do the actual updating here, so we can't even update the lastSeenUpdateId here
         this.ensurePath(path, remoteVersion.relativePath);
+
+        this.queue.setDocument(remoteVersion.relativePath, {
+            ...record,
+            remoteRelativePath: remoteVersion.relativePath
+        });
 
         this.history.addHistoryEntry({
             status: SyncStatus.SUCCESS,
@@ -641,6 +676,8 @@ export class Syncer {
             remoteHash: contentHash,
             remoteRelativePath: remoteVersion.relativePath
         });
+
+        this.queue.lastSeenUpdateId = remoteVersion.vaultUpdateId;
 
         this.history.addHistoryEntry({
             status: SyncStatus.SUCCESS,
@@ -682,12 +719,6 @@ export class Syncer {
         if (canMergeText) {
             const currentContent = await this.operations.read(pendingCreateEvent.path);
 
-            this.queue.resolveCreate(pendingCreateEvent, {
-                documentId: remoteVersion.documentId,
-                parentVersionId: remoteVersion.vaultUpdateId,
-                remoteHash,
-                remoteRelativePath: path
-            });
 
 
             const merged = reconcile("", new TextDecoder().decode(currentContent), new TextDecoder().decode(remoteContent)).text;
@@ -697,6 +728,14 @@ export class Syncer {
                 remoteContent,
                 path
             );
+
+            await this.queue.resolveCreate(pendingCreateEvent, {
+                documentId: remoteVersion.documentId,
+                parentVersionId: remoteVersion.vaultUpdateId,
+                remoteHash,
+                remoteRelativePath: path
+            });
+            this.queue.lastSeenUpdateId = remoteVersion.vaultUpdateId;
 
             this.history.addHistoryEntry({
                 status: SyncStatus.SUCCESS,
@@ -719,6 +758,8 @@ export class Syncer {
                 remoteHash,
                 remoteRelativePath: path
             });
+            this.queue.lastSeenUpdateId = remoteVersion.vaultUpdateId;
+
             this.history.addHistoryEntry({
                 status: SyncStatus.SUCCESS,
                 details: {

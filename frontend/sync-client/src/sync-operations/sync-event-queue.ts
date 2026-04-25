@@ -14,6 +14,7 @@ import {
     type SyncEvent,
     type VaultUpdateId,
 } from "./types";
+import { MinCovered } from "../utils/data-structures/min-covered";
 
 
 export class SyncEventQueue {
@@ -39,9 +40,7 @@ export class SyncEventQueue {
     // file creations for paths matching any of these patterns will be ignored
     private ignorePatterns: RegExp[];
 
-
-
-    public readonly lastSeenUpdateId: VaultUpdateId;
+    public _lastSeenUpdateId: MinCovered;
 
     public constructor(
         private readonly settings: Settings,
@@ -71,9 +70,17 @@ export class SyncEventQueue {
                 this.documents.set(relativePath, record);
             }
         }
-        this.lastSeenUpdateId = initialState.lastSeenUpdateId ?? -1;
+        this._lastSeenUpdateId = new MinCovered(initialState.lastSeenUpdateId ?? 0);
 
-        this.logger.debug(`Loaded ${this.documents.size} documents and lastSeenUpdateId=${this.lastSeenUpdateId} from storage`);
+        this.logger.debug(`Loaded ${this.documents.size} documents and lastSeenUpdateId=${this._lastSeenUpdateId} from storage`);
+    }
+
+    public get lastSeenUpdateId(): VaultUpdateId {
+        return this._lastSeenUpdateId.min;
+    }
+
+    public set lastSeenUpdateId(id: VaultUpdateId) {
+        this._lastSeenUpdateId.add(id);
     }
 
     public get pendingUpdateCount(): number {
@@ -214,7 +221,7 @@ export class SyncEventQueue {
                     ...record
                 })
             ),
-            lastSeenUpdateId: this.lastSeenUpdateId
+            lastSeenUpdateId: this._lastSeenUpdateId
         });
     }
 
@@ -261,7 +268,7 @@ export class SyncEventQueue {
     public async clearAllState(): Promise<void> {
         this.clearPending();
         this.documents.clear();
-        this.lastSeenUpdateId = -1;
+        this._lastSeenUpdateId.reset()
         await this.save();
     }
 
