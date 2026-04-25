@@ -71,21 +71,21 @@ describe("SyncEventQueue", () => {
         const queue = createQueue();
 
         queue.enqueue({
-            type: SyncEventType.RemoteUpdate,
+            type: SyncEventType.RemoteChange,
             remoteVersion: fakeRemoteVersion("A", { vaultUpdateId: 1 })
         });
         queue.enqueue({
-            type: SyncEventType.RemoteUpdate,
+            type: SyncEventType.RemoteChange,
             remoteVersion: fakeRemoteVersion("A", { vaultUpdateId: 2 })
         });
         queue.enqueue({
-            type: SyncEventType.RemoteUpdate,
+            type: SyncEventType.RemoteChange,
             remoteVersion: fakeRemoteVersion("A", { vaultUpdateId: 3 })
         });
 
         const event = await queue.next();
-        assert.strictEqual(event?.type, SyncEventType.RemoteUpdate);
-        if (event?.type === SyncEventType.RemoteUpdate) {
+        assert.strictEqual(event?.type, SyncEventType.RemoteChange);
+        if (event?.type === SyncEventType.RemoteChange) {
             assert.strictEqual(event.remoteVersion.vaultUpdateId, 3);
         }
         assert.strictEqual(await queue.next(), undefined);
@@ -217,7 +217,7 @@ describe("SyncEventQueue", () => {
 
         queue.enqueue({ type: SyncEventType.LocalDelete, path: "a.md" });
         queue.enqueue({
-            type: SyncEventType.RemoteUpdate,
+            type: SyncEventType.RemoteChange,
             remoteVersion: fakeRemoteVersion("A", { vaultUpdateId: 5 })
         });
 
@@ -238,7 +238,7 @@ describe("SyncEventQueue", () => {
         queue.enqueue({ type: SyncEventType.LocalUpdate, path: "a.md" });
         queue.enqueue({ type: SyncEventType.LocalCreate, path: "b.md" });
         queue.enqueue({
-            type: SyncEventType.RemoteUpdate,
+            type: SyncEventType.RemoteChange,
             remoteVersion: fakeRemoteVersion("A", { vaultUpdateId: 5 })
         });
 
@@ -342,7 +342,7 @@ describe("SyncEventQueue", () => {
         assert.strictEqual(queue.pendingUpdateCount, 1);
 
         queue.enqueue({
-            type: SyncEventType.RemoteUpdate,
+            type: SyncEventType.RemoteChange,
             remoteVersion: fakeRemoteVersion("N")
         });
         assert.strictEqual(queue.pendingUpdateCount, 2);

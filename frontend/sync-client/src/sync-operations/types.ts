@@ -8,7 +8,7 @@ export interface DocumentRecord {
     documentId: DocumentId;
     parentVersionId: VaultUpdateId;
     remoteHash: string;
-    remoteRelativePath?: RelativePath;
+    remoteRelativePath: RelativePath;
 }
 
 export interface StoredDocument extends DocumentRecord {
@@ -24,21 +24,21 @@ export enum SyncEventType {
     LocalCreate = "local-create",
     LocalUpdate = "local-update", // includes both content and path changes
     LocalDelete = "local-delete",
-    RemoteUpdate = "remote-update", // includes every type of update coming from the server
+    RemoteChange = "remote-change", // includes every type of create/update/delete coming from the server
 }
 
 export type FileSyncEvent =
     | { type: SyncEventType.LocalCreate; path: RelativePath }
     | { type: SyncEventType.LocalUpdate; path: RelativePath; oldPath?: RelativePath }
     | { type: SyncEventType.LocalDelete; path: RelativePath }
-    | { type: SyncEventType.RemoteUpdate; remoteVersion: DocumentVersionWithoutContent };
+    | { type: SyncEventType.RemoteChange; remoteVersion: DocumentVersionWithoutContent };
 
 export type SyncEvent =
     | {
         type: SyncEventType.LocalCreate;
         path: RelativePath;   // current path on disk
         originalPath: RelativePath; // original path on disk when the event was queued
-        resolvers?: PromiseWithResolvers<DocumentId>
+        resolvers: PromiseWithResolvers<DocumentId>
     }
     | {
         type: SyncEventType.LocalUpdate;
@@ -52,6 +52,6 @@ export type SyncEvent =
         documentId: DocumentId | Promise<DocumentId>;  // if it's a promise, the promise is fulfilled once the document's create event is processed
     }
     | {
-        type: SyncEventType.RemoteUpdate;
+        type: SyncEventType.RemoteChange;
         remoteVersion: DocumentVersionWithoutContent;
     };
