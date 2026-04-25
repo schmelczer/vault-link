@@ -40,9 +40,12 @@ export class EventListeners<TListener extends (...args: any[]) => any> {
      * @param args The arguments to pass to each listener
      */
     public trigger(...args: Parameters<TListener>): void {
-        this.listeners.forEach((listener) => {
+        const snapshot = this.listeners.slice();
+        for (const listener of snapshot) {
+            // allow removing listeners during the trigger loop
+            if (!this.listeners.includes(listener)) continue;
             listener(...args);
-        });
+        }
     }
 
     /**
@@ -53,16 +56,17 @@ export class EventListeners<TListener extends (...args: any[]) => any> {
      * @param args The arguments to pass to each listener
      */
     public async triggerAsync(...args: Parameters<TListener>): Promise<void> {
-        await awaitAll(
-            this.listeners
-                .map((listener) => {
-                    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-                    return listener(...args);
-                })
-                .filter((result): result is Promise<unknown> => {
-                    return result instanceof Promise;
-                })
-        );
+        const snapshot = this.listeners.slice();
+        const promises: Promise<unknown>[] = [];
+        for (const listener of snapshot) {
+            if (!this.listeners.includes(listener)) continue;
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+            const result = listener(...args);
+            if (result instanceof Promise) {
+                promises.push(result);
+            }
+        }
+        await awaitAll(promises);
     }
 
     public clear(): void {

@@ -75,7 +75,7 @@ export class Syncer {
         );
     }
 
-    public get isFirstSyncComplete(): boolean {
+    public get isFirstSyncStarted(): boolean {
         return this._isFirstSyncStarted;
     }
 
@@ -264,36 +264,34 @@ export class Syncer {
                     break;
             }
         } catch (e) {
+            // The currently-processed event was already shifted off the queue
+            // by drain() before processEvent ran. If it's a LocalCreate, any
+            // queued Delete/Update events whose `documentId` is this Create's
+            // resolvers.promise would `await` it forever once we return — so
+            // settle the resolvers on every failure path before
+            // dispatching/re-throwing. clearPending()'s rejectAllPendingCreates
+            // walks the queue and so cannot reach this in-flight event.
+            // Re-rejecting an already-resolved promise is a no-op, so it's
+            // safe to call this unconditionally on the LocalCreate branch.
+            if (event.type === SyncEventType.LocalCreate) {
+                event.resolvers.promise.catch(() => {
+                    /* suppressed */
+                });
+                event.resolvers.reject(
+                    new Error(`Create was cancelled: ${e}`)
+                );
+            }
+
             if (e instanceof FileNotFoundError) {
                 this.logger.info(
                     `Skipping sync event '${event.type}' because the file no longer exists`
                 );
-                if (event.type === SyncEventType.LocalCreate) {
-                    event.resolvers.promise.catch(() => {
-                        /* suppressed */
-                    });
-                    event.resolvers.reject(new Error("Create was cancelled"));
-                }
                 return;
             }
             if (e instanceof HttpClientError) {
                 this.logger.error(
                     `Server rejected ${event.type} request: ${e.message}`
                 );
-                // The event was already shifted off the queue before
-                // `processEvent` ran; if it was a Create, its resolver
-                // promise would otherwise hang forever, blocking any
-                // queued Delete / SyncLocal that `await`s it.
-                if (event.type === SyncEventType.LocalCreate) {
-                    event.resolvers.promise.catch(() => {
-                        /* suppressed */
-                    });
-                    event.resolvers.reject(
-                        new Error(
-                            `Create was cancelled — server rejected the request (${e.message})`
-                        )
-                    );
-                }
                 return;
             }
             throw e;
@@ -513,6 +511,7 @@ export class Syncer {
 
         if (createEvent === undefined) {
             // a http response will always be more up-to-date than any queued remote update
+            // move will always move to the relative path when MoveOnConflict.EXISTING is given
             await this.operations.move(
                 path,
                 response.relativePath,

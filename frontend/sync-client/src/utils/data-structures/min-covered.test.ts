@@ -48,29 +48,25 @@ describe("MinCovered", () => {
         assert.strictEqual(covered.min, 6);
     });
 
-    it("should auto-advance when setting min value", () => {
+    it("should auto-advance when adding the value that fills the next gap", () => {
         const covered = new MinCovered(5);
         covered.add(7);
         covered.add(8);
         covered.add(9);
         assert.strictEqual(covered.min, 5);
-        // Setting min to 6 should auto-advance through 7, 8, 9
-        covered.min = 6;
+        // Adding 6 fills the gap and auto-advances through 7, 8, 9
+        covered.add(6);
         assert.strictEqual(covered.min, 9);
         covered.add(10);
         assert.strictEqual(covered.min, 10);
     });
 
-    it("should handle setting min value with no consecutive values", () => {
+    it("should rewind when reset is called explicitly", () => {
         const covered = new MinCovered(5);
-        covered.add(10);
-        covered.add(15);
-        assert.strictEqual(covered.min, 5);
-        // Setting min to 8 should not auto-advance (no consecutive values)
-        covered.min = 8;
-        assert.strictEqual(covered.min, 8);
-        // Add 9 to trigger auto-advance to 10
-        covered.add(9);
-        assert.strictEqual(covered.min, 10);
+        covered.add(7);
+        covered.reset(3);
+        assert.strictEqual(covered.min, 3);
+        covered.add(4);
+        assert.strictEqual(covered.min, 4);
     });
 });

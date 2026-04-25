@@ -44,20 +44,19 @@ export function rateLimit<
             newArgs = undefined;
         }
 
-        const { promise, resolve } = Promise.withResolvers<undefined>();
-        running = promise;
-        sleep(
+        // `running` must signal both "minimum interval has elapsed" *and*
+        // "fn() has finished" — otherwise an `fn` that takes longer than
+        // the interval would let a queued waiter fire a concurrent `fn`
+        const interval =
             typeof minIntervalMs === "function"
                 ? minIntervalMs()
-                : minIntervalMs
-        )
-            .then(() => {
-                resolve(undefined);
-            })
-            .catch(() => {
-                // sleep cannot fail
-            });
-        return fn(...args);
+                : minIntervalMs;
+        const fnPromise = fn(...args);
+        running = Promise.all([
+            fnPromise.catch(() => undefined),
+            sleep(interval)
+        ]);
+        return fnPromise;
     };
 
     return decoratedFn;

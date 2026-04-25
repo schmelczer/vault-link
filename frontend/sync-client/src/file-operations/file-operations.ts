@@ -8,6 +8,7 @@ import { isFileTypeMergable } from "../utils/is-file-type-mergable";
 import { isBinary } from "../utils/is-binary";
 import { buildConflictFileName } from "../sync-operations/conflict-path";
 import type { ServerConfig } from "../services/server-config";
+import { FileNotFoundError } from "../errors/file-not-found-error";
 
 export enum MoveOnConflict {
     EXISTING = "EXISTING",
@@ -95,67 +96,83 @@ export class FileOperations {
             return;
         }
 
-        if (
-            !isFileTypeMergable(
-                path,
-                (await this.serverConfig.getConfig()).mergeableFileExtensions
-            ) ||
-            isBinary(expectedContent) ||
-            isBinary(newContent)
-        ) {
-            this.logger.debug(
-                `The expected content is not mergable, so we won't perform a 3-way merge, just overwrite it`
-            );
-            await this.fs.write(
-                path,
-                // `newContent` might not be binary so we still have to ensure the line endings are correct
-                this.toNativeLineEndings(newContent)
-            );
-            return;
-        }
-
-        let expectedText = "";
-        let newText = "";
+        // The exists() check above is racy: between it returning true and
+        // any of the writes below running, the file can be deleted. The
+        // safe wrapper around `atomicUpdateText` raises FileNotFoundError
+        // in that window — treat it the same as the upfront-missing case
+        // (skip silently) so callers see one consistent outcome regardless
+        // of when the deletion happened to occur.
         try {
-            expectedText = new TextDecoder("utf-8", { fatal: true }).decode(
-                expectedContent
-            ); // this comes from a previous read which must only have \n line endings
-            newText = new TextDecoder("utf-8", { fatal: true }).decode(
-                newContent
-            ); // this comes from the server which stores text with \n line endings
-        } catch (decodeError) {
-            this.logger.warn(
-                `3-way merge aborted for ${path}: one of expected/new is not valid UTF-8 (${decodeError}); falling back to overwrite`
-            );
-            await this.fs.write(path, this.toNativeLineEndings(newContent));
-            return;
-        }
-
-        await this.fs.atomicUpdateText(
-            path,
-            ({ text, cursors }: TextWithCursors): TextWithCursors => {
+            if (
+                !isFileTypeMergable(
+                    path,
+                    (await this.serverConfig.getConfig()).mergeableFileExtensions
+                ) ||
+                isBinary(expectedContent) ||
+                isBinary(newContent)
+            ) {
                 this.logger.debug(
-                    `Performing a 3-way merge for ${path} with the expected content`
+                    `The expected content is not mergable, so we won't perform a 3-way merge, just overwrite it`
                 );
-
-                text = text.replaceAll(this.nativeLineEndings, "\n");
-                const merged = reconcile(
-                    expectedText,
-                    { text, cursors },
-                    newText
+                await this.fs.write(
+                    path,
+                    // `newContent` might not be binary so we still have to ensure the line endings are correct
+                    this.toNativeLineEndings(newContent)
                 );
-
-                const resultText = merged.text.replaceAll(
-                    "\n",
-                    this.nativeLineEndings
-                );
-
-                return {
-                    text: resultText,
-                    cursors: merged.cursors
-                };
+                return;
             }
-        );
+
+            let expectedText = "";
+            let newText = "";
+            try {
+                expectedText = new TextDecoder("utf-8", { fatal: true }).decode(
+                    expectedContent
+                ); // this comes from a previous read which must only have \n line endings
+                newText = new TextDecoder("utf-8", { fatal: true }).decode(
+                    newContent
+                ); // this comes from the server which stores text with \n line endings
+            } catch (decodeError) {
+                this.logger.warn(
+                    `3-way merge aborted for ${path}: one of expected/new is not valid UTF-8 (${decodeError}); falling back to overwrite`
+                );
+                await this.fs.write(path, this.toNativeLineEndings(newContent));
+                return;
+            }
+
+            await this.fs.atomicUpdateText(
+                path,
+                ({ text, cursors }: TextWithCursors): TextWithCursors => {
+                    this.logger.debug(
+                        `Performing a 3-way merge for ${path} with the expected content`
+                    );
+
+                    text = text.replaceAll(this.nativeLineEndings, "\n");
+                    const merged = reconcile(
+                        expectedText,
+                        { text, cursors },
+                        newText
+                    );
+
+                    const resultText = merged.text.replaceAll(
+                        "\n",
+                        this.nativeLineEndings
+                    );
+
+                    return {
+                        text: resultText,
+                        cursors: merged.cursors
+                    };
+                }
+            );
+        } catch (e) {
+            if (e instanceof FileNotFoundError) {
+                this.logger.debug(
+                    `File ${path} disappeared during write; not recreating`
+                );
+                return;
+            }
+            throw e;
+        }
     }
 
     public async delete(path: RelativePath): Promise<void> {

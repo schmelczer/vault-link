@@ -342,7 +342,7 @@ export class SyncService {
 
             const url = new URL(this.getUrl("/documents"));
             if (since !== undefined) {
-                url.searchParams.append("since", since.toString());
+                url.searchParams.append("since_update_id", since.toString());
             }
             const response = await this.client(url.toString(), {
                 headers: this.getDefaultHeaders()

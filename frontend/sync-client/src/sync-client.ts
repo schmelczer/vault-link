@@ -399,7 +399,7 @@ export class SyncClient {
             return DocumentSyncStatus.SYNCING_IS_DISABLED;
         }
 
-        if (!this.syncer.isFirstSyncComplete || !this.hasFinishedOfflineSync) {
+        if (!this.syncer.isFirstSyncStarted || !this.hasFinishedOfflineSync) {
             return DocumentSyncStatus.SYNCING;
         }
 
@@ -428,8 +428,11 @@ export class SyncClient {
      * After calling this method, the SyncClient cannot be used again.
      */
     public async destroy(): Promise<void> {
-        this.checkIfDestroyed("destroy");
-
+        if (this.hasBeenDestroyed) {
+            throw new Error(
+                "SyncClient has been destroyed and can no longer be used; called from destroy"
+            );
+        }
         if (this.isDestroying) {
             this.logger.warn(
                 "destroy() called while already destroying, ignoring"
@@ -534,7 +537,11 @@ export class SyncClient {
     }
 
     private checkIfDestroyed(origin: string): void {
-        if (this.hasBeenDestroyed) {
+        // Reject new public-API entries the moment destroy() is called,
+        // not after `pause()` returns. Otherwise an external caller could
+        // pass the guard and start mutating state while destroy() is
+        // tearing down the websocket / clearing caches.
+        if (this.hasBeenDestroyed || this.isDestroying) {
             throw new Error(
                 `SyncClient has been destroyed and can no longer be used; called from ${origin}`
             );

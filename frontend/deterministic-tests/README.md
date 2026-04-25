@@ -45,7 +45,7 @@ Clients always start with syncing disabled.
 cd sync-server && cargo build --release && cd -
 
 # Run all tests
-cd frontend && npm run test -w deterministic-tests
+cd frontend && npm run build -w sync-client && npm run test -w deterministic-tests
 
 # Filter by name
 npm run test -w deterministic-tests -- --filter=rename

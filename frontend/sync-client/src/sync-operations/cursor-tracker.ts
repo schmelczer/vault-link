@@ -30,9 +30,13 @@ export class CursorTracker {
         upToDateness: DocumentUpToDateness;
     })[] = [];
 
-    private lastLocalCursorState: DocumentWithCursors[] = [];
-    private lastLocalCursorStateWithoutDirtyDocuments: DocumentWithCursors[] =
-        [];
+    // Cache the previously sent state as a JSON string rather than as the
+    // array. We mutate `documentsWithCursors` in-place after the cache check
+    // (setting `vaultUpdateId = null` for dirty docs); storing the array would
+    // alias and the next call's equality check would compare against
+    // post-mutation state.
+    private lastLocalCursorStateJson = "[]";
+    private lastLocalCursorStateWithoutDirtyDocumentsJson = "[]";
 
     public constructor(
         logger: Logger,
@@ -99,65 +103,65 @@ export class CursorTracker {
     public async sendLocalCursorsToServer(
         documentToCursors: Record<RelativePath, CursorSpan[]>
     ): Promise<void> {
-        const documentsWithCursors: DocumentWithCursors[] = [];
+        // Serialise concurrent senders so they don't interleave on the
+        // disk reads + state mutations and emit out-of-order cursor messages.
+        await this.updateLock.withLock(async () => {
+            const documentsWithCursors: DocumentWithCursors[] = [];
 
-        for (const [relativePath, cursors] of Object.entries(
-            documentToCursors
-        )) {
-            const record = this.queue.getSettledDocumentByPath(relativePath);
+            for (const [relativePath, cursors] of Object.entries(
+                documentToCursors
+            )) {
+                const record = this.queue.getSettledDocumentByPath(relativePath);
 
-            if (!record) {
-                continue; // Let's wait for the file to be created before sending cursors
+                if (!record) {
+                    continue; // Let's wait for the file to be created before sending cursors
+                }
+
+                documentsWithCursors.push({
+                    relativePath: relativePath,
+                    documentId: record.documentId,
+                    vaultUpdateId: record.parentVersionId,
+                    cursors: cursors.map(({ start, end }) => ({
+                        start: Math.min(start, end),
+                        end: Math.max(start, end)
+                    })) // the client might send directional selections
+                });
             }
 
-            documentsWithCursors.push({
-                relativePath: relativePath,
-                documentId: record.documentId,
-                vaultUpdateId: record.parentVersionId,
-                cursors: cursors.map(({ start, end }) => ({
-                    start: Math.min(start, end),
-                    end: Math.max(start, end)
-                })) // the client might send directional selections
-            });
-        }
-
-        if (
-            JSON.stringify(this.lastLocalCursorState) ===
-            JSON.stringify(documentsWithCursors)
-        ) {
-            // Caching step to avoid reading the edited files all the time
-            return;
-        }
-        this.lastLocalCursorState = documentsWithCursors;
-
-        for (const doc of documentsWithCursors) {
-            const readContent = await this.fileOperations.read(
-                doc.relativePath
-            );
-            const record = this.queue.getSettledDocumentByPath(
-                doc.relativePath
-            );
-            if (record?.remoteHash !== (await hash(readContent))) {
-                doc.vaultUpdateId = null;
+            const beforeJson = JSON.stringify(documentsWithCursors);
+            if (this.lastLocalCursorStateJson === beforeJson) {
+                // Caching step to avoid reading the edited files all the time
+                return;
             }
-        }
+            this.lastLocalCursorStateJson = beforeJson;
 
-        if (
-            JSON.stringify(this.lastLocalCursorStateWithoutDirtyDocuments) ===
-            JSON.stringify(documentsWithCursors)
-        ) {
-            return;
-        }
+            for (const doc of documentsWithCursors) {
+                const readContent = await this.fileOperations.read(
+                    doc.relativePath
+                );
+                const record = this.queue.getSettledDocumentByPath(
+                    doc.relativePath
+                );
+                if (record?.remoteHash !== (await hash(readContent))) {
+                    doc.vaultUpdateId = null;
+                }
+            }
 
-        this.lastLocalCursorStateWithoutDirtyDocuments = documentsWithCursors;
+            const afterJson = JSON.stringify(documentsWithCursors);
+            if (this.lastLocalCursorStateWithoutDirtyDocumentsJson === afterJson) {
+                return;
+            }
 
-        this.webSocketManager.updateLocalCursors({ documentsWithCursors });
+            this.lastLocalCursorStateWithoutDirtyDocumentsJson = afterJson;
+
+            this.webSocketManager.updateLocalCursors({ documentsWithCursors });
+        });
     }
 
     public reset(): void {
         this.knownRemoteCursors = [];
-        this.lastLocalCursorState = [];
-        this.lastLocalCursorStateWithoutDirtyDocuments = [];
+        this.lastLocalCursorStateJson = "[]";
+        this.lastLocalCursorStateWithoutDirtyDocumentsJson = "[]";
         this.updateLock.reset();
     }
 

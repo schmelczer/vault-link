@@ -204,19 +204,22 @@ export class WebSocketManager {
 
         this.logger.info(`Connecting to WebSocket at ${wsUri.toString()}`);
 
-        this.webSocket = new this.webSocketFactoryImplementation(wsUri);
+        const ws = new this.webSocketFactoryImplementation(wsUri);
+        this.webSocket = ws;
 
-        // Set connection timeout to handle cases where server is down and the WebSocket connection won't open
+        // Set connection timeout to handle cases where server is down and the WebSocket connection won't open.
+        // The callback closes the *captured* `ws` rather than `this.webSocket` so a delayed timeout cannot
+        // accidentally close a freshly-constructed replacement socket. (Closing the already-closed `ws` is a no-op.)
         this.connectionTimeoutId = setTimeout(() => {
             this.connectionTimeoutId = undefined;
             this.logger.warn(
                 `WebSocket connection timeout after ${WEBSOCKET_CONNECTION_TIMEOUT_IN_SECONDS} seconds`
             );
             // Force close to trigger onclose handler which will schedule reconnection
-            this.webSocket?.close(1000, "Connection timeout");
+            ws.close(1000, "Connection timeout");
         }, WEBSOCKET_CONNECTION_TIMEOUT_IN_SECONDS * 1000);
 
-        this.webSocket.onopen = (): void => {
+        ws.onopen = (): void => {
             if (this.connectionTimeoutId !== undefined) {
                 clearTimeout(this.connectionTimeoutId);
                 this.connectionTimeoutId = undefined;
@@ -224,7 +227,7 @@ export class WebSocketManager {
 
             // Check if we've been stopped while connecting
             if (this.isStopped) {
-                this.webSocket?.close(
+                ws.close(
                     1000,
                     "WebSocketManager was stopped during connection"
                 );
@@ -234,7 +237,7 @@ export class WebSocketManager {
             this.onWebSocketStatusChanged.trigger(true);
         };
 
-        this.webSocket.onmessage = (event): void => {
+        ws.onmessage = (event): void => {
             try {
                 // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
                 const message = JSON.parse(
@@ -265,13 +268,13 @@ export class WebSocketManager {
             }
         };
 
-        this.webSocket.onerror = (error): void => {
+        ws.onerror = (error): void => {
             this.logger.warn(
                 `WebSocket error occurred: ${error instanceof ErrorEvent ? error.message : "Unknown error"}`
             );
         };
 
-        this.webSocket.onclose = (event): void => {
+        ws.onclose = (event): void => {
             if (this.connectionTimeoutId !== undefined) {
                 clearTimeout(this.connectionTimeoutId);
                 this.connectionTimeoutId = undefined;
