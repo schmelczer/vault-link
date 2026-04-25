@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const doubleOfflineCycleTest: TestDefinition = {
@@ -16,7 +17,12 @@ export const doubleOfflineCycleTest: TestDefinition = {
         { type: "enable-sync", client: 1 },
         { type: "sync" },
         { type: "barrier" },
-        { type: "assert-consistent", verify: (s) => s.assertContent("doc.md", "initial") },
+        {
+            type: "assert-consistent",
+            verify: (s: AssertableState): void => {
+                s.assertContent("doc.md", "initial");
+            }
+        },
 
         { type: "disable-sync", client: 0 },
         {
@@ -29,7 +35,12 @@ export const doubleOfflineCycleTest: TestDefinition = {
         { type: "enable-sync", client: 0 },
         { type: "sync" },
         { type: "barrier" },
-        { type: "assert-consistent", verify: (s) => s.assertContent("doc.md", "first edit") },
+        {
+            type: "assert-consistent",
+            verify: (s: AssertableState): void => {
+                s.assertContent("doc.md", "first edit");
+            }
+        },
 
         { type: "disable-sync", client: 0 },
         {
@@ -42,7 +53,12 @@ export const doubleOfflineCycleTest: TestDefinition = {
         { type: "enable-sync", client: 0 },
         { type: "sync" },
         { type: "barrier" },
-        { type: "assert-consistent", verify: (s) => s.assertContent("doc.md", "second edit") },
+        {
+            type: "assert-consistent",
+            verify: (s: AssertableState): void => {
+                s.assertContent("doc.md", "second edit");
+            }
+        },
 
         { type: "disable-sync", client: 0 },
         {
@@ -55,6 +71,11 @@ export const doubleOfflineCycleTest: TestDefinition = {
         { type: "enable-sync", client: 0 },
         { type: "sync" },
         { type: "barrier" },
-        { type: "assert-consistent", verify: (s) => s.assertFileCount(1).assertContent("doc.md", "third edit") }
+        {
+            type: "assert-consistent",
+            verify: (s: AssertableState): void => {
+                s.assertFileCount(1).assertContent("doc.md", "third edit");
+            }
+        }
     ]
 };

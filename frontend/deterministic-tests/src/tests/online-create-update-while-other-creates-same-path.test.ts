@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const onlineCreateUpdateWhileOtherCreatesSamePathTest: TestDefinition = {
@@ -11,16 +12,33 @@ export const onlineCreateUpdateWhileOtherCreatesSamePathTest: TestDefinition = {
         { type: "enable-sync", client: 1 },
 
         { type: "pause-websocket", client: 1 },
-        { type: "create", client: 0, path: "data.bin", content: "BINARY:content-v1" },
-        { type: "update", client: 0, path: "data.bin", content: "BINARY:content-v2" },
-        { type: "create", client: 1, path: "data.bin", content: "BINARY:other-content" },
+        {
+            type: "create",
+            client: 0,
+            path: "data.bin",
+            content: "BINARY:content-v1"
+        },
+        {
+            type: "update",
+            client: 0,
+            path: "data.bin",
+            content: "BINARY:content-v2"
+        },
+        {
+            type: "create",
+            client: 1,
+            path: "data.bin",
+            content: "BINARY:other-content"
+        },
         { type: "resume-websocket", client: 1 },
 
         { type: "barrier" },
 
         {
-            type: "assert-consistent", verify: (state) => {
-                state.assertFileCount(2)
+            type: "assert-consistent",
+            verify: (state: AssertableState): void => {
+                state
+                    .assertFileCount(2)
                     .assertContains("data.bin", "content-v2")
                     .assertContains("data (1).bin", "other-content");
             }

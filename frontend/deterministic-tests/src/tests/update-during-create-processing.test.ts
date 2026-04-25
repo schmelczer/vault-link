@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const updateDuringCreateProcessingTest: TestDefinition = {
@@ -32,8 +33,12 @@ export const updateDuringCreateProcessingTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (s) =>
-                s.assertFileCount(1).assertContent("file.md", "updated during create"),
+            verify: (s: AssertableState): void => {
+                s.assertFileCount(1).assertContent(
+                    "file.md",
+                    "updated during create"
+                );
+            }
         }
     ]
 };

@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const deleteRecreateConcurrentUpdateTest: TestDefinition = {
@@ -14,7 +15,12 @@ export const deleteRecreateConcurrentUpdateTest: TestDefinition = {
 
         { type: "disable-sync", client: 0 },
         { type: "delete", client: 0, path: "A.md" },
-        { type: "create", client: 0, path: "A.md", content: "recreated by client 0" },
+        {
+            type: "create",
+            client: 0,
+            path: "A.md",
+            content: "recreated by client 0"
+        },
 
         {
             type: "update",
@@ -28,6 +34,11 @@ export const deleteRecreateConcurrentUpdateTest: TestDefinition = {
         { type: "sync" },
         { type: "barrier" },
 
-        { type: "assert-consistent", verify: (s) => s.assertFileExists("A.md").assertContains("A.md", "recreated") }
+        {
+            type: "assert-consistent",
+            verify: (s: AssertableState): void => {
+                s.assertFileExists("A.md").assertContains("A.md", "recreated");
+            }
+        }
     ]
 };

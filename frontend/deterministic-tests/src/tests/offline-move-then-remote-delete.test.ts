@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const offlineMoveThenRemoteDeleteTest: TestDefinition = {
@@ -29,11 +30,11 @@ export const offlineMoveThenRemoteDeleteTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (s) =>
-                s
-                    .assertFileNotExists("A.md")
+            verify: (s: AssertableState): void => {
+                s.assertFileNotExists("A.md")
                     .assertFileNotExists("B.md")
-                    .assertFileCount(0)
+                    .assertFileCount(0);
+            }
         }
     ]
 };

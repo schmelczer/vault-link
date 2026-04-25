@@ -12,9 +12,7 @@ export class TestErrorTracker {
     public checkAndThrow(): void {
         if (this.firstError !== null) {
             const { agentName, message } = this.firstError;
-            throw new Error(
-                `ERROR-level log from ${agentName}: ${message}`
-            );
+            throw new Error(`ERROR-level log from ${agentName}: ${message}`);
         }
     }
 

@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const offlineDeleteVsRemoteUpdateTest: TestDefinition = {
@@ -17,7 +18,9 @@ export const offlineDeleteVsRemoteUpdateTest: TestDefinition = {
         { type: "barrier" },
         {
             type: "assert-consistent",
-            verify: (s) => s.assertContent("A.md", "original content")
+            verify: (s: AssertableState): void => {
+                s.assertContent("A.md", "original content");
+            }
         },
 
         { type: "disable-sync", client: 0 },
@@ -37,7 +40,9 @@ export const offlineDeleteVsRemoteUpdateTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (s) => s.assertFileCount(0)
+            verify: (s: AssertableState): void => {
+                s.assertFileCount(0);
+            }
         }
     ]
 };

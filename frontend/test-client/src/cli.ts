@@ -119,9 +119,6 @@ async function runTest({
             await sleep(2000);
         }
 
-
-
-
         for (const client of clients) {
             try {
                 logger.info(`Destroying ${client.name}`);
@@ -254,11 +251,7 @@ process.on("uncaughtException", (error) => {
 });
 
 process.on("unhandledRejection", (error, _promise) => {
-    if (
-        error instanceof Error &&
-        (
-            error.name === "SyncResetError")
-    ) {
+    if (error instanceof Error && error.name === "SyncResetError") {
         return;
     }
 

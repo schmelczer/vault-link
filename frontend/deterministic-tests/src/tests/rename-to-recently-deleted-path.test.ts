@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const renameToRecentlyDeletedPathTest: TestDefinition = {
@@ -30,11 +31,11 @@ export const renameToRecentlyDeletedPathTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (s) =>
-                s
-                    .assertFileCount(1)
+            verify: (s: AssertableState): void => {
+                s.assertFileCount(1)
                     .assertFileNotExists("A.md")
-                    .assertContent("B.md", "content-a"),
+                    .assertContent("B.md", "content-a");
+            }
         }
     ]
 };

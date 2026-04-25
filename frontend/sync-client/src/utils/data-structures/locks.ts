@@ -8,7 +8,7 @@ import type { Logger } from "../../tracing/logger";
  * @template T The type of the key used for locking
  */
 /** Waiter entry with callbacks */
-interface WaiterEntry<T> {
+interface WaiterEntry {
     resolve: () => unknown;
     reject: (err: unknown) => unknown;
 }
@@ -18,9 +18,12 @@ export class Locks<T> {
     private readonly locked = new Set<T>();
 
     /** Queue of waiters for each key */
-    private readonly waiters = new Map<T, WaiterEntry<T>[]>();
+    private readonly waiters = new Map<T, WaiterEntry[]>();
 
-    public constructor(private readonly name: string, private readonly logger?: Logger) { }
+    public constructor(
+        private readonly name: string,
+        private readonly logger?: Logger
+    ) {}
 
     /**
      * Executes a function while holding exclusive locks on one or more keys.
@@ -134,7 +137,7 @@ export class Locks<T> {
 
             waiting.push({
                 resolve,
-                reject,
+                reject
             });
         });
     }

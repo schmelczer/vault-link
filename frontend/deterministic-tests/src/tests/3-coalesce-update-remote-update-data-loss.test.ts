@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const coalesceUpdateRemoteUpdateDataLossTest: TestDefinition = {
@@ -38,10 +39,14 @@ export const coalesceUpdateRemoteUpdateDataLossTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (state) => {
+            verify: (state: AssertableState): void => {
                 state
                     .assertFileCount(1)
-                    .assertContains("doc.md", "client 0 addition", "client 1 addition");
+                    .assertContains(
+                        "doc.md",
+                        "client 0 addition",
+                        "client 1 addition"
+                    );
             }
         }
     ]

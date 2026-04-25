@@ -22,7 +22,11 @@ export {
 export { Logger, LogLevel, LogLine } from "./tracing/logger";
 export { type SyncSettings, DEFAULT_SETTINGS } from "./persistence/settings";
 export { rateLimit } from "./utils/rate-limit";
-export type { RelativePath, StoredSyncState as StoredDatabase, DocumentRecord } from "./sync-operations/types";
+export type {
+    RelativePath,
+    StoredSyncState as StoredDatabase,
+    DocumentRecord
+} from "./sync-operations/types";
 export type { FileSystemOperations } from "./file-operations/filesystem-operations";
 export type { PersistenceProvider } from "./persistence/persistence";
 export type { CursorSpan } from "./services/types/CursorSpan";

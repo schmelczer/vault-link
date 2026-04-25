@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const createMergePreservesRenamedUpdateTest: TestDefinition = {
@@ -39,6 +40,13 @@ export const createMergePreservesRenamedUpdateTest: TestDefinition = {
         { type: "enable-sync", client: 1 },
         { type: "barrier" },
 
-        { type: "assert-consistent", verify: (state) => state.assertContent("moved.md", "alpha beta extra-update").assertContent("doc.md", "new-content") }
+        {
+            type: "assert-consistent",
+            verify: (state: AssertableState): void => {
+                state
+                    .assertContent("moved.md", "alpha beta extra-update")
+                    .assertContent("doc.md", "new-content");
+            }
+        }
     ]
 };

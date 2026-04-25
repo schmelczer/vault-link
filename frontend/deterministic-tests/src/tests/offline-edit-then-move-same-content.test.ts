@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const offlineEditThenMoveSameContentTest: TestDefinition = {
@@ -41,12 +42,12 @@ export const offlineEditThenMoveSameContentTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (s) =>
-                s
-                    .assertFileNotExists("A.md")
+            verify: (s: AssertableState): void => {
+                s.assertFileNotExists("A.md")
                     .assertFileNotExists("B.md")
                     .assertContent("C.md", "content A")
-                    .assertFileCount(1)
+                    .assertFileCount(1);
+            }
         }
     ]
 };

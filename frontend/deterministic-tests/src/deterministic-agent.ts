@@ -1,12 +1,20 @@
-import type { StoredDatabase, SyncSettings, RelativePath, TextWithCursors } from "sync-client";
-import { SyncClient, debugging, LogLevel } from "sync-client";
+import type {
+    StoredDatabase,
+    SyncSettings,
+    RelativePath,
+    TextWithCursors
+} from "sync-client";
+import { SyncClient, debugging, LogLevel, utils } from "sync-client";
 import { assert } from "./utils/assert";
 import { sleep } from "./utils/sleep";
 import { withTimeout } from "./utils/with-timeout";
-import { IS_SYNC_ENABLED_BY_DEFAULT, WAIT_TIMEOUT_MS, WEBSOCKET_CONNECT_TIMEOUT_MS, WEBSOCKET_POLL_INTERVAL_MS } from "./consts";
+import {
+    IS_SYNC_ENABLED_BY_DEFAULT,
+    WAIT_TIMEOUT_MS,
+    WEBSOCKET_CONNECT_TIMEOUT_MS,
+    WEBSOCKET_POLL_INTERVAL_MS
+} from "./consts";
 import { ManagedWebSocketFactory } from "./managed-websocket";
-
-
 
 export class DeterministicAgent extends debugging.InMemoryFileSystem {
     public readonly clientId: number;
@@ -33,7 +41,7 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
     }
 
     public async init(
-        fetchImplementation: typeof globalThis.fetch,
+        fetchImplementation: typeof globalThis.fetch
     ): Promise<void> {
         this.client = await SyncClient.create({
             fs: this,
@@ -138,7 +146,6 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
         await this.waitForWebSocket();
     }
 
-
     public async getFileContent(path: string): Promise<string> {
         const bytes = await this.read(path);
         return new TextDecoder().decode(bytes);
@@ -146,9 +153,11 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
 
     public async cleanup(): Promise<void> {
         this.log("Cleaning up...");
-        // Guard against uninitialized client (init() failed partway)
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-        if (!this.client) {
+        // Guard against uninitialized client (init() failed partway).
+        // The class field uses `!:` so TS thinks this is always defined,
+        // but at runtime it can be undefined when init() throws partway.
+        const maybeClient = this.client as SyncClient | undefined;
+        if (maybeClient === undefined) {
             this.log("Client not initialized, nothing to clean up");
             return;
         }
@@ -184,11 +193,13 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
         await super.write(path, content);
 
         if (isNew) {
-            this.enqueueSync(async () => { this.client.syncLocallyCreatedFile(path); }
-            );
+            this.enqueueSync(async () => {
+                this.client.syncLocallyCreatedFile(path);
+            });
         } else {
-            this.enqueueSync(async () => { this.client.syncLocallyUpdatedFile({ relativePath: path }); }
-            );
+            this.enqueueSync(async () => {
+                this.client.syncLocallyUpdatedFile({ relativePath: path });
+            });
         }
     }
 
@@ -197,18 +208,18 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
         updater: (current: TextWithCursors) => TextWithCursors
     ): Promise<string> {
         const result = await super.atomicUpdateText(path, updater);
-        this.enqueueSync(async () => { this.client.syncLocallyUpdatedFile({ relativePath: path }); }
-        );
+        this.enqueueSync(async () => {
+            this.client.syncLocallyUpdatedFile({ relativePath: path });
+        });
         return result;
-
     }
-
 
     public override async delete(path: RelativePath): Promise<void> {
         await super.delete(path);
         if (this.isSyncEnabled) {
-            this.enqueueSync(async () => { this.client.syncLocallyDeletedFile(path); }
-            );
+            this.enqueueSync(async () => {
+                this.client.syncLocallyDeletedFile(path);
+            });
         }
     }
 
@@ -222,8 +233,7 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
                 oldPath,
                 relativePath: newPath
             });
-        }
-        );
+        });
     }
 
     private async waitForWebSocket(): Promise<void> {
@@ -243,7 +253,7 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
      */
     private async drainPendingSyncOperations(): Promise<void> {
         while (this.pendingSyncOperations.size > 0) {
-            await Promise.all(this.pendingSyncOperations);
+            await utils.awaitAll([...this.pendingSyncOperations]);
         }
     }
 

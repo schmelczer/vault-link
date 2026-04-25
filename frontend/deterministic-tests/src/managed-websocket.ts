@@ -2,15 +2,128 @@
  * A WebSocket wrapper that can pause and resume message delivery.
  * When paused, incoming messages are buffered. When resumed, buffered
  * messages are delivered in order via the onmessage handler.
+ *
+ * Member layout follows typescript-eslint default member-ordering: all
+ * accessor properties are declared with `declare` and wired through the
+ * constructor using Object.defineProperty so we don't need conflicting
+ * get/set accessor pairs.
  */
 export class ManagedWebSocket implements WebSocket {
+    public static readonly CONNECTING = WebSocket.CONNECTING;
+    public static readonly OPEN = WebSocket.OPEN;
+    public static readonly CLOSING = WebSocket.CLOSING;
+    public static readonly CLOSED = WebSocket.CLOSED;
+
+    public readonly CONNECTING = WebSocket.CONNECTING;
+    public readonly OPEN = WebSocket.OPEN;
+    public readonly CLOSING = WebSocket.CLOSING;
+    public readonly CLOSED = WebSocket.CLOSED;
+
+    declare public readonly readyState: number;
+    declare public readonly url: string;
+    declare public readonly protocol: string;
+    declare public readonly extensions: string;
+    declare public readonly bufferedAmount: number;
+    declare public binaryType: BinaryType;
+    declare public onopen: ((this: WebSocket, ev: Event) => unknown) | null;
+    declare public onclose:
+        | ((this: WebSocket, ev: CloseEvent) => unknown)
+        | null;
+    declare public onerror: ((this: WebSocket, ev: Event) => unknown) | null;
+    declare public onmessage:
+        | ((this: WebSocket, ev: MessageEvent) => unknown)
+        | null;
+
     private readonly ws: WebSocket;
-    private paused = false;
     private readonly bufferedMessages: MessageEvent[] = [];
+    private paused = false;
     private externalOnMessage: ((event: MessageEvent) => unknown) | null = null;
 
     public constructor(url: string | URL, protocols?: string | string[]) {
         this.ws = new WebSocket(url, protocols);
+
+        const { ws } = this;
+        Object.defineProperties(this, {
+            readyState: {
+                get: (): number => ws.readyState,
+                enumerable: true,
+                configurable: true
+            },
+            url: {
+                get: (): string => ws.url,
+                enumerable: true,
+                configurable: true
+            },
+            protocol: {
+                get: (): string => ws.protocol,
+                enumerable: true,
+                configurable: true
+            },
+            extensions: {
+                get: (): string => ws.extensions,
+                enumerable: true,
+                configurable: true
+            },
+            bufferedAmount: {
+                get: (): number => ws.bufferedAmount,
+                enumerable: true,
+                configurable: true
+            },
+            binaryType: {
+                get: (): BinaryType => ws.binaryType,
+                set: (v: BinaryType): void => {
+                    ws.binaryType = v;
+                },
+                enumerable: true,
+                configurable: true
+            },
+            onopen: {
+                get: (): ((this: WebSocket, ev: Event) => unknown) | null =>
+                    ws.onopen,
+                set: (
+                    h: ((this: WebSocket, ev: Event) => unknown) | null
+                ): void => {
+                    ws.onopen = h;
+                },
+                enumerable: true,
+                configurable: true
+            },
+            onclose: {
+                get: ():
+                    | ((this: WebSocket, ev: CloseEvent) => unknown)
+                    | null => ws.onclose,
+                set: (
+                    h: ((this: WebSocket, ev: CloseEvent) => unknown) | null
+                ): void => {
+                    ws.onclose = h;
+                },
+                enumerable: true,
+                configurable: true
+            },
+            onerror: {
+                get: (): ((this: WebSocket, ev: Event) => unknown) | null =>
+                    ws.onerror,
+                set: (
+                    h: ((this: WebSocket, ev: Event) => unknown) | null
+                ): void => {
+                    ws.onerror = h;
+                },
+                enumerable: true,
+                configurable: true
+            },
+            onmessage: {
+                get: ():
+                    | ((this: WebSocket, ev: MessageEvent) => unknown)
+                    | null => this.externalOnMessage,
+                set: (
+                    h: ((this: WebSocket, ev: MessageEvent) => unknown) | null
+                ): void => {
+                    this.externalOnMessage = h;
+                },
+                enumerable: true,
+                configurable: true
+            }
+        });
 
         this.ws.onmessage = (event: MessageEvent): void => {
             if (this.paused) {
@@ -31,68 +144,6 @@ export class ManagedWebSocket implements WebSocket {
         for (const msg of messages) {
             this.externalOnMessage?.(msg);
         }
-    }
-
-    get readyState(): number {
-        return this.ws.readyState;
-    }
-
-    get url(): string {
-        return this.ws.url;
-    }
-
-    get protocol(): string {
-        return this.ws.protocol;
-    }
-
-    get extensions(): string {
-        return this.ws.extensions;
-    }
-
-    get bufferedAmount(): number {
-        return this.ws.bufferedAmount;
-    }
-
-    get binaryType(): BinaryType {
-        return this.ws.binaryType;
-    }
-
-    set binaryType(value: BinaryType) {
-        this.ws.binaryType = value;
-    }
-
-    get onopen(): ((this: WebSocket, ev: Event) => unknown) | null {
-        return this.ws.onopen;
-    }
-
-    set onopen(handler: ((this: WebSocket, ev: Event) => unknown) | null) {
-        this.ws.onopen = handler;
-    }
-
-    get onclose(): ((this: WebSocket, ev: CloseEvent) => unknown) | null {
-        return this.ws.onclose;
-    }
-
-    set onclose(handler: ((this: WebSocket, ev: CloseEvent) => unknown) | null) {
-        this.ws.onclose = handler;
-    }
-
-    get onerror(): ((this: WebSocket, ev: Event) => unknown) | null {
-        return this.ws.onerror;
-    }
-
-    set onerror(handler: ((this: WebSocket, ev: Event) => unknown) | null) {
-        this.ws.onerror = handler;
-    }
-
-    get onmessage(): ((this: WebSocket, ev: MessageEvent) => unknown) | null {
-        return this.externalOnMessage;
-    }
-
-    set onmessage(
-        handler: ((this: WebSocket, ev: MessageEvent) => unknown) | null
-    ) {
-        this.externalOnMessage = handler;
     }
 
     public send(data: string | ArrayBufferLike | Blob | ArrayBufferView): void {
@@ -118,16 +169,6 @@ export class ManagedWebSocket implements WebSocket {
     public dispatchEvent(event: Event): boolean {
         return this.ws.dispatchEvent(event);
     }
-
-    static readonly CONNECTING = WebSocket.CONNECTING;
-    static readonly OPEN = WebSocket.OPEN;
-    static readonly CLOSING = WebSocket.CLOSING;
-    static readonly CLOSED = WebSocket.CLOSED;
-
-    readonly CONNECTING = WebSocket.CONNECTING;
-    readonly OPEN = WebSocket.OPEN;
-    readonly CLOSING = WebSocket.CLOSING;
-    readonly CLOSED = WebSocket.CLOSED;
 }
 
 /**
@@ -138,22 +179,19 @@ export class ManagedWebSocketFactory {
     private readonly instances: ManagedWebSocket[] = [];
 
     public get constructorFn(): typeof globalThis.WebSocket {
-        const factory = this;
-        const ctor = function ManagedWS(
-            url: string | URL,
-            protocols?: string | string[]
-        ): ManagedWebSocket {
-            const ws = new ManagedWebSocket(url, protocols);
-            factory.instances.push(ws);
-            return ws;
-        } as unknown as typeof globalThis.WebSocket;
-
-        Object.defineProperty(ctor, "CONNECTING", { value: WebSocket.CONNECTING });
-        Object.defineProperty(ctor, "OPEN", { value: WebSocket.OPEN });
-        Object.defineProperty(ctor, "CLOSING", { value: WebSocket.CLOSING });
-        Object.defineProperty(ctor, "CLOSED", { value: WebSocket.CLOSED });
-
-        return ctor;
+        const trackInstance = (instance: ManagedWebSocket): void => {
+            this.instances.push(instance);
+        };
+        class TrackedManagedWebSocket extends ManagedWebSocket {
+            public constructor(
+                url: string | URL,
+                protocols?: string | string[]
+            ) {
+                super(url, protocols);
+                trackInstance(this);
+            }
+        }
+        return TrackedManagedWebSocket;
     }
 
     public pause(): void {

@@ -19,7 +19,11 @@ export class FetchController {
         private _canFetch: boolean,
         private readonly logger: Logger
     ) {
-        ({ promise: this.until, resolve: this.resolveUntil, reject: this.rejectUntil } = Promise.withResolvers<symbol>());
+        ({
+            promise: this.until,
+            resolve: this.resolveUntil,
+            reject: this.rejectUntil
+        } = Promise.withResolvers<symbol>());
     }
 
     /**
@@ -40,7 +44,11 @@ export class FetchController {
 
         if (!this.isResetting) {
             const previousResolve = this.resolveUntil;
-            ({ promise: this.until, resolve: this.resolveUntil, reject: this.rejectUntil } = Promise.withResolvers<symbol>());
+            ({
+                promise: this.until,
+                resolve: this.resolveUntil,
+                reject: this.rejectUntil
+            } = Promise.withResolvers<symbol>());
             previousResolve(FetchController.UNTIL_RESOLUTION);
         }
     }
@@ -78,7 +86,11 @@ export class FetchController {
         }
 
         this.isResetting = false;
-        ({ promise: this.until, resolve: this.resolveUntil, reject: this.rejectUntil } = Promise.withResolvers<symbol>());
+        ({
+            promise: this.until,
+            resolve: this.resolveUntil,
+            reject: this.rejectUntil
+        } = Promise.withResolvers<symbol>());
     }
 
     /**

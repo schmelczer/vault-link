@@ -58,8 +58,10 @@ export class WebSocketManager {
     }
 
     public async stop(): Promise<void> {
-        const { promise, resolve } = Promise.withResolvers<void>();
-        this.resolveDisconnectingPromise = resolve;
+        const { promise, resolve } = Promise.withResolvers<undefined>();
+        this.resolveDisconnectingPromise = (): void => {
+            resolve(undefined);
+        };
 
         this.isStopped = true;
 

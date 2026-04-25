@@ -46,7 +46,6 @@ export class SyncClient {
         private readonly cursorTracker: CursorTracker,
         private readonly fileChangeNotifier: FileChangeNotifier,
         private readonly contentCache: FixedSizeDocumentCache,
-        private readonly fileOperations: FileOperations,
         private readonly serverConfig: ServerConfig,
         private readonly syncService: SyncService,
         private readonly persistence: PersistenceProvider<
@@ -98,6 +97,13 @@ export class SyncClient {
     > {
         this.checkIfDestroyed("onRemoteCursorsUpdated getter");
         return this.cursorTracker.onRemoteCursorsUpdated;
+    }
+
+    public get hasPendingWork(): boolean {
+        return (
+            this.syncEventQueue.pendingUpdateCount > 0 ||
+            this.webSocketManager.hasOutstandingWork
+        );
     }
 
     public static async create({
@@ -219,7 +225,6 @@ export class SyncClient {
             cursorTracker,
             fileChangeNotifier,
             contentCache,
-            fileOperations,
             serverConfig,
             syncService,
             persistence
@@ -323,7 +328,7 @@ export class SyncClient {
         await this.pause();
 
         this.logger.info("Resetting SyncClient's local state");
-        this.syncEventQueue.clearAllState();
+        await this.syncEventQueue.clearAllState();
         await this.syncEventQueue.save();
         this.resetInMemoryState();
         this.hasFinishedOfflineSync = false;
@@ -353,18 +358,14 @@ export class SyncClient {
         await this.settings.setSettings(value);
     }
 
-    public syncLocallyCreatedFile(
-        relativePath: RelativePath
-    ): void {
+    public syncLocallyCreatedFile(relativePath: RelativePath): void {
         this.checkIfDestroyed("syncLocallyCreatedFile");
 
         this.fileChangeNotifier.notifyOfFileChange(relativePath);
         this.syncer.syncLocallyCreatedFile(relativePath);
     }
 
-    public syncLocallyDeletedFile(
-        relativePath: RelativePath
-    ): void {
+    public syncLocallyDeletedFile(relativePath: RelativePath): void {
         this.checkIfDestroyed("syncLocallyDeletedFile");
 
         this.fileChangeNotifier.notifyOfFileChange(relativePath);
@@ -385,13 +386,6 @@ export class SyncClient {
             oldPath,
             relativePath
         });
-    }
-
-    public get hasPendingWork(): boolean {
-        return (
-            this.syncEventQueue.pendingUpdateCount > 0 ||
-            this.webSocketManager.hasOutstandingWork
-        );
     }
 
     public getDocumentSyncingStatus(

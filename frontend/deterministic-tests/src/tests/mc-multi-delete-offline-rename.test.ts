@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const mcMultiDeleteOfflineRenameTest: TestDefinition = {
@@ -22,7 +23,12 @@ export const mcMultiDeleteOfflineRenameTest: TestDefinition = {
         { type: "delete", client: 1, path: "file-4.md" },
         { type: "sync", client: 1 },
 
-        { type: "rename", client: 0, oldPath: "file-2.md", newPath: "renamed.md" },
+        {
+            type: "rename",
+            client: 0,
+            oldPath: "file-2.md",
+            newPath: "renamed.md"
+        },
 
         { type: "enable-sync", client: 0 },
         { type: "sync" },
@@ -30,13 +36,15 @@ export const mcMultiDeleteOfflineRenameTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (s) => {
+            verify: (s: AssertableState): void => {
                 s.assertFileExists("file-1.md")
                     .assertFileExists("file-3.md")
                     .assertFileExists("file-5.md")
                     .assertFileNotExists("file-2.md")
                     .assertFileNotExists("file-4.md");
-                s.ifFileExists("renamed.md", (s) => s.assertContent("renamed.md", "content-2"));
+                s.ifFileExists("renamed.md", (inner) =>
+                    inner.assertContent("renamed.md", "content-2")
+                );
             }
         }
     ]

@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 import { choose } from "../utils/choose";
 import { v4 as uuidv4 } from "uuid";
 import { assert } from "../utils/assert";
@@ -109,7 +110,6 @@ export class MockAgent extends MockClient {
         );
     }
 
-
     public async act(): Promise<void> {
         const options: (() => Promise<unknown>)[] = [
             this.createFileAction.bind(this),
@@ -125,7 +125,6 @@ export class MockAgent extends MockClient {
             options.push(this.enableSyncAction.bind(this));
         }
 
-
         options.push(
             this.renameFileAction.bind(this),
             this.updateFileAction.bind(this),
@@ -135,7 +134,6 @@ export class MockAgent extends MockClient {
         if (this.doDeletes) {
             options.push(this.deleteFileAction.bind(this));
         }
-
 
         if (Math.random() < 0.015 && this.doResets) {
             // we can't just queue this up as once it's destroyed, no more method calls can go to SyncClient
@@ -164,7 +162,7 @@ export class MockAgent extends MockClient {
                         // pending operations.
                         if (
                             error instanceof Error &&
-                            error.message?.includes("SyncClient destroyed")
+                            error.message.includes("SyncClient destroyed")
                         ) {
                             this.client.logger.info(
                                 `Action interrupted by destroy: ${error}`
@@ -262,16 +260,17 @@ export class MockAgent extends MockClient {
                 "Local files: " + Array.from(this.files.keys()).join(", ")
             );
             otherAgent.client.logger.info(
-                "Other agent's data: " + JSON.stringify(otherAgent.data, null, 2)
+                "Other agent's data: " +
+                    JSON.stringify(otherAgent.data, null, 2)
             );
             otherAgent.client.logger.info(
-                "Other agent's files: " + Array.from(otherAgent.files.keys()).join(", ")
+                "Other agent's files: " +
+                    Array.from(otherAgent.files.keys()).join(", ")
             );
 
             throw e;
         }
     }
-
 
     public assertAllContentIsPresentOnce(): void {
         if (this.useSlowFileEvents) {
@@ -349,7 +348,6 @@ export class MockAgent extends MockClient {
         }
     }
 
-
     private async resetClient(): Promise<void> {
         this.client.logger.info(`Resetting client ${this.name}`);
         await this.client.destroy();
@@ -372,8 +370,7 @@ export class MockAgent extends MockClient {
             `Decided to create file ${file} with content ${content}`
         );
 
-
-        return this.write(file, new TextEncoder().encode(` ${content} `),);
+        return this.write(file, new TextEncoder().encode(` ${content} `));
     }
 
     // Binary file creation — exercises the putBinary server path (not in mergeable_file_extensions)
@@ -393,7 +390,7 @@ export class MockAgent extends MockClient {
             `Decided to create binary file ${file}: ${uuid}`
         );
 
-        return this.write(file, bytes,);
+        return this.write(file, bytes);
     }
 
     private async disableSyncAction(): Promise<void> {
@@ -433,9 +430,8 @@ export class MockAgent extends MockClient {
         // assertion to fail when the sync engine replaces binary content
         // at a mergeable path).
         const ext = file.substring(file.lastIndexOf("."));
-        const newName = ext === ".bin"
-            ? this.getBinaryFileName()
-            : this.getFileName();
+        const newName =
+            ext === ".bin" ? this.getBinaryFileName() : this.getFileName();
 
         if (
             (!this.lastSyncEnabledState &&
@@ -479,14 +475,10 @@ export class MockAgent extends MockClient {
             `Decided to update file ${file} with ${content}`
         );
         this.doNotTouchWhileOffline.push(file);
-        await this.atomicUpdateText(
-            file,
-            (old) => ({
-                text: old.text + ` ${content} `,
-                cursors: []
-            })
-        );
-
+        await this.atomicUpdateText(file, (old) => ({
+            text: old.text + ` ${content} `,
+            cursors: []
+        }));
     }
 
     private async updateBinaryFileAction(): Promise<void> {
@@ -506,12 +498,10 @@ export class MockAgent extends MockClient {
             return;
         }
 
-        const { uuid, bytes } = this.getBinaryContent();
+        const { uuid: _uuid, bytes } = this.getBinaryContent();
         // Remove the old UUID since binary updates are last-write-wins
         this.removeBinaryUuid(file);
-        this.client.logger.info(
-            `Decided to update binary file ${file}`
-        );
+        this.client.logger.info(`Decided to update binary file ${file}`);
         this.doNotTouchWhileOffline.push(file);
         await this.write(file, bytes);
     }
@@ -531,7 +521,6 @@ export class MockAgent extends MockClient {
             `Deleting file: ${file} with:\n  content '${new TextDecoder().decode(this.files.get(file))}'`
         );
         await this.delete(file);
-
     }
 
     private getContent(): string {
@@ -546,8 +535,7 @@ export class MockAgent extends MockClient {
         const content = new TextDecoder().decode(existing);
         if (!content.startsWith("BINARY:")) return;
         const uuid = content.slice("BINARY:".length);
-        const idx = this.writtenBinaryContents.indexOf(uuid);
-        if (idx !== -1) this.writtenBinaryContents.splice(idx, 1);
+        utils.removeFromArray(this.writtenBinaryContents, uuid);
     }
 
     private getBinaryContent(): { uuid: string; bytes: Uint8Array } {

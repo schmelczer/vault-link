@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const moveRemoteUpdateRevertsRenameTest: TestDefinition = {
@@ -13,7 +14,12 @@ export const moveRemoteUpdateRevertsRenameTest: TestDefinition = {
         { type: "barrier" },
 
         { type: "disable-sync", client: 0 },
-        { type: "update", client: 1, path: "doc.md", content: "updated by client 1" },
+        {
+            type: "update",
+            client: 1,
+            path: "doc.md",
+            content: "updated by client 1"
+        },
         { type: "sync", client: 1 },
 
         { type: "enable-sync", client: 0 },
@@ -23,11 +29,13 @@ export const moveRemoteUpdateRevertsRenameTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (s) => {
+            verify: (s: AssertableState): void => {
                 s.assertFileCount(1);
-                const content = Array.from(s.files.values())[0];
+                const [content] = Array.from(s.files.values());
                 if (content !== "updated by client 1") {
-                    throw new Error(`Expected "updated by client 1", got: "${content}"`);
+                    throw new Error(
+                        `Expected "updated by client 1", got: "${content}"`
+                    );
                 }
             }
         }

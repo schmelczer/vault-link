@@ -3,4 +3,8 @@
 /**
  * Summary of a single vault returned by the list-vaults endpoint.
  */
-export interface VaultInfo { name: string, documentCount: number, createdAt: string | null, }
+export interface VaultInfo {
+    name: string;
+    documentCount: number;
+    createdAt: string | null;
+}

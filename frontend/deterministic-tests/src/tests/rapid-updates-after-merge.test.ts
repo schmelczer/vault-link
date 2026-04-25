@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const rapidUpdatesAfterMergeTest: TestDefinition = {
@@ -42,7 +43,9 @@ export const rapidUpdatesAfterMergeTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (s) => s.assertFileCount(1).assertContains("doc.md", "update 3"),
+            verify: (s: AssertableState): void => {
+                s.assertFileCount(1).assertContains("doc.md", "update 3");
+            }
         }
     ]
 };

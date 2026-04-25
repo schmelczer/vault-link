@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const onlineBothCreateSamePathDeconflictTest: TestDefinition = {
@@ -23,7 +24,7 @@ export const onlineBothCreateSamePathDeconflictTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (state) => {
+            verify: (state: AssertableState): void => {
                 state
                     .assertFileCount(1)
                     .assertContains("A.md", "updated-by-0", "from-client-1 ");

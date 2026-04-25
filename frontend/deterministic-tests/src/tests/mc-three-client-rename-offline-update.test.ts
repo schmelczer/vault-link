@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const mcThreeClientRenameOfflineUpdateTest: TestDefinition = {
@@ -19,12 +20,24 @@ export const mcThreeClientRenameOfflineUpdateTest: TestDefinition = {
         { type: "sync", client: 1 },
         { type: "sync", client: 0 },
 
-        { type: "update", client: 2, path: "A.md", content: "updated-by-client-2" },
+        {
+            type: "update",
+            client: 2,
+            path: "A.md",
+            content: "updated-by-client-2"
+        },
 
         { type: "enable-sync", client: 2 },
         { type: "sync" },
         { type: "barrier" },
 
-        { type: "assert-consistent", verify: (s) => s.assertFileCount(1).assertFileNotExists("A.md").assertContains("B.md", "updated-by-client-2") }
+        {
+            type: "assert-consistent",
+            verify: (s: AssertableState): void => {
+                s.assertFileCount(1)
+                    .assertFileNotExists("A.md")
+                    .assertContains("B.md", "updated-by-client-2");
+            }
+        }
     ]
 };

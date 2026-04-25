@@ -42,9 +42,7 @@ export class ServerControl {
         this._port = reservation.port;
         // Prefer tmpfs (/host/tmp) over disk-backed /tmp for faster SQLite I/O
         const tmpBase = fs.existsSync("/host/tmp") ? "/host/tmp" : os.tmpdir();
-        this.tempDir = fs.mkdtempSync(
-            path.join(tmpBase, "vault-link-test-")
-        );
+        this.tempDir = fs.mkdtempSync(path.join(tmpBase, "vault-link-test-"));
         const tempConfigPath = path.join(this.tempDir, "config.yml");
         const dbDir = path.join(this.tempDir, "databases");
 
@@ -225,7 +223,7 @@ export class ServerControl {
     }
 
     private cleanupTempDir(): void {
-        if (this.tempDir) {
+        if (this.tempDir !== undefined) {
             try {
                 fs.rmSync(this.tempDir, { recursive: true, force: true });
             } catch {
@@ -234,5 +232,4 @@ export class ServerControl {
             this.tempDir = undefined;
         }
     }
-
 }

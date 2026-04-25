@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const rapidCreateUpdateDeleteCycleTest: TestDefinition = {
@@ -41,7 +42,12 @@ export const rapidCreateUpdateDeleteCycleTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (s) => s.assertFileCount(1).assertContent("cycle.md", "final creation"),
+            verify: (s: AssertableState): void => {
+                s.assertFileCount(1).assertContent(
+                    "cycle.md",
+                    "final creation"
+                );
+            }
         }
     ]
 };

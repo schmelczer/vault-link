@@ -50,9 +50,7 @@ function createLogHandler(minLevel: LogLevel): (logLine: LogLine) => void {
 const HEALTH_CHECK_INTERVAL_MS = 30 * 1000;
 const PROGRESS_LOG_INTERVAL_MS = 2000;
 
-function resolveLineEndings(
-    mode: "auto" | "lf" | "crlf"
-): string {
+function resolveLineEndings(mode: "auto" | "lf" | "crlf"): string {
     switch (mode) {
         case "lf":
             return "\n";
@@ -94,9 +92,7 @@ async function main(): Promise<void> {
         logger.info(`Remote URI: ${args.remoteUri}`);
         logger.info(`Vault name: ${args.vaultName}`);
         if (args.lineEndings !== "auto") {
-            logger.info(
-                `Line endings: ${args.lineEndings.toUpperCase()}`
-            );
+            logger.info(`Line endings: ${args.lineEndings.toUpperCase()}`);
         }
     }
 
@@ -138,9 +134,7 @@ async function main(): Promise<void> {
                     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
                     database = JSON.parse(content) as Partial<StoredDatabase>;
                 } catch {
-                    logger.warn(
-                        `Cannot read data file at ${dataFile}`
-                    );
+                    logger.warn(`Cannot read data file at ${dataFile}`);
                 }
 
                 return {
@@ -225,9 +219,7 @@ async function main(): Promise<void> {
         }
         isShuttingDown = true;
 
-        client.logger.info(
-            `${signal} received, shutting down gracefully`
-        );
+        client.logger.info(`${signal} received, shutting down gracefully`);
 
         fileWatcher.stop();
         await client.waitUntilFinished();

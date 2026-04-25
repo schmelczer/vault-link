@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const renameRoundtripTest: TestDefinition = {
@@ -12,7 +13,9 @@ export const renameRoundtripTest: TestDefinition = {
         { type: "barrier" },
         {
             type: "assert-consistent",
-            verify: (s) => s.assertContent("A.md", "original"),
+            verify: (s: AssertableState): void => {
+                s.assertContent("A.md", "original");
+            }
         },
 
         { type: "rename", client: 0, oldPath: "A.md", newPath: "B.md" },
@@ -21,8 +24,9 @@ export const renameRoundtripTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (s) =>
-                s.assertFileNotExists("A.md").assertContent("B.md", "original"),
+            verify: (s: AssertableState): void => {
+                s.assertFileNotExists("A.md").assertContent("B.md", "original");
+            }
         },
 
         { type: "rename", client: 0, oldPath: "B.md", newPath: "A.md" },
@@ -31,8 +35,9 @@ export const renameRoundtripTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (s) =>
-                s.assertFileNotExists("B.md").assertContent("A.md", "original"),
+            verify: (s: AssertableState): void => {
+                s.assertFileNotExists("B.md").assertContent("A.md", "original");
+            }
         }
     ]
 };

@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const serverPauseUpdateAndCreateTest: TestDefinition = {
@@ -17,7 +18,9 @@ export const serverPauseUpdateAndCreateTest: TestDefinition = {
         { type: "barrier" },
         {
             type: "assert-consistent",
-            verify: (s) => s.assertContent("shared.md", "initial content"),
+            verify: (s: AssertableState): void => {
+                s.assertContent("shared.md", "initial content");
+            }
         },
 
         { type: "pause-server" },
@@ -42,10 +45,12 @@ export const serverPauseUpdateAndCreateTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (s) =>
-                s
-                    .assertContent("shared.md", "updated during pause")
-                    .assertContent("new-file.md", "created by client 1"),
+            verify: (s: AssertableState): void => {
+                s.assertContent(
+                    "shared.md",
+                    "updated during pause"
+                ).assertContent("new-file.md", "created by client 1");
+            }
         }
     ]
 };

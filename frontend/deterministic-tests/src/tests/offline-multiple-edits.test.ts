@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const offlineMultipleEditsTest: TestDefinition = {
@@ -14,7 +15,9 @@ export const offlineMultipleEditsTest: TestDefinition = {
         { type: "barrier" },
         {
             type: "assert-consistent",
-            verify: (s) => s.assertContent("doc.md", "original")
+            verify: (s: AssertableState): void => {
+                s.assertContent("doc.md", "original");
+            }
         },
 
         { type: "disable-sync", client: 0 },
@@ -31,8 +34,9 @@ export const offlineMultipleEditsTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (s) =>
-                s.assertFileCount(1).assertContent("doc.md", "edit-5-final")
+            verify: (s: AssertableState): void => {
+                s.assertFileCount(1).assertContent("doc.md", "edit-5-final");
+            }
         }
     ]
 };

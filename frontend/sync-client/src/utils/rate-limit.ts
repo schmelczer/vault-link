@@ -44,14 +44,16 @@ export function rateLimit<
             newArgs = undefined;
         }
 
-        const { promise, resolve } = Promise.withResolvers<void>();
+        const { promise, resolve } = Promise.withResolvers<undefined>();
         running = promise;
         sleep(
             typeof minIntervalMs === "function"
                 ? minIntervalMs()
                 : minIntervalMs
         )
-            .then(resolve)
+            .then(() => {
+                resolve(undefined);
+            })
             .catch(() => {
                 // sleep cannot fail
             });

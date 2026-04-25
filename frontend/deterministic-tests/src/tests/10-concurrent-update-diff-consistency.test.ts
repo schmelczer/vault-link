@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const concurrentUpdateDiffConsistencyTest: TestDefinition = {
@@ -35,6 +36,16 @@ export const concurrentUpdateDiffConsistencyTest: TestDefinition = {
         { type: "enable-sync", client: 1 },
         { type: "barrier" },
 
-        { type: "assert-consistent", verify: (state) => state.assertFileCount(1).assertContent("doc.md", "header by 0\nmiddle\nfooter by 1") }
+        {
+            type: "assert-consistent",
+            verify: (state: AssertableState): void => {
+                state
+                    .assertFileCount(1)
+                    .assertContent(
+                        "doc.md",
+                        "header by 0\nmiddle\nfooter by 1"
+                    );
+            }
+        }
     ]
 };

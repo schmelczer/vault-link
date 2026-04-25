@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const onlineCreateRenameConcurrentCreateOrphanTest: TestDefinition = {
@@ -12,8 +13,18 @@ export const onlineCreateRenameConcurrentCreateOrphanTest: TestDefinition = {
 
         { type: "disable-sync", client: 0 },
 
-        { type: "create", client: 0, path: "data.bin", content: "BINARY:offline-content" },
-        { type: "rename", client: 0, oldPath: "data.bin", newPath: "moved.bin" },
+        {
+            type: "create",
+            client: 0,
+            path: "data.bin",
+            content: "BINARY:offline-content"
+        },
+        {
+            type: "rename",
+            client: 0,
+            oldPath: "data.bin",
+            newPath: "moved.bin"
+        },
 
         { type: "enable-sync", client: 0 },
         { type: "delete", client: 0, path: "moved.bin" },
@@ -22,7 +33,7 @@ export const onlineCreateRenameConcurrentCreateOrphanTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (state) => {
+            verify: (state: AssertableState): void => {
                 state.assertFileCount(0);
             }
         }

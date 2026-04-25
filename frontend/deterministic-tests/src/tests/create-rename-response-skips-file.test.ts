@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const createRenameResponseSkipsFileTest: TestDefinition = {
@@ -29,6 +30,11 @@ export const createRenameResponseSkipsFileTest: TestDefinition = {
         { type: "sync" },
         { type: "barrier" },
 
-        { type: "assert-consistent", verify: (s) => s.assertFileCount(1).assertAnyFileContains("the-content") }
+        {
+            type: "assert-consistent",
+            verify: (s: AssertableState): void => {
+                s.assertFileCount(1).assertAnyFileContains("the-content");
+            }
+        }
     ]
 };

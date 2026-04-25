@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const serverPauseDeleteRecreateTest: TestDefinition = {
@@ -15,18 +16,23 @@ export const serverPauseDeleteRecreateTest: TestDefinition = {
 
         { type: "pause-server" },
 
-        { type: "create", client: 0, path: "A.md", content: "recreated during contention" },
+        {
+            type: "create",
+            client: 0,
+            path: "A.md",
+            content: "recreated during contention"
+        },
 
         { type: "resume-server" },
         { type: "barrier" },
 
         {
             type: "assert-consistent",
-            verify: (state) => {
+            verify: (state: AssertableState): void => {
                 state
                     .assertFileCount(1)
                     .assertContent("A.md", "recreated during contention");
             }
-        },
-    ],
+        }
+    ]
 };

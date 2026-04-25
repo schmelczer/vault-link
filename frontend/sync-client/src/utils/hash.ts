@@ -1,8 +1,8 @@
 export async function hash(content: Uint8Array): Promise<string> {
-    const digest = await crypto.subtle.digest(
-        "SHA-256",
-        content as Uint8Array<ArrayBuffer>
-    );
+    // Copy into a fresh ArrayBuffer-backed Uint8Array so the buffer type
+    // matches `BufferSource`/`Uint8Array<ArrayBuffer>` expected by digest.
+    const owned = new Uint8Array(content);
+    const digest = await crypto.subtle.digest("SHA-256", owned);
     const bytes = new Uint8Array(digest);
     return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }

@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const renamePendingCreateBeforeResponseTest: TestDefinition = {
@@ -34,8 +35,12 @@ export const renamePendingCreateBeforeResponseTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (s) =>
-                s.assertFileCount(1).assertContent("renamed.md", "original-content"),
+            verify: (s: AssertableState): void => {
+                s.assertFileCount(1).assertContent(
+                    "renamed.md",
+                    "original-content"
+                );
+            }
         }
     ]
 };

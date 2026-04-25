@@ -8,6 +8,7 @@ import type { FileSystemOperations } from "./filesystem-operations";
 import type { TextWithCursors } from "reconcile-text";
 import type { ServerConfig, ServerConfigData } from "../services/server-config";
 import { CONFLICT_PATH_REGEX } from "../sync-operations/conflict-path";
+import { removeFromArray } from "../utils/remove-from-array";
 
 class MockServerConfig implements Pick<ServerConfig, "getConfig"> {
     public async getConfig(): Promise<ServerConfigData> {
@@ -81,9 +82,7 @@ function singleConflictPath(
     expectedNonConflictNames: string[]
 ): string {
     const expected = new Set(expectedNonConflictNames);
-    const conflicts = Array.from(names).filter(
-        (name) => !expected.has(name)
-    );
+    const conflicts = Array.from(names).filter((name) => !expected.has(name));
     assert.equal(
         conflicts.length,
         1,
@@ -139,7 +138,11 @@ describe("File operations", () => {
     it("move with EXISTING displaces the target to a conflict path", async () => {
         const { fs, ops } = makeOps();
 
-        await ops.create("source.md", new Uint8Array(), MoveOnConflict.EXISTING);
+        await ops.create(
+            "source.md",
+            new Uint8Array(),
+            MoveOnConflict.EXISTING
+        );
         await ops.create("dest.md", new Uint8Array(), MoveOnConflict.EXISTING);
 
         await ops.move("source.md", "dest.md", MoveOnConflict.EXISTING);
@@ -156,7 +159,11 @@ describe("File operations", () => {
     it("move with NEW redirects the moved file to a conflict path", async () => {
         const { fs, ops } = makeOps();
 
-        await ops.create("source.md", new Uint8Array(), MoveOnConflict.EXISTING);
+        await ops.create(
+            "source.md",
+            new Uint8Array(),
+            MoveOnConflict.EXISTING
+        );
         await ops.create("dest.md", new Uint8Array(), MoveOnConflict.EXISTING);
 
         await ops.move("source.md", "dest.md", MoveOnConflict.NEW);
@@ -190,7 +197,11 @@ describe("File operations", () => {
     it("handles dotfiles without mangling the extension", async () => {
         const { fs, ops } = makeOps();
 
-        await ops.create(".gitignore", new Uint8Array(), MoveOnConflict.EXISTING);
+        await ops.create(
+            ".gitignore",
+            new Uint8Array(),
+            MoveOnConflict.EXISTING
+        );
         await ops.create("temp", new Uint8Array(), MoveOnConflict.EXISTING);
         await ops.move("temp", ".gitignore", MoveOnConflict.EXISTING);
 
@@ -200,7 +211,11 @@ describe("File operations", () => {
             `conflict should preserve the dotfile name verbatim, got ${conflict}`
         );
 
-        await ops.create(".config.json", new Uint8Array(), MoveOnConflict.EXISTING);
+        await ops.create(
+            ".config.json",
+            new Uint8Array(),
+            MoveOnConflict.EXISTING
+        );
         await ops.create("temp2", new Uint8Array(), MoveOnConflict.EXISTING);
         await ops.move("temp2", ".config.json", MoveOnConflict.EXISTING);
 
@@ -221,7 +236,8 @@ describe("File operations", () => {
         await ops.create("x", new Uint8Array(), MoveOnConflict.EXISTING);
         await ops.create("x", new Uint8Array(), MoveOnConflict.EXISTING);
 
-        const conflicts = Array.from(fs.names).filter((n) => n !== "x");
+        const conflicts = Array.from(fs.names);
+        removeFromArray(conflicts, "x");
         assert.equal(conflicts.length, 2);
         assert.ok(conflicts.every((c) => CONFLICT_PATH_REGEX.test(c)));
         assert.notEqual(

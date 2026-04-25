@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const watermarkAdvancesOnSkipTest: TestDefinition = {
@@ -29,7 +30,9 @@ export const watermarkAdvancesOnSkipTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (s) => s.assertFileCount(1).assertFileExists("doc.md"),
-        },
-    ],
+            verify: (s: AssertableState): void => {
+                s.assertFileCount(1).assertFileExists("doc.md");
+            }
+        }
+    ]
 };

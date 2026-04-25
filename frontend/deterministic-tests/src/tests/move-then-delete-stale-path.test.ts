@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const moveThenDeleteStalePathTest: TestDefinition = {
@@ -23,6 +24,13 @@ export const moveThenDeleteStalePathTest: TestDefinition = {
         { type: "sync" },
         { type: "barrier" },
 
-        { type: "assert-consistent", verify: (s) => s.assertFileCount(0).assertFileNotExists("A.md").assertFileNotExists("B.md") }
+        {
+            type: "assert-consistent",
+            verify: (s: AssertableState): void => {
+                s.assertFileCount(0)
+                    .assertFileNotExists("A.md")
+                    .assertFileNotExists("B.md");
+            }
+        }
     ]
 };

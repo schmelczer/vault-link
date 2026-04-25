@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const idempotencyAfterServerPauseTest: TestDefinition = {
@@ -11,7 +12,12 @@ export const idempotencyAfterServerPauseTest: TestDefinition = {
         { type: "sync" },
         { type: "barrier" },
 
-        { type: "create", client: 0, path: "doc.md", content: "important data" },
+        {
+            type: "create",
+            client: 0,
+            path: "doc.md",
+            content: "important data"
+        },
         { type: "pause-server" },
 
         { type: "resume-server" },
@@ -19,6 +25,11 @@ export const idempotencyAfterServerPauseTest: TestDefinition = {
         { type: "sync" },
         { type: "barrier" },
 
-        { type: "assert-consistent", verify: (s) => s.assertFileCount(1).assertContent("doc.md", "important data") }
+        {
+            type: "assert-consistent",
+            verify: (s: AssertableState): void => {
+                s.assertFileCount(1).assertContent("doc.md", "important data");
+            }
+        }
     ]
 };

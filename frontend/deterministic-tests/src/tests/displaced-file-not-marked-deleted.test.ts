@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const displacedFileNotMarkedDeletedTest: TestDefinition = {
@@ -20,14 +21,19 @@ export const displacedFileNotMarkedDeletedTest: TestDefinition = {
         { type: "sync", client: 0 },
 
         { type: "rename", client: 1, oldPath: "A.md", newPath: "B.md" },
-        { type: "update", client: 1, path: "B.md", content: "edited A content" },
+        {
+            type: "update",
+            client: 1,
+            path: "B.md",
+            content: "edited A content"
+        },
         { type: "enable-sync", client: 1 },
 
         { type: "barrier" },
 
         {
             type: "assert-consistent",
-            verify: (state) => {
+            verify: (state: AssertableState): void => {
                 state
                     .assertFileNotExists("A.md")
                     .assertFileExists("B.md")

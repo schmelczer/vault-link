@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const createDuringReconciliationTest: TestDefinition = {
@@ -37,7 +38,7 @@ export const createDuringReconciliationTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (state) => {
+            verify: (state: AssertableState): void => {
                 state
                     .assertFileCount(3)
                     .assertContent("A.md", "offline A")

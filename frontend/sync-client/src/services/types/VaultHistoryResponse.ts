@@ -4,4 +4,7 @@ import type { DocumentVersionWithoutContent } from "./DocumentVersionWithoutCont
 /**
  * Response to a vault history request (paginated).
  */
-export interface VaultHistoryResponse { versions: DocumentVersionWithoutContent[], hasMore: boolean, }
+export interface VaultHistoryResponse {
+    versions: DocumentVersionWithoutContent[];
+    hasMore: boolean;
+}

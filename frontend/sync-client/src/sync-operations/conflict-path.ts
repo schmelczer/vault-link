@@ -8,15 +8,9 @@
 export const CONFLICT_PATH_REGEX =
     /(?:^|\/)conflict-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-[^/]*$/u;
 
-
 const CONFLICT_PREFIX_LEN = "conflict-".length + 36 + 1;
 const MAX_SEGMENT_BYTES = 255;
 const MAX_ORIGINAL_BYTES = MAX_SEGMENT_BYTES - CONFLICT_PREFIX_LEN - 4;
-
-export function buildConflictFileName(fileName: string): string {
-    const safeName = truncateFileNameToByteLimit(fileName, MAX_ORIGINAL_BYTES);
-    return `conflict-${crypto.randomUUID()}-${safeName}`;
-}
 
 function truncateFileNameToByteLimit(
     fileName: string,
@@ -34,7 +28,9 @@ function truncateFileNameToByteLimit(
     const extensionBytes = encoder.encode(extension).byteLength;
     const stemBudget = Math.max(0, maxBytes - extensionBytes);
 
-    const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+    const segmenter = new Intl.Segmenter(undefined, {
+        granularity: "grapheme"
+    });
     let truncatedStem = "";
     let usedBytes = 0;
     for (const { segment } of segmenter.segment(stem)) {
@@ -44,4 +40,9 @@ function truncateFileNameToByteLimit(
         usedBytes += segmentBytes;
     }
     return truncatedStem + extension;
+}
+
+export function buildConflictFileName(fileName: string): string {
+    const safeName = truncateFileNameToByteLimit(fileName, MAX_ORIGINAL_BYTES);
+    return `conflict-${crypto.randomUUID()}-${safeName}`;
 }

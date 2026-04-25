@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const concurrentDeleteDuringRemoteUpdateTest: TestDefinition = {
@@ -21,7 +22,11 @@ export const concurrentDeleteDuringRemoteUpdateTest: TestDefinition = {
         { type: "enable-sync", client: 1 },
         { type: "barrier" },
 
-        { type: "assert-consistent", verify: (state) => state.assertFileCount(0) }
+        {
+            type: "assert-consistent",
+            verify: (state: AssertableState): void => {
+                state.assertFileCount(0);
+            }
+        }
     ]
 };
-

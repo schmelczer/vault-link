@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const renameChainThenDeleteTest: TestDefinition = {
@@ -13,7 +14,9 @@ export const renameChainThenDeleteTest: TestDefinition = {
         { type: "barrier" },
         {
             type: "assert-consistent",
-            verify: (s) => s.assertContent("X.md", "chain-content"),
+            verify: (s: AssertableState): void => {
+                s.assertContent("X.md", "chain-content");
+            }
         },
 
         { type: "disable-sync", client: 1 },
@@ -39,6 +42,11 @@ export const renameChainThenDeleteTest: TestDefinition = {
         { type: "sync" },
         { type: "barrier" },
 
-        { type: "assert-consistent", verify: (s) => s.assertFileCount(0) }
+        {
+            type: "assert-consistent",
+            verify: (s: AssertableState): void => {
+                s.assertFileCount(0);
+            }
+        }
     ]
 };

@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const offlineMixedOperationsTest: TestDefinition = {
@@ -17,11 +18,11 @@ export const offlineMixedOperationsTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (s) =>
-                s
-                    .assertContent("file1.md", "content-1")
+            verify: (s: AssertableState): void => {
+                s.assertContent("file1.md", "content-1")
                     .assertContent("file2.md", "content-2")
-                    .assertContent("file3.md", "content-3")
+                    .assertContent("file3.md", "content-3");
+            }
         },
 
         { type: "disable-sync", client: 0 },
@@ -46,13 +47,13 @@ export const offlineMixedOperationsTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (s) =>
-                s
-                    .assertFileNotExists("file1.md")
+            verify: (s: AssertableState): void => {
+                s.assertFileNotExists("file1.md")
                     .assertFileNotExists("file2.md")
                     .assertContent("moved.md", "content-2")
                     .assertContent("file3.md", "updated-content-3")
-                    .assertFileCount(2)
+                    .assertFileCount(2);
+            }
         }
     ]
 };

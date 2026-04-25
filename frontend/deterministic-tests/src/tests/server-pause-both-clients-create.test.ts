@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const serverPauseBothClientsCreateTest: TestDefinition = {
@@ -32,10 +33,12 @@ export const serverPauseBothClientsCreateTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (s) =>
-                s
-                    .assertContains("alpha.md", "from client 0")
-                    .assertContains("beta.md", "from client 1"),
+            verify: (s: AssertableState): void => {
+                s.assertContains("alpha.md", "from client 0").assertContains(
+                    "beta.md",
+                    "from client 1"
+                );
+            }
         }
     ]
 };

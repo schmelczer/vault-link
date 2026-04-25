@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const threeClientRenameCreateDeleteTest: TestDefinition = {
@@ -44,10 +45,11 @@ export const threeClientRenameCreateDeleteTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (s) =>
-                s
-                    .assertFileNotExists("X.md")
-                    .assertAnyFileContains("new from C"),
+            verify: (s: AssertableState): void => {
+                s.assertFileNotExists("X.md").assertAnyFileContains(
+                    "new from C"
+                );
+            }
         }
     ]
 };

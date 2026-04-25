@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const simultaneousCreateDeleteSamePathTest: TestDefinition = {
@@ -18,7 +19,12 @@ export const simultaneousCreateDeleteSamePathTest: TestDefinition = {
         { type: "delete", client: 0, path: "A.md" },
         { type: "sync", client: 0 },
 
-        { type: "update", client: 1, path: "A.md", content: "modified by 1 while offline" },
+        {
+            type: "update",
+            client: 1,
+            path: "A.md",
+            content: "modified by 1 while offline"
+        },
 
         { type: "enable-sync", client: 1 },
         { type: "sync", client: 1 },
@@ -26,14 +32,16 @@ export const simultaneousCreateDeleteSamePathTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (s) => {
-                s.ifFileExists("A.md", (s) =>
-                    s.assertFileCount(1).assertContent("A.md", "modified by 1 while offline")
+            verify: (s: AssertableState): void => {
+                s.ifFileExists("A.md", (inner) =>
+                    inner
+                        .assertFileCount(1)
+                        .assertContent("A.md", "modified by 1 while offline")
                 );
                 if (!s.files.has("A.md")) {
                     s.assertFileCount(0);
                 }
-            },
+            }
         }
     ]
 };

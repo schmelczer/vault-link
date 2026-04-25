@@ -16,12 +16,12 @@ export function logToConsole(
 ): void {
     logger.onLogEmitted.add((logLine: LogLine) => {
         const timestamp = logLine.timestamp.toISOString();
-        const {message} = logLine;
+        const { message } = logLine;
 
         let color = "";
         let reset = "";
         if (useColors) {
-            reset = COLORS.reset;
+            ({ reset } = COLORS);
             switch (logLine.level) {
                 case LogLevel.ERROR:
                     color = COLORS.red;

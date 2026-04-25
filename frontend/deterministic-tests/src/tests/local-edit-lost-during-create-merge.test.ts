@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const localEditLostDuringCreateMergeTest: TestDefinition = {
@@ -28,12 +29,13 @@ export const localEditLostDuringCreateMergeTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (s) =>
+            verify: (s: AssertableState): void => {
                 s.assertFileCount(1).assertContains(
                     "doc.md",
                     "from-client-1",
                     "local-edit-during-create"
-                ),
+                );
+            }
         }
     ]
 };

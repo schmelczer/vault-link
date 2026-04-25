@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const onlineEditVsDeleteConvergenceTest: TestDefinition = {
@@ -11,17 +12,22 @@ export const onlineEditVsDeleteConvergenceTest: TestDefinition = {
         { type: "enable-sync", client: 1 },
         { type: "barrier" },
 
-        { type: "update", client: 0, path: "A.md", content: "edited by client 0" },
+        {
+            type: "update",
+            client: 0,
+            path: "A.md",
+            content: "edited by client 0"
+        },
         { type: "delete", client: 1, path: "A.md" },
 
         { type: "barrier" },
         {
             type: "assert-consistent",
-            verify: (state) => {
+            verify: (state: AssertableState): void => {
                 state.ifFileExists("A.md", (s) =>
                     s.assertContainsAny("A.md", "edited by client 0")
                 );
             }
-        },
-    ],
+        }
+    ]
 };

@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const createRenameCreateSamePathTest: TestDefinition = {
@@ -22,7 +23,7 @@ export const createRenameCreateSamePathTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (state) => {
+            verify: (state: AssertableState): void => {
                 state
                     .assertFileCount(3)
                     .assertContent("B.md", "first file")

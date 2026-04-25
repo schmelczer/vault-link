@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const createMergeDeleteTest: TestDefinition = {
@@ -16,12 +17,21 @@ export const createMergeDeleteTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (state) => state.assertFileCount(1).assertContains("A.md", "from-zero", "from-one")
+            verify: (state: AssertableState): void => {
+                state
+                    .assertFileCount(1)
+                    .assertContains("A.md", "from-zero", "from-one");
+            }
         },
 
         { type: "delete", client: 0, path: "A.md" },
         { type: "barrier" },
 
-        { type: "assert-consistent", verify: (s) => s.assertFileCount(0).assertFileNotExists("A.md") }
+        {
+            type: "assert-consistent",
+            verify: (s: AssertableState): void => {
+                s.assertFileCount(0).assertFileNotExists("A.md");
+            }
+        }
     ]
 };

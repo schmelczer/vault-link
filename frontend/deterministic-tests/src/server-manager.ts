@@ -39,14 +39,18 @@ export class ServerManager {
         process.on("SIGINT", () => {
             this.logger.info("Received SIGINT, shutting down...");
             void this.stopAll()
-                .catch(() => {})
+                .catch(() => {
+                    /* no-op */
+                })
                 .then(() => process.exit(130));
         });
 
         process.on("SIGTERM", () => {
             this.logger.info("Received SIGTERM, shutting down...");
             void this.stopAll()
-                .catch(() => {})
+                .catch(() => {
+                    /* no-op */
+                })
                 .then(() => process.exit(143));
         });
     }

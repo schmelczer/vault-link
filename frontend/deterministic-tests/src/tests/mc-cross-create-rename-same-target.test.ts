@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const mcCrossCreateRenameSameTargetTest: TestDefinition = {
@@ -17,7 +18,9 @@ export const mcCrossCreateRenameSameTargetTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (s) => s.assertFileExists("X.md").assertFileExists("Y.md")
+            verify: (s: AssertableState): void => {
+                s.assertFileExists("X.md").assertFileExists("Y.md");
+            }
         },
 
         { type: "disable-sync", client: 1 },
@@ -33,7 +36,7 @@ export const mcCrossCreateRenameSameTargetTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (s) => {
+            verify: (s: AssertableState): void => {
                 s.assertFileCount(2)
                     .assertFileNotExists("X.md")
                     .assertFileNotExists("Y.md")

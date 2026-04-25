@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const recentlyDeletedClearedOnReconnectTest: TestDefinition = {
@@ -19,7 +20,12 @@ export const recentlyDeletedClearedOnReconnectTest: TestDefinition = {
         { type: "disable-sync", client: 0 },
         { type: "disable-sync", client: 1 },
 
-        { type: "create", client: 1, path: "doc.md", content: "new content from client 1" },
+        {
+            type: "create",
+            client: 1,
+            path: "doc.md",
+            content: "new content from client 1"
+        },
 
         { type: "enable-sync", client: 1 },
         { type: "sync", client: 1 },
@@ -28,8 +34,12 @@ export const recentlyDeletedClearedOnReconnectTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (s) =>
-                s.assertFileCount(1).assertContent("doc.md", "new content from client 1"),
-        },
-    ],
+            verify: (s: AssertableState): void => {
+                s.assertFileCount(1).assertContent(
+                    "doc.md",
+                    "new content from client 1"
+                );
+            }
+        }
+    ]
 };

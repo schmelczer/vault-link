@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const offlineUpdateBothThenDeleteOneTest: TestDefinition = {
@@ -26,10 +27,12 @@ export const offlineUpdateBothThenDeleteOneTest: TestDefinition = {
         { type: "barrier" },
         {
             type: "assert-consistent",
-            verify: (s) =>
-                s
-                    .assertContent("A.md", "A original")
-                    .assertContent("B.md", "B original")
+            verify: (s: AssertableState): void => {
+                s.assertContent("A.md", "A original").assertContent(
+                    "B.md",
+                    "B original"
+                );
+            }
         },
 
         { type: "disable-sync", client: 0 },
@@ -63,10 +66,12 @@ export const offlineUpdateBothThenDeleteOneTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (s) =>
-                s
-                    .assertContent("A.md", "A updated by client 0")
-                    .assertFileNotExists("B.md")
+            verify: (s: AssertableState): void => {
+                s.assertContent(
+                    "A.md",
+                    "A updated by client 0"
+                ).assertFileNotExists("B.md");
+            }
         }
     ]
 };

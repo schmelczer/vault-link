@@ -102,10 +102,12 @@ export const TESTS: Partial<Record<string, TestDefinition>> = {
     "delete-recreate-same-path": deleteRecreateSamePathTest,
     "offline-rename-and-edit": offlineRenameAndEditTest,
     "rename-to-existing-path": renameToExistingPathTest,
-    "simultaneous-create-delete-same-path": simultaneousCreateDeleteSamePathTest,
+    "simultaneous-create-delete-same-path":
+        simultaneousCreateDeleteSamePathTest,
     "idempotency-after-server-pause": idempotencyAfterServerPauseTest,
     "sequential-create-duplicate-content": sequentialCreateDuplicateContentTest,
-    "mc-three-client-rename-offline-update": mcThreeClientRenameOfflineUpdateTest,
+    "mc-three-client-rename-offline-update":
+        mcThreeClientRenameOfflineUpdateTest,
     "mc-multi-delete-offline-rename": mcMultiDeleteOfflineRenameTest,
     "mc-cross-create-rename-same-target": mcCrossCreateRenameSameTargetTest,
     "mc-delete-then-offline-rename": mcDeleteThenOfflineRenameTest,
@@ -117,7 +119,8 @@ export const TESTS: Partial<Record<string, TestDefinition>> = {
     "rename-swap": renameSwapTest,
     "rename-circular": renameCircularTest,
     "rename-roundtrip": renameRoundtripTest,
-    "offline-rename-remote-create-old-path": offlineRenameRemoteCreateOldPathTest,
+    "offline-rename-remote-create-old-path":
+        offlineRenameRemoteCreateOldPathTest,
     "offline-edit-remote-rename": offlineEditRemoteRenameTest,
     "rename-chain-then-delete": renameChainThenDeleteTest,
     "offline-delete-remote-rename": offlineDeleteRemoteRenameTest,
@@ -140,34 +143,45 @@ export const TESTS: Partial<Record<string, TestDefinition>> = {
     "delete-recreate-different-content": deleteRecreateDifferentContentTest,
     "update-during-create-processing": updateDuringCreateProcessingTest,
     "offline-move-then-remote-delete": offlineMoveThenRemoteDeleteTest,
-    "reset-clears-recently-deleted-resurrection": resetClearsRecentlyDeletedResurrectionTest,
+    "reset-clears-recently-deleted-resurrection":
+        resetClearsRecentlyDeletedResurrectionTest,
     "move-then-delete-stale-path": moveThenDeleteStalePathTest,
     "offline-delete-vs-remote-update": offlineDeleteVsRemoteUpdateTest,
     "interrupted-delete-retry": interruptedDeleteRetryTest,
     "update-survives-remote-delete": updateDoesNotSurvivesRemoteDeleteTest,
     "move-preserves-remote-update": movePreservesRemoteUpdateTest,
-    "recently-deleted-cleared-on-reconnect": recentlyDeletedClearedOnReconnectTest,
+    "recently-deleted-cleared-on-reconnect":
+        recentlyDeletedClearedOnReconnectTest,
     "migrate-key-preserves-existing": migrateKeyPreservesExistingTest,
     "failed-vfs-move-falls-back": failedVfsMoveFallsBackTest,
     "watermark-advances-on-skip": watermarkAdvancesOnSkipTest,
-    "watermark-gap-remote-update-not-recorded": watermarkGapRemoteUpdateNotRecordedTest,
-    "queue-reset-loses-coalesced-local-edit": queueResetLosesCoalescedLocalEditTest,
+    "watermark-gap-remote-update-not-recorded":
+        watermarkGapRemoteUpdateNotRecordedTest,
+    "queue-reset-loses-coalesced-local-edit":
+        queueResetLosesCoalescedLocalEditTest,
     "rename-to-pending-path-fallback": renameToPendingPathFallbackTest,
     "move-remote-update-reverts-rename": moveRemoteUpdateRevertsRenameTest,
     "local-edit-lost-during-create-merge": localEditLostDuringCreateMergeTest,
-    "rename-pending-create-before-response": renamePendingCreateBeforeResponseTest,
+    "rename-pending-create-before-response":
+        renamePendingCreateBeforeResponseTest,
     "create-rename-response-skips-file": createRenameResponseSkipsFileTest,
-    "online-create-rename-concurrent-create-orphan": onlineCreateRenameConcurrentCreateOrphanTest,
+    "online-create-rename-concurrent-create-orphan":
+        onlineCreateRenameConcurrentCreateOrphanTest,
     "concurrent-rename-first-wins": concurrentRenameFirstWinsTest,
     "binary-to-text-transition": binaryToTextTransitionTest,
     "text-pending-create-not-displaced": textPendingCreateNotDisplacedTest,
     "binary-pending-create-not-displaced": binaryPendingCreateNotDisplacedTest,
-    "coalesce-update-remote-update-data-loss": coalesceUpdateRemoteUpdateDataLossTest,
-    "coalesced-remote-update-watermark-loss": coalescedRemoteUpdateWatermarkLossTest,
-    "concurrent-delete-during-remote-update": concurrentDeleteDuringRemoteUpdateTest,
+    "coalesce-update-remote-update-data-loss":
+        coalesceUpdateRemoteUpdateDataLossTest,
+    "coalesced-remote-update-watermark-loss":
+        coalescedRemoteUpdateWatermarkLossTest,
+    "concurrent-delete-during-remote-update":
+        concurrentDeleteDuringRemoteUpdateTest,
     "concurrent-edit-exact-same-position": concurrentEditExactSamePositionTest,
-    "concurrent-rename-and-create-at-target-rename-first": concurrentRenameAndCreateAtTargetRenameFirstTest,
-    "concurrent-rename-and-create-at-target-create-first": concurrentRenameAndCreateAtTargetCreateFirstTest,
+    "concurrent-rename-and-create-at-target-rename-first":
+        concurrentRenameAndCreateAtTargetRenameFirstTest,
+    "concurrent-rename-and-create-at-target-create-first":
+        concurrentRenameAndCreateAtTargetCreateFirstTest,
     "concurrent-rename-same-target": concurrentRenameSameTargetTest,
     "concurrent-update-diff-consistency": concurrentUpdateDiffConsistencyTest,
     "user-parenthesized-file-not-deleted": userParenthesizedFileNotDeletedTest,
@@ -176,15 +190,19 @@ export const TESTS: Partial<Record<string, TestDefinition>> = {
     "move-identical-content-ambiguity": moveIdenticalContentAmbiguityTest,
     "create-update-coalesce-server-pause": createUpdateCoalesceServerPauseTest,
     "create-during-reconciliation": createDuringReconciliationTest,
-    "create-merge-preserves-renamed-update": createMergePreservesRenamedUpdateTest,
+    "create-merge-preserves-renamed-update":
+        createMergePreservesRenamedUpdateTest,
     "create-rename-create-same-path": createRenameCreateSamePathTest,
     "move-chain-three-files": moveChainThreeFilesTest,
     "delete-by-other-client-then-recreate": deleteByOtherClientThenRecreateTest,
     "online-delete-recreate-rapid-cycle": onlineDeleteRecreateRapidCycleTest,
     "online-edit-vs-delete-convergence": onlineEditVsDeleteConvergenceTest,
-    "rapid-edit-delete-online-convergence": rapidEditDeleteOnlineConvergenceTest,
+    "rapid-edit-delete-online-convergence":
+        rapidEditDeleteOnlineConvergenceTest,
     "server-pause-delete-recreate": serverPauseDeleteRecreateTest,
-    "online-both-create-same-path-deconflict": onlineBothCreateSamePathDeconflictTest,
-    "online-create-update-while-other-creates-same-path": onlineCreateUpdateWhileOtherCreatesSamePathTest,
-    "displaced-file-not-marked-deleted": displacedFileNotMarkedDeletedTest,
+    "online-both-create-same-path-deconflict":
+        onlineBothCreateSamePathDeconflictTest,
+    "online-create-update-while-other-creates-same-path":
+        onlineCreateUpdateWhileOtherCreatesSamePathTest,
+    "displaced-file-not-marked-deleted": displacedFileNotMarkedDeletedTest
 };

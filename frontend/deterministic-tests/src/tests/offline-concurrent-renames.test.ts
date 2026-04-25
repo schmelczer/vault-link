@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const offlineConcurrentRenamesTest: TestDefinition = {
@@ -15,7 +16,9 @@ export const offlineConcurrentRenamesTest: TestDefinition = {
         { type: "barrier" },
         {
             type: "assert-consistent",
-            verify: (s) => s.assertContent("A.md", "shared-content")
+            verify: (s: AssertableState): void => {
+                s.assertContent("A.md", "shared-content");
+            }
         },
 
         { type: "disable-sync", client: 0 },
@@ -42,15 +45,15 @@ export const offlineConcurrentRenamesTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (s) => {
+            verify: (s: AssertableState): void => {
                 s.assertFileNotExists("A.md")
                     .assertFileCount(1)
                     .assertAnyFileContains("shared-content");
-                s.ifFileExists("B.md", (s) =>
-                    s.assertContent("B.md", "shared-content")
+                s.ifFileExists("B.md", (inner) =>
+                    inner.assertContent("B.md", "shared-content")
                 );
-                s.ifFileExists("C.md", (s) =>
-                    s.assertContent("C.md", "shared-content")
+                s.ifFileExists("C.md", (inner) =>
+                    inner.assertContent("C.md", "shared-content")
                 );
             }
         }

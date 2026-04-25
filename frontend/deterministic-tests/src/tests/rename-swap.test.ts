@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const renameSwapTest: TestDefinition = {
@@ -15,8 +16,12 @@ export const renameSwapTest: TestDefinition = {
         { type: "barrier" },
         {
             type: "assert-consistent",
-            verify: (s) =>
-                s.assertContent("A.md", "content-a").assertContent("B.md", "content-b"),
+            verify: (s: AssertableState): void => {
+                s.assertContent("A.md", "content-a").assertContent(
+                    "B.md",
+                    "content-b"
+                );
+            }
         },
 
         { type: "disable-sync", client: 0 },
@@ -29,12 +34,12 @@ export const renameSwapTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (s) =>
-                s
-                    .assertFileNotExists("temp.md")
+            verify: (s: AssertableState): void => {
+                s.assertFileNotExists("temp.md")
                     .assertFileCount(2)
                     .assertContent("A.md", "content-b")
-                    .assertContent("B.md", "content-a"),
+                    .assertContent("B.md", "content-a");
+            }
         }
     ]
 };

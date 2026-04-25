@@ -4,12 +4,15 @@ import {
     type DocumentRecord,
     type SyncEvent,
     type RelativePath,
-    type VaultUpdateId,
+    type VaultUpdateId
 } from "./types";
 import type { Logger } from "../tracing/logger";
 import { hash } from "../utils/hash";
 import type { Settings } from "../persistence/settings";
-import { MoveOnConflict, type FileOperations } from "../file-operations/file-operations";
+import {
+    MoveOnConflict,
+    type FileOperations
+} from "../file-operations/file-operations";
 import { scheduleOfflineChanges } from "./offline-change-detector";
 import { SyncResetError } from "../errors/sync-reset-error";
 import type { DocumentVersionWithoutContent } from "../services/types/DocumentVersionWithoutContent";
@@ -21,9 +24,7 @@ import type { SyncEventQueue } from "./sync-event-queue";
 import type { SyncService } from "../services/sync-service";
 import { FileNotFoundError } from "../errors/file-not-found-error";
 import { HttpClientError } from "../errors/http-client-error";
-import type {
-    SyncHistory
-} from "../tracing/sync-history";
+import type { SyncHistory } from "../tracing/sync-history";
 import {
     SyncStatus,
     SyncType,
@@ -79,7 +80,10 @@ export class Syncer {
     }
 
     public syncLocallyCreatedFile(relativePath: RelativePath): void {
-        void this.queue.enqueue({ type: SyncEventType.LocalCreate, path: relativePath });
+        void this.queue.enqueue({
+            type: SyncEventType.LocalCreate,
+            path: relativePath
+        });
         this.ensureDraining();
     }
 
@@ -90,14 +94,18 @@ export class Syncer {
         oldPath?: RelativePath;
         relativePath: RelativePath;
     }): void {
-        void this.queue.enqueue({ type: SyncEventType.LocalUpdate, path: relativePath, oldPath });
+        void this.queue.enqueue({
+            type: SyncEventType.LocalUpdate,
+            path: relativePath,
+            oldPath
+        });
         this.ensureDraining();
     }
 
     public syncLocallyDeletedFile(relativePath: RelativePath): void {
         void this.queue.enqueue({
             type: SyncEventType.LocalDelete,
-            path: relativePath,
+            path: relativePath
         });
         this.ensureDraining();
     }
@@ -151,7 +159,6 @@ export class Syncer {
         }
     }
 
-
     public reset(): void {
         this._isFirstSyncStarted = false;
         this.queue.clearPending();
@@ -162,19 +169,13 @@ export class Syncer {
         // fresh scan can only start once the prior one is done.
         const current = this.runningScheduleSyncForOfflineChanges;
         if (current !== undefined) {
-            current.finally(() => {
-                if (
-                    this.runningScheduleSyncForOfflineChanges ===
-                    current
-                ) {
-                    this.runningScheduleSyncForOfflineChanges =
-                        undefined;
+            void current.finally(() => {
+                if (this.runningScheduleSyncForOfflineChanges === current) {
+                    this.runningScheduleSyncForOfflineChanges = undefined;
                 }
             });
         }
     }
-
-
 
     private sendHandshakeMessage(): void {
         const message: WebSocketClientMessage = {
@@ -186,8 +187,6 @@ export class Syncer {
         this.webSocketManager.sendHandshakeMessage(message);
     }
 
-
-
     private async internalScheduleSyncForOfflineChanges(): Promise<void> {
         this.isScanning = true;
         try {
@@ -195,10 +194,18 @@ export class Syncer {
                 await this.drainPromise;
             }
             await scheduleOfflineChanges(
-                this.logger, this.operations, this.queue,
-                (path) => { this.syncLocallyCreatedFile(path); },
-                (args) => { this.syncLocallyUpdatedFile(args); },
-                (path) => { this.syncLocallyDeletedFile(path); },
+                this.logger,
+                this.operations,
+                this.queue,
+                (path) => {
+                    this.syncLocallyCreatedFile(path);
+                },
+                (args) => {
+                    this.syncLocallyUpdatedFile(args);
+                },
+                (path) => {
+                    this.syncLocallyDeletedFile(path);
+                }
             );
         } finally {
             this.isScanning = false;
@@ -207,9 +214,6 @@ export class Syncer {
         this.ensureDraining();
     }
 
-
-
-
     private ensureDraining(): void {
         if (this.drainPromise !== undefined) return;
         if (this.isScanning) return;
@@ -217,7 +221,6 @@ export class Syncer {
             this.drainPromise = undefined;
         });
     }
-
 
     private async drain(): Promise<void> {
         let event = await this.queue.next();
@@ -271,8 +274,10 @@ export class Syncer {
                     `Skipping sync event '${event.type}' because the file no longer exists`
                 );
                 if (event.type === SyncEventType.LocalCreate) {
-                    event.resolvers?.promise.catch(() => { });
-                    event.resolvers?.reject(new Error("Create was cancelled"));
+                    event.resolvers.promise.catch(() => {
+                        /* suppressed */
+                    });
+                    event.resolvers.reject(new Error("Create was cancelled"));
                 }
                 return;
             }
@@ -285,10 +290,10 @@ export class Syncer {
                 // promise would otherwise hang forever, blocking any
                 // queued Delete / SyncLocal that `await`s it.
                 if (event.type === SyncEventType.LocalCreate) {
-                    event.resolvers?.promise.catch(() => {
+                    event.resolvers.promise.catch(() => {
                         /* suppressed */
                     });
-                    event.resolvers?.reject(
+                    event.resolvers.reject(
                         new Error(
                             `Create was cancelled — server rejected the request (${e.message})`
                         )
@@ -300,10 +305,9 @@ export class Syncer {
         }
     }
 
-
     private async skipIfOversized(event: SyncEvent): Promise<boolean> {
-        let sizeInBytes: number;
-        let relativePath: RelativePath;
+        let sizeInBytes = 0;
+        let relativePath: RelativePath = "";
 
         switch (event.type) {
             case SyncEventType.LocalDelete:
@@ -316,7 +320,7 @@ export class Syncer {
             case SyncEventType.RemoteChange:
                 if (event.remoteVersion.isDeleted) return false;
                 sizeInBytes = event.remoteVersion.contentSize;
-                relativePath = event.remoteVersion.relativePath;
+                ({ relativePath } = event.remoteVersion);
                 break;
         }
 
@@ -329,8 +333,10 @@ export class Syncer {
         this.history.addHistoryEntry(oversizedEntry);
 
         if (event.type === SyncEventType.LocalCreate) {
-            event.resolvers?.promise.catch(() => { });
-            event.resolvers?.reject(new Error("Create was cancelled"));
+            event.resolvers.promise.catch(() => {
+                /* suppressed */
+            });
+            event.resolvers.reject(new Error("Create was cancelled"));
         }
 
         return true;
@@ -354,9 +360,6 @@ export class Syncer {
         }
     }
 
-
-
-
     private async processCreate(
         event: Extract<SyncEvent, { type: SyncEventType.LocalCreate }>
     ): Promise<void> {
@@ -378,13 +381,13 @@ export class Syncer {
             createEvent: event
         });
 
-
         this.history.addHistoryEntry({
             status: SyncStatus.SUCCESS,
             details: { type: SyncType.CREATE, relativePath: effectivePath },
-            message: response.type === "MergingUpdate"
-                ? "Created file and merged with existing remote version"
-                : "Successfully created file on the server",
+            message:
+                response.type === "MergingUpdate"
+                    ? "Created file and merged with existing remote version"
+                    : "Successfully created file on the server",
             author: response.userId,
             timestamp: new Date(response.updatedDate)
         });
@@ -393,7 +396,7 @@ export class Syncer {
     private async processDelete(
         event: Extract<SyncEvent, { type: SyncEventType.LocalDelete }>
     ): Promise<void> {
-        let documentId = await event.documentId;
+        const documentId = await event.documentId;
 
         const doc = this.queue.getDocumentByDocumentIdOrFail(documentId);
         const relativePath = doc.path;
@@ -405,7 +408,6 @@ export class Syncer {
 
         await this.queue.removeDocument(doc.path);
         this.queue.lastSeenUpdateId = response.vaultUpdateId;
-
 
         this.history.addHistoryEntry({
             status: SyncStatus.SUCCESS,
@@ -421,16 +423,16 @@ export class Syncer {
     private async processLocalUpdate(
         event: Extract<SyncEvent, { type: SyncEventType.LocalUpdate }>
     ): Promise<void> {
-        let documentId = await event.documentId;
+        const documentId = await event.documentId;
 
-        const { path: diskPath, record } = this.queue.getDocumentByDocumentIdOrFail(documentId);
+        const { path: diskPath, record } =
+            this.queue.getDocumentByDocumentIdOrFail(documentId);
 
         const contentBytes = await this.operations.read(diskPath);
         const contentHash = await hash(contentBytes);
 
         const hashChanged = contentHash !== record.remoteHash;
-        const pathChanged =
-            record.remoteRelativePath !== event.originalPath;
+        const pathChanged = record.remoteRelativePath !== event.originalPath;
 
         if (!hashChanged && !pathChanged) {
             this.logger.debug(
@@ -443,11 +445,9 @@ export class Syncer {
             record,
             relativePath: event.originalPath,
             contentBytes
-        }
-        );
+        });
 
         this.queue.lastSeenUpdateId = response.vaultUpdateId;
-
 
         await this.handleMaybeMergingResponse({
             path: diskPath,
@@ -456,9 +456,7 @@ export class Syncer {
             originalContentBytes: contentBytes
         });
 
-
-        const isMerge =
-            "type" in response && response.type === "MergingUpdate";
+        const isMerge = "type" in response && response.type === "MergingUpdate";
         this.history.addHistoryEntry({
             status: SyncStatus.SUCCESS,
             details: {
@@ -489,12 +487,12 @@ export class Syncer {
         // response)
         createEvent?: Extract<SyncEvent, { type: SyncEventType.LocalCreate }>;
     }): Promise<void> {
-        let record = {
+        const record = {
             documentId: response.documentId,
             parentVersionId: response.vaultUpdateId,
             remoteRelativePath: response.relativePath
         };
-        let remoteHash: string;
+        let remoteHash = "";
 
         if ("type" in response && response.type === "MergingUpdate") {
             const responseBytes = base64ToBytes(response.contentBase64);
@@ -506,11 +504,7 @@ export class Syncer {
 
             remoteHash = await hash(responseBytes);
 
-            await this.updateCache(
-                response.vaultUpdateId,
-                responseBytes,
-                path
-            );
+            await this.updateCache(response.vaultUpdateId, responseBytes, path);
         } else {
             // Fast-forward update: no merge needed
             remoteHash = contentHash;
@@ -524,13 +518,16 @@ export class Syncer {
 
         if (createEvent === undefined) {
             // a http response will always be more up-to-date than any queued remote update
-            this.operations.move(path, response.relativePath, MoveOnConflict.EXISTING);
+            await this.operations.move(
+                path,
+                response.relativePath,
+                MoveOnConflict.EXISTING
+            );
 
             await this.queue.setDocument(response.relativePath, {
                 ...record,
                 remoteHash
             });
-
         } else {
             // The response to a create must contain the path from the create request
             await this.queue.resolveCreate(createEvent, {
@@ -541,7 +538,6 @@ export class Syncer {
 
         this.queue.lastSeenUpdateId = response.vaultUpdateId;
     }
-
 
     private async processRemoteChange(
         event: Extract<SyncEvent, { type: SyncEventType.RemoteChange }>
@@ -556,10 +552,16 @@ export class Syncer {
                 // trying to delete a document we've already scheduled for deletion locally
                 return;
             }
-            return this.processRemoteDelete(documentWithPath.path, remoteVersion);
+            return this.processRemoteDelete(
+                documentWithPath.path,
+                remoteVersion
+            );
         }
 
-        if (documentWithPath?.record.parentVersionId ?? 0 >= remoteVersion.vaultUpdateId) {
+        if (
+            (documentWithPath?.record.parentVersionId ?? 0) >=
+            remoteVersion.vaultUpdateId
+        ) {
             this.queue.lastSeenUpdateId = remoteVersion.vaultUpdateId;
             this.logger.debug(
                 `Document ${remoteVersion.relativePath} is already up-to-date or has newer local changes; skipping remote update`
@@ -569,25 +571,35 @@ export class Syncer {
 
         if (documentWithPath !== undefined) {
             // must be the update to an existing doc
-            return this.processRemoteUpdate(documentWithPath.path, documentWithPath.record, remoteVersion);
+            return this.processRemoteUpdate(
+                documentWithPath.path,
+                documentWithPath.record,
+                remoteVersion
+            );
         }
 
-        const pendingCreate = this.queue.findLatestCreateForPath(remoteVersion.relativePath);
+        const pendingCreate = this.queue.findLatestCreateForPath(
+            remoteVersion.relativePath
+        );
 
         if (pendingCreate === undefined) {
             return this.processRemoteCreateForNewDocument(remoteVersion);
         } else {
-            return this.processRemoteCreateForPendingDocument(remoteVersion, pendingCreate);
+            return this.processRemoteCreateForPendingDocument(
+                remoteVersion,
+                pendingCreate
+            );
         }
     }
 
-
-    private async processRemoteDelete(path: RelativePath, remoteVersion: DocumentVersionWithoutContent): Promise<void> {
+    private async processRemoteDelete(
+        path: RelativePath,
+        remoteVersion: DocumentVersionWithoutContent
+    ): Promise<void> {
         await this.operations.delete(path);
         await this.queue.removeDocument(path);
 
         this.queue.lastSeenUpdateId = remoteVersion.vaultUpdateId;
-
 
         this.history.addHistoryEntry({
             status: SyncStatus.SUCCESS,
@@ -602,22 +614,29 @@ export class Syncer {
         });
     }
 
-    private async processRemoteUpdate(path: RelativePath, record: DocumentRecord, remoteVersion: DocumentVersionWithoutContent): Promise<void> {
-        if (
-            record.parentVersionId >=
-            remoteVersion.vaultUpdateId
-        ) {
-            this.logger.debug(
-                `Document ${path} is already up-to-date`
-            );
+    private async processRemoteUpdate(
+        path: RelativePath,
+        record: DocumentRecord,
+        remoteVersion: DocumentVersionWithoutContent
+    ): Promise<void> {
+        if (record.parentVersionId >= remoteVersion.vaultUpdateId) {
+            this.logger.debug(`Document ${path} is already up-to-date`);
             return;
         }
 
-        if (!this.queue.hasPendingLocalEventsForDocumentId(remoteVersion.documentId)) {
+        if (
+            !this.queue.hasPendingLocalEventsForDocumentId(
+                remoteVersion.documentId
+            )
+        ) {
             // no local changes
             const currentContent = await this.operations.read(path);
-            const remoteContent = await this.syncService.getDocumentVersionContent({ documentId: remoteVersion.documentId, vaultUpdateId: remoteVersion.vaultUpdateId });
-            this.operations.write(path, currentContent, remoteContent);
+            const remoteContent =
+                await this.syncService.getDocumentVersionContent({
+                    documentId: remoteVersion.documentId,
+                    vaultUpdateId: remoteVersion.vaultUpdateId
+                });
+            await this.operations.write(path, currentContent, remoteContent);
 
             await this.updateCache(
                 remoteVersion.vaultUpdateId,
@@ -625,20 +644,26 @@ export class Syncer {
                 path
             );
             this.queue.lastSeenUpdateId = remoteVersion.vaultUpdateId;
+        } // else we don't need to update the content, a subsequent local update will do that
 
-        } // else we don't need to update the content, a subsequent local update will do that 
-
-        this.syncRemotelyUpdatedFile({ // schedule it so that the lastSeenUpdateId remains consistent
-            document:
-                remoteVersion
-        })
-
+        void this.syncRemotelyUpdatedFile({
+            // schedule it so that the lastSeenUpdateId remains consistent
+            document: remoteVersion
+        });
 
         // wait for a local edit to do the actual updating here, so we can't even update the lastSeenUpdateId here
-        const conflictingDoc = this.queue.getSettledDocumentByPath(remoteVersion.relativePath);
-        const actualRelativePath = await this.operations.move(path, remoteVersion.relativePath, conflictingDoc?.parentVersionId ?? 0 < remoteVersion.vaultUpdateId ? MoveOnConflict.EXISTING : MoveOnConflict.NEW);
+        const conflictingDoc = this.queue.getSettledDocumentByPath(
+            remoteVersion.relativePath
+        );
+        const actualRelativePath = await this.operations.move(
+            path,
+            remoteVersion.relativePath,
+            (conflictingDoc?.parentVersionId ?? 0) < remoteVersion.vaultUpdateId
+                ? MoveOnConflict.EXISTING
+                : MoveOnConflict.NEW
+        );
 
-        this.queue.setDocument(actualRelativePath, {
+        await this.queue.setDocument(actualRelativePath, {
             ...record,
             remoteRelativePath: actualRelativePath
         });
@@ -651,22 +676,28 @@ export class Syncer {
                 movedFrom: path
             },
             // todo: eh
-            message: `File was renamed remotely from ${path} to ${actualRelativePath}`,
+            message: `File was renamed remotely from ${path} to ${actualRelativePath}`
         });
     }
 
-    private async processRemoteCreateForNewDocument(remoteVersion: DocumentVersionWithoutContent): Promise<void> {
+    private async processRemoteCreateForNewDocument(
+        remoteVersion: DocumentVersionWithoutContent
+    ): Promise<void> {
         const remoteContent = await this.syncService.getDocumentVersionContent({
             documentId: remoteVersion.documentId,
             vaultUpdateId: remoteVersion.vaultUpdateId
         });
 
-        const conflictingDoc = this.queue.getSettledDocumentByPath(remoteVersion.relativePath);
+        const conflictingDoc = this.queue.getSettledDocumentByPath(
+            remoteVersion.relativePath
+        );
 
         const actualPath = await this.operations.create(
             remoteVersion.relativePath,
             remoteContent,
-            conflictingDoc?.parentVersionId ?? 0 < remoteVersion.vaultUpdateId ? MoveOnConflict.EXISTING : MoveOnConflict.NEW
+            (conflictingDoc?.parentVersionId ?? 0) < remoteVersion.vaultUpdateId
+                ? MoveOnConflict.EXISTING
+                : MoveOnConflict.NEW
         );
 
         await this.updateCache(
@@ -703,7 +734,10 @@ export class Syncer {
     // We must avoid duplicating files.
     private async processRemoteCreateForPendingDocument(
         remoteVersion: DocumentVersionWithoutContent,
-        pendingCreateEvent: Extract<SyncEvent, { type: SyncEventType.LocalCreate }>
+        pendingCreateEvent: Extract<
+            SyncEvent,
+            { type: SyncEventType.LocalCreate }
+        >
     ): Promise<void> {
         const remoteContent = await this.syncService.getDocumentVersionContent({
             documentId: remoteVersion.documentId,
@@ -712,7 +746,9 @@ export class Syncer {
         const remoteHash = await hash(remoteContent);
 
         const path = remoteVersion.relativePath;
-        const currentContent = await this.operations.read(pendingCreateEvent.path);
+        const currentContent = await this.operations.read(
+            pendingCreateEvent.path
+        );
 
         await this.operations.write(path, currentContent, remoteContent);
         await this.updateCache(
@@ -735,25 +771,21 @@ export class Syncer {
                 type: SyncType.UPDATE,
                 relativePath: path
             },
-            message:
-                `Adopted remote create at ${path}`,
+            message: `Adopted remote create at ${path}`,
             author: remoteVersion.userId,
             timestamp: new Date(remoteVersion.updatedDate)
         });
-
     }
 
-
-
-
-
-    private async sendUpdate(
-        { record, relativePath, contentBytes }: {
-            record: DocumentRecord,
-            relativePath: RelativePath,
-            contentBytes: Uint8Array
-        }
-    ): Promise<DocumentUpdateResponse> {
+    private async sendUpdate({
+        record,
+        relativePath,
+        contentBytes
+    }: {
+        record: DocumentRecord;
+        relativePath: RelativePath;
+        contentBytes: Uint8Array;
+    }): Promise<DocumentUpdateResponse> {
         const isText =
             !isBinary(contentBytes) &&
             isFileTypeMergable(
@@ -782,8 +814,6 @@ export class Syncer {
             contentBytes
         });
     }
-
-
 
     private async updateCache(
         updateId: VaultUpdateId,

@@ -40,7 +40,6 @@ export class MockClient extends debugging.InMemoryFileSystem {
         await this.client.start();
     }
 
-
     public override async write(
         path: RelativePath,
         content: Uint8Array
@@ -50,14 +49,14 @@ export class MockClient extends debugging.InMemoryFileSystem {
         this.files.set(path, content);
 
         if (isNew) {
-            this.executeFileOperation(async () => { this.client.syncLocallyCreatedFile(path); }
-            );
+            this.executeFileOperation(async () => {
+                this.client.syncLocallyCreatedFile(path);
+            });
         } else {
-            this.executeFileOperation(
-                async () => { this.client.syncLocallyUpdatedFile({ relativePath: path }); },
-            );
+            this.executeFileOperation(async () => {
+                this.client.syncLocallyUpdatedFile({ relativePath: path });
+            });
         }
-
     }
 
     public override async atomicUpdateText(
@@ -73,20 +72,18 @@ export class MockClient extends debugging.InMemoryFileSystem {
         const newContentUint8Array = new TextEncoder().encode(newContent);
         this.files.set(path, newContentUint8Array);
 
-        this.executeFileOperation(
-            async () => { this.client.syncLocallyUpdatedFile({ relativePath: path }); },
-        );
+        this.executeFileOperation(async () => {
+            this.client.syncLocallyUpdatedFile({ relativePath: path });
+        });
 
         return newContent;
     }
 
-
-
     public override async delete(path: RelativePath): Promise<void> {
         this.files.delete(path);
-        this.executeFileOperation(
-            async () => { this.client.syncLocallyDeletedFile(path); },
-        );
+        this.executeFileOperation(async () => {
+            this.client.syncLocallyDeletedFile(path);
+        });
     }
 
     public override async rename(
@@ -101,17 +98,15 @@ export class MockClient extends debugging.InMemoryFileSystem {
         if (oldPath !== newPath) {
             this.files.delete(oldPath);
         }
-        this.executeFileOperation(
-            async () => { this.client.syncLocallyUpdatedFile({
+        this.executeFileOperation(async () => {
+            this.client.syncLocallyUpdatedFile({
                 oldPath,
                 relativePath: newPath
-            }); },
-        );
+            });
+        });
     }
 
-    protected executeFileOperation(
-        callback: () => unknown,
-    ): void {
+    protected executeFileOperation(callback: () => unknown): void {
         if (this.useSlowFileEvents) {
             // we aren't the best client and it takes some time to notice changes
             setTimeout(callback, Math.random() * 100);

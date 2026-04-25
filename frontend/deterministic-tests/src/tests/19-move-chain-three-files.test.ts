@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const moveChainThreeFilesTest: TestDefinition = {
@@ -29,7 +30,7 @@ export const moveChainThreeFilesTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (state) => {
+            verify: (state: AssertableState): void => {
                 state
                     .assertFileCount(3)
                     .assertContent("A.md", "was C")

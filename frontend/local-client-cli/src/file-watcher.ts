@@ -28,8 +28,7 @@ export class FileWatcher {
             renameDetection: true,
             renameTimeout: 125,
             ignoreInitial: true,
-            ignore: (filePath: string): boolean =>
-                this.shouldIgnore(filePath)
+            ignore: (filePath: string): boolean => this.shouldIgnore(filePath)
         });
 
         this.watcher.on("add", (filePath: string) => {
@@ -90,9 +89,5 @@ export class FileWatcher {
 
     private toRelativePath(absolutePath: string): RelativePath {
         return toUnixPath(path.relative(this.basePath, absolutePath));
-    }
-
-    private formatError(err: unknown): string {
-        return err instanceof Error ? err.message : String(err);
     }
 }

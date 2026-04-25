@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const onlineDeleteRecreateRapidCycleTest: TestDefinition = {
@@ -28,7 +29,9 @@ export const onlineDeleteRecreateRapidCycleTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (s) => s.assertContent("A.md", "round 3"),
-        },
-    ],
+            verify: (s: AssertableState): void => {
+                s.assertContent("A.md", "round 3");
+            }
+        }
+    ]
 };

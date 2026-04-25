@@ -66,6 +66,42 @@ export class SyncService {
         return result;
     }
 
+    private static async throwIfNotOk(
+        response: Response,
+        operation: string
+    ): Promise<void> {
+        if (response.ok) return;
+        const message = `Failed to ${operation}: ${await SyncService.errorFromResponse(response)}`;
+        // 429 is the only 4xx the server uses for *transient* contention
+        // (`WriteBusyError` → HTTP 429). Every other 4xx means the request
+        // is permanently rejected and shouldn't be retried.
+        if (response.status === 429) {
+            throw new Error(message);
+        }
+        if (response.status >= 400 && response.status < 500) {
+            throw new HttpClientError(response.status, message);
+        }
+        throw new Error(message);
+    }
+
+    /**
+     * Signal that the service is shutting down so any in-flight
+     * `retryForever` exits at its next iteration instead of looping
+     * indefinitely after the rest of the client has stopped. Idempotent.
+     */
+    public stop(): void {
+        this.isStopped = true;
+    }
+
+    /**
+     * Re-enable the service after a `stop()`. Used when the client pauses
+     * and resumes syncing within the same lifecycle (e.g. user toggles
+     * sync off and on).
+     */
+    public resume(): void {
+        this.isStopped = false;
+    }
+
     public async create({
         relativePath,
         lastSeenVaultUpdateId,
@@ -146,8 +182,7 @@ export class SyncService {
                 (await response.json()) as DocumentUpdateResponse; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
 
             this.logger.debug(
-                `Updated document ${JSON.stringify(result)} with id ${
-                    result.documentId
+                `Updated document ${JSON.stringify(result)} with id ${result.documentId
                 }}`
             );
 
@@ -193,8 +228,7 @@ export class SyncService {
                 (await response.json()) as DocumentUpdateResponse; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
 
             this.logger.debug(
-                `Updated document ${JSON.stringify(result)} with id ${
-                    result.documentId
+                `Updated document ${JSON.stringify(result)} with id ${result.documentId
                 }}`
             );
 
@@ -284,7 +318,10 @@ export class SyncService {
                 }
             );
 
-            await SyncService.throwIfNotOk(response, "get document version content");
+            await SyncService.throwIfNotOk(
+                response,
+                "get document version content"
+            );
 
             const result = await response.bytes();
             this.logger.debug(
@@ -300,7 +337,7 @@ export class SyncService {
         return this.retryForever(async () => {
             this.logger.debug(
                 "Getting all documents" +
-                    (since != null ? ` since ${since}` : "")
+                (since != null ? ` since ${since}` : "")
             );
 
             const url = new URL(this.getUrl("/documents"));
@@ -369,30 +406,10 @@ export class SyncService {
         return headers;
     }
 
-    /**
-     * Signal that the service is shutting down so any in-flight
-     * `retryForever` exits at its next iteration instead of looping
-     * indefinitely after the rest of the client has stopped. Idempotent.
-     */
-    public stop(): void {
-        this.isStopped = true;
-    }
-
-    /**
-     * Re-enable the service after a `stop()`. Used when the client pauses
-     * and resumes syncing within the same lifecycle (e.g. user toggles
-     * sync off and on).
-     */
-    public resume(): void {
-        this.isStopped = false;
-    }
-
     private async retryForever<T>(fn: () => Promise<T>): Promise<T> {
         // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
         while (true) {
-            if (this.isStopped) {
-                throw new SyncResetError();
-            }
+            this.throwIfStopped();
             try {
                 return await fn();
             } catch (e) {
@@ -402,9 +419,7 @@ export class SyncService {
                 ) {
                     throw e;
                 }
-                if (this.isStopped) {
-                    throw new SyncResetError();
-                }
+                this.throwIfStopped();
 
                 const retryInterval =
                     this.settings.getSettings().networkRetryIntervalMs;
@@ -416,21 +431,9 @@ export class SyncService {
         }
     }
 
-    private static async throwIfNotOk(
-        response: Response,
-        operation: string
-    ): Promise<void> {
-        if (response.ok) return;
-        const message = `Failed to ${operation}: ${await SyncService.errorFromResponse(response)}`;
-        // 429 is the only 4xx the server uses for *transient* contention
-        // (`WriteBusyError` → HTTP 429). Every other 4xx means the request
-        // is permanently rejected and shouldn't be retried.
-        if (response.status === 429) {
-            throw new Error(message);
+    private throwIfStopped(): void {
+        if (this.isStopped) {
+            throw new SyncResetError();
         }
-        if (response.status >= 400 && response.status < 500) {
-            throw new HttpClientError(response.status, message);
-        }
-        throw new Error(message);
     }
 }

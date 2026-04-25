@@ -1,8 +1,4 @@
-import type {
-    TestDefinition,
-    TestResult,
-    TestStep
-} from "./test-definition";
+import type { TestDefinition, TestResult, TestStep } from "./test-definition";
 import { DeterministicAgent } from "./deterministic-agent";
 import type { ServerControl } from "./server-control";
 import type { SyncSettings, Logger } from "sync-client";
@@ -113,9 +109,7 @@ export class TestRunner {
             // Push before init so cleanup() handles this agent if init fails
             this.agents.push(agent);
             await withTimeout(
-                agent.init(
-                    fetch,
-                ),
+                agent.init(fetch),
                 AGENT_INIT_TIMEOUT_MS,
                 `Client ${i} init timed out after ${AGENT_INIT_TIMEOUT_MS}ms`
             );
@@ -276,7 +270,10 @@ export class TestRunner {
         verify?: (state: AssertableState) => void
     ): Promise<void> {
         this.logger.info("Asserting all clients are consistent...");
-        assert(this.agents.length >= 2, "Need at least 2 agents for consistency check");
+        assert(
+            this.agents.length >= 2,
+            "Need at least 2 agents for consistency check"
+        );
 
         // Snapshot all agents' file states upfront to minimize the window
         // where background sync could mutate state between reads.

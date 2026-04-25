@@ -17,20 +17,25 @@ All tests run in parallel up to a concurrency limit.
 Clients always start with syncing disabled.
 
 **File operations** (per-client, fire-and-forget — sync is enqueued but not awaited):
+
 - `create`, `update`, `rename`, `delete`
 
 **Sync control:**
+
 - `sync` — wait for a specific client or all clients to finish pending operations
 - `barrier` — retry until all clients converge to identical file state (60s timeout)
 - `enable-sync` / `disable-sync` — simulate going online/offline
 
 **WebSocket control** (per-client):
+
 - `pause-websocket` / `resume-websocket` — buffer/release WebSocket messages for a specific client
 
 **Server control:**
+
 - `pause-server` / `resume-server` — SIGSTOP/SIGCONT the server process
 
 **Assertions:**
+
 - `assert-consistent` — all clients have identical files; optionally takes a custom `verify(state: AssertableState)` callback
 
 ## Running
@@ -57,15 +62,19 @@ npm run test -w deterministic-tests -- -j 4
 import type { TestDefinition } from "../test-definition";
 
 export const myScenarioTest: TestDefinition = {
-    description: "Client 0 creates A.md offline. After syncing, both clients should have the file.",
-    clients: 2,
-    steps: [
-        { type: "create", client: 0, path: "A.md", content: "hello" },
-        { type: "enable-sync", client: 0 },
-        { type: "enable-sync", client: 1 },
-        { type: "barrier" },
-        { type: "assert-consistent", verify: (s) => s.assertFileCount(1).assertContent("A.md", "hello") }
-    ]
+  description:
+    "Client 0 creates A.md offline. After syncing, both clients should have the file.",
+  clients: 2,
+  steps: [
+    { type: "create", client: 0, path: "A.md", content: "hello" },
+    { type: "enable-sync", client: 0 },
+    { type: "enable-sync", client: 1 },
+    { type: "barrier" },
+    {
+      type: "assert-consistent",
+      verify: (s) => s.assertFileCount(1).assertContent("A.md", "hello")
+    }
+  ]
 };
 ```
 
@@ -88,7 +97,7 @@ s.ifFileExists("path", (s) => ...)    // conditional assertion
 import { myScenarioTest } from "./tests/my-scenario.test";
 
 const TESTS = {
-    // ...
-    "my-scenario": myScenarioTest
+  // ...
+  "my-scenario": myScenarioTest
 };
 ```

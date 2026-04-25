@@ -1,7 +1,6 @@
 import type { Logger } from "../tracing/logger";
 import type { FileSystemOperations } from "./filesystem-operations";
 import type { RelativePath } from "../sync-operations/types";
-import type { SyncEventQueue } from "../sync-operations/sync-event-queue";
 import { SafeFileSystemOperations } from "./safe-filesystem-operations";
 import type { TextWithCursors } from "reconcile-text";
 import { reconcile } from "reconcile-text";
@@ -10,10 +9,9 @@ import { isBinary } from "../utils/is-binary";
 import { buildConflictFileName } from "../sync-operations/conflict-path";
 import type { ServerConfig } from "../services/server-config";
 
-
 export enum MoveOnConflict {
     EXISTING = "EXISTING",
-    NEW = "NEW",
+    NEW = "NEW"
 }
 
 export class FileOperations {
@@ -40,6 +38,17 @@ export class FileOperations {
         return [pathParts.join("/"), fileName];
     }
 
+    /**
+     * Build a local-only conflict path for a file the client has to set aside.
+     * Format: `<dir>/conflict-<uuid>-<originalName>` — UUID makes collisions
+     * statistically impossible, so no disk probe / lock dance is needed.
+     */
+    private static buildConflictPath(path: RelativePath): RelativePath {
+        const [directory, fileName] = FileOperations.getParentDirAndFile(path);
+        const conflictName = buildConflictFileName(fileName);
+        return directory ? `${directory}/${conflictName}` : conflictName;
+    }
+
     public async listFilesRecursively(
         root: RelativePath | undefined = undefined
     ): Promise<RelativePath[]> {
@@ -55,7 +64,7 @@ export class FileOperations {
      *
      * If a file with the same name already exists, it is moved before creating the new one.
      * Parent directories are created if necessary.
-     * 
+     *
      * Returns the actual path the file was created at.
      */
     public async create(
@@ -66,30 +75,6 @@ export class FileOperations {
         const actualPath = await this.ensureClearPath(path, moveOnConflict);
         await this.fs.write(actualPath, this.toNativeLineEndings(newContent));
         return actualPath;
-    }
-
-    private async ensureClearPath(
-        path: RelativePath,
-        moveOnConflict: MoveOnConflict
-    ): Promise<RelativePath> {
-        if (await this.fs.exists(path)) {
-            const conflictPath = FileOperations.buildConflictPath(path);
-
-            if (moveOnConflict === MoveOnConflict.NEW) {
-                return conflictPath;
-            }
-
-            this.logger.debug(
-                `Displacing existing file at ${path} to '${conflictPath}' to make room`
-            );
-
-            await this.fs.rename(path, conflictPath);
-            return path;
-        }
-
-        this.logger.debug(`No existing file at ${path}, creating parent directories if needed`);
-        await this.createParentDirectories(path);
-        return path;
     }
 
     /**
@@ -129,8 +114,8 @@ export class FileOperations {
             return;
         }
 
-        let expectedText: string;
-        let newText: string;
+        let expectedText = "";
+        let newText = "";
         try {
             expectedText = new TextDecoder("utf-8", { fatal: true }).decode(
                 expectedContent
@@ -206,6 +191,31 @@ export class FileOperations {
         return actualPath;
     }
 
+    private async ensureClearPath(
+        path: RelativePath,
+        moveOnConflict: MoveOnConflict
+    ): Promise<RelativePath> {
+        if (await this.fs.exists(path)) {
+            const conflictPath = FileOperations.buildConflictPath(path);
+
+            if (moveOnConflict === MoveOnConflict.NEW) {
+                return conflictPath;
+            }
+
+            this.logger.debug(
+                `Displacing existing file at ${path} to '${conflictPath}' to make room`
+            );
+
+            await this.fs.rename(path, conflictPath);
+            return path;
+        }
+
+        this.logger.debug(
+            `No existing file at ${path}, creating parent directories if needed`
+        );
+        await this.createParentDirectories(path);
+        return path;
+    }
 
     private async deletingEmptyParentDirectoriesOfDeletedFile(
         path: RelativePath
@@ -264,17 +274,5 @@ export class FileOperations {
                 await this.fs.createDirectory(parentDir);
             }
         }
-    }
-
-    /**
-     * Build a local-only conflict path for a file the client has to set aside.
-     * Format: `<dir>/conflict-<uuid>-<originalName>` — UUID makes collisions
-     * statistically impossible, so no disk probe / lock dance is needed.
-     */
-    private static buildConflictPath(path: RelativePath): RelativePath {
-        const [directory, fileName] =
-            FileOperations.getParentDirAndFile(path);
-        const conflictName = buildConflictFileName(fileName);
-        return directory ? `${directory}/${conflictName}` : conflictName;
     }
 }

@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const resetClearsRecentlyDeletedResurrectionTest: TestDefinition = {
@@ -26,7 +27,9 @@ export const resetClearsRecentlyDeletedResurrectionTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (s) => s.assertFileNotExists("ghost.md"),
+            verify: (s: AssertableState): void => {
+                s.assertFileNotExists("ghost.md");
+            }
         },
 
         { type: "disable-sync", client: 1 },
@@ -36,7 +39,9 @@ export const resetClearsRecentlyDeletedResurrectionTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (s) => s.assertFileCount(0),
+            verify: (s: AssertableState): void => {
+                s.assertFileCount(0);
+            }
         }
     ]
 };

@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const serverPauseRenameEditResumeTest: TestDefinition = {
@@ -19,7 +20,9 @@ export const serverPauseRenameEditResumeTest: TestDefinition = {
         { type: "barrier" },
         {
             type: "assert-consistent",
-            verify: (s) => s.assertContent("A.md", "original content"),
+            verify: (s: AssertableState): void => {
+                s.assertContent("A.md", "original content");
+            }
         },
 
         { type: "pause-server" },
@@ -39,11 +42,11 @@ export const serverPauseRenameEditResumeTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (s) =>
-                s
-                    .assertFileCount(1)
+            verify: (s: AssertableState): void => {
+                s.assertFileCount(1)
                     .assertFileNotExists("A.md")
-                    .assertContent("B.md", "edited after rename during pause"),
+                    .assertContent("B.md", "edited after rename during pause");
+            }
         }
     ]
 };

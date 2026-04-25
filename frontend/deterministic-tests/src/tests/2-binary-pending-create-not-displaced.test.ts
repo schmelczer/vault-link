@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const binaryPendingCreateNotDisplacedTest: TestDefinition = {
@@ -23,6 +24,17 @@ export const binaryPendingCreateNotDisplacedTest: TestDefinition = {
         { type: "enable-sync", client: 1 },
         { type: "barrier" },
 
-        { type: "assert-consistent", verify: (s) => s.assertFileCount(2).assertFileExists("data.bin").assertFileExists("data (1).bin").assertAnyFileContains("binary data from client 0", "binary data from client 1") }
+        {
+            type: "assert-consistent",
+            verify: (s: AssertableState): void => {
+                s.assertFileCount(2)
+                    .assertFileExists("data.bin")
+                    .assertFileExists("data (1).bin")
+                    .assertAnyFileContains(
+                        "binary data from client 0",
+                        "binary data from client 1"
+                    );
+            }
+        }
     ]
 };

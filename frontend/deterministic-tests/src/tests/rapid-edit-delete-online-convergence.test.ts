@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const rapidEditDeleteOnlineConvergenceTest: TestDefinition = {
@@ -28,17 +29,20 @@ export const rapidEditDeleteOnlineConvergenceTest: TestDefinition = {
         { type: "barrier" },
         {
             type: "assert-consistent",
-            verify: (s) => {
+            verify: (s: AssertableState): void => {
                 for (const [path, content] of s.files) {
                     for (const clientFiles of s.clientFiles) {
-                        if (clientFiles.has(path) && clientFiles.get(path) !== content) {
+                        if (
+                            clientFiles.has(path) &&
+                            clientFiles.get(path) !== content
+                        ) {
                             throw new Error(
                                 `Content mismatch for ${path}: "${clientFiles.get(path)}" vs "${content}"`
                             );
                         }
                     }
                 }
-            },
-        },
-    ],
+            }
+        }
+    ]
 };

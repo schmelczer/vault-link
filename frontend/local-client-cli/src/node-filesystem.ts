@@ -15,18 +15,12 @@ export class NodeFileSystemOperations implements FileSystemOperations {
         directory: RelativePath | undefined
     ): Promise<RelativePath[]> {
         const files: RelativePath[] = [];
-        await this.walkDirectory(
-            directory ?? "",
-            files
-        );
+        await this.walkDirectory(directory ?? "", files);
         return files;
     }
 
     public async read(relativePath: RelativePath): Promise<Uint8Array> {
-        const fullPath = path.join(
-            this.basePath,
-            relativePath
-        );
+        const fullPath = path.join(this.basePath, relativePath);
         try {
             return await fs.readFile(fullPath);
         } catch (error) {
@@ -40,10 +34,7 @@ export class NodeFileSystemOperations implements FileSystemOperations {
         relativePath: RelativePath,
         content: Uint8Array
     ): Promise<void> {
-        const fullPath = path.join(
-            this.basePath,
-            relativePath
-        );
+        const fullPath = path.join(this.basePath, relativePath);
         const dir = path.dirname(fullPath);
 
         try {
@@ -60,10 +51,7 @@ export class NodeFileSystemOperations implements FileSystemOperations {
         relativePath: RelativePath,
         updater: (current: TextWithCursors) => TextWithCursors
     ): Promise<string> {
-        const fullPath = path.join(
-            this.basePath,
-            relativePath
-        );
+        const fullPath = path.join(this.basePath, relativePath);
 
         try {
             const currentContent = await fs.readFile(fullPath, "utf-8");
@@ -78,10 +66,7 @@ export class NodeFileSystemOperations implements FileSystemOperations {
     }
 
     public async getFileSize(relativePath: RelativePath): Promise<number> {
-        const fullPath = path.join(
-            this.basePath,
-            relativePath
-        );
+        const fullPath = path.join(this.basePath, relativePath);
         try {
             const stats = await fs.stat(fullPath);
             return stats.size;
@@ -93,10 +78,7 @@ export class NodeFileSystemOperations implements FileSystemOperations {
     }
 
     public async exists(relativePath: RelativePath): Promise<boolean> {
-        const fullPath = path.join(
-            this.basePath,
-            relativePath
-        );
+        const fullPath = path.join(this.basePath, relativePath);
         try {
             await fs.access(fullPath);
             return true;
@@ -106,10 +88,7 @@ export class NodeFileSystemOperations implements FileSystemOperations {
     }
 
     public async createDirectory(relativePath: RelativePath): Promise<void> {
-        const fullPath = path.join(
-            this.basePath,
-            relativePath
-        );
+        const fullPath = path.join(this.basePath, relativePath);
         try {
             await fs.mkdir(fullPath, { recursive: false });
         } catch (error) {
@@ -120,10 +99,7 @@ export class NodeFileSystemOperations implements FileSystemOperations {
     }
 
     public async delete(relativePath: RelativePath): Promise<void> {
-        const fullPath = path.join(
-            this.basePath,
-            relativePath
-        );
+        const fullPath = path.join(this.basePath, relativePath);
         try {
             await fs.unlink(fullPath);
         } catch (error) {
@@ -191,5 +167,4 @@ export class NodeFileSystemOperations implements FileSystemOperations {
             }
         }
     }
-
 }

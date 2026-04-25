@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const deleteRecreateSamePathTest: TestDefinition = {
@@ -11,7 +12,12 @@ export const deleteRecreateSamePathTest: TestDefinition = {
         { type: "enable-sync", client: 1 },
         { type: "sync" },
         { type: "barrier" },
-        { type: "assert-consistent", verify: (s) => s.assertContent("A.md", "version 1") },
+        {
+            type: "assert-consistent",
+            verify: (s: AssertableState): void => {
+                s.assertContent("A.md", "version 1");
+            }
+        },
 
         { type: "disable-sync", client: 0 },
         { type: "delete", client: 0, path: "A.md" },
@@ -20,6 +26,11 @@ export const deleteRecreateSamePathTest: TestDefinition = {
         { type: "sync" },
         { type: "barrier" },
 
-        { type: "assert-consistent", verify: (s) => s.assertContent("A.md", "version 2") }
+        {
+            type: "assert-consistent",
+            verify: (s: AssertableState): void => {
+                s.assertContent("A.md", "version 2");
+            }
+        }
     ]
 };

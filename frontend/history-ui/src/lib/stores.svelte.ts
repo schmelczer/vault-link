@@ -16,11 +16,7 @@ class AuthStore {
     isAuthenticated = $state(false);
     api = $state<ApiClient | null>(null);
 
-    authenticate(
-        token: string,
-        userName: string,
-        vaults: VaultInfo[]
-    ) {
+    authenticate(token: string, userName: string, vaults: VaultInfo[]) {
         this.token = token;
         this.userName = userName;
         this.availableVaults = vaults;
@@ -56,8 +52,7 @@ class AuthStore {
     tryRestore(): { token: string; vaultId?: string } | null {
         const token = sessionStorage.getItem("vaultlink_token");
         if (!token) return null;
-        const vaultId =
-            sessionStorage.getItem("vaultlink_vault") ?? undefined;
+        const vaultId = sessionStorage.getItem("vaultlink_vault") ?? undefined;
         return { token, vaultId };
     }
 }
@@ -115,13 +110,8 @@ export function inferAction(
 ): ActionType {
     if (version.isDeleted) return "deleted";
     if (!previousVersion) return "created";
-    if (
-        previousVersion.isDeleted &&
-        !version.isDeleted
-    )
-        return "restored";
-    if (previousVersion.relativePath !== version.relativePath)
-        return "renamed";
+    if (previousVersion.isDeleted && !version.isDeleted) return "restored";
+    if (previousVersion.relativePath !== version.relativePath) return "renamed";
     return "updated";
 }
 
@@ -150,8 +140,7 @@ export function enrichVersions(
         return {
             ...v,
             action,
-            previousPath:
-                action === "renamed" ? prev?.relativePath : undefined
+            previousPath: action === "renamed" ? prev?.relativePath : undefined
         };
     });
 }

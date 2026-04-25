@@ -37,22 +37,19 @@ export function parseArgs(argv: string[]): CliArgs {
             ).env("VAULTLINK_LOCAL_PATH")
         )
         .addOption(
-            new Option(
-                "-r, --remote-uri <uri>",
-                "Remote server URI"
-            ).env("VAULTLINK_REMOTE_URI")
+            new Option("-r, --remote-uri <uri>", "Remote server URI").env(
+                "VAULTLINK_REMOTE_URI"
+            )
         )
         .addOption(
-            new Option(
-                "-t, --token <token>",
-                "Authentication token"
-            ).env("VAULTLINK_TOKEN")
+            new Option("-t, --token <token>", "Authentication token").env(
+                "VAULTLINK_TOKEN"
+            )
         )
         .addOption(
-            new Option(
-                "-v, --vault-name <name>",
-                "Vault name"
-            ).env("VAULTLINK_VAULT_NAME")
+            new Option("-v, --vault-name <name>", "Vault name").env(
+                "VAULTLINK_VAULT_NAME"
+            )
         )
         .addOption(
             new Option(
@@ -147,10 +144,7 @@ Environment variables:
     const lineEndingsStr = (opts.lineEndings as string | undefined) ?? "auto";
     /* eslint-enable @typescript-eslint/no-unsafe-type-assertion */
 
-    const requireOption = <T>(
-        value: T | undefined,
-        name: string
-    ): T => {
+    const requireOption = <T>(value: T | undefined, name: string): T => {
         if (value === undefined) {
             const option = program.options.find(
                 (o) => o.attributeName() === name
@@ -173,9 +167,7 @@ Environment variables:
 
     // Validate remote URI protocol
     if (
-        !VALID_PROTOCOLS.some((prefix) =>
-            requiredRemoteUri.startsWith(prefix)
-        )
+        !VALID_PROTOCOLS.some((prefix) => requiredRemoteUri.startsWith(prefix))
     ) {
         throw new Error(
             `Invalid remote URI '${requiredRemoteUri}'. Must start with ${VALID_PROTOCOLS.join(", ")}`

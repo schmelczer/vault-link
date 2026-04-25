@@ -31,10 +31,7 @@ describe("buildConflictFileName", () => {
             0,
             "stem length must be a whole number of families"
         );
-        assert.ok(
-            !stem.endsWith("‍"),
-            "stem must not end with a dangling ZWJ"
-        );
+        assert.ok(!stem.endsWith("‍"), "stem must not end with a dangling ZWJ");
     });
 
     it("does not split a base character from its combining mark", () => {
@@ -61,7 +58,10 @@ describe("buildConflictFileName", () => {
 
 describe("CONFLICT_PATH_REGEX", () => {
     it("does not misclassify user-authored names that start with `conflict-`", () => {
-        assert.strictEqual(CONFLICT_PATH_REGEX.test("conflict-resolution.md"), false);
+        assert.strictEqual(
+            CONFLICT_PATH_REGEX.test("conflict-resolution.md"),
+            false
+        );
     });
 
     it("only inspects the final path segment", () => {
@@ -80,6 +80,9 @@ describe("CONFLICT_PATH_REGEX", () => {
     });
 
     it("round-trips with buildConflictFileName", () => {
-        assert.strictEqual(CONFLICT_PATH_REGEX.test(buildConflictFileName("note.md")), true);
+        assert.strictEqual(
+            CONFLICT_PATH_REGEX.test(buildConflictFileName("note.md")),
+            true
+        );
     });
 });

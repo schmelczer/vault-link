@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const concurrentEditExactSamePositionTest: TestDefinition = {
@@ -38,7 +39,7 @@ export const concurrentEditExactSamePositionTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (state) => {
+            verify: (state: AssertableState): void => {
                 state
                     .assertFileCount(1)
                     .assertContains("doc.md", "slow", "fast", "brown fox");

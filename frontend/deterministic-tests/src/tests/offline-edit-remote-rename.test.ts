@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const offlineEditRemoteRenameTest: TestDefinition = {
@@ -13,7 +14,9 @@ export const offlineEditRemoteRenameTest: TestDefinition = {
         { type: "barrier" },
         {
             type: "assert-consistent",
-            verify: (s) => s.assertContent("A.md", "original")
+            verify: (s: AssertableState): void => {
+                s.assertContent("A.md", "original");
+            }
         },
 
         { type: "disable-sync", client: 0 },
@@ -38,11 +41,11 @@ export const offlineEditRemoteRenameTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (s) =>
-                s
-                    .assertFileNotExists("A.md")
+            verify: (s: AssertableState): void => {
+                s.assertFileNotExists("A.md")
                     .assertFileCount(1)
-                    .assertContains("B.md", "edited by client 0")
+                    .assertContains("B.md", "edited by client 0");
+            }
         }
     ]
 };

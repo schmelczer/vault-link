@@ -35,7 +35,7 @@ export class CursorTracker {
         [];
 
     public constructor(
-        private readonly logger: Logger,
+        logger: Logger,
         private readonly queue: SyncEventQueue,
         private readonly webSocketManager: WebSocketManager,
         private readonly fileOperations: FileOperations,
@@ -82,8 +82,7 @@ export class CursorTracker {
                 for (const clientCursor of this.knownRemoteCursors) {
                     if (
                         clientCursor.documentsWithCursors.some(
-                            (document) =>
-                                document.relativePath === relativePath
+                            (document) => document.relativePath === relativePath
                         )
                     ) {
                         clientCursor.upToDateness =
@@ -135,7 +134,9 @@ export class CursorTracker {
             const readContent = await this.fileOperations.read(
                 doc.relativePath
             );
-            const record = this.queue.getSettledDocumentByPath(doc.relativePath);
+            const record = this.queue.getSettledDocumentByPath(
+                doc.relativePath
+            );
             if (record?.remoteHash !== (await hash(readContent))) {
                 doc.vaultUpdateId = null;
             }
@@ -221,20 +222,18 @@ export class CursorTracker {
     private async getDocumentUpToDateness(
         document: DocumentWithCursors
     ): Promise<DocumentUpToDateness> {
-        const record = this.queue.getSettledDocumentByPath(document.relativePath);
+        const record = this.queue.getSettledDocumentByPath(
+            document.relativePath
+        );
 
         if (!record) {
             // the document of the cursor must be from the future
             return DocumentUpToDateness.Later;
         }
 
-        if (
-            record.parentVersionId < (document.vaultUpdateId ?? 0)
-        ) {
+        if (record.parentVersionId < (document.vaultUpdateId ?? 0)) {
             return DocumentUpToDateness.Later;
-        } else if (
-            (document.vaultUpdateId ?? 0) < record.parentVersionId
-        ) {
+        } else if ((document.vaultUpdateId ?? 0) < record.parentVersionId) {
             // the document of the cursor must be from the past
             return DocumentUpToDateness.Prior;
         }
@@ -243,7 +242,9 @@ export class CursorTracker {
             document.relativePath
         );
 
-        const currentRecord = this.queue.getSettledDocumentByPath(document.relativePath);
+        const currentRecord = this.queue.getSettledDocumentByPath(
+            document.relativePath
+        );
         return currentRecord?.remoteHash === (await hash(currentContent))
             ? DocumentUpToDateness.UpToDate
             : DocumentUpToDateness.Prior;

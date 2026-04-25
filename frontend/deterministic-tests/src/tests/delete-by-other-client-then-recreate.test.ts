@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const deleteByOtherClientThenRecreateTest: TestDefinition = {
@@ -14,11 +15,26 @@ export const deleteByOtherClientThenRecreateTest: TestDefinition = {
         { type: "delete", client: 1, path: "A.md" },
         { type: "barrier" },
 
-        { type: "assert-consistent", verify: (s) => s.assertFileNotExists("A.md") },
+        {
+            type: "assert-consistent",
+            verify: (s: AssertableState): void => {
+                s.assertFileNotExists("A.md");
+            }
+        },
 
-        { type: "create", client: 0, path: "A.md", content: "recreated by client 0" },
+        {
+            type: "create",
+            client: 0,
+            path: "A.md",
+            content: "recreated by client 0"
+        },
         { type: "barrier" },
 
-        { type: "assert-consistent", verify: (s) => s.assertContent("A.md", "recreated by client 0") },
-    ],
+        {
+            type: "assert-consistent",
+            verify: (s: AssertableState): void => {
+                s.assertContent("A.md", "recreated by client 0");
+            }
+        }
+    ]
 };

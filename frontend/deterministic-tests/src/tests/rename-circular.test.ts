@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const renameCircularTest: TestDefinition = {
@@ -13,10 +14,11 @@ export const renameCircularTest: TestDefinition = {
         { type: "barrier" },
         {
             type: "assert-consistent",
-            verify: (s) =>
+            verify: (s: AssertableState): void => {
                 s.assertContent("A.md", "content-a")
                     .assertContent("B.md", "content-b")
-                    .assertContent("C.md", "content-c"),
+                    .assertContent("C.md", "content-c");
+            }
         },
 
         { type: "disable-sync", client: 0 },
@@ -31,12 +33,13 @@ export const renameCircularTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (s) =>
+            verify: (s: AssertableState): void => {
                 s.assertFileNotExists("temp-a.md")
                     .assertFileCount(3)
                     .assertContent("A.md", "content-c")
                     .assertContent("B.md", "content-a")
-                    .assertContent("C.md", "content-b"),
+                    .assertContent("C.md", "content-b");
+            }
         }
     ]
 };

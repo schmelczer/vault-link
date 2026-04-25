@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const offlineRenameRemoteCreateOldPathTest: TestDefinition = {
@@ -14,7 +15,9 @@ export const offlineRenameRemoteCreateOldPathTest: TestDefinition = {
         { type: "barrier" },
         {
             type: "assert-consistent",
-            verify: (s) => s.assertContent("X.md", "original")
+            verify: (s: AssertableState): void => {
+                s.assertContent("X.md", "original");
+            }
         },
 
         { type: "disable-sync", client: 0 },
@@ -39,10 +42,12 @@ export const offlineRenameRemoteCreateOldPathTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (s) =>
-                s
-                    .assertFileCount(1)
-                    .assertContains("Y.md", "updated-by-client-1")
+            verify: (s: AssertableState): void => {
+                s.assertFileCount(1).assertContains(
+                    "Y.md",
+                    "updated-by-client-1"
+                );
+            }
         }
     ]
 };

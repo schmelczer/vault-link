@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const mcDeleteThenOfflineRenameTest: TestDefinition = {
@@ -27,10 +28,13 @@ export const mcDeleteThenOfflineRenameTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (s) => {
-                s.assertContent("C.md", "unrelated")
-                    .assertFileNotExists("A.md");
-                s.ifFileExists("B.md", (s) => s.assertContent("B.md", "original"));
+            verify: (s: AssertableState): void => {
+                s.assertContent("C.md", "unrelated").assertFileNotExists(
+                    "A.md"
+                );
+                s.ifFileExists("B.md", (inner) =>
+                    inner.assertContent("B.md", "original")
+                );
             }
         }
     ]

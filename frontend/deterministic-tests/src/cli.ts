@@ -38,137 +38,6 @@ interface NamedTestResult {
     result: TestResult;
 }
 
-
-async function main(): Promise<void> {
-    const cwd = process.cwd();
-    let projectRoot = cwd;
-
-    if (cwd.endsWith("frontend/deterministic-tests")) {
-        projectRoot = path.resolve(cwd, "../..");
-    } else if (cwd.endsWith("frontend")) {
-        projectRoot = path.resolve(cwd, "..");
-    }
-
-    const serverPath = path.join(projectRoot, SERVER_BINARY_PATH);
-    if (!fs.existsSync(serverPath)) {
-        logger.error(`Server binary not found at: ${serverPath}`);
-        process.exit(1);
-    }
-
-    const configPath = path.join(projectRoot, CONFIG_PATH);
-    if (!fs.existsSync(configPath)) {
-        logger.error(`Config file not found at: ${configPath}`);
-        process.exit(1);
-    }
-
-    const filterArg = process.argv.find((a) => a.startsWith("--filter="));
-    const filter = filterArg?.slice("--filter=".length);
-
-    const testsToRun: [string, TestDefinition][] = [];
-    for (const [key, test] of Object.entries(TESTS)) {
-        if (test) {
-            if (filter && !key.includes(filter)) {
-                continue;
-            }
-            testsToRun.push([key, test]);
-        }
-    }
-
-    if (testsToRun.length === 0) {
-        logger.error(
-            filter
-                ? `No tests matched filter "${filter}"`
-                : "No tests found"
-        );
-        process.exit(1);
-    }
-
-    const concurrency = parseConcurrency();
-    const regularTests = testsToRun.filter(
-        ([, t]) => !testUsesPauseServer(t)
-    );
-    const pauseTests = testsToRun.filter(([, t]) => testUsesPauseServer(t));
-
-    logger.info(`Server: ${serverPath}`);
-    logger.info(`Config: ${configPath}`);
-    logger.info(
-        `Tests: ${testsToRun.length} total (${regularTests.length} regular, ${pauseTests.length} server-pause)`
-    );
-    logger.info(`Concurrency: ${concurrency}`);
-
-    const allResults: NamedTestResult[] = [];
-
-    if (regularTests.length > 0) {
-        logger.info(
-            `\n--- Running ${regularTests.length} regular tests (shared server, concurrency ${concurrency}) ---`
-        );
-        const sharedServer = new ServerControl(
-            serverPath,
-            configPath,
-            logger
-        );
-        serverManager.track(sharedServer);
-
-        try {
-            await sharedServer.start();
-
-            const results = await runWithConcurrency(
-                regularTests,
-                concurrency,
-                async ([name, test]) =>
-                    runSharedServerTest(name, test, sharedServer)
-            );
-
-            allResults.push(...results);
-        } finally {
-            try {
-                await sharedServer.stop();
-            } catch (error) {
-                logger.warn(
-                    `Error stopping shared server: ${error instanceof Error ? error.message : String(error)}`
-                );
-            }
-            serverManager.untrack(sharedServer);
-        }
-    }
-
-    if (pauseTests.length > 0) {
-        logger.info(
-            `\n--- Running ${pauseTests.length} server-pause tests (dedicated servers, concurrency ${concurrency}) ---`
-        );
-
-        const results = await runWithConcurrency(
-            pauseTests,
-            concurrency,
-            async ([name, test]) =>
-                runDedicatedServerTest(name, test, serverPath, configPath)
-        );
-
-        allResults.push(...results);
-    }
-
-    const passed = allResults.filter((r) => r.result.success);
-    const failed = allResults.filter((r) => !r.result.success);
-
-    logger.info(`\n--- Results: ${passed.length}/${allResults.length} passed ---`);
-
-    if (failed.length > 0) {
-        for (const { name, result } of failed) {
-            logger.error(`  FAILED: ${name}: ${result.error}`);
-        }
-        process.exit(1);
-    } else {
-        logger.info("All tests passed!");
-        process.exit(0);
-    }
-}
-
-main().catch((err: unknown) => {
-    logger.error(`Unexpected error: ${err}`);
-    process.exit(1);
-});
-
-
 async function runSharedServerTest(
     name: string,
     test: TestDefinition,
@@ -229,3 +98,132 @@ async function runDedicatedServerTest(
         serverManager.untrack(server);
     }
 }
+
+async function main(): Promise<void> {
+    const cwd = process.cwd();
+    let projectRoot = cwd;
+
+    if (cwd.endsWith("frontend/deterministic-tests")) {
+        projectRoot = path.resolve(cwd, "../..");
+    } else if (cwd.endsWith("frontend")) {
+        projectRoot = path.resolve(cwd, "..");
+    }
+
+    const serverPath = path.join(projectRoot, SERVER_BINARY_PATH);
+    if (!fs.existsSync(serverPath)) {
+        logger.error(`Server binary not found at: ${serverPath}`);
+        process.exit(1);
+    }
+
+    const configPath = path.join(projectRoot, CONFIG_PATH);
+    if (!fs.existsSync(configPath)) {
+        logger.error(`Config file not found at: ${configPath}`);
+        process.exit(1);
+    }
+
+    const filterArg = process.argv.find((a) => a.startsWith("--filter="));
+    const filter = filterArg?.slice("--filter=".length);
+
+    const testsToRun: [string, TestDefinition][] = [];
+    for (const [key, test] of Object.entries(TESTS)) {
+        if (test) {
+            if (
+                filter !== undefined &&
+                filter.length > 0 &&
+                !key.includes(filter)
+            ) {
+                continue;
+            }
+            testsToRun.push([key, test]);
+        }
+    }
+
+    if (testsToRun.length === 0) {
+        logger.error(
+            filter !== undefined && filter.length > 0
+                ? `No tests matched filter "${filter}"`
+                : "No tests found"
+        );
+        process.exit(1);
+    }
+
+    const concurrency = parseConcurrency();
+    const regularTests = testsToRun.filter(([, t]) => !testUsesPauseServer(t));
+    const pauseTests = testsToRun.filter(([, t]) => testUsesPauseServer(t));
+
+    logger.info(`Server: ${serverPath}`);
+    logger.info(`Config: ${configPath}`);
+    logger.info(
+        `Tests: ${testsToRun.length} total (${regularTests.length} regular, ${pauseTests.length} server-pause)`
+    );
+    logger.info(`Concurrency: ${concurrency}`);
+
+    const allResults: NamedTestResult[] = [];
+
+    if (regularTests.length > 0) {
+        logger.info(
+            `\n--- Running ${regularTests.length} regular tests (shared server, concurrency ${concurrency}) ---`
+        );
+        const sharedServer = new ServerControl(serverPath, configPath, logger);
+        serverManager.track(sharedServer);
+
+        try {
+            await sharedServer.start();
+
+            const results = await runWithConcurrency(
+                regularTests,
+                concurrency,
+                async ([name, test]) =>
+                    runSharedServerTest(name, test, sharedServer)
+            );
+
+            allResults.push(...results);
+        } finally {
+            try {
+                await sharedServer.stop();
+            } catch (error) {
+                logger.warn(
+                    `Error stopping shared server: ${error instanceof Error ? error.message : String(error)}`
+                );
+            }
+            serverManager.untrack(sharedServer);
+        }
+    }
+
+    if (pauseTests.length > 0) {
+        logger.info(
+            `\n--- Running ${pauseTests.length} server-pause tests (dedicated servers, concurrency ${concurrency}) ---`
+        );
+
+        const results = await runWithConcurrency(
+            pauseTests,
+            concurrency,
+            async ([name, test]) =>
+                runDedicatedServerTest(name, test, serverPath, configPath)
+        );
+
+        allResults.push(...results);
+    }
+
+    const passed = allResults.filter((r) => r.result.success);
+    const failed = allResults.filter((r) => !r.result.success);
+
+    logger.info(
+        `\n--- Results: ${passed.length}/${allResults.length} passed ---`
+    );
+
+    if (failed.length > 0) {
+        for (const { name, result } of failed) {
+            logger.error(`  FAILED: ${name}: ${result.error}`);
+        }
+        process.exit(1);
+    } else {
+        logger.info("All tests passed!");
+        process.exit(0);
+    }
+}
+
+main().catch((err: unknown) => {
+    logger.error(`Unexpected error: ${err}`);
+    process.exit(1);
+});

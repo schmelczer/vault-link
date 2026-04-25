@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const updateDoesNotSurvivesRemoteDeleteTest: TestDefinition = {
@@ -14,7 +15,12 @@ export const updateDoesNotSurvivesRemoteDeleteTest: TestDefinition = {
         { type: "disable-sync", client: 1 },
 
         { type: "delete", client: 0, path: "doc.md" },
-        { type: "update", client: 1, path: "doc.md", content: "edited by client 1" },
+        {
+            type: "update",
+            client: 1,
+            path: "doc.md",
+            content: "edited by client 1"
+        },
 
         { type: "enable-sync", client: 0 },
         { type: "enable-sync", client: 1 },
@@ -22,8 +28,9 @@ export const updateDoesNotSurvivesRemoteDeleteTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (s) =>
-                s.assertFileCount(0)
-        },
-    ],
+            verify: (s: AssertableState): void => {
+                s.assertFileCount(0);
+            }
+        }
+    ]
 };

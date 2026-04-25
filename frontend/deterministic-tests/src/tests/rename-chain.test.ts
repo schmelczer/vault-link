@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const renameChainTest: TestDefinition = {
@@ -9,7 +10,12 @@ export const renameChainTest: TestDefinition = {
     steps: [
         { type: "enable-sync", client: 1 },
 
-        { type: "create", client: 0, path: "A.md", content: "important content" },
+        {
+            type: "create",
+            client: 0,
+            path: "A.md",
+            content: "important content"
+        },
         { type: "rename", client: 0, oldPath: "A.md", newPath: "B.md" },
         { type: "rename", client: 0, oldPath: "B.md", newPath: "C.md" },
 
@@ -19,10 +25,11 @@ export const renameChainTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (s) =>
+            verify: (s: AssertableState): void => {
                 s.assertFileNotExists("A.md")
                     .assertFileNotExists("B.md")
-                    .assertContent("C.md", "important content"),
+                    .assertContent("C.md", "important content");
+            }
         }
     ]
 };

@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const createDeleteNoopTest: TestDefinition = {
@@ -16,6 +17,11 @@ export const createDeleteNoopTest: TestDefinition = {
         { type: "enable-sync", client: 0 },
         { type: "barrier" },
 
-        { type: "assert-consistent", verify: (s) => s.assertFileNotExists("temp.md") }
+        {
+            type: "assert-consistent",
+            verify: (s: AssertableState): void => {
+                s.assertFileNotExists("temp.md");
+            }
+        }
     ]
 };

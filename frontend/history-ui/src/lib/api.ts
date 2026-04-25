@@ -28,9 +28,7 @@ async function fetchJsonWithToken<T>(
     return response.json() as Promise<T>;
 }
 
-export async function listVaults(
-    token: string
-): Promise<ListVaultsResponse> {
+export async function listVaults(token: string): Promise<ListVaultsResponse> {
     return fetchJsonWithToken("/vaults", token);
 }
 
@@ -44,10 +42,7 @@ export class ApiClient {
         return `/vaults/${encodeURIComponent(this.vaultId)}`;
     }
 
-    private async fetchJson<T>(
-        path: string,
-        init?: RequestInit
-    ): Promise<T> {
+    private async fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
         return fetchJsonWithToken(path, this.token, init);
     }
 
@@ -104,9 +99,7 @@ export class ApiClient {
         if (beforeUpdateId !== undefined)
             params.set("before_update_id", String(beforeUpdateId));
         const qs = params.toString();
-        return this.fetchJson(
-            `${this.baseUrl}/history${qs ? `?${qs}` : ""}`
-        );
+        return this.fetchJson(`${this.baseUrl}/history${qs ? `?${qs}` : ""}`);
     }
 
     /**

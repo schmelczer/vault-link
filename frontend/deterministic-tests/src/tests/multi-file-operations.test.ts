@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const multiFileOperationsTest: TestDefinition = {
@@ -19,7 +20,12 @@ export const multiFileOperationsTest: TestDefinition = {
         { type: "delete", client: 0, path: "A.md" },
         { type: "sync", client: 0 },
 
-        { type: "update", client: 1, path: "B.md", content: "updated by client 1" },
+        {
+            type: "update",
+            client: 1,
+            path: "B.md",
+            content: "updated by client 1"
+        },
         { type: "rename", client: 1, oldPath: "A.md", newPath: "D.md" },
 
         { type: "enable-sync", client: 1 },
@@ -28,11 +34,13 @@ export const multiFileOperationsTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (s) => {
+            verify: (s: AssertableState): void => {
                 s.assertContains("B.md", "updated")
                     .assertFileExists("C.md")
                     .assertFileNotExists("A.md");
-                s.ifFileExists("D.md", (s) => s.assertContent("D.md", "content-a"));
+                s.ifFileExists("D.md", (inner) =>
+                    inner.assertContent("D.md", "content-a")
+                );
             }
         }
     ]

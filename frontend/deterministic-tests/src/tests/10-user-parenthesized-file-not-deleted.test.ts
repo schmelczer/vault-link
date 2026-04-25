@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const userParenthesizedFileNotDeletedTest: TestDefinition = {
@@ -34,7 +35,7 @@ export const userParenthesizedFileNotDeletedTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (state) => {
+            verify: (state: AssertableState): void => {
                 state
                     .assertFileCount(3)
                     .assertFileExists("Chapter.bin")

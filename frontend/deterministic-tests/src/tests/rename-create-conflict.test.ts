@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const renameCreateConflictTest: TestDefinition = {
@@ -12,7 +13,9 @@ export const renameCreateConflictTest: TestDefinition = {
         { type: "sync", client: 1 },
         {
             type: "assert-consistent",
-            verify: (s) => s.assertContent("A.md", "hi"),
+            verify: (s: AssertableState): void => {
+                s.assertContent("A.md", "hi");
+            }
         },
         { type: "disable-sync", client: 0 },
         { type: "rename", client: 1, oldPath: "A.md", newPath: "B.md" },
@@ -23,8 +26,9 @@ export const renameCreateConflictTest: TestDefinition = {
         { type: "barrier" },
         {
             type: "assert-consistent",
-            verify: (s) =>
-                s.assertFileNotExists("A.md").assertContent("B.md", "hi"),
+            verify: (s: AssertableState): void => {
+                s.assertFileNotExists("A.md").assertContent("B.md", "hi");
+            }
         }
     ]
 };

@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const deleteDuringPendingCreateTest: TestDefinition = {
@@ -26,6 +27,11 @@ export const deleteDuringPendingCreateTest: TestDefinition = {
         { type: "sync" },
         { type: "barrier" },
 
-        { type: "assert-consistent", verify: (s) => s.assertFileCount(0).assertFileNotExists("ephemeral.md") }
+        {
+            type: "assert-consistent",
+            verify: (s: AssertableState): void => {
+                s.assertFileCount(0).assertFileNotExists("ephemeral.md");
+            }
+        }
     ]
 };

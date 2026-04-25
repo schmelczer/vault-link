@@ -1,3 +1,4 @@
+import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
 export const concurrentRenameAndCreateAtTargetTest: TestDefinition = {
@@ -37,10 +38,14 @@ export const concurrentRenameAndCreateAtTargetTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (state) => {
+            verify: (state: AssertableState): void => {
                 state
                     .assertFileNotExists("X.md")
-                    .assertContains("Y.md", "original file X", "brand new Y content");
+                    .assertContains(
+                        "Y.md",
+                        "original file X",
+                        "brand new Y content"
+                    );
             }
         }
     ]

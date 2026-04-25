@@ -1,15 +1,15 @@
 import type { ClientState } from "../test-definition";
 
 export class AssertableState {
-    readonly files: Map<string, string>;
-    readonly clientFiles: Map<string, string>[];
+    public readonly files: Map<string, string>;
+    public readonly clientFiles: Map<string, string>[];
 
-    constructor(state: ClientState) {
+    public constructor(state: ClientState) {
         this.files = state.files;
         this.clientFiles = state.clientFiles;
     }
 
-    assertFileCount(expected: number): this {
+    public assertFileCount(expected: number): this {
         if (this.files.size !== expected) {
             const keys = Array.from(this.files.keys()).join(", ");
             throw new Error(
@@ -19,17 +19,15 @@ export class AssertableState {
         return this;
     }
 
-    assertFileExists(path: string): this {
+    public assertFileExists(path: string): this {
         if (!this.files.has(path)) {
             const keys = Array.from(this.files.keys()).join(", ");
-            throw new Error(
-                `Expected "${path}" to exist. Files: [${keys}]`
-            );
+            throw new Error(`Expected "${path}" to exist. Files: [${keys}]`);
         }
         return this;
     }
 
-    assertFileNotExists(path: string): this {
+    public assertFileNotExists(path: string): this {
         if (this.files.has(path)) {
             const keys = Array.from(this.files.keys()).join(", ");
             throw new Error(
@@ -39,7 +37,7 @@ export class AssertableState {
         return this;
     }
 
-    assertContent(path: string, expected: string): this {
+    public assertContent(path: string, expected: string): this {
         this.assertFileExists(path);
         const actual = this.files.get(path) ?? "";
         if (actual !== expected) {
@@ -50,7 +48,7 @@ export class AssertableState {
         return this;
     }
 
-    assertContains(path: string, ...substrings: string[]): this {
+    public assertContains(path: string, ...substrings: string[]): this {
         this.assertFileExists(path);
         const content = this.files.get(path) ?? "";
         const missing = substrings.filter((s) => !content.includes(s));
@@ -62,7 +60,7 @@ export class AssertableState {
         return this;
     }
 
-    assertContainsAny(path: string, ...substrings: string[]): this {
+    public assertContainsAny(path: string, ...substrings: string[]): this {
         this.assertFileExists(path);
         const content = this.files.get(path) ?? "";
         const found = substrings.some((s) => content.includes(s));
@@ -74,7 +72,7 @@ export class AssertableState {
         return this;
     }
 
-    assertAnyFileContains(...substrings: string[]): this {
+    public assertAnyFileContains(...substrings: string[]): this {
         const allContent = Array.from(this.files.values()).join("\n");
         const missing = substrings.filter((s) => !allContent.includes(s));
         if (missing.length > 0) {
@@ -88,7 +86,7 @@ export class AssertableState {
         return this;
     }
 
-    assertSubstringCount(
+    public assertSubstringCount(
         path: string,
         substring: string,
         expected: number
@@ -104,7 +102,7 @@ export class AssertableState {
         return this;
     }
 
-    assertContentInAtMostOneFile(substring: string): this {
+    public assertContentInAtMostOneFile(substring: string): this {
         const matches = Array.from(this.files.entries()).filter(([, content]) =>
             content.includes(substring)
         );
@@ -119,14 +117,14 @@ export class AssertableState {
         return this;
     }
 
-    ifFileExists(path: string, fn: (state: this) => void): this {
+    public ifFileExists(path: string, fn: (state: this) => void): this {
         if (this.files.has(path)) {
             fn(this);
         }
         return this;
     }
 
-    getContent(path: string): string {
+    public getContent(path: string): string {
         return this.files.get(path) ?? "";
     }
 }
