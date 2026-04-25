@@ -26,6 +26,7 @@ import { setUpTelemetry } from "./utils/set-up-telemetry";
 import { DIFF_CACHE_SIZE_MB } from "./consts";
 import { ServerConfig } from "./services/server-config";
 import type { EventListeners } from "./utils/data-structures/event-listeners";
+import { Lock } from "./utils/data-structures/locks";
 
 export class SyncClient {
     private hasFinishedOfflineSync = false;
@@ -34,6 +35,7 @@ export class SyncClient {
     private unloadTelemetry?: () => void;
     private isDestroying = false;
     private readonly eventUnsubscribers: (() => void)[] = [];
+    private readonly settingsChangeLock = new Lock("SyncClient.onSettingsChange");
 
     private constructor(
         public readonly logger: Logger,
@@ -490,32 +492,45 @@ export class SyncClient {
     ): Promise<void> {
         this.checkIfDestroyed("onSettingsChange");
 
-        if (
-            newSettings.vaultName !== oldSettings.vaultName ||
-            newSettings.remoteUri !== oldSettings.remoteUri
-        ) {
-            await this.reset();
-        }
-
-        if (newSettings.isSyncEnabled !== oldSettings.isSyncEnabled) {
-            if (newSettings.isSyncEnabled) {
-                await this.startSyncing();
-            } else {
-                await this.pause();
+        // Serialize listener invocations so back-to-back settings updates
+        // can't run reset()/pause()/startSyncing() concurrently.
+        await this.settingsChangeLock.withLock(async () => {
+            // The lock is FIFO, so by the time we run the client may have
+            // been destroyed in a queued invocation ahead of us.
+            if (this.hasBeenDestroyed) {
+                return;
             }
-        }
 
-        if (newSettings.diffCacheSizeMB !== oldSettings.diffCacheSizeMB) {
-            this.contentCache.resize(newSettings.diffCacheSizeMB * 1024 * 1024);
-        }
+            const connectionChanged =
+                newSettings.vaultName !== oldSettings.vaultName ||
+                newSettings.remoteUri !== oldSettings.remoteUri;
 
-        if (newSettings.enableTelemetry !== oldSettings.enableTelemetry) {
-            if (newSettings.enableTelemetry) {
-                this.unloadTelemetry = setUpTelemetry();
-            } else {
-                this.unloadTelemetry?.();
+            if (connectionChanged) {
+                // reset() pauses, clears state, then starts iff isSyncEnabled
+                // — so any concurrent isSyncEnabled change is already applied.
+                await this.reset();
+            } else if (newSettings.isSyncEnabled !== oldSettings.isSyncEnabled) {
+                if (newSettings.isSyncEnabled) {
+                    await this.startSyncing();
+                } else {
+                    await this.pause();
+                }
             }
-        }
+
+            if (newSettings.diffCacheSizeMB !== oldSettings.diffCacheSizeMB) {
+                this.contentCache.resize(
+                    newSettings.diffCacheSizeMB * 1024 * 1024
+                );
+            }
+
+            if (newSettings.enableTelemetry !== oldSettings.enableTelemetry) {
+                if (newSettings.enableTelemetry) {
+                    this.unloadTelemetry = setUpTelemetry();
+                } else {
+                    this.unloadTelemetry?.();
+                }
+            }
+        });
     }
 
     private checkIfDestroyed(origin: string): void {

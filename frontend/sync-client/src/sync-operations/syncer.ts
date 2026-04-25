@@ -162,11 +162,6 @@ export class Syncer {
     public reset(): void {
         this._isFirstSyncStarted = false;
         this.queue.clearPending();
-        // Don't null the reference synchronously — if the scan is
-        // still in flight, the next reconnect would spawn a second
-        // concurrent scan racing on the same queue. Defer the
-        // clear until the in-flight task actually resolves, so a
-        // fresh scan can only start once the prior one is done.
         const current = this.runningScheduleSyncForOfflineChanges;
         if (current !== undefined) {
             void current.finally(() => {
@@ -619,11 +614,17 @@ export class Syncer {
         record: DocumentRecord,
         remoteVersion: DocumentVersionWithoutContent
     ): Promise<void> {
-        if (record.parentVersionId >= remoteVersion.vaultUpdateId) {
-            this.logger.debug(`Document ${path} is already up-to-date`);
-            return;
-        }
-
+        // wait for a local edit to do the actual updating here, so we can't even update the lastSeenUpdateId here
+        const conflictingDoc = this.queue.getSettledDocumentByPath(
+            remoteVersion.relativePath
+        );
+        const actualPath = await this.operations.move(
+            path,
+            remoteVersion.relativePath,
+            (conflictingDoc?.parentVersionId ?? 0) < remoteVersion.vaultUpdateId
+                ? MoveOnConflict.EXISTING
+                : MoveOnConflict.NEW
+        );
         if (
             !this.queue.hasPendingLocalEventsForDocumentId(
                 remoteVersion.documentId
@@ -645,39 +646,45 @@ export class Syncer {
             );
             this.queue.lastSeenUpdateId = remoteVersion.vaultUpdateId;
         } // else we don't need to update the content, a subsequent local update will do that
+        else {
+            void this.syncRemotelyUpdatedFile({
+                // schedule it so that the lastSeenUpdateId remains consistent
+                document: remoteVersion
+            });
 
-        void this.syncRemotelyUpdatedFile({
-            // schedule it so that the lastSeenUpdateId remains consistent
-            document: remoteVersion
-        });
 
-        // wait for a local edit to do the actual updating here, so we can't even update the lastSeenUpdateId here
-        const conflictingDoc = this.queue.getSettledDocumentByPath(
-            remoteVersion.relativePath
-        );
-        const actualRelativePath = await this.operations.move(
-            path,
-            remoteVersion.relativePath,
-            (conflictingDoc?.parentVersionId ?? 0) < remoteVersion.vaultUpdateId
-                ? MoveOnConflict.EXISTING
-                : MoveOnConflict.NEW
-        );
 
-        await this.queue.setDocument(actualRelativePath, {
-            ...record,
-            remoteRelativePath: actualRelativePath
-        });
+            await this.queue.setDocument(actualPath, {
+                ...record,
+                remoteRelativePath: actualPath
+            });
+        }
 
-        this.history.addHistoryEntry({
-            status: SyncStatus.SUCCESS,
-            details: {
-                type: SyncType.MOVE,
-                relativePath: actualRelativePath,
-                movedFrom: path
-            },
-            // todo: eh
-            message: `File was renamed remotely from ${path} to ${actualRelativePath}`
-        });
+
+        if (actualPath !== path) {
+            this.history.addHistoryEntry({
+                status: SyncStatus.SUCCESS,
+                details: {
+                    type: SyncType.MOVE,
+                    relativePath: actualPath,
+                    movedFrom: path
+                },
+                message: `File was renamed remotely from ${path} to ${actualPath}`,
+                author: remoteVersion.userId,
+                timestamp: new Date(remoteVersion.updatedDate)
+            });
+        } else {
+            this.history.addHistoryEntry({
+                status: SyncStatus.SUCCESS,
+                details: {
+                    type: SyncType.UPDATE,
+                    relativePath: actualPath
+                },
+                message: "Successfully applied remote update",
+                author: remoteVersion.userId,
+                timestamp: new Date(remoteVersion.updatedDate)
+            });
+        }
     }
 
     private async processRemoteCreateForNewDocument(

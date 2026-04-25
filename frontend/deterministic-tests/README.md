@@ -42,7 +42,7 @@ Clients always start with syncing disabled.
 
 ```sh
 # Build server first
-cd sync-server && cargo build --release
+cd sync-server && cargo build --release && cd -
 
 # Run all tests
 cd frontend && npm run test -w deterministic-tests

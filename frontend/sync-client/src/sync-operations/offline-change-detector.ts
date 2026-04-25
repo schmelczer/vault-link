@@ -45,6 +45,7 @@ export async function scheduleOfflineChanges(
         }
     }
 
+    const renamedPaths = new Set<RelativePath>();
     for (const path of locallyPossibleCreatedFiles) {
         const content = await operations.read(path);
         const contentHash = await hash(content);
@@ -62,11 +63,12 @@ export async function scheduleOfflineChanges(
                 relativePath: path
             });
             removeFromArray(locallyPossiblyDeletedFiles, matchingDeletedFile);
-            removeFromArray(locallyPossibleCreatedFiles, path);
+            renamedPaths.add(path);
         }
     }
 
     for (const path of locallyPossibleCreatedFiles) {
+        if (renamedPaths.has(path)) continue;
         logger.debug(
             `File ${path} was created while offline, scheduling sync to create it`
         );

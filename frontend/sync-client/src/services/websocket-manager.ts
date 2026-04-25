@@ -28,6 +28,7 @@ export class WebSocketManager {
 
     private isStopped = true;
     private resolveDisconnectingPromise: null | (() => unknown) = null;
+    private stopPromise: Promise<void> | null = null;
     private reconnectTimeoutId: ReturnType<typeof setTimeout> | undefined;
     private connectionTimeoutId: ReturnType<typeof setTimeout> | undefined;
 
@@ -58,6 +59,17 @@ export class WebSocketManager {
     }
 
     public async stop(): Promise<void> {
+        // Concurrent callers (e.g. destroy() and onSettingsChange) must share
+        // the same disconnect; otherwise the second call would overwrite
+        // resolveDisconnectingPromise and strand the first caller's await
+        // until the timeout rejects.
+        this.stopPromise ??= this.performStop().finally(() => {
+            this.stopPromise = null;
+        });
+        await this.stopPromise;
+    }
+
+    private async performStop(): Promise<void> {
         const { promise, resolve } = Promise.withResolvers<undefined>();
         this.resolveDisconnectingPromise = (): void => {
             resolve(undefined);
@@ -98,7 +110,7 @@ export class WebSocketManager {
                 `Error while waiting for WebSocket to close: ${String(error)}`
             );
             // Force cleanup even if close didn't work
-            this.resolveDisconnectingPromise();
+            this.resolveDisconnectingPromise?.();
             this.resolveDisconnectingPromise = null;
         } finally {
             // Clear timeout to prevent unhandled rejection

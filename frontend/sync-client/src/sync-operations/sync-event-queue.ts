@@ -141,13 +141,9 @@ export class SyncEventQueue {
         }
 
         if (input.type === SyncEventType.LocalDelete) {
-            const deleteId = pendingDocumentId ?? documentId;
-            if (deleteId === undefined) {
-                throw new Error("Unreachable: deleteId must be defined here");
-            }
             this.events.push({
                 type: SyncEventType.LocalDelete,
-                documentId: deleteId
+                documentId: (pendingDocumentId ?? documentId)!
             });
             return;
         }
@@ -174,16 +170,11 @@ export class SyncEventQueue {
                 }
                 await this.save();
             }
-            return;
         }
 
-        const updateId = pendingDocumentId ?? documentId;
-        if (updateId === undefined) {
-            throw new Error("Unreachable: updateId must be defined here");
-        }
         this.events.push({
             type: SyncEventType.LocalUpdate,
-            documentId: updateId,
+            documentId: (pendingDocumentId ?? documentId)!,
             path,
             originalPath: path
         });
