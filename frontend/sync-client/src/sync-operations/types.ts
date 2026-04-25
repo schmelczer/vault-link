@@ -11,6 +11,11 @@ export interface DocumentRecord {
     remoteRelativePath: RelativePath;
 }
 
+export interface DocumentWithPath {
+    path: RelativePath;
+    record: DocumentRecord;
+}
+
 export interface StoredDocument extends DocumentRecord {
     relativePath: RelativePath;
 }
@@ -29,7 +34,9 @@ export enum SyncEventType {
 
 export type FileSyncEvent =
     | { type: SyncEventType.LocalCreate; path: RelativePath }
-    | { type: SyncEventType.LocalUpdate; path: RelativePath; oldPath?: RelativePath }
+    | {
+        type: SyncEventType.LocalUpdate; path: RelativePath; oldPath?: RelativePath // oldPath is undefined for content changes
+    }
     | { type: SyncEventType.LocalDelete; path: RelativePath }
     | { type: SyncEventType.RemoteChange; remoteVersion: DocumentVersionWithoutContent };
 

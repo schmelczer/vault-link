@@ -324,7 +324,7 @@ export class SyncClient {
         await this.pause();
 
         this.logger.info("Resetting SyncClient's local state");
-        this.syncEventQueue.resetState();
+        this.syncEventQueue.clearAllState();
         await this.syncEventQueue.save();
         this.resetInMemoryState();
         this.hasFinishedOfflineSync = false;

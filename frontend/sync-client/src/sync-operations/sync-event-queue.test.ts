@@ -316,7 +316,7 @@ describe("SyncEventQueue", () => {
         assert.ok(promiseA !== undefined);
         assert.ok(promiseB !== undefined);
 
-        queue.clear();
+        queue.clearPending();
 
         await assert.rejects(promiseA);
         await assert.rejects(promiseB);
@@ -360,7 +360,7 @@ describe("SyncEventQueue", () => {
 
         assert.strictEqual(queue.pendingUpdateCount, 2);
 
-        queue.clear();
+        queue.clearPending();
 
         assert.strictEqual(queue.pendingUpdateCount, 0);
         assert.strictEqual(queue.syncedDocumentCount, 1);

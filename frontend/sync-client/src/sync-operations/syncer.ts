@@ -154,7 +154,7 @@ export class Syncer {
 
     public reset(): void {
         this._isFirstSyncStarted = false;
-        this.queue.clear();
+        this.queue.clearPending();
         // Don't null the reference synchronously — if the scan is
         // still in flight, the next reconnect would spawn a second
         // concurrent scan racing on the same queue. Defer the

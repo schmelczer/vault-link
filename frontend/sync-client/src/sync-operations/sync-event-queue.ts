@@ -4,6 +4,7 @@ import { globsToRegexes } from "../utils/globs-to-regexes";
 import { CONFLICT_PATH_REGEX } from "./conflict-path";
 import { removeFromArray } from "../utils/remove-from-array";
 import {
+    DocumentWithPath,
     SyncEventType,
     type DocumentId,
     type DocumentRecord,
@@ -50,7 +51,7 @@ export class SyncEventQueue {
         private readonly saveData: (data: StoredSyncState) => Promise<void>
     ) {
         this.ignorePatterns = [
-            CONFLICT_PATH_REGEX,
+            CONFLICT_PATH_REGEX, // conflict paths need to be resolved before they can be synced again
             ...globsToRegexes(
                 this.settings.getSettings().ignorePatterns,
                 this.logger
@@ -85,12 +86,7 @@ export class SyncEventQueue {
     }
 
     public enqueue(input: FileSyncEvent): void {
-        if (input.type === SyncEventType.RemoteChange) {
-            this.events.push(input);
-            return;
-        }
-
-        const { path } = input;
+        const path = (input.type === SyncEventType.RemoteChange) ? input.remoteVersion.relativePath : input.path;
 
         if (this.ignorePatterns.some((pattern) => pattern.test(path))) {
             this.logger.info(
@@ -98,6 +94,12 @@ export class SyncEventQueue {
             );
             return;
         }
+
+        if (input.type === SyncEventType.RemoteChange) {
+            this.events.push(input);
+            return;
+        }
+
 
         if (input.type === SyncEventType.LocalCreate) {
             this.events.push({ type: SyncEventType.LocalCreate, path, originalPath: path, resolvers: Promise.withResolvers() });
@@ -111,7 +113,6 @@ export class SyncEventQueue {
 
         if (documentId === undefined) {
             // we can get here when deleting a local document after a remote update
-
             return;
         }
 
@@ -173,7 +174,7 @@ export class SyncEventQueue {
 
     public getDocumentByDocumentId(
         target: DocumentId
-    ): { path: RelativePath; record: DocumentRecord } | undefined {
+    ): DocumentWithPath | undefined {
         for (const [path, record] of this.documents) {
             if (record.documentId === target) {
                 return { path, record };
@@ -186,7 +187,7 @@ export class SyncEventQueue {
 
     public getDocumentByDocumentIdOrFail(
         target: DocumentId
-    ): { path: RelativePath; record: DocumentRecord } {
+    ): DocumentWithPath {
         const result = this.getDocumentByDocumentId(target);
         if (!result) {
             throw new Error(`No document found with id ${target}`);
@@ -215,48 +216,10 @@ export class SyncEventQueue {
         return this.documents.get(path);
     }
 
-
-
-
-
-    public allSettledDocuments(): [RelativePath, DocumentRecord][] {
-        return Array.from(this.documents.entries());
+    public allSettledDocuments(): Map<RelativePath, DocumentRecord> {
+        return new Map(this.documents.entries());
     }
 
-    /**
-     * Returns the set of paths we expect to exist on disk by replaying
-     * the event queue on top of the settled documents map.
-     */
-    public trackedPaths(): Set<RelativePath> {
-        const paths = new Set(this.documents.keys());
-        // Track current path for each pending create so moves can be applied
-        const pendingPaths = new Map<Promise<DocumentId>, RelativePath>();
-
-        for (const event of this.events) {
-            if (event.type === SyncEventType.LocalCreate) {
-                paths.add(event.path);
-                if (event.resolvers !== undefined) {
-                    pendingPaths.set(event.resolvers.promise, event.path);
-                }
-            } else if (event.type === SyncEventType.LocalDelete) {
-                if (typeof event.documentId === "string") {
-                    const path = this.getDocumentByDocumentId(event.documentId)?.path;
-                    if (path) {
-                        paths.delete(path);
-                    } else {
-                        throw new Error(`Delete event for unknown documentId ${event.documentId}`);
-                    }
-                } else {
-                    const path = pendingPaths.get(event.documentId);
-                    if (!path) {
-                        throw new Error(`Delete event with unresolved documentId promise`);
-                    }
-                    paths.delete(path);
-                }
-            } // no need to handle SyncLocal as path updates are applied to this.documents immediately when the event is enqueued
-        }
-        return paths;
-    }
 
     public hasPendingEventsForPath(path: RelativePath): boolean {
         const record = this.documents.get(path);
@@ -288,35 +251,18 @@ export class SyncEventQueue {
     }
 
 
-    public resetState(): void {
-        this.rejectAllPendingCreates();
+    public async clearAllState(): Promise<void> {
+        this.clearPending();
         this.documents.clear();
-        this.saveInTheBackground();
+        this.lastSeenUpdateId = -1;
+        await this.save();
     }
 
-    public clear(): void {
+    public clearPending(): void {
         this.rejectAllPendingCreates();
         this.events.length = 0;
     }
 
-
-
-    public removeAllEventsForDocumentId(documentId: DocumentId): void {
-        for (let i = this.events.length - 1; i >= 0; i--) {
-            const e = this.events[i];
-            if (
-                (e.type === SyncEventType.LocalUpdate &&
-                    e.documentId === documentId) ||
-                (e.type === SyncEventType.RemoteChange &&
-                    e.remoteVersion.documentId === documentId) ||
-                (e.type === SyncEventType.LocalDelete &&
-                    e.documentId === documentId)
-            ) {
-                // eslint-disable-next-line no-restricted-syntax -- Bulk removal by predicate, not single-item removal
-                this.events.splice(i, 1);
-            }
-        }
-    }
 
     private updatePendingCreatePath(
         oldPath: RelativePath,
