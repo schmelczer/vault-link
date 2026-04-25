@@ -37,6 +37,7 @@ export type { AuthenticationError } from "./errors/authentication-error";
 export type { MaybeOutdatedClientCursors } from "./types/maybe-outdated-client-cursors";
 export { DocumentSyncStatus } from "./types/document-sync-status";
 export { SyncClient } from "./sync-client";
+export { CONFLICT_PATH_REGEX } from "./sync-operations/conflict-path";
 export type { TextWithCursors, CursorPosition } from "reconcile-text";
 
 export const debugging = {

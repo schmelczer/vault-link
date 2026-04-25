@@ -45,7 +45,6 @@ export class Syncer {
 
     private readonly queue: SyncEventQueue;
 
-    private _isFirstSyncStarted = false;
     private runningScheduleSyncForOfflineChanges: Promise<void> | undefined;
     private drainPromise: Promise<void> | undefined;
     private isScanning = false;
@@ -73,10 +72,6 @@ export class Syncer {
         this.webSocketManager.onRemoteVaultUpdateReceived.add(
             this.syncRemotelyUpdatedFile.bind(this)
         );
-    }
-
-    public get isFirstSyncStarted(): boolean {
-        return this._isFirstSyncStarted;
     }
 
     public syncLocallyCreatedFile(relativePath: RelativePath): void {
@@ -121,8 +116,6 @@ export class Syncer {
         });
 
         this.ensureDraining();
-
-        this._isFirstSyncStarted = true;
     }
 
     public async scheduleSyncForOfflineChanges(): Promise<void> {
@@ -160,7 +153,6 @@ export class Syncer {
     }
 
     public reset(): void {
-        this._isFirstSyncStarted = false;
         this.queue.clearPending();
         const current = this.runningScheduleSyncForOfflineChanges;
         if (current !== undefined) {
@@ -184,6 +176,10 @@ export class Syncer {
 
     private async internalScheduleSyncForOfflineChanges(): Promise<void> {
         this.isScanning = true;
+        // Surface stranded conflict files (e.g. ones we displaced in a prior
+        // session and never resynced) as regular creates during the scan; the
+        // queue re-enables conflict filtering when we're done.
+        this.queue.setIgnoreConflictPaths(false);
         try {
             while (this.drainPromise !== undefined) {
                 await this.drainPromise;
@@ -203,6 +199,7 @@ export class Syncer {
                 }
             );
         } finally {
+            this.queue.setIgnoreConflictPaths(true);
             this.isScanning = false;
         }
 

@@ -38,8 +38,16 @@ export class SyncEventQueue {
     // It maps pending changes onto the local filesystem.
     private readonly events: SyncEvent[] = [];
 
-    // file creations for paths matching any of these patterns will be ignored
-    private ignorePatterns: RegExp[];
+    // file creations for paths matching any of these patterns are ignored
+    // because the user explicitly told us to ignore them.
+    private userIgnorePatterns: RegExp[];
+
+    // Whether `CONFLICT_PATH_REGEX` is applied at enqueue time. Conflict files
+    // exist because the syncer set them aside; ignoring them at runtime
+    // prevents resync churn. During an offline scan we DO want to surface them
+    // so a stranded conflict file (e.g. one this client previously displaced
+    // and was unable to re-sync) gets picked up as a normal new file.
+    private ignoreConflictPaths = true;
 
     public constructor(
         private readonly settings: Settings,
@@ -47,19 +55,16 @@ export class SyncEventQueue {
         initialState: Partial<StoredSyncState> | undefined,
         private readonly saveData: (data: StoredSyncState) => Promise<void>
     ) {
-        this.ignorePatterns = [
-            CONFLICT_PATH_REGEX, // conflict paths need to be resolved before they can be synced again
-            ...globsToRegexes(
-                this.settings.getSettings().ignorePatterns,
-                this.logger
-            )
-        ];
+        this.userIgnorePatterns = globsToRegexes(
+            this.settings.getSettings().ignorePatterns,
+            this.logger
+        );
 
         this.settings.onSettingsChanged.add((newSettings) => {
-            this.ignorePatterns = [
-                CONFLICT_PATH_REGEX,
-                ...globsToRegexes(newSettings.ignorePatterns, this.logger)
-            ];
+            this.userIgnorePatterns = globsToRegexes(
+                newSettings.ignorePatterns,
+                this.logger
+            );
         });
 
         initialState ??= {};
@@ -94,15 +99,31 @@ export class SyncEventQueue {
         this._lastSeenUpdateId.add(id);
     }
 
+    /**
+     * Toggle whether `CONFLICT_PATH_REGEX` filters incoming events. The
+     * offline scan flips this off so a stranded conflict file gets surfaced
+     * as a regular create; everywhere else conflict files stay ignored.
+     */
+    public setIgnoreConflictPaths(ignore: boolean): void {
+        this.ignoreConflictPaths = ignore;
+    }
+
     public async enqueue(input: FileSyncEvent): Promise<void> {
         const path =
             input.type === SyncEventType.RemoteChange
                 ? input.remoteVersion.relativePath
                 : input.path;
 
-        if (this.ignorePatterns.some((pattern) => pattern.test(path))) {
+        if (this.userIgnorePatterns.some((pattern) => pattern.test(path))) {
             this.logger.info(
                 `Ignoring ${input.type} for ${path} as it matches ignore patterns`
+            );
+            return;
+        }
+
+        if (this.ignoreConflictPaths && CONFLICT_PATH_REGEX.test(path)) {
+            this.logger.info(
+                `Ignoring ${input.type} for ${path} as it is a conflict path`
             );
             return;
         }
@@ -198,11 +219,23 @@ export class SyncEventQueue {
 
     /**
      * Update the settled document map and persist the new document version.
+     *
+     * If the document is already tracked under a different path (e.g. after a
+     * rename) the old entry is removed so the map stays keyed by the latest
+     * disk path and `getDocumentByDocumentId` can't return a stale match.
      */
     public async setDocument(
         path: RelativePath,
         record: DocumentRecord
     ): Promise<void> {
+        for (const [existingPath, existingRecord] of this.documents) {
+            if (
+                existingPath !== path &&
+                existingRecord.documentId === record.documentId
+            ) {
+                this.documents.delete(existingPath);
+            }
+        }
         this.documents.set(path, record);
         return this.save();
     }

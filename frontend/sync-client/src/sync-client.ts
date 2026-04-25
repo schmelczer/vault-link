@@ -399,7 +399,7 @@ export class SyncClient {
             return DocumentSyncStatus.SYNCING_IS_DISABLED;
         }
 
-        if (!this.syncer.isFirstSyncStarted || !this.hasFinishedOfflineSync) {
+        if (!this.hasFinishedOfflineSync) {
             return DocumentSyncStatus.SYNCING;
         }
 
@@ -441,20 +441,25 @@ export class SyncClient {
         }
         this.isDestroying = true;
 
-        await this.pause();
+        // Run cleanup in `finally` so a thrown pause() — or anything else
+        // mid-shutdown — still leaves the client in the disposed state
+        // instead of bricked with subscribers/telemetry hanging on.
+        try {
+            await this.pause();
+        } finally {
+            this.hasBeenDestroyed = true;
 
-        this.hasBeenDestroyed = true;
+            this.resetInMemoryState();
 
-        this.resetInMemoryState();
+            this.eventUnsubscribers.forEach((unsubscribe) => {
+                unsubscribe();
+            });
+            this.eventUnsubscribers.length = 0;
 
-        this.eventUnsubscribers.forEach((unsubscribe) => {
-            unsubscribe();
-        });
-        this.eventUnsubscribers.length = 0;
+            this.logger.info("SyncClient has been successfully disposed");
 
-        this.logger.info("SyncClient has been successfully disposed");
-
-        this.unloadTelemetry?.();
+            this.unloadTelemetry?.();
+        }
     }
 
     private async startSyncing(): Promise<void> {

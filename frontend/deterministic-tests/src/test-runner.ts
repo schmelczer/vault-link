@@ -2,6 +2,7 @@ import type { TestDefinition, TestResult, TestStep } from "./test-definition";
 import { DeterministicAgent } from "./deterministic-agent";
 import type { ServerControl } from "./server-control";
 import type { SyncSettings, Logger } from "sync-client";
+import { CONFLICT_PATH_REGEX } from "sync-client";
 import { assert } from "./utils/assert";
 import { AssertableState } from "./utils/assertable-state";
 import { sleep } from "./utils/sleep";
@@ -325,6 +326,15 @@ export class TestRunner {
         }
 
         this.logger.info("✓ All clients are consistent");
+
+        const conflictFiles = referenceFiles.filter((path) =>
+            CONFLICT_PATH_REGEX.test(path)
+        );
+        if (conflictFiles.length > 0) {
+            throw new Error(
+                `Found ${conflictFiles.length} conflict file(s) — local displacements indicate a reconciliation regression: [${conflictFiles.join(", ")}]`
+            );
+        }
 
         if (verify) {
             this.logger.info("Running custom verification...");
