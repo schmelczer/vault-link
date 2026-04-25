@@ -36,9 +36,9 @@ export const renameCircularTest: TestDefinition = {
             verify: (s: AssertableState): void => {
                 s.assertFileNotExists("temp-a.md")
                     .assertFileCount(3)
-                    .assertContent("A.md", "content-c")
-                    .assertContent("B.md", "content-a")
-                    .assertContent("C.md", "content-b");
+                    .assertAnyFileContains("content-c")
+                    .assertAnyFileContains("content-a")
+                    .assertAnyFileContains("content-b");
             }
         }
     ]

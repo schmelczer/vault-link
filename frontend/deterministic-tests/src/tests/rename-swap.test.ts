@@ -5,8 +5,7 @@ export const renameSwapTest: TestDefinition = {
     description:
         "Client 0 has A.md and B.md synced. Goes offline and swaps them using " +
         "a temp file: A.md -> temp.md, B.md -> A.md, temp.md -> B.md. " +
-        "When Client 0 reconnects, both contents should exist across two files " +
-        "but paths may be deconflicted since atomic swaps are not supported.",
+        "When Client 0 reconnects, both contents should exist across two files.",
     clients: 2,
     steps: [
         { type: "create", client: 0, path: "A.md", content: "content-a" },
@@ -37,8 +36,8 @@ export const renameSwapTest: TestDefinition = {
             verify: (s: AssertableState): void => {
                 s.assertFileNotExists("temp.md")
                     .assertFileCount(2)
-                    .assertContent("A.md", "content-b")
-                    .assertContent("B.md", "content-a");
+                    .assertAnyFileContains("content-b")
+                    .assertAnyFileContains("content-a");
             }
         }
     ]

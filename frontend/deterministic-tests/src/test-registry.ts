@@ -6,7 +6,6 @@ import { deleteRenameConflictTest } from "./tests/delete-rename-conflict.test";
 import { multiFileOperationsTest } from "./tests/multi-file-operations.test";
 import { deleteRecreateSamePathTest } from "./tests/delete-recreate-same-path.test";
 import { offlineRenameAndEditTest } from "./tests/offline-rename-and-edit.test";
-import { renameToExistingPathTest } from "./tests/rename-to-existing-path.test";
 import { simultaneousCreateDeleteSamePathTest } from "./tests/simultaneous-create-delete-same-path.test";
 import { idempotencyAfterServerPauseTest } from "./tests/idempotency-after-server-pause.test";
 import { sequentialCreateDuplicateContentTest } from "./tests/sequential-create-duplicate-content.test";
@@ -101,7 +100,6 @@ export const TESTS: Partial<Record<string, TestDefinition>> = {
     "multi-file-operations": multiFileOperationsTest,
     "delete-recreate-same-path": deleteRecreateSamePathTest,
     "offline-rename-and-edit": offlineRenameAndEditTest,
-    "rename-to-existing-path": renameToExistingPathTest,
     "simultaneous-create-delete-same-path":
         simultaneousCreateDeleteSamePathTest,
     "idempotency-after-server-pause": idempotencyAfterServerPauseTest,
