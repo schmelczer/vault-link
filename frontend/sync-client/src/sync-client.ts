@@ -150,10 +150,6 @@ export class SyncClient {
             }
         );
 
-        const rateLimitedSave = rateLimit(
-            persistence.save,
-            () => settings.getSettings().minimumSaveIntervalMs
-        );
 
         const syncEventQueue = new SyncEventQueue(
             settings,
@@ -161,7 +157,7 @@ export class SyncClient {
             state.database,
             async (data): Promise<void> => {
                 state = { ...state, database: data };
-                await rateLimitedSave(state);
+                await persistence.save(state);
             }
         );
 
