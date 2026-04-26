@@ -38,6 +38,14 @@ export class SyncEventQueue {
     // It maps pending changes onto the local filesystem.
     private readonly events: SyncEvent[] = [];
 
+    // Tombstones: documents we deleted along with the vaultUpdateId at
+    // which the delete committed. After we delete, the server may still
+    // send us older broadcasts for that document (e.g. a backlog update
+    // committed before the delete from another client). Without these
+    // entries, the syncer would resurrect the doc by treating an old
+    // update as a brand-new create.
+    private readonly deletedDocuments = new Map<DocumentId, VaultUpdateId>();
+
     // file creations for paths matching any of these patterns are ignored
     // because the user explicitly told us to ignore them.
     private userIgnorePatterns: RegExp[];
@@ -121,15 +129,29 @@ export class SyncEventQueue {
             return;
         }
 
-        if (this.ignoreConflictPaths && CONFLICT_PATH_REGEX.test(path)) {
-            this.logger.info(
-                `Ignoring ${input.type} for ${path} as it is a conflict path`
-            );
+        if (input.type === SyncEventType.RemoteChange) {
+            this.events.push(input);
             return;
         }
 
-        if (input.type === SyncEventType.RemoteChange) {
-            this.events.push(input);
+        // Drop bare LocalCreate events for conflict paths. Those are
+        // produced by the watcher when the syncer's own write to a
+        // displacement path slips past the `ExpectedFsEvents` filter
+        // (e.g. a sync race where the watcher fires before
+        // `expectCreate` was registered). Re-uploading them as new docs
+        // would invent duplicates on the server. The legitimate way a
+        // conflict-path doc enters the queue is via the displacement
+        // rename's `LocalUpdate` (with `oldPath`) — that branch is
+        // allowed through below so the tracked document's path follows
+        // its file.
+        if (
+            this.ignoreConflictPaths &&
+            CONFLICT_PATH_REGEX.test(path) &&
+            input.type === SyncEventType.LocalCreate
+        ) {
+            this.logger.info(
+                `Ignoring local-create for ${path} as it is a conflict path`
+            );
             return;
         }
 
@@ -215,6 +237,31 @@ export class SyncEventQueue {
         return this.events.shift();
     }
 
+
+    /**
+     * Return the next event without removing it. Drain uses this so the
+     * event stays visible in the queue while it is being processed —
+     * critical for `findLatestCreateForPath` to update an in-flight
+     * `LocalCreate`'s path when a rename arrives mid-process. Also marks
+     * the event as in-flight so dedup checks in `enqueue` know not to
+     * fold a fresh content change into an event whose disk read already
+     * happened.
+     */
+    public peekFront(): SyncEvent | undefined {
+        return this.events[0];
+    }
+
+    /**
+     * Remove a specific event after `peekFront`-based processing is done.
+     * Idempotent — safe to call when the event was already taken out by
+     * `resolveCreate` (which clears a same-path pending create that a
+     * remote-create handler just absorbed).
+     */
+    public consumeEvent(event: SyncEvent): void {
+        removeFromArray(this.events, event);
+    }
+
+
     /**
      * Call once a create has been acknowledged by the server.
      */
@@ -253,6 +300,42 @@ export class SyncEventQueue {
     public async removeDocument(path: RelativePath): Promise<void> {
         this.documents.delete(path);
         return this.save();
+    }
+
+    /**
+     * Mark a document as deleted at a given vault-update version. Used by
+     * the syncer after a successful local or remote delete so future
+     * obsolete broadcasts for that doc (older parents that arrive late)
+     * don't resurrect it as a brand-new create.
+     */
+    public recordDeletion(
+        documentId: DocumentId,
+        deletedAtVaultUpdateId: VaultUpdateId
+    ): void {
+        const existing = this.deletedDocuments.get(documentId);
+        if (existing !== undefined && existing >= deletedAtVaultUpdateId) {
+            return;
+        }
+        this.deletedDocuments.set(documentId, deletedAtVaultUpdateId);
+    }
+
+    /**
+     * Returns the vault-update version at which we last saw this document
+     * deleted, or `undefined` if we have no record of its deletion.
+     */
+    public getDeletionVersion(
+        documentId: DocumentId
+    ): VaultUpdateId | undefined {
+        return this.deletedDocuments.get(documentId);
+    }
+
+    /**
+     * Forget a doc's tombstone — used when a doc with the same id is
+     * re-introduced (e.g. via a remote create whose server-side state
+     * surpasses the previous delete).
+     */
+    public clearDeletion(documentId: DocumentId): void {
+        this.deletedDocuments.delete(documentId);
     }
 
     public getDocumentByDocumentId(
@@ -326,6 +409,8 @@ export class SyncEventQueue {
                     e.documentId === documentId)
         );
     }
+
+
 
     public async clearAllState(): Promise<void> {
         this.clearPending();

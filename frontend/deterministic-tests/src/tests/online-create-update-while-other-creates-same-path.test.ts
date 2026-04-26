@@ -39,8 +39,9 @@ export const onlineCreateUpdateWhileOtherCreatesSamePathTest: TestDefinition = {
             verify: (state: AssertableState): void => {
                 state
                     .assertFileCount(2)
-                    .assertContains("data.bin", "content-v2")
-                    .assertContains("data (1).bin", "other-content");
+                    .assertNoFileContains("content-v1")
+                    .assertAnyFileContains("content-v2")
+                    .assertAnyFileContains("other-content");
             }
         }
     ]

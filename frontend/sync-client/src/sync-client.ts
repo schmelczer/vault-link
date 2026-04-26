@@ -435,7 +435,18 @@ export class SyncClient {
     }
 
     public async waitUntilFinished(): Promise<void> {
-        this.checkIfDestroyed("waitUntilIdle");
+        this.checkIfDestroyed("waitUntilFinished");
+        await this.waitUntilFinishedInternal();
+    }
+
+    /**
+     * The actual drain — separated from `waitUntilFinished` so internal
+     * shutdown paths (`pause` / `destroy`) can wait for in-flight work
+     * without tripping the public `checkIfDestroyed` guard, which exists
+     * only to keep external callers from continuing to use a disposed
+     * client.
+     */
+    private async waitUntilFinishedInternal(): Promise<void> {
         await this.syncer.waitUntilFinished();
         await this.webSocketManager.waitUntilFinished();
         await this.syncEventQueue.save();
@@ -502,7 +513,7 @@ export class SyncClient {
         // the rest of the client is winding down.
         this.syncService.stop();
         await this.webSocketManager.stop();
-        await this.waitUntilFinished();
+        await this.waitUntilFinishedInternal();
         // Clear the offline-scan gate so a subsequent `startSyncing()`
         // re-runs the scan; otherwise any local changes made while sync was
         // paused (offline edits, deletes, renames) wouldn't be detected, and

@@ -73,17 +73,25 @@ export async function scheduleOfflineChanges(
 
     for (const path of locallyPossibleCreatedFiles) {
         if (renamedPaths.has(path)) continue;
-        logger.debug(
+
+        logger.info(
             `File ${path} was created while offline, scheduling sync to create it`
         );
+
         enqueueCreate(path);
     }
 
     for (const item of locallyPossiblyDeletedFiles) {
+        logger.info(
+            `File ${item.path} was deleted while offline, scheduling sync to delete it`
+        );
         enqueueDelete(item.path);
     }
 
     for (const path of syncedLocalFiles) {
+        logger.info(
+            `File ${path} may have been updated while offline, scheduling sync to update it`
+        );
         enqueueUpdate({ relativePath: path });
     }
 }

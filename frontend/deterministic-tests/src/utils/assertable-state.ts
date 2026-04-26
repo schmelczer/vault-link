@@ -86,6 +86,26 @@ export class AssertableState {
         return this;
     }
 
+    public assertNoFileContains(...substrings: string[]): this {
+        const offenders: { path: string; substring: string }[] = [];
+        for (const [path, content] of this.files) {
+            for (const s of substrings) {
+                if (content.includes(s)) {
+                    offenders.push({ path, substring: s });
+                }
+            }
+        }
+        if (offenders.length > 0) {
+            const dump = Array.from(this.files.entries())
+                .map(([k, v]) => `  ${k}: "${v}"`)
+                .join("\n");
+            throw new Error(
+                `Expected no file to contain ${substrings.map((s) => `"${s}"`).join(", ")}, but found ${offenders.map((o) => `"${o.substring}" in "${o.path}"`).join(", ")}.\nFiles:\n${dump}`
+            );
+        }
+        return this;
+    }
+
     public assertSubstringCount(
         path: string,
         substring: string,

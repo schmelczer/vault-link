@@ -15,6 +15,13 @@ export const createMergePreservesRenamedUpdateTest: TestDefinition = {
         { type: "enable-sync", client: 1 },
         { type: "barrier" },
 
+        {
+            type: "assert-consistent",
+            verify: (state: AssertableState): void => {
+                state.assertContains("doc.md", "alpha", "beta");
+            }
+        },
+
         { type: "disable-sync", client: 1 },
 
         {

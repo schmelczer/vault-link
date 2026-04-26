@@ -73,7 +73,10 @@ pub async fn create_document(
         // but client 2 moves it to P2 while client 1 creates a new document at P2,
         // then client 1 would merge its new document with the moved version of A at P2
         // that client 2 resulting in two files (P1 and P2) with the same doc id (A).
-        if latest_version.creation_vault_update_id > request.last_seen_vault_update_id {
+        if latest_version.creation_vault_update_id > request.last_seen_vault_update_id
+            && latest_version.creation_vault_update_id == latest_version.vault_update_id
+        // can't allow merging with a moved document as that could create a cycle
+        {
             let is_mergeable_text = is_file_type_mergable(
                 &sanitized_relative_path,
                 &state.config.server.mergeable_file_extensions,

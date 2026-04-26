@@ -14,7 +14,6 @@ export const serverPauseUpdateAndCreateTest: TestDefinition = {
             path: "shared.md",
             content: "initial content"
         },
-        { type: "sync" },
         { type: "barrier" },
         {
             type: "assert-consistent",
@@ -40,7 +39,6 @@ export const serverPauseUpdateAndCreateTest: TestDefinition = {
 
         { type: "resume-server" },
 
-        { type: "sync" },
         { type: "barrier" },
 
         {

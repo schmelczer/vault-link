@@ -29,7 +29,7 @@ export class FileOperations {
         this.fs = new SafeFileSystemOperations(fs, logger);
     }
 
-    private static getParentDirAndFile(
+    private static getParentDirAndFileName(
         path: RelativePath
     ): [RelativePath, RelativePath] {
         const pathParts = path.split("/");
@@ -47,7 +47,7 @@ export class FileOperations {
      * statistically impossible, so no disk probe / lock dance is needed.
      */
     private static buildConflictPath(path: RelativePath): RelativePath {
-        const [directory, fileName] = FileOperations.getParentDirAndFile(path);
+        const [directory, fileName] = FileOperations.getParentDirAndFileName(path);
         const conflictName = buildConflictFileName(fileName);
         return directory ? `${directory}/${conflictName}` : conflictName;
     }
@@ -202,6 +202,8 @@ export class FileOperations {
         return this.fs.exists(path);
     }
 
+
+
     // Returns the actual path the file got moved to.
     public async move(
         oldPath: RelativePath,
@@ -234,7 +236,12 @@ export class FileOperations {
                 `Displacing existing file at ${path} to '${conflictPath}' to make room`
             );
 
-            this.expectedFsEvents.expectRename(path, conflictPath);
+            // Intentionally NOT calling `expectRename` here: the displaced
+            // file may be a tracked document (its `queue.documents` entry
+            // still points at `path`), and we need the watcher's
+            // `syncLocallyUpdatedFile` to flow into `queue.enqueue`'s
+            // path-update branch so the doc's map key follows its file
+            // to `conflictPath` and gets resynced
             await this.fs.rename(path, conflictPath);
             return path;
         }
@@ -252,7 +259,7 @@ export class FileOperations {
         let directory = path;
         // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
         while (true) {
-            [directory] = FileOperations.getParentDirAndFile(directory);
+            [directory] = FileOperations.getParentDirAndFileName(directory);
             if (directory.length === 0) {
                 break;
             }

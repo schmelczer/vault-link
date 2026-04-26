@@ -13,6 +13,8 @@ export const concurrentRenameAndCreateAtTargetTest: TestDefinition = {
             path: "X.md",
             content: "original file X"
         },
+        { type: "enable-sync", client: 0 },
+        { type: "enable-sync", client: 1 },
         { type: "barrier" },
 
         { type: "disable-sync", client: 0 },

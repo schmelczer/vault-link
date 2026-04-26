@@ -128,7 +128,7 @@ export class Syncer {
             this.runningScheduleSyncForOfflineChanges =
                 this.internalScheduleSyncForOfflineChanges();
             await this.runningScheduleSyncForOfflineChanges;
-            this.logger.info(`All local changes have been applied remotely`);
+            this.logger.info(`All local changes have been queued`);
         } catch (e) {
             if (e instanceof SyncResetError) {
                 this.logger.info(
@@ -192,9 +192,8 @@ export class Syncer {
         // queue re-enables conflict filtering when we're done.
         this.queue.setIgnoreConflictPaths(false);
         try {
-            while (this.drainPromise !== undefined) {
-                await this.drainPromise;
-            }
+            this.queue.clearPending(); // can't have conflicts between the offline scan and ongoing operations created during the preceeding pause
+
             await scheduleOfflineChanges(
                 this.logger,
                 this.operations,
@@ -226,8 +225,21 @@ export class Syncer {
     }
 
     private async drain(): Promise<void> {
-        let event = await this.queue.next();
-        while (event !== undefined) {
+        // Peek then remove-after-processing (instead of shift-then-process):
+        // the event must remain reachable through `findLatestCreateForPath`
+        // while it is in flight, so a rename event arriving mid-process can
+        // call `updatePendingCreatePath` to retarget this create's path.
+        while (true) {
+            if (!this.settings.getSettings().isSyncEnabled) {
+                this.logger.debug(
+                    "Drain pausing because sync is disabled; events stay queued"
+                );
+                return;
+            }
+            const event = this.queue.peekFront();
+
+            if (event === undefined) { break; }
+
             try {
                 await this.processEvent(event);
             } catch (e) {
@@ -239,19 +251,12 @@ export class Syncer {
                     `Failed to process sync event ${event.type}: ${e}`
                 );
             }
+            this.queue.consumeEvent(event);
             this.notifyRemainingOperationsChanged();
-            event = await this.queue.next();
         }
     }
 
     private async processEvent(event: SyncEvent): Promise<void> {
-        if (!this.settings.getSettings().isSyncEnabled) {
-            this.logger.info(
-                `Skipping sync operation because sync is disabled`
-            );
-            return;
-        }
-
         try {
             if (await this.skipIfOversized(event)) {
                 return;
@@ -272,22 +277,27 @@ export class Syncer {
                     break;
             }
         } catch (e) {
-            // The currently-processed event was already shifted off the queue
-            // by drain() before processEvent ran. If it's a LocalCreate, any
-            // queued Delete/Update events whose `documentId` is this Create's
-            // resolvers.promise would `await` it forever once we return — so
-            // settle the resolvers on every failure path before
-            // dispatching/re-throwing. clearPending()'s rejectAllPendingCreates
-            // walks the queue and so cannot reach this in-flight event.
-            // Re-rejecting an already-resolved promise is a no-op, so it's
-            // safe to call this unconditionally on the LocalCreate branch.
-            if (event.type === SyncEventType.LocalCreate) {
+            // If a LocalCreate fails terminally, queued LocalDelete /
+            // LocalUpdate events whose `documentId` is this Create's
+            // `resolvers.promise` would `await` it forever — reject the
+            // resolver so they fail-fast with the same error class and
+            // hit their matching skip/log branch below.
+            //
+            // Only do this for terminal errors. `SyncResetError` is
+            // transient: drain returns without consuming the event, so
+            // the next drain retries the same Create. Rejecting the
+            // resolver now would permanently poison it, and the eventual
+            // `resolveCreate(...resolve)` after the retry succeeds is a
+            // no-op on an already-settled promise — leaving every
+            // dependent event stuck failing on `await event.documentId`.
+            if (
+                event.type === SyncEventType.LocalCreate &&
+                !(e instanceof SyncResetError)
+            ) {
                 event.resolvers.promise.catch(() => {
                     /* suppressed */
                 });
-                event.resolvers.reject(
-                    new Error(`Create was cancelled: ${e}`)
-                );
+                event.resolvers.reject(e);
             }
 
             if (e instanceof FileNotFoundError) {
@@ -364,8 +374,7 @@ export class Syncer {
     private async processCreate(
         event: Extract<SyncEvent, { type: SyncEventType.LocalCreate }>
     ): Promise<void> {
-        const effectivePath = event.path;
-        const contentBytes = await this.operations.read(effectivePath);
+        const contentBytes = await this.operations.read(event.path);
         const contentHash = await hash(contentBytes);
 
         const response = await this.syncService.create({
@@ -375,7 +384,7 @@ export class Syncer {
         });
 
         await this.handleMaybeMergingResponse({
-            path: effectivePath,
+            path: event.path,
             response,
             contentHash,
             originalContentBytes: contentBytes,
@@ -384,7 +393,7 @@ export class Syncer {
 
         this.history.addHistoryEntry({
             status: SyncStatus.SUCCESS,
-            details: { type: SyncType.CREATE, relativePath: effectivePath },
+            details: { type: SyncType.CREATE, relativePath: event.path },
             message:
                 response.type === "MergingUpdate"
                     ? "Created file and merged with existing remote version"
@@ -399,7 +408,15 @@ export class Syncer {
     ): Promise<void> {
         const documentId = await event.documentId;
 
-        const doc = this.queue.getDocumentByDocumentIdOrFail(documentId);
+        const doc = this.queue.getDocumentByDocumentId(documentId);
+        if (doc === undefined) {
+            // Already deleted (e.g. a remote delete drained ahead of
+            // this redundant local one). Nothing to do.
+            this.logger.debug(
+                `Skipping local-delete for ${documentId} — doc no longer tracked`
+            );
+            return;
+        }
         const relativePath = doc.path;
 
         const response = await this.syncService.delete({
@@ -408,6 +425,7 @@ export class Syncer {
         });
 
         await this.queue.removeDocument(doc.path);
+        this.queue.recordDeletion(documentId, response.vaultUpdateId);
         this.queue.lastSeenUpdateId = response.vaultUpdateId;
 
         this.history.addHistoryEntry({
@@ -426,8 +444,17 @@ export class Syncer {
     ): Promise<void> {
         const documentId = await event.documentId;
 
-        const { path: diskPath, record } =
-            this.queue.getDocumentByDocumentIdOrFail(documentId);
+        const tracked = this.queue.getDocumentByDocumentId(documentId);
+        if (tracked === undefined) {
+            // The doc was deleted between this event being queued and
+            // drained — skip silently. Common when a LocalDelete drains
+            // ahead of a LocalUpdate that was already in the queue.
+            this.logger.debug(
+                `Skipping local-update for ${documentId} — doc no longer tracked (deleted)`
+            );
+            return;
+        }
+        const { path: diskPath, record } = tracked;
 
         const contentBytes = await this.operations.read(diskPath);
         const contentHash = await hash(contentBytes);
@@ -518,18 +545,50 @@ export class Syncer {
         }
 
         if (createEvent === undefined) {
-            // a http response will always be more up-to-date than any queued remote update
-            // move will always move to the relative path when MoveOnConflict.EXISTING is given
-            await this.operations.move(
-                path,
-                response.relativePath,
-                MoveOnConflict.EXISTING
+            // The disk path captured at the start of `processLocalUpdate`
+            // can be stale: the user may have renamed the file during the
+            // server roundtrip, in which case `queue.documents` already
+            // points at the new path and a follow-up rename's LocalUpdate
+            // is queued behind us. If we forced the disk back to
+            // `response.relativePath` here we'd undo the user's intent;
+            // worse, `setDocument`'s same-docId cleanup would clobber the
+            // map entry that was tracking the latest disk path, leaving
+            // future LocalUpdates for this doc reading from a vacated
+            // slot and getting skipped as `FileNotFoundError`. Refresh
+            // the latest tracked path and only touch disk when it still
+            // matches the captured one.
+            const tracked = this.queue.getDocumentByDocumentId(
+                response.documentId
             );
+            if (tracked === undefined) {
+                this.logger.debug(
+                    `Document ${response.documentId} is no longer tracked after update; cannot reconcile potential rename`
+                );
+            } else {
+                const currentPath = tracked.path ?? path;
+                if (currentPath === path) {
+                    // a http response will always be more up-to-date than any queued remote update
+                    // move will always move to the relative path when MoveOnConflict.EXISTING is given
+                    await this.operations.move(
+                        path,
+                        response.relativePath,
+                        MoveOnConflict.EXISTING
+                    );
 
-            await this.queue.setDocument(response.relativePath, {
-                ...record,
-                remoteHash
-            });
+                    await this.queue.setDocument(response.relativePath, {
+                        ...record,
+                        remoteHash
+                    });
+                } else {
+                    // User renamed during the roundtrip. Leave the disk file
+                    // at `currentPath`; the queued rename's LocalUpdate will
+                    // reconcile the server on its next drain.
+                    await this.queue.setDocument(currentPath, {
+                        ...record,
+                        remoteHash
+                    });
+                }
+            }
         } else {
             // The server may have deconflicted the path on create (e.g.
             // another client raced us to the same path and won). Move the
@@ -574,6 +633,24 @@ export class Syncer {
             );
         }
 
+        // The doc was deleted at-or-after the version this broadcast
+        // describes (e.g. another client's update committed before our
+        // local delete; the server's backlog is replaying it now). Apply
+        // would resurrect a doc we deliberately removed.
+        const deletedAt = this.queue.getDeletionVersion(
+            remoteVersion.documentId
+        );
+        if (
+            deletedAt !== undefined &&
+            deletedAt >= remoteVersion.vaultUpdateId
+        ) {
+            this.queue.lastSeenUpdateId = remoteVersion.vaultUpdateId;
+            this.logger.debug(
+                `Skipping obsolete remote update for already-deleted document ${remoteVersion.documentId} (V=${remoteVersion.vaultUpdateId} <= deleted V=${deletedAt})`
+            );
+            return;
+        }
+
         if (
             (documentWithPath?.record.parentVersionId ?? 0) >=
             remoteVersion.vaultUpdateId
@@ -598,14 +675,7 @@ export class Syncer {
             remoteVersion.relativePath
         );
 
-        if (pendingCreate === undefined) {
-            return this.processRemoteCreateForNewDocument(remoteVersion);
-        } else {
-            return this.processRemoteCreateForPendingDocument(
-                remoteVersion,
-                pendingCreate
-            );
-        }
+        return this.processRemoteCreateForNewDocument(remoteVersion);
     }
 
     private async processRemoteDelete(
@@ -614,6 +684,10 @@ export class Syncer {
     ): Promise<void> {
         await this.operations.delete(path);
         await this.queue.removeDocument(path);
+        this.queue.recordDeletion(
+            remoteVersion.documentId,
+            remoteVersion.vaultUpdateId
+        );
 
         this.queue.lastSeenUpdateId = remoteVersion.vaultUpdateId;
 
@@ -770,53 +844,7 @@ export class Syncer {
         });
     }
 
-    // A remote create landed at a path where we have an unsynced local
-    // create. This might be becuase there's another sync client running.
-    // We must avoid duplicating files.
-    private async processRemoteCreateForPendingDocument(
-        remoteVersion: DocumentVersionWithoutContent,
-        pendingCreateEvent: Extract<
-            SyncEvent,
-            { type: SyncEventType.LocalCreate }
-        >
-    ): Promise<void> {
-        const remoteContent = await this.syncService.getDocumentVersionContent({
-            documentId: remoteVersion.documentId,
-            vaultUpdateId: remoteVersion.vaultUpdateId
-        });
-        const remoteHash = await hash(remoteContent);
 
-        const path = remoteVersion.relativePath;
-        const currentContent = await this.operations.read(
-            pendingCreateEvent.path
-        );
-
-        await this.operations.write(path, currentContent, remoteContent);
-        await this.updateCache(
-            remoteVersion.vaultUpdateId,
-            remoteContent,
-            path
-        );
-
-        await this.queue.resolveCreate(pendingCreateEvent, {
-            documentId: remoteVersion.documentId,
-            parentVersionId: remoteVersion.vaultUpdateId,
-            remoteHash,
-            remoteRelativePath: path
-        });
-        this.queue.lastSeenUpdateId = remoteVersion.vaultUpdateId;
-
-        this.history.addHistoryEntry({
-            status: SyncStatus.SUCCESS,
-            details: {
-                type: SyncType.UPDATE,
-                relativePath: path
-            },
-            message: `Adopted remote create at ${path}`,
-            author: remoteVersion.userId,
-            timestamp: new Date(remoteVersion.updatedDate)
-        });
-    }
 
     private async sendUpdate({
         record,
