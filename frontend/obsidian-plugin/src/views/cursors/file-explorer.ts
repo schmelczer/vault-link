@@ -14,7 +14,7 @@ export function renderCursorsInFileExplorer(
     app: App
 ): void {
     const fileExplorers = app.workspace.getLeavesOfType("file-explorer");
-    if (fileExplorers.length == 0) return;
+    if (fileExplorers.length == 0) {return;}
 
     const [fileExplorer] = fileExplorers;
 

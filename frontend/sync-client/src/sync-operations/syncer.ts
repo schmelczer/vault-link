@@ -217,8 +217,8 @@ export class Syncer {
     }
 
     private ensureDraining(): void {
-        if (this.drainPromise !== undefined) return;
-        if (this.isScanning) return;
+        if (this.drainPromise !== undefined) {return;}
+        if (this.isScanning) {return;}
         this.drainPromise = this.drain().finally(() => {
             this.drainPromise = undefined;
         });
@@ -329,7 +329,7 @@ export class Syncer {
                 relativePath = event.path;
                 break;
             case SyncEventType.RemoteChange:
-                if (event.remoteVersion.isDeleted) return false;
+                if (event.remoteVersion.isDeleted) {return false;}
                 sizeInBytes = event.remoteVersion.contentSize;
                 ({ relativePath } = event.remoteVersion);
                 break;
@@ -339,7 +339,7 @@ export class Syncer {
             sizeInBytes,
             relativePath
         );
-        if (oversizedEntry === undefined) return false;
+        if (oversizedEntry === undefined) {return false;}
 
         this.history.addHistoryEntry(oversizedEntry);
 

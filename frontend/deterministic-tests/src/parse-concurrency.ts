@@ -8,7 +8,7 @@ export function parseConcurrency(): number {
             i + 1 < args.length
         ) {
             const n = parseInt(args[i + 1], 10);
-            if (!isNaN(n) && n > 0) return n;
+            if (!isNaN(n) && n > 0) {return n;}
         }
     }
     return os.cpus().length;

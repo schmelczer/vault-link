@@ -192,6 +192,10 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
         const isNew = !this.files.has(path);
         await super.write(path, content);
 
+        if (!this.isSyncEnabled) {
+            return;
+        }
+
         if (isNew) {
             this.enqueueSync(async () => {
                 this.client.syncLocallyCreatedFile(path);
@@ -208,9 +212,11 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
         updater: (current: TextWithCursors) => TextWithCursors
     ): Promise<string> {
         const result = await super.atomicUpdateText(path, updater);
-        this.enqueueSync(async () => {
-            this.client.syncLocallyUpdatedFile({ relativePath: path });
-        });
+        if (this.isSyncEnabled) {
+            this.enqueueSync(async () => {
+                this.client.syncLocallyUpdatedFile({ relativePath: path });
+            });
+        }
         return result;
     }
 
@@ -228,12 +234,14 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
         newPath: RelativePath
     ): Promise<void> {
         await super.rename(oldPath, newPath);
-        this.enqueueSync(async () => {
-            this.client.syncLocallyUpdatedFile({
-                oldPath,
-                relativePath: newPath
+        if (this.isSyncEnabled) {
+            this.enqueueSync(async () => {
+                this.client.syncLocallyUpdatedFile({
+                    oldPath,
+                    relativePath: newPath
+                });
             });
-        });
+        }
     }
 
     private async waitForWebSocket(): Promise<void> {

@@ -90,9 +90,9 @@ export class ExpectedFsEvents {
         key: RelativePath
     ): boolean {
         const count = map.get(key) ?? 0;
-        if (count === 0) return false;
-        if (count === 1) map.delete(key);
-        else map.set(key, count - 1);
+        if (count === 0) {return false;}
+        if (count === 1) {map.delete(key);}
+        else {map.set(key, count - 1);}
         return true;
     }
 }

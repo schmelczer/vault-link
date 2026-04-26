@@ -70,7 +70,7 @@ export class SyncService {
         response: Response,
         operation: string
     ): Promise<void> {
-        if (response.ok) return;
+        if (response.ok) {return;}
         const message = `Failed to ${operation}: ${await SyncService.errorFromResponse(response)}`;
         // 429 is the only 4xx the server uses for *transient* contention
         // (`WriteBusyError` → HTTP 429). Every other 4xx means the request

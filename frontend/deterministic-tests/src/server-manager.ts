@@ -19,7 +19,7 @@ export class ServerManager {
     }
 
     public async stopAll(): Promise<void> {
-        if (this.isShuttingDown) return;
+        if (this.isShuttingDown) {return;}
         this.isShuttingDown = true;
 
         const servers = Array.from(this.activeServers);

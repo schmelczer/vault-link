@@ -19,6 +19,7 @@ export default [
         rules: {
             "no-console": "error",
             "no-unused-vars": "off",
+            "curly": ["error", "all"],
             "@typescript-eslint/restrict-template-expressions": "off",
             "@typescript-eslint/no-unused-vars": "off",
             "@typescript-eslint/no-floating-promises": [

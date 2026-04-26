@@ -72,7 +72,7 @@ export async function scheduleOfflineChanges(
     }
 
     for (const path of locallyPossibleCreatedFiles) {
-        if (renamedPaths.has(path)) continue;
+        if (renamedPaths.has(path)) {continue;}
 
         logger.info(
             `File ${path} was created while offline, scheduling sync to create it`

@@ -17,7 +17,7 @@ import {
 import { MinCovered } from "../utils/data-structures/min-covered";
 
 export class SyncEventQueue {
-    private _lastSeenUpdateId: MinCovered;
+    private readonly _lastSeenUpdateId: MinCovered;
 
     // Latest state of the filesystem as we know it, excluding
     // unconfirmed creates but including pending deletes.
@@ -441,7 +441,7 @@ export class SyncEventQueue {
         newPath: RelativePath
     ): void {
         const createEvent = this.findLatestCreateForPath(oldPath);
-        if (createEvent === undefined) return;
+        if (createEvent === undefined) {return;}
 
         const { promise } = createEvent.resolvers;
         createEvent.path = newPath;
