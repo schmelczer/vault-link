@@ -28,7 +28,7 @@ import type { SyncHistory } from "../tracing/sync-history";
 import {
     SyncStatus,
     SyncType,
-    type CommonHistoryEntry
+    type HistoryEntry
 } from "../tracing/sync-history";
 import { isBinary } from "../utils/is-binary";
 import { isFileTypeMergable } from "../utils/is-file-type-mergable";
@@ -72,6 +72,12 @@ export class Syncer {
         this.webSocketManager.onRemoteVaultUpdateReceived.add(
             this.syncRemotelyUpdatedFile.bind(this)
         );
+        // Funnel every queue mutation (enqueue, consume, clearPending) through
+        // the public count notifier so listeners see grow/shrink transitions
+        // immediately rather than only when a drain consumes an event.
+        this.queue.onPendingUpdateCountChanged.add(() => {
+            this.notifyRemainingOperationsChanged();
+        });
     }
 
     public syncLocallyCreatedFile(relativePath: RelativePath): void {
@@ -152,9 +158,24 @@ export class Syncer {
         }
     }
 
+    /**
+     * True while there is queued or in-flight work the syncer needs to handle:
+     * a running offline scan, an active drain, or pending events. Used by
+     * `SyncClient.waitUntilFinishedInternal` to detect WebSocket-fed work that
+     * landed in the queue after the syncer's first quiescence point.
+     */
+    public get hasPendingWork(): boolean {
+        return (
+            this.runningScheduleSyncForOfflineChanges !== undefined ||
+            this.drainPromise !== undefined ||
+            this.queue.pendingUpdateCount > 0
+        );
+    }
+
     public reset(): void {
         this.queue.clearPending();
         this.clearOfflineScanGate();
+        this.previousRemainingOperationsCount = 0;
     }
 
     /**
@@ -350,13 +371,19 @@ export class Syncer {
             event.resolvers.reject(new Error("Create was cancelled"));
         }
 
+        // Advance the cursor so the server doesn't replay this update on every
+        // reconnect — the skip is permanent for this version.
+        if (event.type === SyncEventType.RemoteChange) {
+            this.queue.lastSeenUpdateId = event.remoteVersion.vaultUpdateId;
+        }
+
         return true;
     }
 
     private getHistoryEntryForSkippedOversizedFile(
         sizeInBytes: number,
         relativePath: RelativePath
-    ): CommonHistoryEntry | undefined {
+    ): HistoryEntry | undefined {
         const sizeInMB = Math.round(sizeInBytes / 1024 / 1024);
         const { maxFileSizeMB } = this.settings.getSettings();
         if (sizeInMB > maxFileSizeMB) {
@@ -366,7 +393,8 @@ export class Syncer {
                     type: SyncType.SKIPPED as const,
                     relativePath
                 },
-                message: `File size of ${sizeInMB} MB exceeds the maximum file size limit of ${maxFileSizeMB} MB`
+                message: `File size of ${sizeInMB} MB exceeds the maximum file size limit of ${maxFileSizeMB} MB`,
+                timestamp: new Date()
             };
         }
     }
@@ -429,7 +457,6 @@ export class Syncer {
         // and history entry. Keeping the entry in the map until then lets
         // late remote updates be recognised as "file is missing" and
         // skipped, instead of resurrecting the doc.
-        // 
         this.history.addHistoryEntry({
             status: SyncStatus.SUCCESS,
             details: {
@@ -437,7 +464,8 @@ export class Syncer {
                 relativePath: doc.path
             },
             message: "Successfully deleted file on the server",
-            author: response.userId
+            author: response.userId,
+            timestamp: new Date(response.updatedDate)
         });
     }
 
@@ -481,8 +509,6 @@ export class Syncer {
             await this.processRemoteDelete(diskPath, { ...response, contentSize: 0 });
             return;
         }
-
-        this.queue.lastSeenUpdateId = response.vaultUpdateId;
 
         await this.handleMaybeMergingResponse({
             path: diskPath,

@@ -93,6 +93,13 @@ export class CursorTracker {
                             await this.getDocumentsUpToDateness(clientCursor);
                     }
                 }
+                // Drop the local-cursor send-cache so the next call re-reads
+                // the file. The first cache key is the editor's input, which
+                // doesn't change when the file content does — without this,
+                // a remote update flipping the file from dirty back to clean
+                // would never re-send the cursor with a fresh `vaultUpdateId`.
+                this.lastLocalCursorStateJson = "";
+                this.lastLocalCursorStateWithoutDirtyDocumentsJson = "";
             })
         );
     }

@@ -1,6 +1,7 @@
 import { SUPPORTED_API_VERSION } from "../consts";
 import { AuthenticationError } from "../errors/authentication-error";
 import { ServerVersionMismatchError } from "../errors/server-version-mismatch-error";
+import type { Settings } from "../persistence/settings";
 import type { SyncService } from "./sync-service";
 import type { PingResponse } from "./types/PingResponse";
 
@@ -14,7 +15,20 @@ export class ServerConfig {
     private response: Promise<PingResponse> | undefined;
     private config: ServerConfigData | undefined;
 
-    public constructor(private readonly syncService: SyncService) { }
+    public constructor(
+        private readonly syncService: SyncService,
+        settings: Settings
+    ) {
+        settings.onSettingsChanged.add((newSettings, oldSettings) => {
+            if (
+                newSettings.token !== oldSettings.token ||
+                newSettings.vaultName !== oldSettings.vaultName ||
+                newSettings.remoteUri !== oldSettings.remoteUri
+            ) {
+                this.reset();
+            }
+        });
+    }
 
     private static validateConfig(config: ServerConfigData): void {
         if (config.supportedApiVersion !== SUPPORTED_API_VERSION) {

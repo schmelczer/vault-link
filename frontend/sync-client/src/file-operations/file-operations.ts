@@ -80,7 +80,15 @@ export class FileOperations {
         // existed, or it was just renamed away. The upcoming write therefore
         // looks like a fresh create to the watcher.
         this.expectedFsEvents.expectCreate(actualPath);
-        await this.fs.write(actualPath, this.toNativeLineEndings(newContent));
+        try {
+            await this.fs.write(
+                actualPath,
+                this.toNativeLineEndings(newContent)
+            );
+        } catch (e) {
+            this.expectedFsEvents.unexpectCreate(actualPath);
+            throw e;
+        }
         return actualPath;
     }
 
@@ -102,12 +110,12 @@ export class FileOperations {
             return;
         }
 
-        // The exists() check above is racy: between it returning true and
-        // any of the writes below running, the file can be deleted. The
-        // safe wrapper around `atomicUpdateText` raises FileNotFoundError
-        // in that window — treat it the same as the upfront-missing case
-        // (skip silently) so callers see one consistent outcome regardless
-        // of when the deletion happened to occur.
+        // Single-source the expectation registration: register exactly once
+        // per call, and unexpect from the catch if the underlying fs op
+        // throws (FileNotFoundError or otherwise). The previous shape
+        // registered inside each branch and let the catch swallow
+        // FileNotFoundError, leaking the expectation into the map.
+        this.expectedFsEvents.expectUpdate(path);
         try {
             if (
                 !isFileTypeMergable(
@@ -120,7 +128,6 @@ export class FileOperations {
                 this.logger.debug(
                     `The expected content is not mergable, so we won't perform a 3-way merge, just overwrite it`
                 );
-                this.expectedFsEvents.expectUpdate(path);
                 await this.fs.write(
                     path,
                     // `newContent` might not be binary so we still have to ensure the line endings are correct
@@ -142,12 +149,10 @@ export class FileOperations {
                 this.logger.warn(
                     `3-way merge aborted for ${path}: one of expected/new is not valid UTF-8 (${decodeError}); falling back to overwrite`
                 );
-                this.expectedFsEvents.expectUpdate(path);
                 await this.fs.write(path, this.toNativeLineEndings(newContent));
                 return;
             }
 
-            this.expectedFsEvents.expectUpdate(path);
             await this.fs.atomicUpdateText(
                 path,
                 ({ text, cursors }: TextWithCursors): TextWithCursors => {
@@ -174,6 +179,7 @@ export class FileOperations {
                 }
             );
         } catch (e) {
+            this.expectedFsEvents.unexpectUpdate(path);
             if (e instanceof FileNotFoundError) {
                 this.logger.debug(
                     `File ${path} disappeared during write; not recreating`
@@ -187,7 +193,12 @@ export class FileOperations {
     public async delete(path: RelativePath): Promise<void> {
         if (await this.exists(path)) {
             this.expectedFsEvents.expectDelete(path);
-            await this.fs.delete(path);
+            try {
+                await this.fs.delete(path);
+            } catch (e) {
+                this.expectedFsEvents.unexpectDelete(path);
+                throw e;
+            }
             await this.deletingEmptyParentDirectoriesOfDeletedFile(path);
         } else {
             this.logger.debug(`No need to delete '${path}', it doesn't exist`);
@@ -216,7 +227,12 @@ export class FileOperations {
 
         const actualPath = await this.ensureClearPath(newPath, moveOnConflict);
         this.expectedFsEvents.expectRename(oldPath, actualPath);
-        await this.fs.rename(oldPath, actualPath);
+        try {
+            await this.fs.rename(oldPath, actualPath);
+        } catch (e) {
+            this.expectedFsEvents.unexpectRename(oldPath, actualPath);
+            throw e;
+        }
         await this.deletingEmptyParentDirectoriesOfDeletedFile(oldPath);
         return actualPath;
     }

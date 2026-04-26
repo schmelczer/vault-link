@@ -3,6 +3,7 @@ import type { Logger } from "../tracing/logger";
 import { globsToRegexes } from "../utils/globs-to-regexes";
 import { CONFLICT_PATH_REGEX } from "./conflict-path";
 import { removeFromArray } from "../utils/remove-from-array";
+import { EventListeners } from "../utils/data-structures/event-listeners";
 import type { DocumentWithPath } from "./types";
 import {
     SyncEventType,
@@ -17,6 +18,14 @@ import {
 import { MinCovered } from "../utils/data-structures/min-covered";
 
 export class SyncEventQueue {
+    // Fires synchronously whenever the events array length changes (push, pop,
+    // remove, bulk-clear). The Syncer mirrors this into its public count
+    // listener; without this hook, listeners only saw deltas at consume time
+    // and missed the "queue grew" / "queue cleared on reset" transitions.
+    public readonly onPendingUpdateCountChanged = new EventListeners<
+        (count: number) => unknown
+    >();
+
     private readonly _lastSeenUpdateId: MinCovered;
 
     // Latest state of the filesystem as we know it, excluding
@@ -123,6 +132,7 @@ export class SyncEventQueue {
 
         if (input.type === SyncEventType.RemoteChange) {
             this.events.push(input);
+            this.notifyPendingUpdateCountChanged();
             return;
         }
 
@@ -154,6 +164,7 @@ export class SyncEventQueue {
                 originalPath: path,
                 resolvers: Promise.withResolvers()
             });
+            this.notifyPendingUpdateCountChanged();
             return;
         }
 
@@ -180,6 +191,7 @@ export class SyncEventQueue {
                 type: SyncEventType.LocalDelete,
                 documentId: (pendingDocumentId ?? documentId)!
             });
+            this.notifyPendingUpdateCountChanged();
             return;
         }
 
@@ -219,6 +231,7 @@ export class SyncEventQueue {
             path,
             originalPath: path
         });
+        this.notifyPendingUpdateCountChanged();
 
         if (needsSave) {
             await this.save();
@@ -226,7 +239,11 @@ export class SyncEventQueue {
     }
 
     public async next(): Promise<SyncEvent | undefined> {
-        return this.events.shift();
+        const event = this.events.shift();
+        if (event !== undefined) {
+            this.notifyPendingUpdateCountChanged();
+        }
+        return event;
     }
 
 
@@ -250,7 +267,9 @@ export class SyncEventQueue {
      * remote-create handler just absorbed).
      */
     public consumeEvent(event: SyncEvent): void {
-        removeFromArray(this.events, event);
+        if (removeFromArray(this.events, event)) {
+            this.notifyPendingUpdateCountChanged();
+        }
     }
 
 
@@ -261,7 +280,9 @@ export class SyncEventQueue {
         event: Extract<SyncEvent, { type: SyncEventType.LocalCreate }>,
         record: DocumentRecord
     ): Promise<void> {
-        removeFromArray(this.events, event); // in case the create event is still pending
+        if (removeFromArray(this.events, event)) {
+            this.notifyPendingUpdateCountChanged();
+        }
         await this.setDocument(event.path, record);
         event.resolvers.resolve(record.documentId);
     }
@@ -376,8 +397,16 @@ export class SyncEventQueue {
     }
 
     public clearPending(): void {
+        const hadEvents = this.events.length > 0;
         this.rejectAllPendingCreates();
         this.events.length = 0;
+        if (hadEvents) {
+            this.notifyPendingUpdateCountChanged();
+        }
+    }
+
+    private notifyPendingUpdateCountChanged(): void {
+        this.onPendingUpdateCountChanged.trigger(this.events.length);
     }
 
     public findLatestCreateForPath(

@@ -46,6 +46,38 @@ export class ExpectedFsEvents {
         this.bump(this.renames, ExpectedFsEvents.renameKey(oldPath, newPath));
     }
 
+    /**
+     * Cancel a previously-registered expectation when the fs op that registered
+     * it failed before any watcher event could fire. Without this, a leaked
+     * expectation silently swallows the next genuine user event at the same
+     * path (or, for renames, the same `oldPath → newPath` pair).
+     *
+     * Floored at zero: if the watcher *did* fire (op partially completed) and
+     * already consumed the entry, the unexpect is a no-op. The fallback is
+     * acceptable — at worst we re-upload a real edit we'd otherwise filter.
+     */
+    public unexpectCreate(path: RelativePath): void {
+        this.decrement(this.creates, path);
+    }
+
+    public unexpectUpdate(path: RelativePath): void {
+        this.decrement(this.updates, path);
+    }
+
+    public unexpectDelete(path: RelativePath): void {
+        this.decrement(this.deletes, path);
+    }
+
+    public unexpectRename(
+        oldPath: RelativePath,
+        newPath: RelativePath
+    ): void {
+        this.decrement(
+            this.renames,
+            ExpectedFsEvents.renameKey(oldPath, newPath)
+        );
+    }
+
     public matchCreate(path: RelativePath): boolean {
         return this.consume(this.creates, path);
     }
@@ -94,5 +126,11 @@ export class ExpectedFsEvents {
         if (count === 1) {map.delete(key);}
         else {map.set(key, count - 1);}
         return true;
+    }
+
+    private decrement(map: Map<RelativePath, number>, key: RelativePath): void {
+        const count = map.get(key) ?? 0;
+        if (count <= 1) {map.delete(key);}
+        else {map.set(key, count - 1);}
     }
 }

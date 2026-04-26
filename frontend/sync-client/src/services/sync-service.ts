@@ -17,6 +17,7 @@ import type { DocumentVersion } from "./types/DocumentVersion";
 import type { FetchLatestDocumentsResponse } from "./types/FetchLatestDocumentsResponse";
 import type { PingResponse } from "./types/PingResponse";
 import type { UpdateTextDocumentVersion } from "./types/UpdateTextDocumentVersion";
+import { buildVaultUrl } from "./build-vault-url";
 
 export class SyncService {
     private readonly client: typeof globalThis.fetch;
@@ -385,10 +386,7 @@ export class SyncService {
     }
 
     private getUrl(path: string): string {
-        const { vaultName, remoteUri } = this.settings.getSettings();
-        const remoteUriWithoutTrailingSlash = remoteUri.replace(/\/+$/, "");
-        const encodedVaultName = encodeURIComponent(vaultName.trim());
-        return `${remoteUriWithoutTrailingSlash}/vaults/${encodedVaultName}${path}`;
+        return buildVaultUrl(this.settings, path);
     }
 
     private getDefaultHeaders(

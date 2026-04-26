@@ -23,7 +23,6 @@ import type { MaybeOutdatedClientCursors } from "./types/maybe-outdated-client-c
 import { FileChangeNotifier } from "./sync-operations/file-change-notifier";
 import { FixedSizeDocumentCache } from "./utils/data-structures/fix-sized-cache";
 import { setUpTelemetry } from "./utils/set-up-telemetry";
-import { DIFF_CACHE_SIZE_MB } from "./consts";
 import { ServerConfig } from "./services/server-config";
 import type { EventListeners } from "./utils/data-structures/event-listeners";
 import { Lock } from "./utils/data-structures/locks";
@@ -174,7 +173,7 @@ export class SyncClient {
             fetch
         );
 
-        const serverConfig = new ServerConfig(syncService);
+        const serverConfig = new ServerConfig(syncService, settings);
 
         const expectedFsEvents = new ExpectedFsEvents();
 
@@ -187,7 +186,7 @@ export class SyncClient {
         );
 
         const contentCache = new FixedSizeDocumentCache(
-            1024 * 1024 * DIFF_CACHE_SIZE_MB
+            1024 * 1024 * settings.getSettings().diffCacheSizeMB
         );
 
         const webSocketManager = new WebSocketManager(
@@ -443,10 +442,21 @@ export class SyncClient {
      * without tripping the public `checkIfDestroyed` guard, which exists
      * only to keep external callers from continuing to use a disposed
      * client.
+     *
+     * Loops because a WebSocket message handler completing is what enqueues
+     * a `RemoteChange` into the syncer; if we awaited the syncer first and
+     * the WS handler second, a message arriving mid-wait would leave a fresh
+     * drain pending while `save()` ran. Each iteration waits for both, then
+     * re-checks; we exit only once both report idle in the same pass.
      */
     private async waitUntilFinishedInternal(): Promise<void> {
-        await this.syncer.waitUntilFinished();
-        await this.webSocketManager.waitUntilFinished();
+        while (
+            this.webSocketManager.hasOutstandingWork ||
+            this.syncer.hasPendingWork
+        ) {
+            await this.webSocketManager.waitUntilFinished();
+            await this.syncer.waitUntilFinished();
+        }
         await this.syncEventQueue.save();
     }
 

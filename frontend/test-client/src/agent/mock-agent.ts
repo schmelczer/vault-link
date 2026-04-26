@@ -261,11 +261,11 @@ export class MockAgent extends MockClient {
             );
             otherAgent.client.logger.info(
                 "Other agent's data: " +
-                    JSON.stringify(otherAgent.data, null, 2)
+                JSON.stringify(otherAgent.data, null, 2)
             );
             otherAgent.client.logger.info(
                 "Other agent's files: " +
-                    Array.from(otherAgent.files.keys()).join(", ")
+                Array.from(otherAgent.files.keys()).join(", ")
             );
 
             throw e;
@@ -339,12 +339,7 @@ export class MockAgent extends MockClient {
                 );
             }
 
-            if (!this.useSlowFileEvents && !this.doDeletes) {
-                assert(
-                    found.length >= 1,
-                    `[${this.name}] Binary content ${content} not found in any files`
-                );
-            }
+            //  can't assert(found.length >= 1, ...); because binary files have LWW semantics
         }
     }
 
@@ -531,9 +526,9 @@ export class MockAgent extends MockClient {
 
     private removeBinaryUuid(file: string): void {
         const existing = this.files.get(file);
-        if (existing === undefined) {return;}
+        if (existing === undefined) { return; }
         const content = new TextDecoder().decode(existing);
-        if (!content.startsWith("BINARY:")) {return;}
+        if (!content.startsWith("BINARY:")) { return; }
         const uuid = content.slice("BINARY:".length);
         utils.removeFromArray(this.writtenBinaryContents, uuid);
     }

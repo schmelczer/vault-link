@@ -12,6 +12,7 @@ import {
 import { removeFromArray } from "../utils/remove-from-array";
 import { EventListeners } from "../utils/data-structures/event-listeners";
 import { awaitAll } from "../utils/await-all";
+import { buildVaultUrl } from "./build-vault-url";
 
 export class WebSocketManager {
     public readonly onWebSocketStatusChanged = new EventListeners<
@@ -198,9 +199,11 @@ export class WebSocketManager {
             this.outstandingPromises.length = 0;
         }
 
-        const wsUri = new URL(this.settings.getSettings().remoteUri);
-        wsUri.protocol = wsUri.protocol === "https" ? "wss" : "ws";
-        wsUri.pathname = `/vaults/${this.settings.getSettings().vaultName}/ws`;
+        // Build the WS URL through the same vault-URL helper the HTTP client
+        // uses so vault-name encoding, trailing-slash stripping, and any path
+        // prefix in `remoteUri` stay in sync between transports.
+        const wsUri = new URL(buildVaultUrl(this.settings, "/ws"));
+        wsUri.protocol = wsUri.protocol.startsWith("https") ? "wss" : "ws";
 
         this.logger.info(`Connecting to WebSocket at ${wsUri.toString()}`);
 
