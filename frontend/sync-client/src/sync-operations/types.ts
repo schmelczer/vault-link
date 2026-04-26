@@ -16,7 +16,7 @@ export interface DocumentWithPath {
     record: DocumentRecord;
 }
 
-export interface StoredDocument extends DocumentRecord {
+interface StoredDocument extends DocumentRecord {
     relativePath: RelativePath;
 }
 

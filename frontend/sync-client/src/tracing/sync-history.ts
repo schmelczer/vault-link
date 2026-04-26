@@ -28,7 +28,7 @@ export interface SyncDeleteDetails {
     relativePath: RelativePath;
 }
 
-export interface SyncSkippedDetails {
+interface SyncSkippedDetails {
     type: SyncType.SKIPPED;
     relativePath: RelativePath;
 }

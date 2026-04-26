@@ -79,7 +79,7 @@ class NavStore {
 export const nav = new NavStore();
 
 // Toasts
-export interface Toast {
+interface Toast {
     id: number;
     message: string;
     type: "success" | "error" | "info";

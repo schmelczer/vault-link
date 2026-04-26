@@ -1,6 +1,6 @@
 import * as net from "node:net";
 
-export interface PortReservation {
+interface PortReservation {
     port: number;
     release: () => void;
 }

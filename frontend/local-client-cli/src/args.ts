@@ -2,9 +2,9 @@ import { Command, Option } from "commander";
 import packageJson from "../package.json";
 import { LogLevel } from "sync-client";
 
-export type LineEndingMode = "auto" | "lf" | "crlf";
+type LineEndingMode = "auto" | "lf" | "crlf";
 
-export interface CliArgs {
+interface CliArgs {
     remoteUri: string;
     token: string;
     vaultName: string;

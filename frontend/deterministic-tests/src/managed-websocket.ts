@@ -8,7 +8,7 @@
  * constructor using Object.defineProperty so we don't need conflicting
  * get/set accessor pairs.
  */
-export class ManagedWebSocket implements WebSocket {
+class ManagedWebSocket implements WebSocket {
     public static readonly CONNECTING = WebSocket.CONNECTING;
     public static readonly OPEN = WebSocket.OPEN;
     public static readonly CLOSING = WebSocket.CLOSING;
