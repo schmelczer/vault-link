@@ -159,17 +159,27 @@ export class Syncer {
     }
 
     /**
-     * True while there is queued or in-flight work the syncer needs to handle:
-     * a running offline scan, an active drain, or pending events. Used by
-     * `SyncClient.waitUntilFinishedInternal` to detect WebSocket-fed work that
-     * landed in the queue after the syncer's first quiescence point.
+     * True while the syncer has *active* work the caller should wait on: a
+     * running offline scan or an in-flight drain. Pending queue events alone
+     * don't count — `pause()` and `SyncResetError` exit drain early without
+     * clearing the queue, and nothing will pick those events back up until
+     * sync is re-enabled. Treating queued-but-stuck events as pending work
+     * would deadlock `waitUntilFinishedInternal` (the awaits inside its loop
+     * are no-ops once the active work has settled).
+     *
+     * The contract that makes "in-flight only" sufficient: every codepath
+     * that enqueues an event ends in `ensureDraining()` (the local-sync
+     * methods, `syncRemotelyUpdatedFile`, and the tail of
+     * `internalScheduleSyncForOfflineChanges`). So if a WebSocket handler
+     * lands new work mid-await, the next loop iteration sees `drainPromise`
+     * set and waits on it.
+     *
+     * Uses `isScanning` rather than `runningScheduleSyncForOfflineChanges`
+     * because the latter is a "have we already scanned this session" latch
+     * that stays set after the scan resolves.
      */
     public get hasPendingWork(): boolean {
-        return (
-            this.runningScheduleSyncForOfflineChanges !== undefined ||
-            this.drainPromise !== undefined ||
-            this.queue.pendingUpdateCount > 0
-        );
+        return this.isScanning || this.drainPromise !== undefined;
     }
 
     public reset(): void {
