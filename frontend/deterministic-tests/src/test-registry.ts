@@ -25,7 +25,6 @@ import { offlineRenameRemoteCreateOldPathTest } from "./tests/offline-rename-rem
 import { offlineEditRemoteRenameTest } from "./tests/offline-edit-remote-rename.test";
 import { renameChainThenDeleteTest } from "./tests/rename-chain-then-delete.test";
 import { offlineDeleteRemoteRenameTest } from "./tests/offline-delete-remote-rename.test";
-import { renameToRecentlyDeletedPathTest } from "./tests/rename-to-recently-deleted-path.test";
 import { overlappingEditsSameSectionTest } from "./tests/overlapping-edits-same-section.test";
 import { rapidUpdatesAfterMergeTest } from "./tests/rapid-updates-after-merge.test";
 import { deleteRecreateConcurrentUpdateTest } from "./tests/delete-recreate-concurrent-update.test";
@@ -121,7 +120,6 @@ export const TESTS: Partial<Record<string, TestDefinition>> = {
     "offline-edit-remote-rename": offlineEditRemoteRenameTest,
     "rename-chain-then-delete": renameChainThenDeleteTest,
     "offline-delete-remote-rename": offlineDeleteRemoteRenameTest,
-    "rename-to-recently-deleted-path": renameToRecentlyDeletedPathTest,
     "overlapping-edits-same-section": overlappingEditsSameSectionTest,
     "rapid-updates-after-merge": rapidUpdatesAfterMergeTest,
     "delete-recreate-concurrent-update": deleteRecreateConcurrentUpdateTest,

@@ -76,7 +76,7 @@ export class ServerConfig {
         return this.config;
     }
 
-    private startPing(): Promise<PingResponse> {
+    private async startPing(): Promise<PingResponse> {
         const pending = this.syncService.ping().catch((e: unknown) => {
             if (this.response === pending) {
                 this.response = undefined;

@@ -51,9 +51,8 @@ export const concurrentRenameFirstWinsTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertFileNotExists("A.md");
-                s.assertFileCount(1);
-                s.assertAnyFileContains("edit from 0", "edit from 1");
+                s.assertFileNotExists("A.md").
+                    assertFileCount(2).assertContent("B.md", "edit from 0\nline 2\nline 3").assertContent("C.md", "line 1\nline 2\nedit from 1");
             }
         }
     ]

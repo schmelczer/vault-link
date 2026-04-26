@@ -441,7 +441,7 @@ export class SyncEventQueue {
         newPath: RelativePath
     ): void {
         const createEvent = this.findLatestCreateForPath(oldPath);
-        if (createEvent === undefined) {return;}
+        if (createEvent === undefined) { return; }
 
         const { promise } = createEvent.resolvers;
         createEvent.path = newPath;

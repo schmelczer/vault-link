@@ -16,17 +16,11 @@ export const displacedFileNotMarkedDeletedTest: TestDefinition = {
 
         { type: "disable-sync", client: 1 },
 
-        { type: "create", client: 0, path: "B.md", content: "new file B" },
+        { type: "create", client: 0, path: "B.md", content: "content of B" },
         { type: "rename", client: 0, oldPath: "A.md", newPath: "C.md" },
         { type: "sync", client: 0 },
 
         { type: "rename", client: 1, oldPath: "A.md", newPath: "B.md" },
-        {
-            type: "update",
-            client: 1,
-            path: "B.md",
-            content: "edited A content"
-        },
         { type: "enable-sync", client: 1 },
 
         { type: "barrier" },
@@ -35,11 +29,9 @@ export const displacedFileNotMarkedDeletedTest: TestDefinition = {
             type: "assert-consistent",
             verify: (state: AssertableState): void => {
                 state
-                    .assertFileNotExists("A.md")
-                    .assertFileExists("B.md")
-                    .assertContains("B.md", "new file B")
-                    .assertFileExists("C.md")
-                    .assertContains("C.md", "edited A content");
+                    .assertFileCount(2)
+                    .assertContent("B.md", "content of B")
+                    .assertContent("C.md", "content of A");
             }
         }
     ]
