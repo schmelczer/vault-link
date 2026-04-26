@@ -477,6 +477,11 @@ export class Syncer {
             contentBytes
         });
 
+        if (response.isDeleted) {
+            await this.processRemoteDelete(diskPath, { ...response, contentSize: 0 });
+            return;
+        }
+
         this.queue.lastSeenUpdateId = response.vaultUpdateId;
 
         await this.handleMaybeMergingResponse({
