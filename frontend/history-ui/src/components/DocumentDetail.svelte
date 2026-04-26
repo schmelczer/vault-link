@@ -10,11 +10,9 @@
         isImageFile,
         fileExtension
     } from "../lib/stores.svelte";
-    import type {
-        DocumentVersionWithoutContent,
-        DocumentVersion,
-        ActionType
-    } from "../lib/types";
+    import type { DocumentVersionWithoutContent } from "../lib/types/DocumentVersionWithoutContent";
+    import type { DocumentVersion } from "../lib/types/DocumentVersion";
+    import type { ActionType } from "../lib/view-types";
     import DiffView from "./DiffView.svelte";
     import ConfirmDialog from "./ConfirmDialog.svelte";
 

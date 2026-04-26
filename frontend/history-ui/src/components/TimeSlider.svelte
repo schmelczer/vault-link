@@ -1,5 +1,5 @@
 <script lang="ts">
-    import type { DocumentVersionWithoutContent } from "../lib/types";
+    import type { DocumentVersionWithoutContent } from "../lib/types/DocumentVersionWithoutContent";
     import { relativeTime, absoluteTime } from "../lib/stores.svelte";
 
     interface Props {

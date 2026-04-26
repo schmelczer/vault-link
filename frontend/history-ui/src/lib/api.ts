@@ -1,12 +1,10 @@
-import type {
-    DocumentUpdateResponse,
-    DocumentVersion,
-    DocumentVersionWithoutContent,
-    FetchLatestDocumentsResponse,
-    ListVaultsResponse,
-    PingResponse,
-    VaultHistoryResponse
-} from "./types";
+import type { DocumentUpdateResponse } from "./types/DocumentUpdateResponse";
+import type { DocumentVersion } from "./types/DocumentVersion";
+import type { DocumentVersionWithoutContent } from "./types/DocumentVersionWithoutContent";
+import type { FetchLatestDocumentsResponse } from "./types/FetchLatestDocumentsResponse";
+import type { ListVaultsResponse } from "./types/ListVaultsResponse";
+import type { PingResponse } from "./types/PingResponse";
+import type { VaultHistoryResponse } from "./types/VaultHistoryResponse";
 
 async function fetchJsonWithToken<T>(
     path: string,

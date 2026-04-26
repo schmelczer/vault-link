@@ -1,7 +1,7 @@
 <script lang="ts">
     import { auth } from "../lib/stores.svelte";
     import { relativeTime } from "../lib/stores.svelte";
-    import type { VaultInfo } from "../lib/types";
+    import type { VaultInfo } from "../lib/types/VaultInfo";
 
     function select(vault: VaultInfo) {
         auth.selectVault(vault.name);

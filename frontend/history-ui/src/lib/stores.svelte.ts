@@ -1,11 +1,7 @@
 import { ApiClient } from "./api";
-import type {
-    DocumentVersionWithoutContent,
-    VaultInfo,
-    VersionEvent,
-    ActionType,
-    TreeNode
-} from "./types";
+import type { DocumentVersionWithoutContent } from "./types/DocumentVersionWithoutContent";
+import type { VaultInfo } from "./types/VaultInfo";
+import type { VersionEvent, ActionType, TreeNode } from "./view-types";
 
 class AuthStore {
     token = $state("");

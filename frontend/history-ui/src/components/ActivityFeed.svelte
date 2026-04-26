@@ -1,5 +1,5 @@
 <script lang="ts">
-    import type { VersionEvent } from "../lib/types";
+    import type { VersionEvent } from "../lib/view-types";
     import {
         absoluteTime,
         formatBytes

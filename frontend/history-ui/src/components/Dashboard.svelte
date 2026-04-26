@@ -9,12 +9,9 @@
         formatBytes,
         type View
     } from "../lib/stores.svelte";
-    import type {
-        DocumentVersionWithoutContent,
-        VaultHistoryResponse,
-        VersionEvent,
-        TreeNode
-    } from "../lib/types";
+    import type { DocumentVersionWithoutContent } from "../lib/types/DocumentVersionWithoutContent";
+    import type { VaultHistoryResponse } from "../lib/types/VaultHistoryResponse";
+    import type { VersionEvent, TreeNode } from "../lib/view-types";
     import FileTree from "./FileTree.svelte";
     import ActivityFeed from "./ActivityFeed.svelte";
     import DocumentDetail from "./DocumentDetail.svelte";

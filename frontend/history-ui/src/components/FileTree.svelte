@@ -1,5 +1,5 @@
 <script lang="ts">
-    import type { TreeNode } from "../lib/types";
+    import type { TreeNode } from "../lib/view-types";
     import FileTree from "./FileTree.svelte";
 
     interface Props {
