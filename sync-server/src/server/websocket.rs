@@ -165,6 +165,9 @@ async fn websocket(
                 Ok(update) => {
                     // Drop messages this device authored because the HTTP
                     // response already carried authoritative state back.
+                    // Delete broadcasts are sent without an origin so the
+                    // author also receives them — that's the receipt the
+                    // client needs to drop the doc from its sync queue.
                     if Some(&device_id) == update.origin_device_id.as_ref() {
                         continue;
                     }

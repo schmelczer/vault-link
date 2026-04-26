@@ -31,14 +31,7 @@ export const simultaneousCreateDeleteSamePathTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.ifFileExists("A.md", (inner) =>
-                    inner
-                        .assertFileCount(1)
-                        .assertContent("A.md", "modified by 1 while offline")
-                );
-                if (!s.files.has("A.md")) {
-                    s.assertFileCount(0);
-                }
+                s.assertFileCount(0);
             }
         }
     ]

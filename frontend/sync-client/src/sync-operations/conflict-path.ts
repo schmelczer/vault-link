@@ -17,7 +17,7 @@ function truncateFileNameToByteLimit(
     maxBytes: number
 ): string {
     const encoder = new TextEncoder();
-    if (encoder.encode(fileName).byteLength <= maxBytes) {return fileName;}
+    if (encoder.encode(fileName).byteLength <= maxBytes) { return fileName; }
 
     const dotIndex = fileName.lastIndexOf(".");
     // Dotfile (starts with "." and nothing else) → no extension to preserve.
@@ -35,7 +35,7 @@ function truncateFileNameToByteLimit(
     let usedBytes = 0;
     for (const { segment } of segmenter.segment(stem)) {
         const segmentBytes = encoder.encode(segment).byteLength;
-        if (usedBytes + segmentBytes > stemBudget) {break;}
+        if (usedBytes + segmentBytes > stemBudget) { break; }
         truncatedStem += segment;
         usedBytes += segmentBytes;
     }

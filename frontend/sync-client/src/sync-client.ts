@@ -373,17 +373,6 @@ export class SyncClient {
         this.syncer.syncLocallyCreatedFile(relativePath);
     }
 
-    public syncLocallyDeletedFile(relativePath: RelativePath): void {
-        this.checkIfDestroyed("syncLocallyDeletedFile");
-
-        this.fileChangeNotifier.notifyOfFileChange(relativePath); // this is for updating cursors
-        if (this.expectedFsEvents.matchDelete(relativePath)) {
-            return;
-        }
-
-        this.syncer.syncLocallyDeletedFile(relativePath);
-    }
-
     public syncLocallyUpdatedFile({
         oldPath,
         relativePath
@@ -403,6 +392,19 @@ export class SyncClient {
             relativePath
         });
     }
+
+    public syncLocallyDeletedFile(relativePath: RelativePath): void {
+        this.checkIfDestroyed("syncLocallyDeletedFile");
+
+        this.fileChangeNotifier.notifyOfFileChange(relativePath); // this is for updating cursors
+        if (this.expectedFsEvents.matchDelete(relativePath)) {
+            return;
+        }
+
+        this.syncer.syncLocallyDeletedFile(relativePath);
+    }
+
+
 
     public getDocumentSyncingStatus(
         relativePath: RelativePath

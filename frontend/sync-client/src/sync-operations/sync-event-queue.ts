@@ -38,14 +38,6 @@ export class SyncEventQueue {
     // It maps pending changes onto the local filesystem.
     private readonly events: SyncEvent[] = [];
 
-    // Tombstones: documents we deleted along with the vaultUpdateId at
-    // which the delete committed. After we delete, the server may still
-    // send us older broadcasts for that document (e.g. a backlog update
-    // committed before the delete from another client). Without these
-    // entries, the syncer would resurrect the doc by treating an old
-    // update as a brand-new create.
-    private readonly deletedDocuments = new Map<DocumentId, VaultUpdateId>();
-
     // file creations for paths matching any of these patterns are ignored
     // because the user explicitly told us to ignore them.
     private userIgnorePatterns: RegExp[];
@@ -302,42 +294,6 @@ export class SyncEventQueue {
         return this.save();
     }
 
-    /**
-     * Mark a document as deleted at a given vault-update version. Used by
-     * the syncer after a successful local or remote delete so future
-     * obsolete broadcasts for that doc (older parents that arrive late)
-     * don't resurrect it as a brand-new create.
-     */
-    public recordDeletion(
-        documentId: DocumentId,
-        deletedAtVaultUpdateId: VaultUpdateId
-    ): void {
-        const existing = this.deletedDocuments.get(documentId);
-        if (existing !== undefined && existing >= deletedAtVaultUpdateId) {
-            return;
-        }
-        this.deletedDocuments.set(documentId, deletedAtVaultUpdateId);
-    }
-
-    /**
-     * Returns the vault-update version at which we last saw this document
-     * deleted, or `undefined` if we have no record of its deletion.
-     */
-    public getDeletionVersion(
-        documentId: DocumentId
-    ): VaultUpdateId | undefined {
-        return this.deletedDocuments.get(documentId);
-    }
-
-    /**
-     * Forget a doc's tombstone — used when a doc with the same id is
-     * re-introduced (e.g. via a remote create whose server-side state
-     * surpasses the previous delete).
-     */
-    public clearDeletion(documentId: DocumentId): void {
-        this.deletedDocuments.delete(documentId);
-    }
-
     public getDocumentByDocumentId(
         target: DocumentId
     ): DocumentWithPath | undefined {
@@ -436,7 +392,7 @@ export class SyncEventQueue {
         return undefined;
     }
 
-    private updatePendingCreatePath(
+    public updatePendingCreatePath(
         oldPath: RelativePath,
         newPath: RelativePath
     ): void {

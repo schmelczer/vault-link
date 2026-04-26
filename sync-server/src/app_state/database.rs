@@ -717,19 +717,23 @@ impl Database {
             .await
             .context("Failed to commit transaction")?;
 
-        // The broadcast is delivered to every connected client except the
-        // author — the send task filters on `origin_device_id` (see
-        // `websocket.rs`). The origin already has authoritative state
-        // from the HTTP response that triggered this write.
-        self.broadcasts.send_document_update(
-            vault_id.clone(),
-            WebSocketServerMessageWithOrigin::with_origin(
-                version.device_id.clone(),
-                WebSocketServerMessage::VaultUpdate(WebSocketVaultUpdate {
-                    document: version.clone().into(),
-                }),
-            ),
-        );
+        // For non-delete writes the originating device already has
+        // authoritative state from its HTTP response, so we tag the
+        // broadcast with `origin_device_id` and the send task in
+        // `websocket.rs` filters it out for that device. Deletes are
+        // delivered to *every* connected client including the author —
+        // the originator only removes the document from its sync queue
+        // once it receives this receipt.
+        let envelope = WebSocketServerMessage::VaultUpdate(WebSocketVaultUpdate {
+            document: version.clone().into(),
+        });
+        let with_origin = if version.is_deleted {
+            WebSocketServerMessageWithOrigin::new(envelope)
+        } else {
+            WebSocketServerMessageWithOrigin::with_origin(version.device_id.clone(), envelope)
+        };
+        self.broadcasts
+            .send_document_update(vault_id.clone(), with_origin);
 
         Ok(())
     }

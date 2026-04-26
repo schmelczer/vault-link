@@ -9,8 +9,7 @@ export const renameCreateConflictTest: TestDefinition = {
         { type: "enable-sync", client: 0 },
         { type: "enable-sync", client: 1 },
         { type: "create", client: 0, path: "A.md", content: "hi" },
-        { type: "sync", client: 0 },
-        { type: "sync", client: 1 },
+        { type: "barrier" },
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
@@ -26,7 +25,7 @@ export const renameCreateConflictTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertFileNotExists("A.md").assertContent("B.md", "hi");
+                s.assertFileCount(2).assertContent("B.md", "hi").assertContent("B (1).md", "hi");
             }
         }
     ]

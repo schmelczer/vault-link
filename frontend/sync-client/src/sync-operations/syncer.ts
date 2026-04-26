@@ -217,8 +217,8 @@ export class Syncer {
     }
 
     private ensureDraining(): void {
-        if (this.drainPromise !== undefined) {return;}
-        if (this.isScanning) {return;}
+        if (this.drainPromise !== undefined) { return; }
+        if (this.isScanning) { return; }
         this.drainPromise = this.drain().finally(() => {
             this.drainPromise = undefined;
         });
@@ -318,7 +318,7 @@ export class Syncer {
 
     private async skipIfOversized(event: SyncEvent): Promise<boolean> {
         let sizeInBytes = 0;
-        let relativePath: RelativePath = "";
+        let relativePath: RelativePath;
 
         switch (event.type) {
             case SyncEventType.LocalDelete:
@@ -329,7 +329,7 @@ export class Syncer {
                 relativePath = event.path;
                 break;
             case SyncEventType.RemoteChange:
-                if (event.remoteVersion.isDeleted) {return false;}
+                if (event.remoteVersion.isDeleted) { return false; }
                 sizeInBytes = event.remoteVersion.contentSize;
                 ({ relativePath } = event.remoteVersion);
                 break;
@@ -339,7 +339,7 @@ export class Syncer {
             sizeInBytes,
             relativePath
         );
-        if (oversizedEntry === undefined) {return false;}
+        if (oversizedEntry === undefined) { return false; }
 
         this.history.addHistoryEntry(oversizedEntry);
 
@@ -417,22 +417,24 @@ export class Syncer {
             );
             return;
         }
-        const relativePath = doc.path;
 
         const response = await this.syncService.delete({
             documentId,
-            relativePath
+            relativePath: doc.path
         });
 
-        await this.queue.removeDocument(doc.path);
-        this.queue.recordDeletion(documentId, response.vaultUpdateId);
-        this.queue.lastSeenUpdateId = response.vaultUpdateId;
-
+        // Don't remove the doc from the queue or advance lastSeenUpdateId
+        // here. The server broadcasts the delete back to us over the
+        // WebSocket; that receipt drives `processRemoteDelete`'s cleanup
+        // and history entry. Keeping the entry in the map until then lets
+        // late remote updates be recognised as "file is missing" and
+        // skipped, instead of resurrecting the doc.
+        // 
         this.history.addHistoryEntry({
             status: SyncStatus.SUCCESS,
             details: {
                 type: SyncType.DELETE,
-                relativePath
+                relativePath: doc.path
             },
             message: "Successfully deleted file on the server",
             author: response.userId
@@ -520,7 +522,7 @@ export class Syncer {
             parentVersionId: response.vaultUpdateId,
             remoteRelativePath: response.relativePath
         };
-        let remoteHash = "";
+        let remoteHash: string;
 
         if ("type" in response && response.type === "MergingUpdate") {
             const responseBytes = base64ToBytes(response.contentBase64);
@@ -565,16 +567,16 @@ export class Syncer {
                     `Document ${response.documentId} is no longer tracked after update; cannot reconcile potential rename`
                 );
             } else {
-                const currentPath = tracked.path ?? path;
+                const currentPath = tracked.path;
                 if (currentPath === path) {
                     // a http response will always be more up-to-date than any queued remote update
                     // move will always move to the relative path when MoveOnConflict.EXISTING is given
                     await this.operations.move(
-                        path,
+                        currentPath,
                         response.relativePath,
                         MoveOnConflict.EXISTING
                     );
-
+                    this.queue.updatePendingCreatePath(currentPath, response.relativePath);
                     await this.queue.setDocument(response.relativePath, {
                         ...record,
                         remoteHash
@@ -597,13 +599,13 @@ export class Syncer {
             // consistent. Without this, a later remote create at the
             // originally-requested path would see a phantom local conflict
             // and stash the new file under a `conflict-<uuid>-` path.
-            if (response.relativePath !== createEvent.path) {
+            if (response.relativePath !== createEvent.originalPath) {
                 await this.operations.move(
                     createEvent.path,
                     response.relativePath,
                     MoveOnConflict.EXISTING
                 );
-                createEvent.path = response.relativePath;
+                this.queue.updatePendingCreatePath(createEvent.path, response.relativePath);
             }
             await this.queue.resolveCreate(createEvent, {
                 ...record,
@@ -624,31 +626,18 @@ export class Syncer {
 
         if (remoteVersion.isDeleted) {
             if (documentWithPath === undefined) {
-                // trying to delete a document we've already scheduled for deletion locally
+                // The doc isn't tracked locally — either we never had
+                // it (joined the vault after the delete) or a previous
+                // delete already cleaned it up. Just advance
+                // `lastSeenUpdateId` so we don't replay this on the
+                // next reconnect.
+                this.queue.lastSeenUpdateId = remoteVersion.vaultUpdateId;
                 return;
             }
             return this.processRemoteDelete(
                 documentWithPath.path,
                 remoteVersion
             );
-        }
-
-        // The doc was deleted at-or-after the version this broadcast
-        // describes (e.g. another client's update committed before our
-        // local delete; the server's backlog is replaying it now). Apply
-        // would resurrect a doc we deliberately removed.
-        const deletedAt = this.queue.getDeletionVersion(
-            remoteVersion.documentId
-        );
-        if (
-            deletedAt !== undefined &&
-            deletedAt >= remoteVersion.vaultUpdateId
-        ) {
-            this.queue.lastSeenUpdateId = remoteVersion.vaultUpdateId;
-            this.logger.debug(
-                `Skipping obsolete remote update for already-deleted document ${remoteVersion.documentId} (V=${remoteVersion.vaultUpdateId} <= deleted V=${deletedAt})`
-            );
-            return;
         }
 
         if (
@@ -663,17 +652,28 @@ export class Syncer {
         }
 
         if (documentWithPath !== undefined) {
-            // must be the update to an existing doc
+            // The doc is tracked. If the local file backing it has
+            // gone missing — e.g. the user deleted it and the
+            // LocalDelete hasn't drained yet, or our HTTP DELETE just
+            // landed and we're still waiting on the WebSocket receipt
+            // — ignore the update. Otherwise we'd try to operate on a
+            // vanished file (or recreate one we're tearing down).
+            const fileExists = await this.operations.exists(
+                documentWithPath.path
+            );
+            if (!fileExists) {
+                this.queue.lastSeenUpdateId = remoteVersion.vaultUpdateId;
+                this.logger.debug(
+                    `Ignoring remote update for ${remoteVersion.documentId}: local file at ${documentWithPath.path} is missing`
+                );
+                return;
+            }
             return this.processRemoteUpdate(
                 documentWithPath.path,
                 documentWithPath.record,
                 remoteVersion
             );
         }
-
-        const pendingCreate = this.queue.findLatestCreateForPath(
-            remoteVersion.relativePath
-        );
 
         return this.processRemoteCreateForNewDocument(remoteVersion);
     }
@@ -684,10 +684,6 @@ export class Syncer {
     ): Promise<void> {
         await this.operations.delete(path);
         await this.queue.removeDocument(path);
-        this.queue.recordDeletion(
-            remoteVersion.documentId,
-            remoteVersion.vaultUpdateId
-        );
 
         this.queue.lastSeenUpdateId = remoteVersion.vaultUpdateId;
 

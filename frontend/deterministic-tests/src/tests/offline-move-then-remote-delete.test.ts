@@ -29,8 +29,7 @@ export const offlineMoveThenRemoteDeleteTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertFileNotExists("A.md")
-                    .assertFileNotExists("B.md")
+                s
                     .assertFileCount(0);
             }
         }

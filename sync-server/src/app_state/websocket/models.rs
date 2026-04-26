@@ -58,11 +58,15 @@ pub struct CursorPositionFromServer {
     pub clients: Vec<ClientCursors>,
 }
 
-// One committed version, broadcast to every connected client *except*
-// the device that authored it — that device already has the new state
-// via its HTTP response. The server also emits these one-at-a-time to
-// catch up a freshly-connected client on versions committed while it
-// was offline, in ascending `vault_update_id` order.
+// One committed version. Non-delete updates are broadcast to every
+// connected client *except* the device that authored them — that
+// device already has the new state via its HTTP response. Deletes are
+// broadcast to every client including the author: the author keeps
+// the document in its sync queue until this receipt arrives so a late
+// remote update can't sneak in between the HTTP response and the
+// queue cleanup. The server also emits these one-at-a-time to catch
+// up a freshly-connected client on versions committed while it was
+// offline, in ascending `vault_update_id` order.
 #[derive(TS, Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct WebSocketVaultUpdate {
