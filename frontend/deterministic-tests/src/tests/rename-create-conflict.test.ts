@@ -22,7 +22,6 @@ export const renameCreateConflictTest: TestDefinition = {
         { type: "sync", client: 1 },
         { type: "create", client: 0, path: "B.md", content: "hi" },
         { type: "enable-sync", client: 0 },
-        { type: "sync", client: 0 },
         { type: "barrier" },
         {
             type: "assert-consistent",

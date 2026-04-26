@@ -11,7 +11,6 @@ export const simultaneousCreateDeleteSamePathTest: TestDefinition = {
         { type: "create", client: 0, path: "A.md", content: "original from 0" },
         { type: "enable-sync", client: 0 },
         { type: "enable-sync", client: 1 },
-        { type: "sync" },
         { type: "barrier" },
 
         { type: "disable-sync", client: 1 },
@@ -27,7 +26,6 @@ export const simultaneousCreateDeleteSamePathTest: TestDefinition = {
         },
 
         { type: "enable-sync", client: 1 },
-        { type: "sync", client: 1 },
         { type: "barrier" },
 
         {

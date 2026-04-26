@@ -11,7 +11,6 @@ export const offlineRenameAndEditTest: TestDefinition = {
         { type: "create", client: 0, path: "A.md", content: "original" },
         { type: "enable-sync", client: 0 },
         { type: "enable-sync", client: 1 },
-        { type: "sync" },
         { type: "barrier" },
         {
             type: "assert-consistent",
@@ -30,7 +29,6 @@ export const offlineRenameAndEditTest: TestDefinition = {
         },
 
         { type: "enable-sync", client: 0 },
-        { type: "sync" },
         { type: "barrier" },
 
         {

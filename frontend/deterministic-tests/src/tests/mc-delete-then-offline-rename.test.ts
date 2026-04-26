@@ -12,7 +12,6 @@ export const mcDeleteThenOfflineRenameTest: TestDefinition = {
         { type: "create", client: 0, path: "C.md", content: "unrelated" },
         { type: "enable-sync", client: 0 },
         { type: "enable-sync", client: 1 },
-        { type: "sync" },
         { type: "barrier" },
 
         { type: "disable-sync", client: 1 },
@@ -23,7 +22,6 @@ export const mcDeleteThenOfflineRenameTest: TestDefinition = {
         { type: "rename", client: 1, oldPath: "A.md", newPath: "B.md" },
 
         { type: "enable-sync", client: 1 },
-        { type: "sync" },
         { type: "barrier" },
 
         {

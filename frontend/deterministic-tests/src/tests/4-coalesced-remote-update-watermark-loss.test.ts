@@ -16,7 +16,6 @@ export const coalescedRemoteUpdateWatermarkLossTest: TestDefinition = {
         { type: "update", client: 0, path: "doc.md", content: "update 1" },
         { type: "update", client: 0, path: "doc.md", content: "update 2" },
         { type: "update", client: 0, path: "doc.md", content: "final update" },
-        { type: "sync", client: 0 },
 
         { type: "barrier" },
         {

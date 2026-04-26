@@ -11,7 +11,6 @@ export const deleteRenameConflictTest: TestDefinition = {
         { type: "create", client: 0, path: "B.md", content: "content-b" },
         { type: "enable-sync", client: 0 },
         { type: "enable-sync", client: 1 },
-        { type: "sync" },
         { type: "barrier" },
         {
             type: "assert-consistent",
@@ -28,7 +27,6 @@ export const deleteRenameConflictTest: TestDefinition = {
         { type: "rename", client: 1, oldPath: "A.md", newPath: "C.md" },
 
         { type: "enable-sync", client: 1 },
-        { type: "sync", client: 1 },
         { type: "barrier" },
 
         {

@@ -28,7 +28,6 @@ export const renameCircularTest: TestDefinition = {
         { type: "rename", client: 0, oldPath: "temp-a.md", newPath: "B.md" },
 
         { type: "enable-sync", client: 0 },
-        { type: "sync" },
         { type: "barrier" },
 
         {

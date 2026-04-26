@@ -14,7 +14,6 @@ export const mcMultiDeleteOfflineRenameTest: TestDefinition = {
         { type: "create", client: 0, path: "file-5.md", content: "content-5" },
         { type: "enable-sync", client: 0 },
         { type: "enable-sync", client: 1 },
-        { type: "sync" },
         { type: "barrier" },
 
         { type: "disable-sync", client: 0 },
@@ -31,7 +30,6 @@ export const mcMultiDeleteOfflineRenameTest: TestDefinition = {
         },
 
         { type: "enable-sync", client: 0 },
-        { type: "sync" },
         { type: "barrier" },
 
         {

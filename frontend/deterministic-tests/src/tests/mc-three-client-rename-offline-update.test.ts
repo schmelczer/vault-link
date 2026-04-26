@@ -11,7 +11,6 @@ export const mcThreeClientRenameOfflineUpdateTest: TestDefinition = {
         { type: "enable-sync", client: 0 },
         { type: "enable-sync", client: 1 },
         { type: "enable-sync", client: 2 },
-        { type: "sync" },
         { type: "barrier" },
 
         { type: "disable-sync", client: 2 },
@@ -28,7 +27,6 @@ export const mcThreeClientRenameOfflineUpdateTest: TestDefinition = {
         },
 
         { type: "enable-sync", client: 2 },
-        { type: "sync" },
         { type: "barrier" },
 
         {

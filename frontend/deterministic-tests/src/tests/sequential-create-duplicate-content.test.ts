@@ -14,7 +14,6 @@ export const sequentialCreateDuplicateContentTest: TestDefinition = {
         },
         { type: "enable-sync", client: 0 },
         { type: "enable-sync", client: 1 },
-        { type: "sync" },
         { type: "barrier" },
 
         {
@@ -30,7 +29,6 @@ export const sequentialCreateDuplicateContentTest: TestDefinition = {
             path: "B.md",
             content: "identical content here"
         },
-        { type: "sync" },
         { type: "barrier" },
 
         {

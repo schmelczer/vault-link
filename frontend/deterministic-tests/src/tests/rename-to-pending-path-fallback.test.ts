@@ -14,7 +14,6 @@ export const renameToPendingPathFallbackTest: TestDefinition = {
         },
         { type: "enable-sync", client: 0 },
         { type: "enable-sync", client: 1 },
-        { type: "sync" },
         { type: "barrier" },
 
         { type: "disable-sync", client: 0 },
@@ -29,7 +28,6 @@ export const renameToPendingPathFallbackTest: TestDefinition = {
         { type: "rename", client: 0, oldPath: "B.md", newPath: "A.md" },
 
         { type: "enable-sync", client: 0 },
-        { type: "sync" },
         { type: "barrier" },
 
         {

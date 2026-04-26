@@ -10,7 +10,6 @@ export const renameChainThenDeleteTest: TestDefinition = {
         { type: "create", client: 0, path: "X.md", content: "chain-content" },
         { type: "enable-sync", client: 0 },
         { type: "enable-sync", client: 1 },
-        { type: "sync" },
         { type: "barrier" },
         {
             type: "assert-consistent",
@@ -39,7 +38,6 @@ export const renameChainThenDeleteTest: TestDefinition = {
         { type: "sync", client: 0 },
 
         { type: "enable-sync", client: 1 },
-        { type: "sync" },
         { type: "barrier" },
 
         {

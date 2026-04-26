@@ -16,7 +16,6 @@ export const serverPauseRenameEditResumeTest: TestDefinition = {
             path: "A.md",
             content: "original content"
         },
-        { type: "sync" },
         { type: "barrier" },
         {
             type: "assert-consistent",
@@ -37,7 +36,6 @@ export const serverPauseRenameEditResumeTest: TestDefinition = {
 
         { type: "resume-server" },
 
-        { type: "sync" },
         { type: "barrier" },
 
         {

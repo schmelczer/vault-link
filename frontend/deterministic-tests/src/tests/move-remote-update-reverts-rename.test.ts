@@ -10,7 +10,6 @@ export const moveRemoteUpdateRevertsRenameTest: TestDefinition = {
         { type: "create", client: 0, path: "doc.md", content: "original" },
         { type: "enable-sync", client: 0 },
         { type: "enable-sync", client: 1 },
-        { type: "sync" },
         { type: "barrier" },
 
         { type: "disable-sync", client: 0 },
@@ -24,7 +23,6 @@ export const moveRemoteUpdateRevertsRenameTest: TestDefinition = {
 
         { type: "enable-sync", client: 0 },
         { type: "rename", client: 0, oldPath: "doc.md", newPath: "renamed.md" },
-        { type: "sync" },
         { type: "barrier" },
 
         {

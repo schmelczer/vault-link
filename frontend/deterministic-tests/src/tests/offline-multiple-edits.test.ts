@@ -11,7 +11,6 @@ export const offlineMultipleEditsTest: TestDefinition = {
         { type: "create", client: 0, path: "doc.md", content: "original" },
         { type: "enable-sync", client: 0 },
         { type: "enable-sync", client: 1 },
-        { type: "sync" },
         { type: "barrier" },
         {
             type: "assert-consistent",
@@ -29,7 +28,6 @@ export const offlineMultipleEditsTest: TestDefinition = {
         { type: "update", client: 0, path: "doc.md", content: "edit-5-final" },
 
         { type: "enable-sync", client: 0 },
-        { type: "sync" },
         { type: "barrier" },
 
         {

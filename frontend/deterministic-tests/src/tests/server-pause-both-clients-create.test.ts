@@ -8,7 +8,6 @@ export const serverPauseBothClientsCreateTest: TestDefinition = {
     steps: [
         { type: "enable-sync", client: 0 },
         { type: "enable-sync", client: 1 },
-        { type: "sync" },
         { type: "barrier" },
 
         {
@@ -28,7 +27,6 @@ export const serverPauseBothClientsCreateTest: TestDefinition = {
 
         { type: "resume-server" },
 
-        { type: "sync" },
         { type: "barrier" },
 
         {

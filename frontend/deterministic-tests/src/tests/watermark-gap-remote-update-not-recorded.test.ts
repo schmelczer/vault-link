@@ -9,15 +9,12 @@ export const watermarkGapRemoteUpdateNotRecordedTest: TestDefinition = {
         { type: "create", client: 0, path: "doc.md", content: "original" },
         { type: "enable-sync", client: 0 },
         { type: "enable-sync", client: 1 },
-        { type: "sync" },
         { type: "barrier" },
 
         { type: "update", client: 0, path: "doc.md", content: "update 1" },
         { type: "sync", client: 0 },
         { type: "update", client: 0, path: "doc.md", content: "update 2" },
-        { type: "sync", client: 0 },
 
-        { type: "sync", client: 1 },
         { type: "barrier" },
         {
             type: "assert-consistent",
@@ -28,7 +25,6 @@ export const watermarkGapRemoteUpdateNotRecordedTest: TestDefinition = {
 
         { type: "disable-sync", client: 1 },
         { type: "enable-sync", client: 1 },
-        { type: "sync" },
         { type: "barrier" },
 
         {

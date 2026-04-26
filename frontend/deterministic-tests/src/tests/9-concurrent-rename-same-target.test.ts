@@ -21,7 +21,6 @@ export const concurrentRenameSameTargetTest: TestDefinition = {
         { type: "rename", client: 1, oldPath: "B.md", newPath: "C.md" },
 
         { type: "enable-sync", client: 1 },
-        { type: "sync", client: 1 },
         { type: "barrier" },
 
         {

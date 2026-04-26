@@ -15,7 +15,6 @@ export const moveAndConcurrentRemoteUpdateTest: TestDefinition = {
         },
         { type: "enable-sync", client: 0 },
         { type: "enable-sync", client: 1 },
-        { type: "sync" },
         { type: "barrier" },
 
         { type: "disable-sync", client: 0 },
@@ -30,7 +29,6 @@ export const moveAndConcurrentRemoteUpdateTest: TestDefinition = {
         { type: "sync", client: 1 },
 
         { type: "enable-sync", client: 0 },
-        { type: "sync" },
         { type: "barrier" },
 
         {

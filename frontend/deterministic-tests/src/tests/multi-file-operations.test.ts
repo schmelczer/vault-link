@@ -12,7 +12,6 @@ export const multiFileOperationsTest: TestDefinition = {
         { type: "create", client: 0, path: "C.md", content: "content-c" },
         { type: "enable-sync", client: 0 },
         { type: "enable-sync", client: 1 },
-        { type: "sync" },
         { type: "barrier" },
 
         { type: "disable-sync", client: 1 },
@@ -29,7 +28,6 @@ export const multiFileOperationsTest: TestDefinition = {
         { type: "rename", client: 1, oldPath: "A.md", newPath: "D.md" },
 
         { type: "enable-sync", client: 1 },
-        { type: "sync", client: 1 },
         { type: "barrier" },
 
         {

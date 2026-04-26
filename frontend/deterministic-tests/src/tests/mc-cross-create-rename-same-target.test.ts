@@ -13,7 +13,6 @@ export const mcCrossCreateRenameSameTargetTest: TestDefinition = {
 
         { type: "enable-sync", client: 0 },
         { type: "enable-sync", client: 1 },
-        { type: "sync" },
         { type: "barrier" },
 
         {
@@ -31,7 +30,6 @@ export const mcCrossCreateRenameSameTargetTest: TestDefinition = {
         { type: "rename", client: 1, oldPath: "Y.md", newPath: "Z.md" },
 
         { type: "enable-sync", client: 1 },
-        { type: "sync" },
         { type: "barrier" },
 
         {

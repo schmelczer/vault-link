@@ -18,7 +18,6 @@ export const createRenameCreateSamePathTest: TestDefinition = {
 
         { type: "enable-sync", client: 0 },
         { type: "enable-sync", client: 1 },
-        { type: "sync" },
         { type: "barrier" },
 
         {

@@ -13,7 +13,6 @@ export const offlineMixedOperationsTest: TestDefinition = {
         { type: "create", client: 0, path: "file3.md", content: "content-3" },
         { type: "enable-sync", client: 0 },
         { type: "enable-sync", client: 1 },
-        { type: "sync" },
         { type: "barrier" },
 
         {
@@ -42,7 +41,6 @@ export const offlineMixedOperationsTest: TestDefinition = {
         },
 
         { type: "enable-sync", client: 0 },
-        { type: "sync" },
         { type: "barrier" },
 
         {

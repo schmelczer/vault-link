@@ -9,7 +9,6 @@ export const deleteDuringPendingCreateTest: TestDefinition = {
     steps: [
         { type: "enable-sync", client: 0 },
         { type: "enable-sync", client: 1 },
-        { type: "sync" },
         { type: "barrier" },
 
         { type: "pause-server" },
@@ -24,7 +23,6 @@ export const deleteDuringPendingCreateTest: TestDefinition = {
         { type: "delete", client: 0, path: "ephemeral.md" },
 
         { type: "resume-server" },
-        { type: "sync" },
         { type: "barrier" },
 
         {

@@ -14,7 +14,6 @@ export const serverPauseBothEditSameFileTest: TestDefinition = {
         },
         { type: "enable-sync", client: 0 },
         { type: "enable-sync", client: 1 },
-        { type: "sync" },
         { type: "barrier" },
 
         { type: "pause-server" },
@@ -35,7 +34,6 @@ export const serverPauseBothEditSameFileTest: TestDefinition = {
         },
 
         { type: "resume-server" },
-        { type: "sync" },
         { type: "barrier" },
 
         {
@@ -55,7 +53,6 @@ export const serverPauseBothEditSameFileTest: TestDefinition = {
             path: "shared.md",
             content: "post-merge edit from client 0"
         },
-        { type: "sync" },
         { type: "barrier" },
 
         {

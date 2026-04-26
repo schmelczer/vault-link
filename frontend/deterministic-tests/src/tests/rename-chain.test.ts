@@ -20,7 +20,6 @@ export const renameChainTest: TestDefinition = {
         { type: "rename", client: 0, oldPath: "B.md", newPath: "C.md" },
 
         { type: "enable-sync", client: 0 },
-        { type: "sync" },
         { type: "barrier" },
 
         {

@@ -15,13 +15,11 @@ export const moveThenDeleteStalePathTest: TestDefinition = {
         },
         { type: "enable-sync", client: 0 },
         { type: "enable-sync", client: 1 },
-        { type: "sync" },
         { type: "barrier" },
 
         { type: "rename", client: 0, oldPath: "A.md", newPath: "B.md" },
         { type: "delete", client: 0, path: "B.md" },
 
-        { type: "sync" },
         { type: "barrier" },
 
         {
