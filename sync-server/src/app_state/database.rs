@@ -443,6 +443,7 @@ impl Database {
             r#"
             select
                 vault_update_id,
+                creation_vault_update_id,
                 document_id as "document_id: Hyphenated",
                 relative_path,
                 updated_date as "updated_date: chrono::DateTime<Utc>",
@@ -474,6 +475,7 @@ impl Database {
                     user_id: row.user_id,
                     device_id: row.device_id,
                     content_size: row.content_size.unwrap_or(0),
+                    is_new_file: row.creation_vault_update_id == row.vault_update_id,
                 })
                 .collect()
         })
@@ -491,6 +493,7 @@ impl Database {
             r#"
             select
                 vault_update_id,
+                creation_vault_update_id,
                 document_id as "document_id: Hyphenated",
                 relative_path,
                 updated_date as "updated_date: chrono::DateTime<Utc>",
@@ -526,6 +529,7 @@ impl Database {
                     user_id: row.user_id,
                     device_id: row.device_id,
                     content_size: row.content_size.unwrap_or(0),
+                    is_new_file: row.creation_vault_update_id == row.vault_update_id,
                 })
                 .collect()
         })
@@ -750,6 +754,7 @@ impl Database {
             r#"
             select
                 vault_update_id,
+                creation_vault_update_id,
                 document_id as "document_id: Hyphenated",
                 relative_path,
                 updated_date as "updated_date: chrono::DateTime<Utc>",
@@ -783,6 +788,7 @@ impl Database {
                     user_id: row.user_id,
                     device_id: row.device_id,
                     content_size: row.content_size.unwrap_or(0),
+                    is_new_file: row.creation_vault_update_id == row.vault_update_id,
                 })
                 .collect()
         })
@@ -805,6 +811,7 @@ impl Database {
             user_id: row.user_id,
             device_id: row.device_id,
             content_size: row.content_size.unwrap_or(0),
+            is_new_file: row.creation_vault_update_id == row.vault_update_id,
         };
 
         if let Some(before) = before_update_id {
@@ -813,6 +820,7 @@ impl Database {
                 r#"
                 select
                     vault_update_id,
+                    creation_vault_update_id,
                     document_id as "document_id: Hyphenated",
                     relative_path,
                     updated_date as "updated_date: chrono::DateTime<Utc>",
@@ -845,6 +853,7 @@ impl Database {
                 r#"
                 select
                     vault_update_id,
+                    creation_vault_update_id,
                     document_id as "document_id: Hyphenated",
                     relative_path,
                     updated_date as "updated_date: chrono::DateTime<Utc>",

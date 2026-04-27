@@ -66,7 +66,7 @@ pub async fn update_binary(
         parent_document.content,
         vault_id,
         document_id,
-        &request.relative_path,
+        request.relative_path.as_deref(),
         content,
         user,
         device_id,
@@ -112,7 +112,7 @@ pub async fn update_text(
         parent_document.content,
         vault_id,
         document_id,
-        &request.relative_path,
+        request.relative_path.as_deref(),
         content,
         user,
         device_id,
@@ -157,7 +157,7 @@ pub async fn update_document(
     parent_content: Vec<u8>,
     vault_id: VaultId,
     document_id: DocumentId,
-    relative_path: &str,
+    relative_path: Option<&str>,
     content: Vec<u8>,
     user: User,
     device_id: DeviceIdHeader,
@@ -166,7 +166,10 @@ pub async fn update_document(
 ) -> Result<Json<DocumentUpdateResponse>, SyncServerError> {
     debug!("Updating document `{document_id}` in vault `{vault_id}`");
 
-    let sanitized_relative_path = sanitize_path(relative_path).map_err(client_error)?;
+    let sanitized_relative_path = relative_path
+        .map(sanitize_path)
+        .transpose()
+        .map_err(client_error)?;
 
     let last_update_id = state
         .database
@@ -202,9 +205,12 @@ pub async fn update_document(
     }
 
     // Return the latest version if the content and path are the same as the latest
-    // version
-    if content == latest_version.content && sanitized_relative_path == latest_version.relative_path
-    {
+    // version. A missing relative_path means "keep current path", so the path
+    // is implicitly unchanged.
+    let path_unchanged = sanitized_relative_path
+        .as_deref()
+        .is_none_or(|p| p == latest_version.relative_path);
+    if content == latest_version.content && path_unchanged {
         info!(
             "Document content is the same as the latest version for `{document_id}`, skipping update"
         );
@@ -219,8 +225,14 @@ pub async fn update_document(
         )));
     }
 
+    // For mergability, use whichever path the new version will live at — the
+    // requested rename target if the client sent one, otherwise the existing
+    // server-side path.
+    let mergable_check_path = sanitized_relative_path
+        .as_deref()
+        .unwrap_or(&latest_version.relative_path);
     let are_all_participants_mergable = is_file_type_mergable(
-        &sanitized_relative_path,
+        mergable_check_path,
         &state.config.server.mergeable_file_extensions,
     ) && !is_binary(&parent_content)
         && !is_binary(&latest_version.content)
@@ -263,33 +275,36 @@ pub async fn update_document(
         (content, false) // false means that the client doesn't need to refetch the file as we can ensure the remote and local versions are the same as LWW is the merging method for binary files
     };
 
-    // Rename resolution: only apply the client's rename if the document's path
-    // hasn't changed since this client's parent version. Check the parent
-    // version's path against the latest version's path. If they differ, another
-    // client already renamed the document — keep the latest path (first rename
-    // wins). Content changes from both clients are still merged correctly via
-    // the 3-way reconcile above, independent of which rename wins.
-    let new_relative_path = if parent_relative_path == latest_version.relative_path
-        && sanitized_relative_path != latest_version.relative_path
-    {
-        let new_path = find_first_available_path(
-            &vault_id,
-            &sanitized_relative_path,
-            &state.database,
-            &mut transaction,
-        )
-        .await
-        .map_err(server_error)?;
+    // Rename resolution: only apply the client's rename if (a) the client
+    // requested one (`sanitized_relative_path` is `Some`) and (b) the
+    // document's path hasn't changed since this client's parent version.
+    // If the parent and latest paths differ, another client already renamed
+    // the document — keep the latest path (first rename wins). Content
+    // changes from both clients are still merged correctly via the 3-way
+    // reconcile above, independent of which rename wins. A missing
+    // relative_path means "keep current path" (content-only edit).
+    let new_relative_path = match sanitized_relative_path.as_deref() {
+        Some(requested) if parent_relative_path == latest_version.relative_path
+            && requested != latest_version.relative_path =>
+        {
+            let new_path = find_first_available_path(
+                &vault_id,
+                requested,
+                &state.database,
+                &mut transaction,
+            )
+            .await
+            .map_err(server_error)?;
 
-        if new_path != sanitized_relative_path {
-            info!(
-                "Document already exists at new location: `{sanitized_relative_path}` when trying to update it in vault `{vault_id}`, deconflicting by creating at `{new_path}`"
-            );
+            if new_path != requested {
+                info!(
+                    "Document already exists at new location: `{requested}` when trying to update it in vault `{vault_id}`, deconflicting by creating at `{new_path}`"
+                );
+            }
+
+            new_path
         }
-
-        new_path
-    } else {
-        latest_version.relative_path.clone()
+        _ => latest_version.relative_path.clone(),
     };
 
     let new_version = StoredDocumentVersion {

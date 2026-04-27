@@ -89,7 +89,7 @@ pub async fn create_document(
                     Vec::new(),
                     vault_id,
                     latest_version.document_id,
-                    &request.relative_path,
+                    Some(&request.relative_path),
                     new_content,
                     user,
                     device_id,

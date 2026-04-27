@@ -46,10 +46,14 @@ pub struct DocumentVersionWithoutContent {
 
     #[ts(type = "number")]
     pub content_size: u64,
+
+    /// True iff this is the first version of the document
+    pub is_new_file: bool,
 }
 
 impl From<StoredDocumentVersion> for DocumentVersionWithoutContent {
     fn from(value: StoredDocumentVersion) -> Self {
+        let is_new_file = value.creation_vault_update_id == value.vault_update_id;
         Self {
             vault_update_id: value.vault_update_id,
             document_id: value.document_id,
@@ -59,6 +63,7 @@ impl From<StoredDocumentVersion> for DocumentVersionWithoutContent {
             user_id: value.user_id,
             device_id: value.device_id,
             content_size: value.content.len() as u64,
+            is_new_file,
         }
     }
 }
@@ -82,6 +87,7 @@ pub struct DocumentVersion {
 #[derive(Debug)]
 pub struct VaultHistoryRow {
     pub vault_update_id: VaultUpdateId,
+    pub creation_vault_update_id: VaultUpdateId,
     pub document_id: DocumentId,
     pub relative_path: String,
     pub updated_date: DateTime<Utc>,

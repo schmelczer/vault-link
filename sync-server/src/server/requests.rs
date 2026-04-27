@@ -22,7 +22,9 @@ pub struct CreateDocumentVersion {
 #[derive(Debug, TryFromMultipart)]
 pub struct UpdateBinaryDocumentVersion {
     pub parent_version_id: VaultUpdateId,
-    pub relative_path: String,
+    // None on a content-only edit; Some on a user rename. When None,
+    // the server keeps the document at its current path.
+    pub relative_path: Option<String>,
 
     #[form_data(limit = "unlimited")]
     pub content: FieldData<Bytes>,
@@ -35,7 +37,9 @@ pub struct UpdateTextDocumentVersion {
     #[ts(type = "number")]
     pub parent_version_id: VaultUpdateId,
 
-    pub relative_path: String,
+    // None on a content-only edit; Some on a user rename. When None,
+    // the server keeps the document at its current path.
+    pub relative_path: Option<String>,
 
     #[ts(type = "Array<number | string>")]
     pub content: Vec<NumberOrText>,
