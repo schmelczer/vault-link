@@ -89,6 +89,8 @@ import { serverPauseDeleteRecreateTest } from "./tests/server-pause-delete-recre
 import { onlineBothCreateSamePathDeconflictTest } from "./tests/online-both-create-same-path-deconflict.test";
 import { onlineCreateUpdateWhileOtherCreatesSamePathTest } from "./tests/online-create-update-while-other-creates-same-path.test";
 import { displacedFileNotMarkedDeletedTest } from "./tests/displaced-file-not-marked-deleted.test";
+import { remoteUpdateResurrectsDeletedDocTest } from "./tests/remote-update-resurrects-deleted-doc.test";
+import { localUpdateSurvivesRemoteRenameTest } from "./tests/local-update-survives-remote-rename.test";
 
 export const TESTS: Partial<Record<string, TestDefinition>> = {
     "rename-create-conflict": renameCreateConflictTest,
@@ -198,5 +200,8 @@ export const TESTS: Partial<Record<string, TestDefinition>> = {
         onlineBothCreateSamePathDeconflictTest,
     "online-create-update-while-other-creates-same-path":
         onlineCreateUpdateWhileOtherCreatesSamePathTest,
-    "displaced-file-not-marked-deleted": displacedFileNotMarkedDeletedTest
+    "displaced-file-not-marked-deleted": displacedFileNotMarkedDeletedTest,
+    "remote-update-resurrects-deleted-doc": remoteUpdateResurrectsDeletedDocTest,
+    "local-update-survives-remote-rename":
+        localUpdateSurvivesRemoteRenameTest
 };
