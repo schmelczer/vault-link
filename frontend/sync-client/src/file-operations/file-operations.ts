@@ -16,6 +16,20 @@ export enum MoveOnConflict {
     NEW = "NEW"
 }
 
+/**
+ * Outcome of a `move`/`create`. `actualPath` is where the new file
+ * ended up (which may differ from the requested path under
+ * `MoveOnConflict.NEW` if the target was occupied). `displacedTo` is
+ * set only when an existing file at the requested path was bumped to
+ * a `conflict-…` path under `MoveOnConflict.EXISTING`; the caller
+ * uses it to repoint any tracking for the displaced doc before its
+ * own follow-up `setDocument` clobbers the old slot.
+ */
+export interface FileOpResult {
+    actualPath: RelativePath;
+    displacedTo?: RelativePath;
+}
+
 export class FileOperations {
     private readonly fs: SafeFileSystemOperations;
 
@@ -67,29 +81,27 @@ export class FileOperations {
      *
      * If a file with the same name already exists, it is moved before creating the new one.
      * Parent directories are created if necessary.
-     *
-     * Returns the actual path the file was created at.
      */
     public async create(
         path: RelativePath,
         newContent: Uint8Array,
         moveOnConflict: MoveOnConflict
-    ): Promise<RelativePath> {
-        const actualPath = await this.ensureClearPath(path, moveOnConflict);
+    ): Promise<FileOpResult> {
+        const result = await this.ensureClearPath(path, moveOnConflict);
         // ensureClearPath leaves actualPath empty: either the file never
         // existed, or it was just renamed away. The upcoming write therefore
         // looks like a fresh create to the watcher.
-        this.expectedFsEvents.expectCreate(actualPath);
+        this.expectedFsEvents.expectCreate(result.actualPath);
         try {
             await this.fs.write(
-                actualPath,
+                result.actualPath,
                 this.toNativeLineEndings(newContent)
             );
         } catch (e) {
-            this.expectedFsEvents.unexpectCreate(actualPath);
+            this.expectedFsEvents.unexpectCreate(result.actualPath);
             throw e;
         }
-        return actualPath;
+        return result;
     }
 
     /**
@@ -215,37 +227,36 @@ export class FileOperations {
 
 
 
-    // Returns the actual path the file got moved to.
     public async move(
         oldPath: RelativePath,
         newPath: RelativePath,
         moveOnConflict: MoveOnConflict
-    ): Promise<RelativePath> {
+    ): Promise<FileOpResult> {
         if (oldPath === newPath) {
-            return oldPath;
+            return { actualPath: oldPath };
         }
 
-        const actualPath = await this.ensureClearPath(newPath, moveOnConflict);
-        this.expectedFsEvents.expectRename(oldPath, actualPath);
+        const cleared = await this.ensureClearPath(newPath, moveOnConflict);
+        this.expectedFsEvents.expectRename(oldPath, cleared.actualPath);
         try {
-            await this.fs.rename(oldPath, actualPath);
+            await this.fs.rename(oldPath, cleared.actualPath);
         } catch (e) {
-            this.expectedFsEvents.unexpectRename(oldPath, actualPath);
+            this.expectedFsEvents.unexpectRename(oldPath, cleared.actualPath);
             throw e;
         }
         await this.deletingEmptyParentDirectoriesOfDeletedFile(oldPath);
-        return actualPath;
+        return cleared;
     }
 
     private async ensureClearPath(
         path: RelativePath,
         moveOnConflict: MoveOnConflict
-    ): Promise<RelativePath> {
+    ): Promise<FileOpResult> {
         if (await this.fs.exists(path)) {
             const conflictPath = FileOperations.buildConflictPath(path);
 
             if (moveOnConflict === MoveOnConflict.NEW) {
-                return conflictPath;
+                return { actualPath: conflictPath };
             }
 
             this.logger.debug(
@@ -266,7 +277,7 @@ export class FileOperations {
             `No existing file at ${path}, creating parent directories if needed`
         );
         await this.createParentDirectories(path);
-        return path;
+        return { actualPath: path };
     }
 
     private async deletingEmptyParentDirectoriesOfDeletedFile(

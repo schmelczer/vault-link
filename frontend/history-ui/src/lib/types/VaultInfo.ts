@@ -3,8 +3,4 @@
 /**
  * Summary of a single vault returned by the list-vaults endpoint.
  */
-export type VaultInfo = {
-    name: string;
-    documentCount: number;
-    createdAt: string | null;
-};
+export type VaultInfo = { name: string, documentCount: number, createdAt: string | null, };

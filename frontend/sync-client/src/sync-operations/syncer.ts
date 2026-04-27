@@ -446,19 +446,8 @@ export class Syncer {
     ): Promise<void> {
         const documentId = await event.documentId;
 
-        const doc = this.queue.getDocumentByDocumentId(documentId);
-        if (doc === undefined) {
-            // Already deleted (e.g. a remote delete drained ahead of
-            // this redundant local one). Nothing to do.
-            this.logger.debug(
-                `Skipping local-delete for ${documentId} — doc no longer tracked`
-            );
-            return;
-        }
-
         const response = await this.syncService.delete({
             documentId,
-            relativePath: doc.path
         });
 
         // Don't remove the doc from the queue or advance lastSeenUpdateId
@@ -471,7 +460,7 @@ export class Syncer {
             status: SyncStatus.SUCCESS,
             details: {
                 type: SyncType.DELETE,
-                relativePath: doc.path
+                relativePath: event.path
             },
             message: "Successfully deleted file on the server",
             author: response.userId,
@@ -499,8 +488,21 @@ export class Syncer {
         const contentBytes = await this.operations.read(diskPath);
         const contentHash = await hash(contentBytes);
 
+        // For a user-driven rename the user's intent is `event.originalPath`
+        // — that's the rename target. For a content-only edit the user is
+        // agnostic to the path; sending one would be wrong if a remote
+        // rename processed first, because the server would interpret the
+        // user's (now-stale) path as a rename back. So content-only PUTs
+        // omit the path and the server keeps the doc at its current
+        // server-known location.
+        const renameTarget = event.isUserRename
+            ? event.originalPath
+            : undefined;
+
         const hashChanged = contentHash !== record.remoteHash;
-        const pathChanged = record.remoteRelativePath !== event.originalPath;
+        const pathChanged =
+            renameTarget !== undefined &&
+            record.remoteRelativePath !== renameTarget;
 
         if (!hashChanged && !pathChanged) {
             this.logger.debug(
@@ -511,12 +513,16 @@ export class Syncer {
 
         const response = await this.sendUpdate({
             record,
-            relativePath: event.originalPath,
+            relativePath: renameTarget,
             contentBytes
         });
 
         if (response.isDeleted) {
-            await this.processRemoteDelete(diskPath, { ...response, contentSize: 0 });
+            await this.processRemoteDelete(diskPath, {
+                ...response,
+                contentSize: 0,
+                isNewFile: false
+            });
             return;
         }
 
@@ -716,6 +722,14 @@ export class Syncer {
             );
         }
 
+        if (!remoteVersion.isNewFile) {
+            this.queue.lastSeenUpdateId = remoteVersion.vaultUpdateId;
+            this.logger.debug(
+                `Ignoring stale RemoteChange for untracked, non-new document ${remoteVersion.documentId}`
+            );
+            return;
+        }
+
         return this.processRemoteCreateForNewDocument(remoteVersion);
     }
 
@@ -889,13 +903,15 @@ export class Syncer {
         contentBytes
     }: {
         record: DocumentRecord;
-        relativePath: RelativePath;
+        // `undefined` for content-only edits; the server keeps the doc's
+        // current path. A string is sent only on a user-driven rename.
+        relativePath: RelativePath | undefined;
         contentBytes: Uint8Array;
     }): Promise<DocumentUpdateResponse> {
         const isText =
             !isBinary(contentBytes) &&
             isFileTypeMergable(
-                relativePath,
+                relativePath ?? record.remoteRelativePath,
                 (await this.serverConfig.getConfig()).mergeableFileExtensions
             );
 

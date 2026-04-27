@@ -30,6 +30,7 @@ function fakeRemoteVersion(
         userId: "user",
         deviceId: "device",
         contentSize: 100,
+        isNewFile: true,
         ...overrides
     };
 }

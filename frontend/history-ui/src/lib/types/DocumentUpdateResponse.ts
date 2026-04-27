@@ -5,6 +5,4 @@ import type { DocumentVersionWithoutContent } from "./DocumentVersionWithoutCont
 /**
  * Response to a create/update document request.
  */
-export type DocumentUpdateResponse =
-    | ({ type: "FastForwardUpdate" } & DocumentVersionWithoutContent)
-    | ({ type: "MergingUpdate" } & DocumentVersion);
+export type DocumentUpdateResponse = { "type": "FastForwardUpdate" } & DocumentVersionWithoutContent | { "type": "MergingUpdate" } & DocumentVersion;

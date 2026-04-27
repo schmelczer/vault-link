@@ -71,7 +71,7 @@ export class SyncService {
         response: Response,
         operation: string
     ): Promise<void> {
-        if (response.ok) {return;}
+        if (response.ok) { return; }
         const message = `Failed to ${operation}: ${await SyncService.errorFromResponse(response)}`;
         // 429 is the only 4xx the server uses for *transient* contention
         // (`WriteBusyError` → HTTP 429). Every other 4xx means the request
@@ -154,17 +154,17 @@ export class SyncService {
     }: {
         parentVersionId: VaultUpdateId;
         documentId: DocumentId;
-        relativePath: RelativePath;
+        relativePath: RelativePath | undefined;
         content: (number | string)[];
     }): Promise<DocumentUpdateResponse> {
         return this.retryForever(async () => {
             this.logger.debug(
-                `Updating text document ${documentId} with parent version ${parentVersionId} and relative path ${relativePath}, content [${content.join(", ")}]`
+                `Updating text document ${documentId} with parent version ${parentVersionId} and relative path ${relativePath ?? "<unchanged>"}, content [${content.join(", ")}]`
             );
 
             const request: UpdateTextDocumentVersion = {
                 parentVersionId,
-                relativePath,
+                relativePath: relativePath ?? null,
                 content
             };
 
@@ -199,16 +199,18 @@ export class SyncService {
     }: {
         parentVersionId: VaultUpdateId;
         documentId: DocumentId;
-        relativePath: RelativePath;
+        relativePath: RelativePath | undefined;
         contentBytes: Uint8Array;
     }): Promise<DocumentUpdateResponse> {
         return this.retryForever(async () => {
             this.logger.debug(
-                `Updating binary document ${documentId} with parent version ${parentVersionId} and relative path ${relativePath}`
+                `Updating binary document ${documentId} with parent version ${parentVersionId} and relative path ${relativePath ?? "<unchanged>"}`
             );
             const formData = new FormData();
             formData.append("parent_version_id", parentVersionId.toString());
-            formData.append("relative_path", relativePath);
+            if (relativePath !== undefined) {
+                formData.append("relative_path", relativePath);
+            }
             formData.append(
                 "content",
                 new Blob([new Uint8Array(contentBytes)])
@@ -239,14 +241,12 @@ export class SyncService {
 
     public async delete({
         documentId,
-        relativePath
     }: {
         documentId: DocumentId;
-        relativePath: RelativePath;
     }): Promise<DocumentVersionWithoutContent> {
         return this.retryForever(async () => {
             this.logger.debug(
-                `Delete document with id ${documentId} and relative path ${relativePath}`
+                `Delete document with id ${documentId}`
             );
 
             // The server identifies the document by its URL path; no body
@@ -265,7 +265,7 @@ export class SyncService {
                 (await response.json()) as DocumentVersionWithoutContent; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
 
             this.logger.debug(
-                `Deleted document ${relativePath} with id ${documentId}`
+                `Deleted document with id ${documentId}`
             );
 
             return result;

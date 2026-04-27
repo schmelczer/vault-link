@@ -4,8 +4,4 @@ import type { VaultInfo } from "./VaultInfo";
 /**
  * Response to listing vaults accessible to the authenticated user.
  */
-export type ListVaultsResponse = {
-    vaults: Array<VaultInfo>;
-    hasMore: boolean;
-    userName: string;
-};
+export type ListVaultsResponse = { vaults: Array<VaultInfo>, hasMore: boolean, userName: string, };
