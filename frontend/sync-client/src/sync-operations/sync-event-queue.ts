@@ -4,7 +4,6 @@ import { globsToRegexes } from "../utils/globs-to-regexes";
 import { CONFLICT_PATH_REGEX } from "./conflict-path";
 import { removeFromArray } from "../utils/remove-from-array";
 import { EventListeners } from "../utils/data-structures/event-listeners";
-import type { DocumentWithPath } from "./types";
 import {
     SyncEventType,
     type DocumentId,
@@ -79,8 +78,8 @@ export class SyncEventQueue {
         initialState ??= {};
 
         if (initialState.documents !== undefined) {
-            for (const { relativePath, ...record } of initialState.documents) {
-                this.documents.set(relativePath, record);
+            for (const record of initialState.documents) {
+                this.documents.set(record.path, record);
             }
         }
         this._lastSeenUpdateId = new MinCovered(
@@ -189,12 +188,14 @@ export class SyncEventQueue {
         if (input.type === SyncEventType.LocalDelete) {
             this.events.push({
                 type: SyncEventType.LocalDelete,
-                documentId: (pendingDocumentId ?? documentId)!
+                documentId: (pendingDocumentId ?? documentId)!,
+                path: lookupPath
             });
             this.notifyPendingUpdateCountChanged();
             return;
         }
 
+        const isUserRename = input.oldPath !== undefined;
         let needsSave = false;
         if (input.oldPath !== undefined) {
             if (pendingDocumentId !== undefined) {
@@ -205,6 +206,43 @@ export class SyncEventQueue {
                         "Unreachable: record must be defined for non-pending update"
                     );
                 }
+                // The user renamed `oldPath` onto `path`. If `path` was
+                // already tracked by a *different* doc (the OS rename
+                // overwrote that file), that doc effectively no longer
+                // exists locally — its content was clobbered. Without
+                // explicitly recording the loss the doc would silently
+                // drop out of the documents map below and we'd skip
+                // notifying the server, leaving a phantom on the remote
+                // that other agents still see. Enqueue a LocalDelete for
+                // it so the server learns about the deletion.
+                const displacedRecord = this.documents.get(path);
+                if (
+                    displacedRecord !== undefined &&
+                    displacedRecord.documentId !== documentId
+                ) {
+                    this.events.push({
+                        type: SyncEventType.LocalDelete,
+                        documentId: displacedRecord.documentId,
+                        // The doc still lives at `path` on the server; the
+                        // OS rename only overwrote our local file. Snapshot
+                        // the path so `processDelete` can issue the server
+                        // DELETE even after `documents.set(path, record)`
+                        // below removes the entry from the map.
+                        path
+                    });
+                }
+                // Inlined relocation: same shape as `setDocument`'s
+                // relocation branch (mutate the record's path in place,
+                // delete-old, set-new, retarget queued LocalUpdates) but
+                // kept synchronous. Callers fire `enqueue` with `void`
+                // and immediately call `ensureDraining()`; if we awaited
+                // `setDocument()` here, the LocalUpdate push below would
+                // happen after the await and the drain that already
+                // started would see an empty queue, exit, and leave the
+                // event stranded. We mutate `record.path` rather than
+                // re-creating it so any reference held by an in-flight
+                // drain handler sees the new path on its next read.
+                record.path = path;
                 this.documents.delete(input.oldPath);
                 this.documents.set(path, record);
                 for (const e of this.events) {
@@ -220,16 +258,14 @@ export class SyncEventQueue {
             }
         }
 
-        // Push BEFORE awaiting `save()`. Callers fire `enqueue` with `void`
-        // and immediately call `ensureDraining()`, which starts a drain that
-        // synchronously shifts off the queue. If we awaited save first the
-        // shift would see the queue empty, drain would exit, and the event
-        // would never get processed until the next unrelated trigger.
+        // Push BEFORE awaiting `save()`. See the comment above on the
+        // synchronicity contract with `ensureDraining()`.
         this.events.push({
             type: SyncEventType.LocalUpdate,
             documentId: (pendingDocumentId ?? documentId)!,
             path,
-            originalPath: path
+            originalPath: path,
+            isUserRename
         });
         this.notifyPendingUpdateCountChanged();
 
@@ -293,20 +329,54 @@ export class SyncEventQueue {
      * If the document is already tracked under a different path (e.g. after a
      * rename) the old entry is removed so the map stays keyed by the latest
      * disk path and `getDocumentByDocumentId` can't return a stale match.
+     *
+     * Whenever this relocates a tracked doc it also rewrites the `path`
+     * field of every queued `LocalUpdate` for the same doc. The invariant
+     * the queue relies on — and that `skipIfOversized` and the watcher
+     * dedup checks bake in — is that `event.path` always points at the
+     * doc's current disk location. Letting the map move out from under
+     * the events would leave readers like `getFileSize(event.path)`
+     * pointing at a vacated slot and silently swallowing the event.
      */
     public async setDocument(
         path: RelativePath,
         record: DocumentRecord
     ): Promise<void> {
+        // If a record for the same docId is already tracked, mutate it in
+        // place instead of inserting a fresh object. Callers (drain
+        // handlers, queued events) hold long-lived references to the
+        // record and read `.path` from it on every access — replacing the
+        // reference would orphan those reads at the old object's path
+        // value. Keeping the same object identity also keeps the
+        // `documents.get(record.path) === record` invariant trivially
+        // true after a rename.
+        let target: DocumentRecord | undefined;
         for (const [existingPath, existingRecord] of this.documents) {
-            if (
-                existingPath !== path &&
-                existingRecord.documentId === record.documentId
-            ) {
-                this.documents.delete(existingPath);
+            if (existingRecord.documentId === record.documentId) {
+                target = existingRecord;
+                if (existingPath !== path) {
+                    this.documents.delete(existingPath);
+                }
             }
         }
-        this.documents.set(path, record);
+        if (target === undefined) {
+            target = { ...record, path };
+        } else {
+            target.path = path;
+            target.intendedPath = record.intendedPath;
+            target.parentVersionId = record.parentVersionId;
+            target.remoteHash = record.remoteHash;
+            target.remoteRelativePath = record.remoteRelativePath;
+        }
+        this.documents.set(path, target);
+        for (const e of this.events) {
+            if (
+                e.type === SyncEventType.LocalUpdate &&
+                e.documentId === record.documentId
+            ) {
+                e.path = path;
+            }
+        }
         return this.save();
     }
 
@@ -317,16 +387,16 @@ export class SyncEventQueue {
 
     public getDocumentByDocumentId(
         target: DocumentId
-    ): DocumentWithPath | undefined {
-        for (const [path, record] of this.documents) {
+    ): DocumentRecord | undefined {
+        for (const record of this.documents.values()) {
             if (record.documentId === target) {
-                return { path, record };
+                return record;
             }
         }
         return undefined;
     }
 
-    public getDocumentByDocumentIdOrFail(target: DocumentId): DocumentWithPath {
+    public getDocumentByDocumentIdOrFail(target: DocumentId): DocumentRecord {
         const result = this.getDocumentByDocumentId(target);
         if (!result) {
             throw new Error(`No document found with id ${target}`);
@@ -336,12 +406,7 @@ export class SyncEventQueue {
 
     public async save(): Promise<void> {
         return this.saveData({
-            documents: Array.from(this.documents.entries()).map(
-                ([relativePath, record]) => ({
-                    relativePath,
-                    ...record
-                })
-            ),
+            documents: Array.from(this.documents.values()),
             lastSeenUpdateId: this.lastSeenUpdateId
         });
     }
@@ -386,8 +451,6 @@ export class SyncEventQueue {
                     e.documentId === documentId)
         );
     }
-
-
 
     public async clearAllState(): Promise<void> {
         this.clearPending();

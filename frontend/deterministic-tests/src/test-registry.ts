@@ -91,6 +91,9 @@ import { onlineCreateUpdateWhileOtherCreatesSamePathTest } from "./tests/online-
 import { displacedFileNotMarkedDeletedTest } from "./tests/displaced-file-not-marked-deleted.test";
 import { remoteUpdateResurrectsDeletedDocTest } from "./tests/remote-update-resurrects-deleted-doc.test";
 import { localUpdateSurvivesRemoteRenameTest } from "./tests/local-update-survives-remote-rename.test";
+import { mergingUpdateResponseSurvivesUserRenameTest } from "./tests/merging-update-response-survives-user-rename.test";
+import { conflictUuidStashClearedAfterRenameDeconflictTest } from "./tests/conflict-uuid-stash-cleared-after-rename-deconflict.test";
+import { catchupCreateAndUpdateNotSkippedTest } from "./tests/catchup-create-and-update-not-skipped.test";
 
 export const TESTS: Partial<Record<string, TestDefinition>> = {
     "rename-create-conflict": renameCreateConflictTest,
@@ -203,5 +206,11 @@ export const TESTS: Partial<Record<string, TestDefinition>> = {
     "displaced-file-not-marked-deleted": displacedFileNotMarkedDeletedTest,
     "remote-update-resurrects-deleted-doc": remoteUpdateResurrectsDeletedDocTest,
     "local-update-survives-remote-rename":
-        localUpdateSurvivesRemoteRenameTest
+        localUpdateSurvivesRemoteRenameTest,
+    "merging-update-response-survives-user-rename":
+        mergingUpdateResponseSurvivesUserRenameTest,
+    "conflict-uuid-stash-cleared-after-rename-deconflict":
+        conflictUuidStashClearedAfterRenameDeconflictTest,
+    "catchup-create-and-update-not-skipped":
+        catchupCreateAndUpdateNotSkippedTest
 };

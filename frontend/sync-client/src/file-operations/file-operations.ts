@@ -263,14 +263,19 @@ export class FileOperations {
                 `Displacing existing file at ${path} to '${conflictPath}' to make room`
             );
 
-            // Intentionally NOT calling `expectRename` here: the displaced
-            // file may be a tracked document (its `queue.documents` entry
-            // still points at `path`), and we need the watcher's
-            // `syncLocallyUpdatedFile` to flow into `queue.enqueue`'s
-            // path-update branch so the doc's map key follows its file
-            // to `conflictPath` and gets resynced
-            await this.fs.rename(path, conflictPath);
-            return path;
+            // The displaced file's rename will fire as a watcher event;
+            // register `expectRename` so the watcher dedups it. The
+            // caller is responsible for the queue bookkeeping (relocating
+            // the displaced doc's tracking) using the `displacedTo` we
+            // return.
+            this.expectedFsEvents.expectRename(path, conflictPath);
+            try {
+                await this.fs.rename(path, conflictPath);
+            } catch (e) {
+                this.expectedFsEvents.unexpectRename(path, conflictPath);
+                throw e;
+            }
+            return { actualPath: path, displacedTo: conflictPath };
         }
 
         this.logger.debug(

@@ -529,7 +529,17 @@ impl Database {
                     user_id: row.user_id,
                     device_id: row.device_id,
                     content_size: row.content_size.unwrap_or(0),
-                    is_new_file: row.creation_vault_update_id == row.vault_update_id,
+                    // For catch-up streams, "new file" means "new to this
+                    // recipient" — the doc was created past the recipient's
+                    // watermark. The catch-up only carries the doc's
+                    // *latest* version (not its full history), so using
+                    // `creation == latest` instead would mis-flag every
+                    // doc that was created and then updated before the
+                    // client reconnected, and the client's
+                    // `processRemoteChange` would drop it as "stale
+                    // RemoteChange for untracked, non-new document",
+                    // silently leaking docs to clients catching up.
+                    is_new_file: row.creation_vault_update_id > vault_update_id,
                 })
                 .collect()
         })

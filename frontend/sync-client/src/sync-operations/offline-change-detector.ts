@@ -1,10 +1,8 @@
-import type { DocumentRecord, DocumentWithPath, RelativePath } from "./types";
-import { SyncEventType } from "./types";
+import type { DocumentRecord, RelativePath } from "./types";
 import type { Logger } from "../tracing/logger";
 import { hash } from "../utils/hash";
 import type { FileOperations } from "../file-operations/file-operations";
 import { findMatchingFile } from "../utils/find-matching-file";
-import { FileNotFoundError } from "../errors/file-not-found-error";
 import type { SyncEventQueue } from "./sync-event-queue";
 import { removeFromArray } from "../utils/remove-from-array";
 
@@ -31,10 +29,10 @@ export async function scheduleOfflineChanges(
     // A doc is "possibly deleted" only if it has no local file. Including
     // docs that still exist locally would queue a spurious delete alongside
     // the update below.
-    const locallyPossiblyDeletedFiles: DocumentWithPath[] = [];
-    for (const [path, record] of allDocuments.entries()) {
-        if (!allLocalFiles.has(path)) {
-            locallyPossiblyDeletedFiles.push({ path, record });
+    const locallyPossiblyDeletedFiles: DocumentRecord[] = [];
+    for (const record of allDocuments.values()) {
+        if (!allLocalFiles.has(record.path)) {
+            locallyPossiblyDeletedFiles.push(record);
         }
     }
 

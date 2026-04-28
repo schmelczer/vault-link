@@ -40,10 +40,11 @@ function fakeRecord(
     overrides: Partial<DocumentRecord> = {}
 ): DocumentRecord {
     return {
+        path: `${documentId.toLowerCase()}.md`,
         documentId,
         parentVersionId: 1,
         remoteHash: `hash-${documentId}`,
-        remoteRelativePath: `${documentId}.md`,
+        remoteRelativePath: `${documentId.toLowerCase()}.md`,
         ...overrides
     };
 }
@@ -119,7 +120,7 @@ describe("SyncEventQueue", () => {
 
         const found = queue.getDocumentByDocumentId("A");
         assert.strictEqual(found?.path, "a.md");
-        assert.strictEqual(found.record.documentId, "A");
+        assert.strictEqual(found.documentId, "A");
 
         await queue.removeDocument("a.md");
         assert.strictEqual(queue.syncedDocumentCount, 0);
@@ -216,14 +217,8 @@ describe("SyncEventQueue", () => {
             logger,
             {
                 documents: [
-                    {
-                        relativePath: "a.md",
-                        ...fakeRecord("A", { parentVersionId: 5 })
-                    },
-                    {
-                        relativePath: "b.md",
-                        ...fakeRecord("B", { parentVersionId: 3 })
-                    }
+                    fakeRecord("A", { path: "a.md", parentVersionId: 5 }),
+                    fakeRecord("B", { path: "b.md", parentVersionId: 3 })
                 ],
                 lastSeenUpdateId: 4
             },

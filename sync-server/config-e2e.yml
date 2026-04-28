@@ -7,6 +7,7 @@ server:
   port: 3010
   max_body_size_mb: 512
   max_clients_per_vault: 256
+  max_pending_websocket_connections: 4096
   broadcast_channel_capacity: 1024
   response_timeout: 30m
   mergeable_file_extensions:
