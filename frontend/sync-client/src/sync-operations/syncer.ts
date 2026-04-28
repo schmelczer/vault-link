@@ -483,12 +483,6 @@ export class Syncer {
             );
             return;
         }
-
-        // Read `record.path` (not a captured local) on every access. The
-        // queue mutates `record.path` in place when a user rename arrives
-        // mid-roundtrip, so re-reading from the live record keeps the
-        // path current; capturing into a local variable would freeze it
-        // at function entry and then write/read against a vacated slot.
         const contentBytes = await this.operations.read(record.path);
         const contentHash = await hash(contentBytes);
 
