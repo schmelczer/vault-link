@@ -94,6 +94,10 @@ import { localUpdateSurvivesRemoteRenameTest } from "./tests/local-update-surviv
 import { mergingUpdateResponseSurvivesUserRenameTest } from "./tests/merging-update-response-survives-user-rename.test";
 import { conflictUuidStashClearedAfterRenameDeconflictTest } from "./tests/conflict-uuid-stash-cleared-after-rename-deconflict.test";
 import { catchupCreateAndUpdateNotSkippedTest } from "./tests/catchup-create-and-update-not-skipped.test";
+import { localRenameSurvivesRemoteRenameTest } from "./tests/local-rename-survives-remote-rename.test";
+import { renameChainDuringPendingCreateTest } from "./tests/rename-chain-during-pending-create.test";
+import { disableSyncMidCreateNoDuplicateTest } from "./tests/disable-sync-mid-create-no-duplicate.test";
+import { remoteRenameCollidesWithPendingLocalCreateTest } from "./tests/remote-rename-collides-with-pending-local-create.test";
 
 export const TESTS: Partial<Record<string, TestDefinition>> = {
     "rename-create-conflict": renameCreateConflictTest,
@@ -212,5 +216,13 @@ export const TESTS: Partial<Record<string, TestDefinition>> = {
     "conflict-uuid-stash-cleared-after-rename-deconflict":
         conflictUuidStashClearedAfterRenameDeconflictTest,
     "catchup-create-and-update-not-skipped":
-        catchupCreateAndUpdateNotSkippedTest
+        catchupCreateAndUpdateNotSkippedTest,
+    "local-rename-survives-remote-rename":
+        localRenameSurvivesRemoteRenameTest,
+    "rename-chain-during-pending-create":
+        renameChainDuringPendingCreateTest,
+    "disable-sync-mid-create-no-duplicate":
+        disableSyncMidCreateNoDuplicateTest,
+    "remote-rename-collides-with-pending-local-create":
+        remoteRenameCollidesWithPendingLocalCreateTest
 };

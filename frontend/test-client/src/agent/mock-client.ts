@@ -106,10 +106,18 @@ export class MockClient extends debugging.InMemoryFileSystem {
         });
     }
 
+    private slowEventChain: Promise<void> = Promise.resolve();
+
     protected executeFileOperation(callback: () => unknown): void {
         if (this.useSlowFileEvents) {
-            // we aren't the best client and it takes some time to notice changes
-            setTimeout(callback, Math.random() * 100);
+            // we aren't the best client and it takes some time to notice
+            // changes, but they still arrive in the order they happened
+            this.slowEventChain = this.slowEventChain.then(async () => {
+                await new Promise((resolve) =>
+                    setTimeout(resolve, Math.random() * 100)
+                );
+                await callback();
+            });
         } else {
             callback();
         }

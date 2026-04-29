@@ -311,6 +311,16 @@ export class SyncEventQueue {
 
     /**
      * Call once a create has been acknowledged by the server.
+     *
+     * Queued `LocalUpdate` / `LocalDelete` events that were pushed while
+     * this create was still in-flight carry the create's `resolvers.promise`
+     * as their `documentId` (see the `pendingDocumentId` branch of
+     * `enqueue`). We must rewrite those references to the resolved string
+     * id *before* calling `setDocument`, otherwise its event-rewrite loop
+     * (which compares `e.documentId === record.documentId`) would silently
+     * skip them — leaving their `event.path` pointing at the pre-rename
+     * slot and causing the next drain step's `getFileSize(event.path)` to
+     * throw `FileNotFoundError`, dropping the user's intent.
      */
     public async resolveCreate(
         event: Extract<SyncEvent, { type: SyncEventType.LocalCreate }>,
@@ -319,8 +329,34 @@ export class SyncEventQueue {
         if (removeFromArray(this.events, event)) {
             this.notifyPendingUpdateCountChanged();
         }
+        this.replacePendingDocumentId(
+            event.resolvers.promise,
+            record.documentId
+        );
         await this.setDocument(event.path, record);
         event.resolvers.resolve(record.documentId);
+    }
+
+    /**
+     * Swap a pending create's `Promise<DocumentId>` reference for the
+     * resolved string id across every queued `LocalUpdate` / `LocalDelete`.
+     * Call this whenever a create resolves (regular ack OR
+     * displacement-merge into an existing doc) — see `resolveCreate` for
+     * the failure mode if it's skipped.
+     */
+    public replacePendingDocumentId(
+        promise: Promise<DocumentId>,
+        documentId: DocumentId
+    ): void {
+        for (const e of this.events) {
+            if (
+                (e.type === SyncEventType.LocalUpdate ||
+                    e.type === SyncEventType.LocalDelete) &&
+                e.documentId === promise
+            ) {
+                e.documentId = documentId;
+            }
+        }
     }
 
     /**
