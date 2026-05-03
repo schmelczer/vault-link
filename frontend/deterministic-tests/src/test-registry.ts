@@ -97,6 +97,9 @@ import { catchupCreateAndUpdateNotSkippedTest } from "./tests/catchup-create-and
 import { localRenameSurvivesRemoteRenameTest } from "./tests/local-rename-survives-remote-rename.test";
 import { renameChainDuringPendingCreateTest } from "./tests/rename-chain-during-pending-create.test";
 import { remoteRenameCollidesWithPendingLocalCreateTest } from "./tests/remote-rename-collides-with-pending-local-create.test";
+import { remoteUpdateSurvivesUserRenameTest } from "./tests/remote-update-survives-user-rename.test";
+import { orphanStashOnCreateMergeTest } from "./tests/orphan-stash-on-create-merge.test";
+import { orphanStashOnCreateDedupeMergeTest } from "./tests/orphan-stash-on-create-dedupe-merge.test";
 
 export const TESTS: Partial<Record<string, TestDefinition>> = {
     "rename-create-conflict": renameCreateConflictTest,
@@ -221,5 +224,11 @@ export const TESTS: Partial<Record<string, TestDefinition>> = {
     "rename-chain-during-pending-create":
         renameChainDuringPendingCreateTest,
     "remote-rename-collides-with-pending-local-create":
-        remoteRenameCollidesWithPendingLocalCreateTest
+        remoteRenameCollidesWithPendingLocalCreateTest,
+    "remote-update-survives-user-rename":
+        remoteUpdateSurvivesUserRenameTest,
+    "orphan-stash-on-create-merge":
+        orphanStashOnCreateMergeTest,
+    "orphan-stash-on-create-dedupe-merge":
+        orphanStashOnCreateDedupeMergeTest
 };

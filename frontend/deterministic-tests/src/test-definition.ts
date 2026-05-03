@@ -18,7 +18,9 @@ export type TestStep =
     | { type: "barrier" }
     | { type: "assert-consistent"; verify?: (state: AssertableState) => void }
     | { type: "pause-websocket"; client: number }
-    | { type: "resume-websocket"; client: number };
+    | { type: "resume-websocket"; client: number }
+    | { type: "sleep"; ms: number }
+    | { type: "reset"; client: number };
 
 export interface TestDefinition {
     description?: string;

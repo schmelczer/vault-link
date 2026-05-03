@@ -115,6 +115,15 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
         this.log("Sync complete");
     }
 
+    public async reset(): Promise<void> {
+        this.log("Resetting client (clears tracked state, keeps disk files)");
+        await this.drainPendingSyncOperations();
+        await this.client.reset();
+        if (this.isSyncEnabled) {
+            await this.waitForWebSocket();
+        }
+    }
+
     public async disableSync(): Promise<void> {
         this.log("Disabling sync");
         // Drain pending enqueued operations before disabling so the SyncClient

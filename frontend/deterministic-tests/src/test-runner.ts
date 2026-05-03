@@ -198,6 +198,14 @@ export class TestRunner {
                 this.getAgent(step.client).resumeWebSocket();
                 break;
 
+            case "sleep":
+                await sleep(step.ms);
+                break;
+
+            case "reset":
+                await this.getAgent(step.client).reset();
+                break;
+
             default: {
                 const unknownStep = step as { type: string };
                 throw new Error(`Unknown step type: ${unknownStep.type}`);

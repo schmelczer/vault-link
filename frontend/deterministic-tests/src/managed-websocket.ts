@@ -177,10 +177,19 @@ class ManagedWebSocket implements WebSocket {
  */
 export class ManagedWebSocketFactory {
     private readonly instances: ManagedWebSocket[] = [];
+    // Sticky pause state: applied to current instances on `pause()` AND
+    // to any new instance created later (e.g. WS reconnect after a
+    // `disable-sync` / `reset` cycle). Without this, a test pausing the
+    // WS before the agent reconnects would silently see the new socket
+    // start un-paused and miss the messages it meant to buffer.
+    private currentlyPaused = false;
 
     public get constructorFn(): typeof globalThis.WebSocket {
         const trackInstance = (instance: ManagedWebSocket): void => {
             this.instances.push(instance);
+            if (this.currentlyPaused) {
+                instance.pause();
+            }
         };
         class TrackedManagedWebSocket extends ManagedWebSocket {
             public constructor(
@@ -195,12 +204,14 @@ export class ManagedWebSocketFactory {
     }
 
     public pause(): void {
+        this.currentlyPaused = true;
         for (const ws of this.instances) {
             ws.pause();
         }
     }
 
     public resume(): void {
+        this.currentlyPaused = false;
         for (const ws of this.instances) {
             ws.resume();
         }
