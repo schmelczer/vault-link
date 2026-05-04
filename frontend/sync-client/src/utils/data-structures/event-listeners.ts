@@ -43,7 +43,9 @@ export class EventListeners<TListener extends (...args: any[]) => any> {
         const snapshot = this.listeners.slice();
         for (const listener of snapshot) {
             // allow removing listeners during the trigger loop
-            if (!this.listeners.includes(listener)) {continue;}
+            if (!this.listeners.includes(listener)) {
+                continue;
+            }
             listener(...args);
         }
     }
@@ -59,7 +61,9 @@ export class EventListeners<TListener extends (...args: any[]) => any> {
         const snapshot = this.listeners.slice();
         const promises: Promise<unknown>[] = [];
         for (const listener of snapshot) {
-            if (!this.listeners.includes(listener)) {continue;}
+            if (!this.listeners.includes(listener)) {
+                continue;
+            }
             // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
             const result = listener(...args);
             if (result instanceof Promise) {

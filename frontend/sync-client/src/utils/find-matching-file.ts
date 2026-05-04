@@ -10,5 +10,8 @@ export async function findMatchingFile(
         return undefined;
     }
 
-    return candidates.find((record) => record.remoteHash === contentHash);
+    return candidates.find(
+        (record) =>
+            record.remoteHash !== undefined && record.remoteHash === contentHash
+    );
 }

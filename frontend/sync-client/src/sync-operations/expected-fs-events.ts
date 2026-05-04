@@ -27,6 +27,13 @@ export class ExpectedFsEvents {
     // delimiter cannot occur inside either path.
     private readonly renames = new Map<RelativePath, number>();
 
+    private static renameKey(
+        oldPath: RelativePath,
+        newPath: RelativePath
+    ): string {
+        return JSON.stringify({ oldPath, newPath });
+    }
+
     public expectCreate(path: RelativePath): void {
         this.bump(this.creates, path);
     }
@@ -39,10 +46,7 @@ export class ExpectedFsEvents {
         this.bump(this.deletes, path);
     }
 
-    public expectRename(
-        oldPath: RelativePath,
-        newPath: RelativePath
-    ): void {
+    public expectRename(oldPath: RelativePath, newPath: RelativePath): void {
         this.bump(this.renames, ExpectedFsEvents.renameKey(oldPath, newPath));
     }
 
@@ -68,10 +72,7 @@ export class ExpectedFsEvents {
         this.decrement(this.deletes, path);
     }
 
-    public unexpectRename(
-        oldPath: RelativePath,
-        newPath: RelativePath
-    ): void {
+    public unexpectRename(oldPath: RelativePath, newPath: RelativePath): void {
         this.decrement(
             this.renames,
             ExpectedFsEvents.renameKey(oldPath, newPath)
@@ -106,13 +107,6 @@ export class ExpectedFsEvents {
         this.renames.clear();
     }
 
-    private static renameKey(
-        oldPath: RelativePath,
-        newPath: RelativePath
-    ): string {
-        return JSON.stringify({ oldPath, newPath });
-    }
-
     private bump(map: Map<RelativePath, number>, key: RelativePath): void {
         map.set(key, (map.get(key) ?? 0) + 1);
     }
@@ -122,15 +116,23 @@ export class ExpectedFsEvents {
         key: RelativePath
     ): boolean {
         const count = map.get(key) ?? 0;
-        if (count === 0) {return false;}
-        if (count === 1) {map.delete(key);}
-        else {map.set(key, count - 1);}
+        if (count === 0) {
+            return false;
+        }
+        if (count === 1) {
+            map.delete(key);
+        } else {
+            map.set(key, count - 1);
+        }
         return true;
     }
 
     private decrement(map: Map<RelativePath, number>, key: RelativePath): void {
         const count = map.get(key) ?? 0;
-        if (count <= 1) {map.delete(key);}
-        else {map.set(key, count - 1);}
+        if (count <= 1) {
+            map.delete(key);
+        } else {
+            map.set(key, count - 1);
+        }
     }
 }

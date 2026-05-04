@@ -4,8 +4,10 @@ import type { DocumentVersionWithoutContent } from "./DocumentVersionWithoutCont
 /**
  * Response to a fetch latest documents request.
  */
-export type FetchLatestDocumentsResponse = { latestDocuments: Array<DocumentVersionWithoutContent>, 
-/**
- * The update ID of the latest document in the response.
- */
-lastUpdateId: bigint, };
+export type FetchLatestDocumentsResponse = {
+    latestDocuments: Array<DocumentVersionWithoutContent>;
+    /**
+     * The update ID of the latest document in the response.
+     */
+    lastUpdateId: bigint;
+};

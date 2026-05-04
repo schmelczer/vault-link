@@ -4,6 +4,7 @@ import assert from "node:assert";
 import { WebSocketManager } from "./websocket-manager";
 import type { Logger } from "../tracing/logger";
 import type { Settings } from "../persistence/settings";
+import { awaitAll } from "../utils/await-all";
 
 class MockCloseEvent extends Event {
     public code: number;
@@ -287,7 +288,7 @@ describe("WebSocketManager", () => {
 
         const start = Date.now();
         // Two concurrent stops mimic destroy() racing onSettingsChange.
-        await Promise.all([manager.stop(), manager.stop()]);
+        await awaitAll([manager.stop(), manager.stop()]);
         const elapsed = Date.now() - start;
 
         // Both should resolve via the normal close path; if the second call
@@ -297,9 +298,8 @@ describe("WebSocketManager", () => {
             elapsed < 1000,
             `concurrent stop() took ${elapsed}ms — expected fast resolution`
         );
-        const errorCalls = (
-            mockLogger.error as unknown as { calls: unknown[] }
-        ).calls;
+        const errorCalls = (mockLogger.error as unknown as { calls: unknown[] })
+            .calls;
         assert.strictEqual(
             errorCalls.length,
             0,

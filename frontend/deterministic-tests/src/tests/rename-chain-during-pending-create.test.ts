@@ -30,8 +30,18 @@ export const renameChainDuringPendingCreateTest: TestDefinition = {
         { type: "pause-server" },
 
         { type: "create", client: 0, path: "first.md", content: "v1\n" },
-        { type: "rename", client: 0, oldPath: "first.md", newPath: "second.md" },
-        { type: "rename", client: 0, oldPath: "second.md", newPath: "third.md" },
+        {
+            type: "rename",
+            client: 0,
+            oldPath: "first.md",
+            newPath: "second.md"
+        },
+        {
+            type: "rename",
+            client: 0,
+            oldPath: "second.md",
+            newPath: "third.md"
+        },
 
         // Resume — drain pops LocalCreate (now resolves), then the two
         // queued LocalUpdates. Pre-fix: only the first rename's

@@ -261,11 +261,11 @@ export class MockAgent extends MockClient {
             );
             otherAgent.client.logger.info(
                 "Other agent's data: " +
-                JSON.stringify(otherAgent.data, null, 2)
+                    JSON.stringify(otherAgent.data, null, 2)
             );
             otherAgent.client.logger.info(
                 "Other agent's files: " +
-                Array.from(otherAgent.files.keys()).join(", ")
+                    Array.from(otherAgent.files.keys()).join(", ")
             );
 
             throw e;
@@ -526,9 +526,13 @@ export class MockAgent extends MockClient {
 
     private removeBinaryUuid(file: string): void {
         const existing = this.files.get(file);
-        if (existing === undefined) { return; }
+        if (existing === undefined) {
+            return;
+        }
         const content = new TextDecoder().decode(existing);
-        if (!content.startsWith("BINARY:")) { return; }
+        if (!content.startsWith("BINARY:")) {
+            return;
+        }
         const uuid = content.slice("BINARY:".length);
         utils.removeFromArray(this.writtenBinaryContents, uuid);
     }

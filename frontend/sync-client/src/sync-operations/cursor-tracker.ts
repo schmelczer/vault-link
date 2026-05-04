@@ -118,7 +118,7 @@ export class CursorTracker {
             for (const [relativePath, cursors] of Object.entries(
                 documentToCursors
             )) {
-                const record = this.queue.getSettledDocumentByPath(relativePath);
+                const record = this.queue.getRecordByLocalPath(relativePath);
 
                 if (!record) {
                     continue; // Let's wait for the file to be created before sending cursors
@@ -146,7 +146,7 @@ export class CursorTracker {
                 const readContent = await this.fileOperations.read(
                     doc.relativePath
                 );
-                const record = this.queue.getSettledDocumentByPath(
+                const record = this.queue.getRecordByLocalPath(
                     doc.relativePath
                 );
                 if (record?.remoteHash !== (await hash(readContent))) {
@@ -155,7 +155,9 @@ export class CursorTracker {
             }
 
             const afterJson = JSON.stringify(documentsWithCursors);
-            if (this.lastLocalCursorStateWithoutDirtyDocumentsJson === afterJson) {
+            if (
+                this.lastLocalCursorStateWithoutDirtyDocumentsJson === afterJson
+            ) {
                 return;
             }
 
@@ -233,9 +235,7 @@ export class CursorTracker {
     private async getDocumentUpToDateness(
         document: DocumentWithCursors
     ): Promise<DocumentUpToDateness> {
-        const record = this.queue.getSettledDocumentByPath(
-            document.relativePath
-        );
+        const record = this.queue.getRecordByLocalPath(document.relativePath);
 
         if (!record) {
             // the document of the cursor must be from the future
@@ -253,7 +253,7 @@ export class CursorTracker {
             document.relativePath
         );
 
-        const currentRecord = this.queue.getSettledDocumentByPath(
+        const currentRecord = this.queue.getRecordByLocalPath(
             document.relativePath
         );
         return currentRecord?.remoteHash === (await hash(currentContent))

@@ -35,7 +35,8 @@ export class ServerConfig {
             const shouldUpgradeClient =
                 config.supportedApiVersion > SUPPORTED_API_VERSION;
             throw new ServerVersionMismatchError(
-                `Unsupported API version: ${config.supportedApiVersion}. Consider upgrading the ${shouldUpgradeClient ? "client" : "sync-server"
+                `Unsupported API version: ${config.supportedApiVersion}. Consider upgrading the ${
+                    shouldUpgradeClient ? "client" : "sync-server"
                 } to ensure compatibility`
             );
         }
@@ -90,6 +91,11 @@ export class ServerConfig {
         return this.config;
     }
 
+    public reset(): void {
+        this.response = undefined;
+        this.config = undefined;
+    }
+
     private async startPing(): Promise<PingResponse> {
         const pending = this.syncService.ping().catch((e: unknown) => {
             if (this.response === pending) {
@@ -99,10 +105,5 @@ export class ServerConfig {
         });
         this.response = pending;
         return pending;
-    }
-
-    public reset(): void {
-        this.response = undefined;
-        this.config = undefined;
     }
 }

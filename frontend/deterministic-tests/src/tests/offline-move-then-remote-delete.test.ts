@@ -29,8 +29,7 @@ export const offlineMoveThenRemoteDeleteTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s
-                    .assertFileCount(0);
+                s.assertFileCount(0);
             }
         }
     ]

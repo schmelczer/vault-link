@@ -40,13 +40,12 @@ export const concurrentRenameAndCreateAtTargetTest: TestDefinition = {
             verify: (state: AssertableState): void => {
                 state
                     .assertFileNotExists("X.md")
-                    .assertFileExists(
-                        "Y.md",
-                    )
-                    .assertFileExists(
-                        "Y (1).md",
-                    )
-                    .assertAnyFileContains("original file X", "brand new Y content")
+                    .assertFileExists("Y.md")
+                    .assertFileExists("Y (1).md")
+                    .assertAnyFileContains(
+                        "original file X",
+                        "brand new Y content"
+                    );
             }
         }
     ]

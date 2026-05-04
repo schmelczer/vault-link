@@ -110,10 +110,37 @@ async fn websocket(
     drop(pending_guard);
 
     let max_clients = state.config.server.max_clients_per_vault;
+
+    // Atomic subscribe + cursor snapshot, serialized against in-flight
+    // broadcasts:
+    //
+    // 1. Acquire the per-vault broadcast send lock. While we hold it,
+    //    no `send_document_update` can run, so no broadcast can fire
+    //    between our subscribe and our cursor snapshot.
+    // 2. Subscribe to the broadcast channel (now we'll see every
+    //    broadcast that fires after we drop the send guard).
+    // 3. Snapshot `cursor = max committed vault_update_id`. Because
+    //    `insert_document_version` holds the same send lock from
+    //    *before* the commit through *after* the broadcast, every doc
+    //    visible at this cursor has either (a) already had its
+    //    broadcast delivered to all then-existing subscribers — and we
+    //    weren't one of them, so we'll catch it via the snapshot — or
+    //    (b) had its broadcast contend on the lock we're holding, and
+    //    will be delivered to us as soon as we drop the guard, with
+    //    `vault_update_id > cursor`.
+    // 4. Drop the send guard so writers can resume broadcasting.
+    // 5. Stream the catch-up bounded by the cursor — i.e. only docs
+    //    with `vault_update_id <= cursor` — exactly once.
+    // 6. The send task forwards broadcasts but filters to
+    //    `vault_update_id > cursor`, so a doc that's both in the
+    //    catch-up and in a contended-then-released broadcast is
+    //    delivered exactly once (via the catch-up).
+    let send_guard = state.broadcasts.acquire_send_lock(&vault_id).await;
     let mut broadcast_receiver = match state.broadcasts.get_receiver(vault_id.clone(), max_clients)
     {
         Ok(receiver) => receiver,
         Err(err) => {
+            drop(send_guard);
             warn!(
                 "Vault `{vault_id}` has reached the maximum number of clients ({max_clients}), rejecting connection from `{}`",
                 authed_handshake.handshake.device_id
@@ -133,15 +160,34 @@ async fn websocket(
             return Err(err);
         }
     };
+    let cursor = state
+        .database
+        .get_max_update_id_in_vault(&vault_id, None)
+        .await
+        .map_err(server_error)?;
+    drop(send_guard);
 
     // Catch-up on versions committed while this client was offline,
-    // streamed one-at-a-time in ascending `vault_update_id` order
+    // streamed one-at-a-time in ascending `vault_update_id` order, up
+    // to the snapshot cursor.
     let unseen_documents = get_unseen_documents(
         &state,
         &vault_id,
         authed_handshake.handshake.last_seen_vault_update_id,
+        cursor,
     )
     .await?;
+    let unseen_summary: Vec<(i64, bool, String)> = unseen_documents
+        .iter()
+        .map(|d| (d.vault_update_id, d.is_deleted, d.relative_path.clone()))
+        .collect();
+    info!(
+        "[CATCHUP] vault={vault_id} device={} last_seen={:?} cursor={cursor} unseen_count={} unseen={:?}",
+        authed_handshake.handshake.device_id,
+        authed_handshake.handshake.last_seen_vault_update_id,
+        unseen_summary.len(),
+        unseen_summary
+    );
     for document in unseen_documents {
         send_update_over_websocket(
             &WebSocketServerMessage::VaultUpdate(WebSocketVaultUpdate { document }),
@@ -169,6 +215,23 @@ async fn websocket(
                     // author also receives them — that's the receipt the
                     // client needs to drop the doc from its sync queue.
                     if Some(&device_id) == update.origin_device_id.as_ref() {
+                        continue;
+                    }
+
+                    // Filter out vault updates already covered by the
+                    // catch-up snapshot. The handshake atomically
+                    // subscribed and snapshotted `cursor` under the
+                    // broadcast send lock, so any broadcast with
+                    // `vault_update_id <= cursor` is one that contended
+                    // on the lock during our subscribe — its row is
+                    // already in the catch-up stream and re-delivering
+                    // it via this channel would duplicate the message.
+                    // Cursor messages aren't versioned and are always
+                    // forwarded.
+                    if let WebSocketServerMessage::VaultUpdate(WebSocketVaultUpdate { document }) =
+                        &update.message
+                        && document.vault_update_id <= cursor
+                    {
                         continue;
                     }
 

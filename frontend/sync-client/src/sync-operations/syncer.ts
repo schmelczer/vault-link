@@ -1,3 +1,8 @@
+// Two-loop sync engine. The wire loop (this file) keeps records in step
+// with the server: HTTP/WS handlers update record fields and write
+// content to the file at `record.localPath`. They never move files for
+// path placement. The Reconciler (reconciler.ts) handles record↔disk
+// path reconciliation, running after every wire-loop drained event.
 import {
     SyncEventType,
     type DocumentId,
@@ -9,12 +14,9 @@ import {
 import type { Logger } from "../tracing/logger";
 import { hash } from "../utils/hash";
 import type { Settings } from "../persistence/settings";
-import {
-    MoveOnConflict,
-    type FileOperations
-} from "../file-operations/file-operations";
+import type { FileOperations } from "../file-operations/file-operations";
+import { FileAlreadyExistsError } from "../errors/file-already-exists-error";
 import { scheduleOfflineChanges } from "./offline-change-detector";
-import { CONFLICT_PATH_REGEX } from "./conflict-path";
 import { SyncResetError } from "../errors/sync-reset-error";
 import type { DocumentVersionWithoutContent } from "../services/types/DocumentVersionWithoutContent";
 import type { WebSocketVaultUpdate } from "../services/types/WebSocketVaultUpdate";
@@ -33,11 +35,16 @@ import {
 } from "../tracing/sync-history";
 import { isBinary } from "../utils/is-binary";
 import { isFileTypeMergable } from "../utils/is-file-type-mergable";
-import { diff, reconcile } from "reconcile-text";
+import { diff } from "reconcile-text";
 import type { ServerConfig } from "../services/server-config";
 import type { FixedSizeDocumentCache } from "../utils/data-structures/fix-sized-cache";
 import { base64ToBytes } from "byte-base64";
 import type { DocumentUpdateResponse } from "../services/types/DocumentUpdateResponse";
+import { Reconciler } from "./reconciler";
+
+// Internal ignore pattern pinned on the queue at construction time so
+// the watcher's enqueue path doesn't pick up Reconciler swap markers.
+const VAULTLINK_INTERNAL_DIR_IGNORE = ".vaultlink/**";
 
 export class Syncer {
     public readonly onRemainingOperationsCountChanged = new EventListeners<
@@ -45,6 +52,16 @@ export class Syncer {
     >();
 
     private readonly queue: SyncEventQueue;
+    private readonly reconciler: Reconciler;
+    // Bytes the wire loop received for a doc whose `localPath` is not yet
+    // set (e.g. a remote create whose target slot was occupied). Shared
+    // with the Reconciler, which consumes (and deletes the entry) when it
+    // places the file. Keeping the bytes here avoids a redundant
+    // server fetch on the very next reconciler pass.
+    private readonly pendingPlacementContent = new Map<
+        DocumentId,
+        Uint8Array
+    >();
 
     private runningScheduleSyncForOfflineChanges: Promise<void> | undefined;
     private drainPromise: Promise<void> | undefined;
@@ -65,6 +82,26 @@ export class Syncer {
     ) {
         this.queue = queue;
 
+        // Hide the Reconciler's swap-marker scratch directory from the
+        // watcher's enqueue path. Without this, the marker file the
+        // Reconciler writes during a cycle swap would race onto the
+        // queue as a LocalCreate, and the queue would push that to the
+        // server.
+        this.queue.addInternalIgnorePattern(VAULTLINK_INTERNAL_DIR_IGNORE);
+
+        this.reconciler = new Reconciler(
+            this.logger,
+            this.operations,
+            this.syncService,
+            this.queue,
+            this.pendingPlacementContent
+        );
+
+        // Fire-and-forget: any swap marker left behind by a crash gets
+        // rolled forward before the first wire-loop event runs. Errors
+        // are logged inside the reconciler.
+        void this.reconciler.recoverFromInterruptedSwap();
+
         this.webSocketManager.onWebSocketStatusChanged.add((isConnected) => {
             if (isConnected) {
                 this.sendHandshakeMessage();
@@ -79,6 +116,30 @@ export class Syncer {
         this.queue.onPendingUpdateCountChanged.add(() => {
             this.notifyRemainingOperationsChanged();
         });
+    }
+
+    /**
+     * True while the syncer has *active* work the caller should wait on: a
+     * running offline scan or an in-flight drain. Pending queue events alone
+     * don't count — `pause()` and `SyncResetError` exit drain early without
+     * clearing the queue, and nothing will pick those events back up until
+     * sync is re-enabled. Treating queued-but-stuck events as pending work
+     * would deadlock `waitUntilFinishedInternal` (the awaits inside its loop
+     * are no-ops once the active work has settled).
+     *
+     * The contract that makes "in-flight only" sufficient: every codepath
+     * that enqueues an event ends in `ensureDraining()` (the local-sync
+     * methods, `syncRemotelyUpdatedFile`, and the tail of
+     * `internalScheduleSyncForOfflineChanges`). So if a WebSocket handler
+     * lands new work mid-await, the next loop iteration sees `drainPromise`
+     * set and waits on it.
+     *
+     * Uses `isScanning` rather than `runningScheduleSyncForOfflineChanges`
+     * because the latter is a "have we already scanned this session" latch
+     * that stays set after the scan resolves.
+     */
+    public get hasPendingWork(): boolean {
+        return this.isScanning || this.drainPromise !== undefined;
     }
 
     public syncLocallyCreatedFile(relativePath: RelativePath): void {
@@ -159,30 +220,6 @@ export class Syncer {
         }
     }
 
-    /**
-     * True while the syncer has *active* work the caller should wait on: a
-     * running offline scan or an in-flight drain. Pending queue events alone
-     * don't count — `pause()` and `SyncResetError` exit drain early without
-     * clearing the queue, and nothing will pick those events back up until
-     * sync is re-enabled. Treating queued-but-stuck events as pending work
-     * would deadlock `waitUntilFinishedInternal` (the awaits inside its loop
-     * are no-ops once the active work has settled).
-     *
-     * The contract that makes "in-flight only" sufficient: every codepath
-     * that enqueues an event ends in `ensureDraining()` (the local-sync
-     * methods, `syncRemotelyUpdatedFile`, and the tail of
-     * `internalScheduleSyncForOfflineChanges`). So if a WebSocket handler
-     * lands new work mid-await, the next loop iteration sees `drainPromise`
-     * set and waits on it.
-     *
-     * Uses `isScanning` rather than `runningScheduleSyncForOfflineChanges`
-     * because the latter is a "have we already scanned this session" latch
-     * that stays set after the scan resolves.
-     */
-    public get hasPendingWork(): boolean {
-        return this.isScanning || this.drainPromise !== undefined;
-    }
-
     public reset(): void {
         this.queue.clearPending();
         this.clearOfflineScanGate();
@@ -219,10 +256,6 @@ export class Syncer {
 
     private async internalScheduleSyncForOfflineChanges(): Promise<void> {
         this.isScanning = true;
-        // Surface stranded conflict files (e.g. ones we displaced in a prior
-        // session and never resynced) as regular creates during the scan; the
-        // queue re-enables conflict filtering when we're done.
-        this.queue.setIgnoreConflictPaths(false);
         try {
             this.queue.clearPending(); // can't have conflicts between the offline scan and ongoing operations created during the preceeding pause
 
@@ -241,7 +274,6 @@ export class Syncer {
                 }
             );
         } finally {
-            this.queue.setIgnoreConflictPaths(true);
             this.isScanning = false;
         }
 
@@ -249,8 +281,12 @@ export class Syncer {
     }
 
     private ensureDraining(): void {
-        if (this.drainPromise !== undefined) { return; }
-        if (this.isScanning) { return; }
+        if (this.drainPromise !== undefined) {
+            return;
+        }
+        if (this.isScanning) {
+            return;
+        }
         this.drainPromise = this.drain().finally(() => {
             this.drainPromise = undefined;
         });
@@ -261,7 +297,7 @@ export class Syncer {
         // the event must remain reachable through `findLatestCreateForPath`
         // while it is in flight, so a rename event arriving mid-process can
         // call `updatePendingCreatePath` to retarget this create's path.
-        while (true) {
+        for (;;) {
             if (!this.settings.getSettings().isSyncEnabled) {
                 this.logger.debug(
                     "Drain pausing because sync is disabled; events stay queued"
@@ -270,7 +306,9 @@ export class Syncer {
             }
             const event = this.queue.peekFront();
 
-            if (event === undefined) { break; }
+            if (event === undefined) {
+                break;
+            }
 
             try {
                 await this.processEvent(event);
@@ -284,62 +322,12 @@ export class Syncer {
                 );
             }
             this.queue.consumeEvent(event);
-            // Stashes (`intendedPath` set) hang waiting for the slot to
-            // free up — usually the occupant has a pending RemoteChange
-            // that vacates the path on a later drain step. Sweep after
-            // every event so a rename or delete that just freed a slot
-            // pulls any waiting doc onto the canonical path immediately.
-            // Without this, the stash sits at a `conflict-<uuid>-` path
-            // and the cross-agent assertion (and any user-visible state)
-            // diverges from the rest of the vault.
-            await this.unwindReadyStashes();
+            // Reconciler runs after every wire-loop step; any record whose
+            // localPath drifted from remoteRelativePath gets a chance to
+            // converge before the next event. Best-effort — per-record
+            // failures are logged and retried on the next pass.
+            await this.reconciler.run();
             this.notifyRemainingOperationsChanged();
-        }
-    }
-
-    private async unwindReadyStashes(): Promise<void> {
-        for (const record of this.queue.allSettledDocuments().values()) {
-            if (
-                record.intendedPath === undefined ||
-                record.intendedPath === record.path
-            ) {
-                continue;
-            }
-            // Skip when the canonical slot is still in use — by another
-            // tracked doc OR by an untracked file (e.g. another agent's
-            // pending LocalCreate). Trying the move anyway would deflect
-            // through `MoveOnConflict.NEW` to a fresh `conflict-<uuid>-`
-            // path and orphan the file there with our record stuck on
-            // its old path.
-            const blocker = this.queue.getSettledDocumentByPath(
-                record.intendedPath
-            );
-            if (
-                blocker !== undefined &&
-                blocker.documentId !== record.documentId
-            ) {
-                continue;
-            }
-            if (await this.operations.exists(record.intendedPath)) {
-                continue;
-            }
-            // Skip if our own source file is gone (e.g. a LocalDelete
-            // for this record drained but its server receipt hasn't
-            // arrived to clear the record yet). Otherwise the move
-            // throws FileNotFoundError.
-            if (!(await this.operations.exists(record.path))) {
-                continue;
-            }
-            await this.operations.move(
-                record.path,
-                record.intendedPath,
-                MoveOnConflict.NEW
-            );
-            await this.queue.setDocument(record.intendedPath, {
-                ...record,
-                path: record.intendedPath,
-                intendedPath: undefined
-            });
         }
     }
 
@@ -405,7 +393,7 @@ export class Syncer {
 
     private async skipIfOversized(event: SyncEvent): Promise<boolean> {
         let sizeInBytes = 0;
-        let relativePath: RelativePath;
+        let relativePath: RelativePath = "";
 
         switch (event.type) {
             case SyncEventType.LocalDelete:
@@ -416,7 +404,9 @@ export class Syncer {
                 relativePath = event.path;
                 break;
             case SyncEventType.RemoteChange:
-                if (event.remoteVersion.isDeleted) { return false; }
+                if (event.remoteVersion.isDeleted) {
+                    return false;
+                }
                 sizeInBytes = event.remoteVersion.contentSize;
                 ({ relativePath } = event.remoteVersion);
                 break;
@@ -426,7 +416,9 @@ export class Syncer {
             sizeInBytes,
             relativePath
         );
-        if (oversizedEntry === undefined) { return false; }
+        if (oversizedEntry === undefined) {
+            return false;
+        }
 
         this.history.addHistoryEntry(oversizedEntry);
 
@@ -471,158 +463,60 @@ export class Syncer {
         const contentBytes = await this.operations.read(event.path);
         const contentHash = await hash(contentBytes);
 
+        // Read `event.path` live: `updatePendingCreatePath` mutates it in
+        // place when the user renames the pending create mid-roundtrip.
+        // Sending `originalPath` here would tell the server the pre-rename
+        // location, then the queued LocalUpdate from the rename would
+        // fail on `getFileSize(renamedPath)` after the reconciler moved
+        // the file back to match the (stale) server-side path.
         const response = await this.syncService.create({
-            relativePath: event.originalPath,
+            relativePath: event.path,
             lastSeenVaultUpdateId: this.queue.lastSeenUpdateId,
             contentBytes
         });
 
-        // `event.path` is mutated in place by `updatePendingCreatePath`
-        // when a user renames the pending create mid-roundtrip, so we
-        // read it live on every access — capturing it into a local
-        // would freeze it at function entry and write the merged bytes
-        // to the now-vacated path.
-        let remoteHash: string;
+        // Same-docId collapse. While our LocalCreate sat in the queue, a
+        // RemoteCreate may have arrived for this same path. The wire-loop's
+        // `processRemoteCreateForNewDocument` would have built a record with
+        // `localPath === undefined` carrying the same docId the server is
+        // about to return us. `upsertRecord` keys by docId and merges in
+        // place, so the record we pass below collapses into that existing
+        // one — its claim is dropped and `localPath` becomes `event.path`.
+        // The reconciler will reconcile if `response.relativePath` differs.
+        let remoteHash = contentHash;
         if (response.type === "MergingUpdate") {
             const responseBytes = base64ToBytes(response.contentBase64);
-            await this.operations.write(event.path, contentBytes, responseBytes);
+            await this.operations.write(
+                event.path,
+                contentBytes,
+                responseBytes
+            );
             remoteHash = await hash(responseBytes);
-            await this.updateCache(response.vaultUpdateId, responseBytes, event.path);
+            await this.updateCache(
+                response.vaultUpdateId,
+                responseBytes,
+                event.path
+            );
         } else {
-            remoteHash = contentHash;
-            await this.updateCache(response.vaultUpdateId, contentBytes, event.path);
+            await this.updateCache(
+                response.vaultUpdateId,
+                contentBytes,
+                event.path
+            );
         }
 
-        const newRecord = {
+        // Drop any stashed bytes for this docId — the file is on disk at
+        // event.path, so the reconciler shouldn't try to fetch & write
+        // its content. (The reconciler's job for this record is now just
+        // path placement, if needed.)
+        this.pendingPlacementContent.delete(response.documentId);
+
+        await this.queue.resolveCreate(event, {
             documentId: response.documentId,
             parentVersionId: response.vaultUpdateId,
-            remoteRelativePath: response.relativePath
-        };
-
-        // Displacement-merge: while this LocalCreate sat in the queue, a
-        // RemoteCreate for `originalPath` was processed first, displaced
-        // our local file to a `conflict-…` path, and tracked the remote
-        // doc at `originalPath`. The server then de-duplicated our
-        // create into that already-tracked doc and returned its id.
-        // Slot the merged content into `response.relativePath` by
-        // deleting D's stale content there and renaming the conflict
-        // file in. Falling through to the regular `resolveCreate` path
-        // would call `setDocument(conflict-…, D)`, whose same-docId
-        // cleanup strips D's tracking from `originalPath` and orphans
-        // the file there.
-        const existing = this.queue.getDocumentByDocumentId(response.documentId);
-        if (
-            existing !== undefined &&
-            existing.path === response.relativePath &&
-            existing.path !== event.path
-        ) {
-            // We can't `operations.write` the merged bytes onto the
-            // existing path: that runs a 3-way merge against the stale
-            // content as if it were a concurrent edit, which strips
-            // out the very content the server just merged.
-            await this.operations.delete(response.relativePath);
-            // We just deleted `response.relativePath`. With
-            // `MoveOnConflict.NEW` a stray racing occupant would route
-            // our file to a `conflict-<uuid>-` path; we'd then track
-            // the doc there with `intendedPath` set.
-            const moveResult = await this.operations.move(
-                event.path,
-                response.relativePath,
-                MoveOnConflict.NEW
-            );
-            // Retarget the create event (and any queued
-            // LocalUpdate/LocalDelete keyed off its still-Promise
-            // documentId) onto the file's new disk location, so
-            // `resolveCreate`'s subsequent `setDocument` finds them and
-            // rewrites their `event.path`.
-            this.queue.updatePendingCreatePath(
-                event.path,
-                moveResult.actualPath
-            );
-            await this.queue.resolveCreate(event, {
-                ...newRecord,
-                path: moveResult.actualPath,
-                intendedPath:
-                    moveResult.actualPath === response.relativePath
-                        ? undefined
-                        : response.relativePath,
-                remoteHash
-            });
-            this.queue.lastSeenUpdateId = response.vaultUpdateId;
-            this.history.addHistoryEntry({
-                status: SyncStatus.SUCCESS,
-                details: { type: SyncType.CREATE, relativePath: event.path },
-                message: "Created file and merged with existing remote version",
-                author: response.userId,
-                timestamp: new Date(response.updatedDate)
-            });
-            return;
-        }
-
-        // Reconcile disk and tracking with the server-assigned path.
-        // Two cases produce a mismatch:
-        //   1. Server deconflicted (e.g. another client raced us): we
-        //      know because `response.relativePath !== event.originalPath`.
-        //      Move the local file to the server-assigned path, otherwise
-        //      a later remote create at our original path would see a
-        //      phantom local conflict and stash the new file under
-        //      `conflict-<uuid>-`.
-        //   2. The create's local file was displaced to a `conflict-…`
-        //      path while it sat in the queue, but the server still
-        //      placed the doc at our original path (e.g. the existing
-        //      doc that forced the displacement was meanwhile deleted,
-        //      so the server-side merge / deconflict path didn't fire).
-        //      Move the conflict file onto the original path so
-        //      `resolveCreate` tracks the doc at the path the server
-        //      returned, instead of the displaced conflict path which
-        //      would orphan the file.
-        //
-        // We must NOT move when `event.path` differs from `originalPath`
-        // because of a *user rename* of the pending create (e.g. write
-        // A.md, rename to B.md): there the user's intent is the renamed
-        // path, the server places the doc at `originalPath`, and the
-        // queued `LocalUpdate` from the watcher will replay the rename
-        // to the server.
-        let resolvedPath = event.path;
-        let resolvedIntendedPath: RelativePath | undefined;
-        const needsMove =
-            response.relativePath !== event.originalPath ||
-            (event.path !== response.relativePath &&
-                CONFLICT_PATH_REGEX.test(event.path));
-        if (needsMove) {
-            const moveResult = await this.operations.move(
-                event.path,
-                response.relativePath,
-                MoveOnConflict.NEW
-            );
-            this.queue.updatePendingCreatePath(event.path, moveResult.actualPath);
-            resolvedPath = moveResult.actualPath;
-            resolvedIntendedPath =
-                moveResult.actualPath === response.relativePath
-                    ? undefined
-                    : response.relativePath;
-        }
-        // The server may have de-duplicated this create against an
-        // existing doc the client already tracks (e.g. another agent's
-        // earlier RemoteCreate that landed at a `conflict-<uuid>-` stash
-        // because our pending LocalCreate file was on the canonical
-        // slot). The displacement-merge branch above handles the case
-        // where the existing record sits at `response.relativePath`;
-        // here we handle the symmetric case — existing record at a
-        // stash path, our merged content sitting at `resolvedPath`.
-        // `setDocument` (called by `resolveCreate`) relocates the
-        // record's tracking onto `resolvedPath` but leaves the stash
-        // file behind. Delete it before the relocation so the on-disk
-        // state matches the doc tracking and the file doesn't outlive
-        // its record.
-        // if (existing !== undefined && existing.path !== resolvedPath) {
-        //     await this.operations.delete(existing.path);
-        // }
-        await this.queue.resolveCreate(event, {
-            ...newRecord,
-            path: resolvedPath,
-            intendedPath: resolvedIntendedPath,
-            remoteHash
+            remoteRelativePath: response.relativePath,
+            remoteHash,
+            localPath: event.path
         });
 
         this.queue.lastSeenUpdateId = response.vaultUpdateId;
@@ -644,7 +538,7 @@ export class Syncer {
         const documentId = await event.documentId;
 
         const response = await this.syncService.delete({
-            documentId,
+            documentId
         });
 
         // Don't remove the doc from the queue or advance lastSeenUpdateId
@@ -653,6 +547,19 @@ export class Syncer {
         // and history entry. Keeping the entry in the map until then lets
         // late remote updates be recognised as "file is missing" and
         // skipped, instead of resurrecting the doc.
+        //
+        // Mark the doc as deletion-pending so the Reconciler doesn't
+        // resurrect it during the gap between HTTP-ack and WS-receipt.
+        // Without this, the LocalDelete enqueue's `setLocalPath(undefined)`
+        // leaves the record looking like a "needs initial placement" case
+        // to the Reconciler — which would then fetch the pre-delete bytes
+        // from the server and write them to disk. The mark also blocks
+        // any late RemoteChange from stashing pre-delete bytes into
+        // `pendingPlacementContent` (see processRemoteUpdate). The mark is
+        // cleared automatically by `removeDocumentById`. We also drop any
+        // already-stashed content for this doc since it cannot be placed.
+        this.queue.markServerDeletePending(documentId);
+        this.pendingPlacementContent.delete(documentId);
         this.history.addHistoryEntry({
             status: SyncStatus.SUCCESS,
             details: {
@@ -680,7 +587,15 @@ export class Syncer {
             );
             return;
         }
-        const contentBytes = await this.operations.read(record.path);
+        // The record may exist with no local file (e.g. a pending-delete
+        // raced ahead and nulled out localPath). Nothing to upload from.
+        if (record.localPath === undefined) {
+            this.logger.debug(
+                `Skipping local-update for ${documentId} — record has no local file`
+            );
+            return;
+        }
+        const contentBytes = await this.operations.read(record.localPath);
         const contentHash = await hash(contentBytes);
 
         // For a user-driven rename the user's intent is `event.originalPath`
@@ -701,17 +616,10 @@ export class Syncer {
 
         if (!hashChanged && !pathChanged) {
             this.logger.debug(
-                `File hash of ${record.path} matches last synced version; no need to sync`
+                `File hash of ${record.localPath} matches last synced version; no need to sync`
             );
             return;
         }
-
-        // Snapshot of `record.path` before the HTTP roundtrip — used
-        // after the response to detect a user rename that ran while we
-        // were awaiting (`record.path !== pathBeforeRoundtrip`). All
-        // other reads go through `record.path` live so the merged
-        // bytes land at the user's new location, not the vacated one.
-        const pathBeforeRoundtrip = record.path;
 
         const response = await this.sendUpdate({
             record,
@@ -720,7 +628,7 @@ export class Syncer {
         });
 
         if (response.isDeleted) {
-            await this.processRemoteDelete(record.path, {
+            await this.processRemoteDelete(record.localPath, {
                 ...response,
                 contentSize: 0,
                 isNewFile: false
@@ -728,87 +636,57 @@ export class Syncer {
             return;
         }
 
-        let remoteHash: string;
+        // Read `record.localPath` live via a fresh queue lookup: the
+        // queue's enqueue rename branch mutates the same record object
+        // in place across our await on `sendUpdate`, and a displaced-doc
+        // cleanup can null it out. The fresh lookup also re-widens the
+        // type back to `string | undefined` (the earlier guard narrowed
+        // it pre-await). The reconciler handles any further path
+        // placement after we write.
+        const livePath =
+            this.queue.getDocumentByDocumentId(documentId)?.localPath;
+        let remoteHash = contentHash;
         if (response.type === "MergingUpdate") {
             const responseBytes = base64ToBytes(response.contentBase64);
-            await this.operations.write(record.path, contentBytes, responseBytes);
-            remoteHash = await hash(responseBytes);
-            await this.updateCache(response.vaultUpdateId, responseBytes, record.path);
-        } else {
-            remoteHash = contentHash;
-            await this.updateCache(response.vaultUpdateId, contentBytes, record.path);
-        }
-
-        const newRecord = {
-            documentId: response.documentId,
-            parentVersionId: response.vaultUpdateId,
-            remoteRelativePath: response.relativePath
-        };
-
-        if (record.path === pathBeforeRoundtrip) {
-            // No user rename mid-flight. Move our local file onto the
-            // server-assigned path. The slot may be locally occupied by:
-            //   1. Another tracked doc — keep `MoveOnConflict.NEW` so we
-            //      stash ourselves at `conflict-<uuid>-` and record
-            //      `intendedPath`; evicting their tracking would orphan
-            //      their disk file when the next remote update arrives.
-            //   2. An untracked file (typically this agent's own pending
-            //      LocalCreate whose disk file is sitting at the same
-            //      slot the user-rename targeted) — use
-            //      `MoveOnConflict.EXISTING` so our server-confirmed
-            //      claim wins. We retarget the displaced LocalCreate's
-            //      `event.path` so its drain reads from the new
-            //      location; on its own server roundtrip the server
-            //      will deconflict (we already hold the slot remotely),
-            //      and `processCreate` will land it at the server-side
-            //      deconflict path.
-            const occupant = this.queue.getSettledDocumentByPath(
-                response.relativePath
-            );
-            const conflictMode =
-                occupant !== undefined &&
-                    occupant.documentId !== record.documentId
-                    ? MoveOnConflict.NEW
-                    : MoveOnConflict.EXISTING;
-            const moveResult = await this.operations.move(
-                record.path,
-                response.relativePath,
-                conflictMode
-            );
-            this.queue.updatePendingCreatePath(record.path, moveResult.actualPath);
-            if (moveResult.displacedTo !== undefined) {
-                this.queue.updatePendingCreatePath(
-                    response.relativePath,
-                    moveResult.displacedTo
+            if (livePath !== undefined) {
+                await this.operations.write(
+                    livePath,
+                    contentBytes,
+                    responseBytes
                 );
             }
-            await this.queue.setDocument(moveResult.actualPath, {
-                ...newRecord,
-                path: moveResult.actualPath,
-                intendedPath:
-                    moveResult.actualPath === response.relativePath
-                        ? undefined
-                        : response.relativePath,
-                remoteHash
-            });
+            remoteHash = await hash(responseBytes);
+            await this.updateCache(
+                response.vaultUpdateId,
+                responseBytes,
+                livePath ?? response.relativePath
+            );
         } else {
-            // User renamed during the roundtrip. Leave the disk file at
-            // `record.path`; the queued rename's LocalUpdate will
-            // reconcile the server on its next drain.
-            await this.queue.setDocument(record.path, {
-                ...newRecord,
-                path: record.path,
-                remoteHash
-            });
+            await this.updateCache(
+                response.vaultUpdateId,
+                contentBytes,
+                livePath ?? response.relativePath
+            );
         }
 
+        await this.queue.upsertRecord({
+            documentId: response.documentId,
+            parentVersionId: response.vaultUpdateId,
+            remoteRelativePath: response.relativePath,
+            remoteHash,
+            // localPath is unchanged by the wire loop; only the watcher
+            // (via the queue's enqueue rename branch) and the reconciler
+            // touch it. Read from the live record so a rename that
+            // arrived during the await is preserved.
+            localPath: livePath
+        });
         this.queue.lastSeenUpdateId = response.vaultUpdateId;
 
         this.history.addHistoryEntry({
             status: SyncStatus.SUCCESS,
             details: {
                 type: SyncType.UPDATE,
-                relativePath: record.path
+                relativePath: livePath ?? response.relativePath
             },
             message:
                 response.type === "MergingUpdate"
@@ -818,7 +696,6 @@ export class Syncer {
             timestamp: new Date(response.updatedDate)
         });
     }
-
 
     private async processRemoteChange(
         event: Extract<SyncEvent, { type: SyncEventType.RemoteChange }>
@@ -839,14 +716,13 @@ export class Syncer {
                 return;
             }
             return this.processRemoteDelete(
-                trackedRecord.path,
+                trackedRecord.localPath,
                 remoteVersion
             );
         }
 
         if (
-            (trackedRecord?.parentVersionId ?? 0) >=
-            remoteVersion.vaultUpdateId
+            (trackedRecord?.parentVersionId ?? 0) >= remoteVersion.vaultUpdateId
         ) {
             this.queue.lastSeenUpdateId = remoteVersion.vaultUpdateId;
             this.logger.debug(
@@ -855,22 +731,47 @@ export class Syncer {
             return;
         }
 
-        if (trackedRecord !== undefined) {
-            // The doc is tracked. If the local file backing it has
-            // gone missing — e.g. the user deleted it and the
-            // LocalDelete hasn't drained yet, or our HTTP DELETE just
-            // landed and we're still waiting on the WebSocket receipt
-            // — ignore the update. Otherwise we'd try to operate on a
-            // vanished file (or recreate one we're tearing down).
-            const fileExists = await this.operations.exists(
-                trackedRecord.path
+        // Server-side delete is in flight: our HTTP DELETE has been acked
+        // but the WebSocket receipt that would `removeDocumentById` hasn't
+        // arrived yet. Any remote update we apply here would resurrect the
+        // doc — either by writing the pre-delete bytes to disk
+        // (`processRemoteUpdate` with localPath set) or by stashing them
+        // for the Reconciler (`processRemoteUpdate` with localPath
+        // undefined; reconciler is also gated, but stashing leaves
+        // `pendingPlacementContent` lingering which a same-docId
+        // re-creation could later misuse). Advance the watermark and
+        // discard; the eventual delete-receipt will clean up the record.
+        if (
+            trackedRecord !== undefined &&
+            this.queue.hasPendingServerDelete(trackedRecord.documentId)
+        ) {
+            this.queue.lastSeenUpdateId = remoteVersion.vaultUpdateId;
+            this.logger.debug(
+                `Discarding remote update for ${remoteVersion.documentId}: ` +
+                    `local HTTP DELETE has been acked; awaiting WS receipt`
             );
-            if (!fileExists) {
-                this.queue.lastSeenUpdateId = remoteVersion.vaultUpdateId;
-                this.logger.debug(
-                    `Ignoring remote update for ${remoteVersion.documentId}: local file at ${trackedRecord.path} is missing`
+            return;
+        }
+
+        if (trackedRecord !== undefined) {
+            // The doc is tracked. If we have a local file backing it
+            // and that file has gone missing — e.g. the user deleted it
+            // and the LocalDelete hasn't drained yet, or our HTTP
+            // DELETE just landed and we're still waiting on the
+            // WebSocket receipt — ignore the update. Otherwise we'd
+            // try to operate on a vanished file (or recreate one we're
+            // tearing down).
+            if (trackedRecord.localPath !== undefined) {
+                const fileExists = await this.operations.exists(
+                    trackedRecord.localPath
                 );
-                return;
+                if (!fileExists) {
+                    this.queue.lastSeenUpdateId = remoteVersion.vaultUpdateId;
+                    this.logger.debug(
+                        `Ignoring remote update for ${remoteVersion.documentId}: local file at ${trackedRecord.localPath} is missing`
+                    );
+                    return;
+                }
             }
             return this.processRemoteUpdate(trackedRecord, remoteVersion);
         }
@@ -887,11 +788,33 @@ export class Syncer {
     }
 
     private async processRemoteDelete(
-        path: RelativePath,
+        localPath: RelativePath | undefined,
         remoteVersion: DocumentVersionWithoutContent
     ): Promise<void> {
-        await this.operations.delete(path);
-        await this.queue.removeDocument(path);
+        if (localPath !== undefined) {
+            // Verify the record still owns this disk slot before deleting.
+            // A same-path recreate (LocalCreate at this path resolving
+            // after we sent the server-delete for this doc) installs a
+            // new doc into byLocalPath but doesn't clear the old record's
+            // stale `localPath` field. When the WS broadcast for the old
+            // doc's deletion arrives, naively deleting at `localPath`
+            // would clobber the new doc's file. Skip the disk delete
+            // when the slot now belongs to a different doc; the queue
+            // record cleanup below still runs.
+            const currentOwner = this.queue.byLocalPath.get(localPath);
+            if (
+                currentOwner === undefined ||
+                currentOwner.documentId === remoteVersion.documentId
+            ) {
+                await this.operations.delete(localPath);
+            } else {
+                this.logger.debug(
+                    `Skipping disk delete for ${remoteVersion.documentId} at ${localPath}: ` +
+                        `slot is now owned by ${currentOwner.documentId}`
+                );
+            }
+        }
+        await this.queue.removeDocumentById(remoteVersion.documentId);
 
         this.queue.lastSeenUpdateId = remoteVersion.vaultUpdateId;
 
@@ -899,7 +822,7 @@ export class Syncer {
             status: SyncStatus.SUCCESS,
             details: {
                 type: SyncType.DELETE,
-                relativePath: path
+                relativePath: localPath ?? remoteVersion.relativePath
             },
             message:
                 "Successfully deleted file which had been deleted remotely",
@@ -912,175 +835,235 @@ export class Syncer {
         record: DocumentRecord,
         remoteVersion: DocumentVersionWithoutContent
     ): Promise<void> {
-        // Defer the remote update if a local event is queued for this
-        // doc: the local drain owns the user's intent (rename target,
-        // edited content) and will sync it to the server, which then
-        // broadcasts the merged result back. Touching disk or the
-        // record now races the local drain — the disk move would
-        // vacate the path the queued LocalUpdate later reads from,
-        // and `setDocument(record.path, …)` couldn't reconcile with
-        // `actualPath` without clobbering the user's renamed entry.
-        // Re-queueing keeps `lastSeenUpdateId` consistent without
-        // those side effects.
         if (
             this.queue.hasPendingLocalEventsForDocumentId(
                 remoteVersion.documentId
             )
         ) {
-            void this.syncRemotelyUpdatedFile({
-                document: remoteVersion
-            });
+            // The user has queued local edits for this doc. Apply them
+            // first — they'll round-trip to the server, get merged
+            // there, and broadcast back. If we processed this remote
+            // update now, `FileOperations.write` would receive
+            // `expected = current = the disk content (which already
+            // includes the user's pending edits)`, so the 3-way merge
+            // baseline collapses to "no local change vs base" and
+            // returns `theirs`, silently dropping the user's bytes.
+            // Re-enqueueing (rather than just deferring with a flag)
+            // is correct because by the time the queued local events
+            // drain, this remote update may be stale: our
+            // `parentVersionId` advances past `remoteVersion.vaultUpdateId`,
+            // and the next pass's standard "stale" check at the top of
+            // `processRemoteChange` will discard it.
+            //
+            // Broader concern (out of scope here): the 3-way merge
+            // baseline in `FileOperations.write` is the most-recent
+            // disk read at every callsite, not the previous server
+            // version. That's correct for the post-server-merge writes
+            // in `processCreate` / `processLocalUpdate` (we're
+            // applying the server's merged result to our potentially
+            // newer disk state), but fundamentally wrong as a base for
+            // a true 3-way merge. The defer gate above sidesteps the
+            // only call pattern where it actually loses data today.
+            void this.syncRemotelyUpdatedFile({ document: remoteVersion });
             return;
         }
 
-        const pathBeforeRoundtrip = record.path;
-        // Mirror the conflict-mode policy from `processLocalUpdate`'s
-        // post-roundtrip move: only protect the slot when it's held by
-        // a *different tracked* doc (manual user resolution required).
-        // An untracked occupant is typically this agent's own pending
-        // LocalCreate whose drain hasn't reached the server yet — the
-        // server will deconflict the create on its own roundtrip and
-        // the `processCreate` post-move will land that file at the
-        // server-assigned path. Displacing it here is the right call;
-        // routing this remote update to a `conflict-<uuid>-` stash
-        // would leave a permanent local-only divergence.
-        const occupant = this.queue.getSettledDocumentByPath(
-            remoteVersion.relativePath
-        );
-        const conflictMode =
-            occupant !== undefined &&
-                occupant.documentId !== record.documentId
-                ? MoveOnConflict.NEW
-                : MoveOnConflict.EXISTING;
-        const moveResult = await this.operations.move(
-            record.path,
-            remoteVersion.relativePath,
-            conflictMode
-        );
-        const { actualPath } = moveResult;
-        const intendedPath =
-            actualPath === remoteVersion.relativePath
-                ? undefined
-                : remoteVersion.relativePath;
-        if (moveResult.displacedTo !== undefined) {
-            this.queue.updatePendingCreatePath(
-                remoteVersion.relativePath,
-                moveResult.displacedTo
+        const remoteContent = await this.syncService.getDocumentVersionContent({
+            documentId: remoteVersion.documentId,
+            vaultUpdateId: remoteVersion.vaultUpdateId
+        });
+
+        // `record.localPath` may be undefined — the record was created on
+        // a previous remote-create whose target slot was occupied at
+        // receive time. In that case stash the bytes for the reconciler
+        // to write when it places the file; we still update the wire
+        // fields so the catch-up doesn't replay this version.
+        //
+        // The slot may also have been shadowed: the record still claims
+        // `localPath = P`, but `byLocalPath[P]` now points at a different
+        // doc (a same-path recreate installed a new owner without
+        // clearing this record's stale field — same race shape as the
+        // processRemoteDelete fix above). Writing to a shadowed slot
+        // would clobber the new owner's bytes. Treat shadowed records
+        // as if they had no local file: stash for the reconciler.
+        const claimedPath = record.localPath;
+        const livePath =
+            claimedPath !== undefined &&
+            this.queue.byLocalPath.get(claimedPath)?.documentId ===
+                record.documentId
+                ? claimedPath
+                : undefined;
+        if (claimedPath !== undefined && livePath === undefined) {
+            this.logger.debug(
+                `Remote update for ${record.documentId} at claimed ${claimedPath} ` +
+                    `but slot is shadowed; deferring write to reconciler`
             );
         }
-        const currentContent = await this.operations.read(actualPath);
-        const remoteContent = await this.syncService.getDocumentVersionContent({
-            documentId: remoteVersion.documentId,
-            vaultUpdateId: remoteVersion.vaultUpdateId
-        });
-        await this.operations.write(
-            actualPath,
-            currentContent,
-            remoteContent
-        );
+        if (livePath !== undefined) {
+            const currentContent = await this.operations.read(livePath);
+            // Re-check the entry-time gate immediately before the disk
+            // mutation. The `await`s on `getDocumentVersionContent` and
+            // `read` open a TOCTOU window during which a LocalUpdate
+            // for this doc could have been enqueued by the watcher. If
+            // we proceeded, `operations.write` would receive
+            // `expected = current = disk-content-already-with-user-bytes`,
+            // collapsing the 3-way merge baseline and silently
+            // overwriting the user's pending edits with `theirs`.
+            // Re-enqueueing the RemoteChange is the same fix shape as
+            // the entry-time gate above; the next pass either applies
+            // it or discards it as stale via the standard check at the
+            // top of `processRemoteChange`.
+            if (
+                this.queue.hasPendingLocalEventsForDocumentId(
+                    remoteVersion.documentId
+                )
+            ) {
+                void this.syncRemotelyUpdatedFile({ document: remoteVersion });
+                return;
+            }
+            // Re-check shadowing as well: the same TOCTOU window
+            // (between `getDocumentVersionContent` and `read`, plus
+            // `read` itself) could see a same-path recreate steal the
+            // slot. If we lost ownership, fall through to the
+            // pendingPlacementContent stash by re-entering the
+            // RemoteChange — the next pass observes the updated
+            // byLocalPath and routes correctly.
+            if (
+                this.queue.byLocalPath.get(livePath)?.documentId !==
+                record.documentId
+            ) {
+                void this.syncRemotelyUpdatedFile({ document: remoteVersion });
+                return;
+            }
+            await this.operations.write(
+                livePath,
+                currentContent,
+                remoteContent
+            );
+            await this.updateCache(
+                remoteVersion.vaultUpdateId,
+                remoteContent,
+                livePath
+            );
+        } else {
+            this.pendingPlacementContent.set(
+                remoteVersion.documentId,
+                remoteContent
+            );
+            await this.updateCache(
+                remoteVersion.vaultUpdateId,
+                remoteContent,
+                remoteVersion.relativePath
+            );
+        }
 
-        await this.updateCache(
-            remoteVersion.vaultUpdateId,
-            remoteContent,
-            actualPath
-        );
-        await this.queue.setDocument(actualPath, {
-            ...record,
-            path: actualPath,
-            intendedPath,
+        await this.queue.upsertRecord({
+            documentId: record.documentId,
             parentVersionId: remoteVersion.vaultUpdateId,
             remoteRelativePath: remoteVersion.relativePath,
-            remoteHash: await hash(remoteContent)
+            remoteHash: await hash(remoteContent),
+            localPath: livePath
         });
-        this.queue.lastSeenUpdateId = remoteVersion.vaultUpdateId;
-
-        if (actualPath !== pathBeforeRoundtrip) {
-            this.history.addHistoryEntry({
-                status: SyncStatus.SUCCESS,
-                details: {
-                    type: SyncType.MOVE,
-                    relativePath: actualPath,
-                    movedFrom: pathBeforeRoundtrip
-                },
-                message: `File was renamed remotely from ${pathBeforeRoundtrip} to ${actualPath}`,
-                author: remoteVersion.userId,
-                timestamp: new Date(remoteVersion.updatedDate)
-            });
-        } else {
-            this.history.addHistoryEntry({
-                status: SyncStatus.SUCCESS,
-                details: {
-                    type: SyncType.UPDATE,
-                    relativePath: actualPath
-                },
-                message: "Successfully applied remote update",
-                author: remoteVersion.userId,
-                timestamp: new Date(remoteVersion.updatedDate)
-            });
-        }
-    }
-
-    private async processRemoteCreateForNewDocument(
-        remoteVersion: DocumentVersionWithoutContent
-    ): Promise<void> {
-        const remoteContent = await this.syncService.getDocumentVersionContent({
-            documentId: remoteVersion.documentId,
-            vaultUpdateId: remoteVersion.vaultUpdateId
-        });
-
-        // Stash *ourselves* at a `conflict-<uuid>-` path when the slot is
-        // locally occupied: a remote create's content is brand new to us,
-        // so deferring our local placement until any earlier work at this
-        // slot resolves is safer than evicting the occupant. The
-        // pending-LocalCreate case naturally unwinds through the server's
-        // own deconflict: when our create's HTTP runs, the server sees
-        // `remoteVersion`'s doc already there and routes ours to a
-        // sibling path, freeing the slot for us to set ourselves on the
-        // next time the remote-create-followed-by-rename pair drains
-        // through the queue.
-        const createResult = await this.operations.create(
-            remoteVersion.relativePath,
-            remoteContent,
-            MoveOnConflict.NEW
-        );
-        const { actualPath } = createResult;
-        const intendedPath =
-            actualPath === remoteVersion.relativePath
-                ? undefined
-                : remoteVersion.relativePath;
-
-        await this.updateCache(
-            remoteVersion.vaultUpdateId,
-            remoteContent,
-            actualPath
-        );
-
-        const contentHash = await hash(remoteContent);
-        await this.queue.setDocument(actualPath, {
-            path: actualPath,
-            intendedPath,
-            documentId: remoteVersion.documentId,
-            parentVersionId: remoteVersion.vaultUpdateId,
-            remoteHash: contentHash,
-            remoteRelativePath: remoteVersion.relativePath
-        });
-
         this.queue.lastSeenUpdateId = remoteVersion.vaultUpdateId;
 
         this.history.addHistoryEntry({
             status: SyncStatus.SUCCESS,
             details: {
-                type: SyncType.CREATE,
-                relativePath: actualPath
+                type: SyncType.UPDATE,
+                relativePath: livePath ?? remoteVersion.relativePath
             },
-            message:
-                "Successfully downloaded remote file which hadn't existed locally",
+            message: "Successfully applied remote update",
             author: remoteVersion.userId,
             timestamp: new Date(remoteVersion.updatedDate)
         });
     }
 
+    private async processRemoteCreateForNewDocument(
+        remoteVersion: DocumentVersionWithoutContent
+    ): Promise<void> {
+        // Quick-write optimization: if the target slot is free right now
+        // (no disk file, no tracked record), fetch and write inline. The
+        // catch-up replay leans on this — without it, a freshly-joined
+        // client would upsert every doc with `localPath = undefined`
+        // and rely on the reconciler to fetch each one back.
+        //
+        // If the slot is occupied, defer: leave `localPath = undefined`
+        // and let the reconciler place once the slot frees. Per the
+        // design, no buffering at receive time — the reconciler will
+        // fetch on demand.
+        const target = remoteVersion.relativePath;
+        const slotFree =
+            !(await this.operations.exists(target)) &&
+            this.queue.getRecordByLocalPath(target) === undefined;
 
+        let localPath: RelativePath | undefined = undefined;
+        let remoteHash: string | undefined = undefined;
+        if (slotFree) {
+            const remoteContent =
+                await this.syncService.getDocumentVersionContent({
+                    documentId: remoteVersion.documentId,
+                    vaultUpdateId: remoteVersion.vaultUpdateId
+                });
+            try {
+                const result = await this.operations.create(
+                    target,
+                    remoteContent
+                );
+                localPath = result.actualPath;
+                remoteHash = await hash(remoteContent);
+                await this.updateCache(
+                    remoteVersion.vaultUpdateId,
+                    remoteContent,
+                    localPath
+                );
+            } catch (e) {
+                if (!(e instanceof FileAlreadyExistsError)) {
+                    throw e;
+                }
+                // TOCTOU: the slot was free at the pre-check but
+                // something landed there between then and now. Fall
+                // through to the no-localPath branch and let the
+                // reconciler retry placement once the slot frees.
+                this.logger.debug(
+                    `Quick-write for ${remoteVersion.documentId} at ${target} ` +
+                        `lost a TOCTOU race; deferring to reconciler`
+                );
+                localPath = undefined;
+                remoteHash = undefined;
+            }
+        }
+
+        await this.queue.upsertRecord({
+            documentId: remoteVersion.documentId,
+            parentVersionId: remoteVersion.vaultUpdateId,
+            remoteRelativePath: remoteVersion.relativePath,
+            // `remoteHash` is undefined when we deferred fetching content.
+            // Consumers (`processLocalUpdate`'s fast-skip,
+            // `findMatchingFile`'s offline-rename detection) treat
+            // undefined as "no comparison possible" and fall through to a
+            // real upload / no-match. The hash gets populated the next
+            // time we observe a real version (a remote update, or a
+            // local edit that triggers an upload).
+            remoteHash,
+            localPath
+        });
+
+        this.queue.lastSeenUpdateId = remoteVersion.vaultUpdateId;
+
+        if (localPath !== undefined) {
+            this.history.addHistoryEntry({
+                status: SyncStatus.SUCCESS,
+                details: {
+                    type: SyncType.CREATE,
+                    relativePath: localPath
+                },
+                message:
+                    "Successfully downloaded remote file which hadn't existed locally",
+                author: remoteVersion.userId,
+                timestamp: new Date(remoteVersion.updatedDate)
+            });
+        }
+    }
 
     private async sendUpdate({
         record,

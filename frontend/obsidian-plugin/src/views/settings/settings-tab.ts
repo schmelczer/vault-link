@@ -155,10 +155,10 @@ export class SyncSettingsTab extends PluginSettingTab {
                         text: "Show history"
                     },
                     (button) =>
-                    (button.onclick = async (): Promise<void> => {
-                        this.plugin.closeSettings();
-                        await this.plugin.activateView(HistoryView.TYPE);
-                    })
+                        (button.onclick = async (): Promise<void> => {
+                            this.plugin.closeSettings();
+                            await this.plugin.activateView(HistoryView.TYPE);
+                        })
                 );
 
                 buttonContainer.createEl(
@@ -167,10 +167,10 @@ export class SyncSettingsTab extends PluginSettingTab {
                         text: "Show logs"
                     },
                     (button) =>
-                    (button.onclick = async (): Promise<void> => {
-                        this.plugin.closeSettings();
-                        await this.plugin.activateView(LogsView.TYPE);
-                    })
+                        (button.onclick = async (): Promise<void> => {
+                            this.plugin.closeSettings();
+                            await this.plugin.activateView(LogsView.TYPE);
+                        })
                 );
             }
         );
@@ -301,7 +301,7 @@ export class SyncSettingsTab extends PluginSettingTab {
                 toggle
                     .setValue(
                         this.syncEnabledOverride ??
-                        this.syncClient.getSettings().isSyncEnabled
+                            this.syncClient.getSettings().isSyncEnabled
                     )
                     .setDisabled(this.isApplyingChanges)
                     .setTooltip(
@@ -467,8 +467,6 @@ export class SyncSettingsTab extends PluginSettingTab {
                         );
                     })
             );
-
-
     }
 
     private setStatusDescriptionSubscription(
@@ -492,9 +490,9 @@ export class SyncSettingsTab extends PluginSettingTab {
         name: string,
         settingName: keyof SyncSettings
     ): [
-            DocumentFragment,
-            (newValue: SyncSettings[keyof SyncSettings]) => unknown
-        ] {
+        DocumentFragment,
+        (newValue: SyncSettings[keyof SyncSettings]) => unknown
+    ] {
         const titleContainer = document.createDocumentFragment();
         const title = titleContainer.createEl("div", {
             text: name,
@@ -504,10 +502,11 @@ export class SyncSettingsTab extends PluginSettingTab {
         const updateTitle = (
             currentValue: SyncSettings[keyof SyncSettings]
         ): void => {
-            title.innerText = `${name}${currentValue !== this.syncClient.getSettings()[settingName]
+            title.innerText = `${name}${
+                currentValue !== this.syncClient.getSettings()[settingName]
                     ? " (unsaved)"
                     : ""
-                }`;
+            }`;
         };
 
         return [titleContainer, updateTitle];

@@ -1,3 +1,4 @@
+import { awaitAll } from "./await-all";
 import { sleep } from "./sleep";
 
 /**
@@ -52,10 +53,7 @@ export function rateLimit<
                 ? minIntervalMs()
                 : minIntervalMs;
         const fnPromise = fn(...args);
-        running = Promise.all([
-            fnPromise.catch(() => undefined),
-            sleep(interval)
-        ]);
+        running = awaitAll([fnPromise.catch(() => undefined), sleep(interval)]);
         return fnPromise;
     };
 

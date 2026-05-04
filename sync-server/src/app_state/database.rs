@@ -433,12 +433,19 @@ impl Database {
         WriteTransaction::new(&pools.writer, write_guard).await
     }
 
-    /// Return the latest state of all documents in the vault
+    /// Return the latest state of all documents in the vault, optionally
+    /// bounded above by `up_to_vault_update_id` so that the result is a
+    /// stable snapshot at exactly that cursor (commits past the cursor
+    /// will be delivered separately via the broadcast channel).
     pub async fn get_latest_documents(
         &self,
         vault: &VaultId,
+        up_to_vault_update_id: Option<VaultUpdateId>,
         connection: Option<&mut SqliteConnection>,
     ) -> Result<Vec<DocumentVersionWithoutContent>> {
+        // `i64::MAX` makes the upper bound a no-op for callers that don't
+        // care about an exact snapshot (they pass `None`).
+        let upper = up_to_vault_update_id.unwrap_or(i64::MAX);
         let query = sqlx::query!(
             r#"
             select
@@ -452,8 +459,10 @@ impl Database {
                 device_id,
                 length(content) as "content_size: u64"
             from latest_document_versions
+            where vault_update_id <= ?
             order by vault_update_id
             "#,
+            upper,
         );
 
         if let Some(conn) = connection {
@@ -482,13 +491,20 @@ impl Database {
     }
 
     /// Return the latest state of all documents (including deleted) in the
-    /// vault which have changed since the given update id
+    /// vault which have changed since the given update id, bounded above
+    /// by `up_to_vault_update_id` so the catch-up result is a stable
+    /// snapshot at exactly that cursor. Commits past the cursor will be
+    /// delivered separately via the broadcast channel.
     pub async fn get_latest_documents_since(
         &self,
         vault: &VaultId,
         vault_update_id: VaultUpdateId,
+        up_to_vault_update_id: Option<VaultUpdateId>,
         connection: Option<&mut SqliteConnection>,
     ) -> Result<Vec<DocumentVersionWithoutContent>> {
+        // `i64::MAX` makes the upper bound a no-op for callers that don't
+        // care about an exact snapshot (they pass `None`).
+        let upper = up_to_vault_update_id.unwrap_or(i64::MAX);
         let query = sqlx::query!(
             r#"
             select
@@ -502,10 +518,11 @@ impl Database {
                 device_id,
                 length(content) as "content_size: u64"
             from latest_document_versions
-            where vault_update_id > ?
+            where vault_update_id > ? and vault_update_id <= ?
             order by vault_update_id
             "#,
-            vault_update_id
+            vault_update_id,
+            upper,
         );
 
         if let Some(conn) = connection {

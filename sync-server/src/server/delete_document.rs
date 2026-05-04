@@ -11,7 +11,9 @@ use super::device_id_header::DeviceIdHeader;
 use crate::{
     app_state::{
         AppState,
-        database::models::{DocumentId, DocumentVersionWithoutContent, StoredDocumentVersion, VaultId},
+        database::models::{
+            DocumentId, DocumentVersionWithoutContent, StoredDocumentVersion, VaultId,
+        },
     },
     config::user_config::User,
     errors::{SyncServerError, not_found_error, server_error, write_transaction_error},

@@ -92,14 +92,12 @@ import { displacedFileNotMarkedDeletedTest } from "./tests/displaced-file-not-ma
 import { remoteUpdateResurrectsDeletedDocTest } from "./tests/remote-update-resurrects-deleted-doc.test";
 import { localUpdateSurvivesRemoteRenameTest } from "./tests/local-update-survives-remote-rename.test";
 import { mergingUpdateResponseSurvivesUserRenameTest } from "./tests/merging-update-response-survives-user-rename.test";
-import { conflictUuidStashClearedAfterRenameDeconflictTest } from "./tests/conflict-uuid-stash-cleared-after-rename-deconflict.test";
 import { catchupCreateAndUpdateNotSkippedTest } from "./tests/catchup-create-and-update-not-skipped.test";
 import { localRenameSurvivesRemoteRenameTest } from "./tests/local-rename-survives-remote-rename.test";
 import { renameChainDuringPendingCreateTest } from "./tests/rename-chain-during-pending-create.test";
 import { remoteRenameCollidesWithPendingLocalCreateTest } from "./tests/remote-rename-collides-with-pending-local-create.test";
 import { remoteUpdateSurvivesUserRenameTest } from "./tests/remote-update-survives-user-rename.test";
-import { orphanStashOnCreateMergeTest } from "./tests/orphan-stash-on-create-merge.test";
-import { orphanStashOnCreateDedupeMergeTest } from "./tests/orphan-stash-on-create-dedupe-merge.test";
+import { sameDocIdCollapseOnLocalCreateAfterRemoteCreateTest } from "./tests/same-doc-id-collapse-on-local-create-after-remote-create.test";
 
 export const TESTS: Partial<Record<string, TestDefinition>> = {
     "rename-create-conflict": renameCreateConflictTest,
@@ -210,25 +208,18 @@ export const TESTS: Partial<Record<string, TestDefinition>> = {
     "online-create-update-while-other-creates-same-path":
         onlineCreateUpdateWhileOtherCreatesSamePathTest,
     "displaced-file-not-marked-deleted": displacedFileNotMarkedDeletedTest,
-    "remote-update-resurrects-deleted-doc": remoteUpdateResurrectsDeletedDocTest,
-    "local-update-survives-remote-rename":
-        localUpdateSurvivesRemoteRenameTest,
+    "remote-update-resurrects-deleted-doc":
+        remoteUpdateResurrectsDeletedDocTest,
+    "local-update-survives-remote-rename": localUpdateSurvivesRemoteRenameTest,
     "merging-update-response-survives-user-rename":
         mergingUpdateResponseSurvivesUserRenameTest,
-    "conflict-uuid-stash-cleared-after-rename-deconflict":
-        conflictUuidStashClearedAfterRenameDeconflictTest,
     "catchup-create-and-update-not-skipped":
         catchupCreateAndUpdateNotSkippedTest,
-    "local-rename-survives-remote-rename":
-        localRenameSurvivesRemoteRenameTest,
-    "rename-chain-during-pending-create":
-        renameChainDuringPendingCreateTest,
+    "local-rename-survives-remote-rename": localRenameSurvivesRemoteRenameTest,
+    "rename-chain-during-pending-create": renameChainDuringPendingCreateTest,
     "remote-rename-collides-with-pending-local-create":
         remoteRenameCollidesWithPendingLocalCreateTest,
-    "remote-update-survives-user-rename":
-        remoteUpdateSurvivesUserRenameTest,
-    "orphan-stash-on-create-merge":
-        orphanStashOnCreateMergeTest,
-    "orphan-stash-on-create-dedupe-merge":
-        orphanStashOnCreateDedupeMergeTest
+    "remote-update-survives-user-rename": remoteUpdateSurvivesUserRenameTest,
+    "same-doc-id-collapse-on-local-create-after-remote-create":
+        sameDocIdCollapseOnLocalCreateAfterRemoteCreateTest
 };

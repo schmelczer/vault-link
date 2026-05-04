@@ -6,28 +6,19 @@ import type { TextWithCursors } from "reconcile-text";
 import { reconcile } from "reconcile-text";
 import { isFileTypeMergable } from "../utils/is-file-type-mergable";
 import { isBinary } from "../utils/is-binary";
-import { buildConflictFileName } from "../sync-operations/conflict-path";
 import type { ServerConfig } from "../services/server-config";
 import { FileNotFoundError } from "../errors/file-not-found-error";
+import { FileAlreadyExistsError } from "../errors/file-already-exists-error";
 import type { ExpectedFsEvents } from "../sync-operations/expected-fs-events";
 
-export enum MoveOnConflict {
-    EXISTING = "EXISTING",
-    NEW = "NEW"
-}
-
 /**
- * Outcome of a `move`/`create`. `actualPath` is where the new file
- * ended up (which may differ from the requested path under
- * `MoveOnConflict.NEW` if the target was occupied). `displacedTo` is
- * set only when an existing file at the requested path was bumped to
- * a `conflict-…` path under `MoveOnConflict.EXISTING`; the caller
- * uses it to repoint any tracking for the displaced doc before its
- * own follow-up `setDocument` clobbers the old slot.
+ * Outcome of a `move`/`create`. `actualPath` is where the file ended up;
+ * with the conflict-path machinery removed it is always equal to the
+ * requested path. The shape is preserved so callers don't all need to
+ * change.
  */
 export interface FileOpResult {
     actualPath: RelativePath;
-    displacedTo?: RelativePath;
 }
 
 export class FileOperations {
@@ -55,17 +46,6 @@ export class FileOperations {
         return [pathParts.join("/"), fileName];
     }
 
-    /**
-     * Build a local-only conflict path for a file the client has to set aside.
-     * Format: `<dir>/conflict-<uuid>-<originalName>` — UUID makes collisions
-     * statistically impossible, so no disk probe / lock dance is needed.
-     */
-    private static buildConflictPath(path: RelativePath): RelativePath {
-        const [directory, fileName] = FileOperations.getParentDirAndFileName(path);
-        const conflictName = buildConflictFileName(fileName);
-        return directory ? `${directory}/${conflictName}` : conflictName;
-    }
-
     public async listFilesRecursively(
         root: RelativePath | undefined = undefined
     ): Promise<RelativePath[]> {
@@ -79,29 +59,32 @@ export class FileOperations {
     /**
      * Create a file at the specified path.
      *
-     * If a file with the same name already exists, it is moved before creating the new one.
-     * Parent directories are created if necessary.
+     * Throws `FileAlreadyExistsError` if a file already lives at `path`.
+     * Parent directories are created if necessary. The reconciler is the
+     * only caller that places files now and pre-checks for conflicts;
+     * the throw guards against a TOCTOU race rather than being a normal
+     * code path.
      */
     public async create(
         path: RelativePath,
-        newContent: Uint8Array,
-        moveOnConflict: MoveOnConflict
+        newContent: Uint8Array
     ): Promise<FileOpResult> {
-        const result = await this.ensureClearPath(path, moveOnConflict);
-        // ensureClearPath leaves actualPath empty: either the file never
-        // existed, or it was just renamed away. The upcoming write therefore
-        // looks like a fresh create to the watcher.
-        this.expectedFsEvents.expectCreate(result.actualPath);
-        try {
-            await this.fs.write(
-                result.actualPath,
-                this.toNativeLineEndings(newContent)
+        if (await this.fs.exists(path)) {
+            throw new FileAlreadyExistsError(
+                `Refusing to create '${path}': file already exists`,
+                path
             );
+        }
+        await this.createParentDirectories(path);
+
+        this.expectedFsEvents.expectCreate(path);
+        try {
+            await this.fs.write(path, this.toNativeLineEndings(newContent));
         } catch (e) {
-            this.expectedFsEvents.unexpectCreate(result.actualPath);
+            this.expectedFsEvents.unexpectCreate(path);
             throw e;
         }
-        return result;
+        return { actualPath: path };
     }
 
     /**
@@ -132,7 +115,8 @@ export class FileOperations {
             if (
                 !isFileTypeMergable(
                     path,
-                    (await this.serverConfig.getConfig()).mergeableFileExtensions
+                    (await this.serverConfig.getConfig())
+                        .mergeableFileExtensions
                 ) ||
                 isBinary(expectedContent) ||
                 isBinary(newContent)
@@ -225,64 +209,39 @@ export class FileOperations {
         return this.fs.exists(path);
     }
 
-
-
+    /**
+     * Move the file at `oldPath` to `newPath`.
+     *
+     * Throws `FileAlreadyExistsError` if a file already lives at `newPath`
+     * (and `oldPath !== newPath`). The reconciler is the only caller that
+     * relocates tracked records and pre-checks for conflicts; the throw
+     * guards against a TOCTOU race.
+     */
     public async move(
         oldPath: RelativePath,
-        newPath: RelativePath,
-        moveOnConflict: MoveOnConflict
+        newPath: RelativePath
     ): Promise<FileOpResult> {
         if (oldPath === newPath) {
             return { actualPath: oldPath };
         }
 
-        const cleared = await this.ensureClearPath(newPath, moveOnConflict);
-        this.expectedFsEvents.expectRename(oldPath, cleared.actualPath);
+        if (await this.fs.exists(newPath)) {
+            throw new FileAlreadyExistsError(
+                `Refusing to move '${oldPath}' onto '${newPath}': target already exists`,
+                newPath
+            );
+        }
+        await this.createParentDirectories(newPath);
+
+        this.expectedFsEvents.expectRename(oldPath, newPath);
         try {
-            await this.fs.rename(oldPath, cleared.actualPath);
+            await this.fs.rename(oldPath, newPath);
         } catch (e) {
-            this.expectedFsEvents.unexpectRename(oldPath, cleared.actualPath);
+            this.expectedFsEvents.unexpectRename(oldPath, newPath);
             throw e;
         }
         await this.deletingEmptyParentDirectoriesOfDeletedFile(oldPath);
-        return cleared;
-    }
-
-    private async ensureClearPath(
-        path: RelativePath,
-        moveOnConflict: MoveOnConflict
-    ): Promise<FileOpResult> {
-        if (await this.fs.exists(path)) {
-            const conflictPath = FileOperations.buildConflictPath(path);
-
-            if (moveOnConflict === MoveOnConflict.NEW) {
-                return { actualPath: conflictPath };
-            }
-
-            this.logger.debug(
-                `Displacing existing file at ${path} to '${conflictPath}' to make room`
-            );
-
-            // The displaced file's rename will fire as a watcher event;
-            // register `expectRename` so the watcher dedups it. The
-            // caller is responsible for the queue bookkeeping (relocating
-            // the displaced doc's tracking) using the `displacedTo` we
-            // return.
-            this.expectedFsEvents.expectRename(path, conflictPath);
-            try {
-                await this.fs.rename(path, conflictPath);
-            } catch (e) {
-                this.expectedFsEvents.unexpectRename(path, conflictPath);
-                throw e;
-            }
-            return { actualPath: path, displacedTo: conflictPath };
-        }
-
-        this.logger.debug(
-            `No existing file at ${path}, creating parent directories if needed`
-        );
-        await this.createParentDirectories(path);
-        return { actualPath: path };
+        return { actualPath: newPath };
     }
 
     private async deletingEmptyParentDirectoriesOfDeletedFile(

@@ -37,13 +37,13 @@ pub async fn fetch_latest_documents(
     let documents = if let Some(since_update_id) = since_update_id {
         state
             .database
-            .get_latest_documents_since(&vault_id, since_update_id, None)
+            .get_latest_documents_since(&vault_id, since_update_id, None, None)
             .await
             .map_err(server_error)
     } else {
         state
             .database
-            .get_latest_documents(&vault_id, None)
+            .get_latest_documents(&vault_id, None, None)
             .await
             .map_err(server_error)
     }?;

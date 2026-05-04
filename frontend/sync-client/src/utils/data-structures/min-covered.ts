@@ -16,7 +16,7 @@
 export class MinCovered {
     private seenValues: number[] = [];
 
-    public constructor(private minValue: number) { }
+    public constructor(private minValue: number) {}
 
     public get min(): number {
         return this.minValue;

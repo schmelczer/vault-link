@@ -70,59 +70,6 @@ export class WebSocketManager {
         await this.stopPromise;
     }
 
-    private async performStop(): Promise<void> {
-        const { promise, resolve } = Promise.withResolvers<undefined>();
-        this.resolveDisconnectingPromise = (): void => {
-            resolve(undefined);
-        };
-
-        this.isStopped = true;
-
-        if (this.reconnectTimeoutId !== undefined) {
-            clearTimeout(this.reconnectTimeoutId);
-            this.reconnectTimeoutId = undefined;
-        }
-
-        if (this.connectionTimeoutId !== undefined) {
-            clearTimeout(this.connectionTimeoutId);
-            this.connectionTimeoutId = undefined;
-        }
-
-        this.webSocket?.close(1000, "WebSocketManager has been stopped");
-
-        // eslint-disable-next-line @typescript-eslint/init-declarations
-        let timeoutId: ReturnType<typeof setTimeout> | undefined;
-        const timeoutPromise = new Promise<void>((_, reject) => {
-            timeoutId = setTimeout(() => {
-                reject(
-                    new Error(
-                        `Timeout waiting for WebSocket to close after ${WEBSOCKET_DISCONNECT_TIMEOUT_IN_SECONDS} seconds`
-                    )
-                );
-            }, WEBSOCKET_DISCONNECT_TIMEOUT_IN_SECONDS * 1000);
-        });
-
-        try {
-            while (this.isWebSocketConnected) {
-                await Promise.race([promise, timeoutPromise]);
-            }
-        } catch (error) {
-            this.logger.error(
-                `Error while waiting for WebSocket to close: ${String(error)}`
-            );
-            // Force cleanup even if close didn't work
-            this.resolveDisconnectingPromise?.();
-            this.resolveDisconnectingPromise = null;
-        } finally {
-            // Clear timeout to prevent unhandled rejection
-            if (timeoutId !== undefined) {
-                clearTimeout(timeoutId);
-            }
-        }
-
-        await this.waitUntilFinished();
-    }
-
     public async waitUntilFinished(): Promise<void> {
         await awaitAll(this.outstandingPromises);
     }
@@ -171,6 +118,59 @@ export class WebSocketManager {
                 `Failed to send cursor positions: ${String(error)}`
             );
         }
+    }
+
+    private async performStop(): Promise<void> {
+        const { promise, resolve } = Promise.withResolvers<undefined>();
+        this.resolveDisconnectingPromise = (): void => {
+            resolve(undefined);
+        };
+
+        this.isStopped = true;
+
+        if (this.reconnectTimeoutId !== undefined) {
+            clearTimeout(this.reconnectTimeoutId);
+            this.reconnectTimeoutId = undefined;
+        }
+
+        if (this.connectionTimeoutId !== undefined) {
+            clearTimeout(this.connectionTimeoutId);
+            this.connectionTimeoutId = undefined;
+        }
+
+        this.webSocket?.close(1000, "WebSocketManager has been stopped");
+
+        // eslint-disable-next-line @typescript-eslint/init-declarations
+        let timeoutId: ReturnType<typeof setTimeout> | undefined;
+        const timeoutPromise = new Promise<void>((_, reject) => {
+            timeoutId = setTimeout(() => {
+                reject(
+                    new Error(
+                        `Timeout waiting for WebSocket to close after ${WEBSOCKET_DISCONNECT_TIMEOUT_IN_SECONDS} seconds`
+                    )
+                );
+            }, WEBSOCKET_DISCONNECT_TIMEOUT_IN_SECONDS * 1000);
+        });
+
+        try {
+            while (this.isWebSocketConnected) {
+                await Promise.race([promise, timeoutPromise]);
+            }
+        } catch (error) {
+            this.logger.error(
+                `Error while waiting for WebSocket to close: ${String(error)}`
+            );
+            // Force cleanup even if close didn't work
+            this.resolveDisconnectingPromise();
+            this.resolveDisconnectingPromise = null;
+        } finally {
+            // Clear timeout to prevent unhandled rejection
+            if (timeoutId !== undefined) {
+                clearTimeout(timeoutId);
+            }
+        }
+
+        await this.waitUntilFinished();
     }
 
     private initializeWebSocket(): void {

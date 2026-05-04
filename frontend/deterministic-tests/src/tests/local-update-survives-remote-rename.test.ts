@@ -62,10 +62,7 @@ export const localUpdateSurvivesRemoteRenameTest: TestDefinition = {
             verify: (state: AssertableState): void => {
                 state.assertFileCount(1);
                 state.assertFileExists("renamed.md");
-                state.assertContent(
-                    "renamed.md",
-                    "v1\nclient 0 edit\n"
-                );
+                state.assertContent("renamed.md", "v1\nclient 0 edit\n");
             }
         }
     ]

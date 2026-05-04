@@ -4,4 +4,8 @@ import type { VaultInfo } from "./VaultInfo";
 /**
  * Response to listing vaults accessible to the authenticated user.
  */
-export interface ListVaultsResponse { vaults: VaultInfo[], hasMore: boolean, userName: string, }
+export interface ListVaultsResponse {
+    vaults: VaultInfo[];
+    hasMore: boolean;
+    userName: string;
+}

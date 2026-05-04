@@ -15,6 +15,8 @@ export class MockClient extends debugging.InMemoryFileSystem {
         database: Partial<StoredDatabase>;
     }> = {};
 
+    private slowEventChain: Promise<void> = Promise.resolve();
+
     public constructor(
         initialSettings: Partial<SyncSettings>,
         protected readonly useSlowFileEvents: boolean
@@ -105,8 +107,6 @@ export class MockClient extends debugging.InMemoryFileSystem {
             });
         });
     }
-
-    private slowEventChain: Promise<void> = Promise.resolve();
 
     protected executeFileOperation(callback: () => unknown): void {
         if (this.useSlowFileEvents) {

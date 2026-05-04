@@ -25,7 +25,9 @@ export const renameCreateConflictTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertFileCount(2).assertContent("B.md", "hi").assertContent("B (1).md", "hi");
+                s.assertFileCount(2)
+                    .assertContent("B.md", "hi")
+                    .assertContent("B (1).md", "hi");
             }
         }
     ]

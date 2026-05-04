@@ -284,17 +284,14 @@ pub async fn update_document(
     // reconcile above, independent of which rename wins. A missing
     // relative_path means "keep current path" (content-only edit).
     let new_relative_path = match sanitized_relative_path.as_deref() {
-        Some(requested) if parent_relative_path == latest_version.relative_path
-            && requested != latest_version.relative_path =>
+        Some(requested)
+            if parent_relative_path == latest_version.relative_path
+                && requested != latest_version.relative_path =>
         {
-            let new_path = find_first_available_path(
-                &vault_id,
-                requested,
-                &state.database,
-                &mut transaction,
-            )
-            .await
-            .map_err(server_error)?;
+            let new_path =
+                find_first_available_path(&vault_id, requested, &state.database, &mut transaction)
+                    .await
+                    .map_err(server_error)?;
 
             if new_path != requested {
                 info!(

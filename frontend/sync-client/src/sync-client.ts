@@ -35,7 +35,9 @@ export class SyncClient {
     private unloadTelemetry?: () => void;
     private isDestroying = false;
     private readonly eventUnsubscribers: (() => void)[] = [];
-    private readonly settingsChangeLock = new Lock("SyncClient.onSettingsChange");
+    private readonly settingsChangeLock = new Lock(
+        "SyncClient.onSettingsChange"
+    );
 
     private constructor(
         public readonly logger: Logger,
@@ -57,7 +59,7 @@ export class SyncClient {
                 database: Partial<StoredSyncState>;
             }>
         >
-    ) { }
+    ) {}
 
     public get syncedDocumentCount(): number {
         return this.syncEventQueue.syncedDocumentCount;
@@ -148,7 +150,6 @@ export class SyncClient {
                 await persistence.save(state);
             }
         );
-
 
         const syncEventQueue = new SyncEventQueue(
             settings,
@@ -403,8 +404,6 @@ export class SyncClient {
         this.syncer.syncLocallyDeletedFile(relativePath);
     }
 
-
-
     public getDocumentSyncingStatus(
         relativePath: RelativePath
     ): DocumentSyncStatus {
@@ -434,30 +433,6 @@ export class SyncClient {
     public async waitUntilFinished(): Promise<void> {
         this.checkIfDestroyed("waitUntilFinished");
         await this.waitUntilFinishedInternal();
-    }
-
-    /**
-     * The actual drain — separated from `waitUntilFinished` so internal
-     * shutdown paths (`pause` / `destroy`) can wait for in-flight work
-     * without tripping the public `checkIfDestroyed` guard, which exists
-     * only to keep external callers from continuing to use a disposed
-     * client.
-     *
-     * Loops because a WebSocket message handler completing is what enqueues
-     * a `RemoteChange` into the syncer; if we awaited the syncer first and
-     * the WS handler second, a message arriving mid-wait would leave a fresh
-     * drain pending while `save()` ran. Each iteration waits for both, then
-     * re-checks; we exit only once both report idle in the same pass.
-     */
-    private async waitUntilFinishedInternal(): Promise<void> {
-        while (
-            this.webSocketManager.hasOutstandingWork ||
-            this.syncer.hasPendingWork
-        ) {
-            await this.webSocketManager.waitUntilFinished();
-            await this.syncer.waitUntilFinished();
-        }
-        await this.syncEventQueue.save();
     }
 
     /**
@@ -497,6 +472,30 @@ export class SyncClient {
 
             this.unloadTelemetry?.();
         }
+    }
+
+    /**
+     * The actual drain — separated from `waitUntilFinished` so internal
+     * shutdown paths (`pause` / `destroy`) can wait for in-flight work
+     * without tripping the public `checkIfDestroyed` guard, which exists
+     * only to keep external callers from continuing to use a disposed
+     * client.
+     *
+     * Loops because a WebSocket message handler completing is what enqueues
+     * a `RemoteChange` into the syncer; if we awaited the syncer first and
+     * the WS handler second, a message arriving mid-wait would leave a fresh
+     * drain pending while `save()` ran. Each iteration waits for both, then
+     * re-checks; we exit only once both report idle in the same pass.
+     */
+    private async waitUntilFinishedInternal(): Promise<void> {
+        while (
+            this.webSocketManager.hasOutstandingWork ||
+            this.syncer.hasPendingWork
+        ) {
+            await this.webSocketManager.waitUntilFinished();
+            await this.syncer.waitUntilFinished();
+        }
+        await this.syncEventQueue.save();
     }
 
     private async startSyncing(): Promise<void> {
@@ -563,7 +562,9 @@ export class SyncClient {
                 // reset() pauses, clears state, then starts iff isSyncEnabled
                 // — so any concurrent isSyncEnabled change is already applied.
                 await this.reset();
-            } else if (newSettings.isSyncEnabled !== oldSettings.isSyncEnabled) {
+            } else if (
+                newSettings.isSyncEnabled !== oldSettings.isSyncEnabled
+            ) {
                 if (newSettings.isSyncEnabled) {
                     await this.startSyncing();
                 } else {

@@ -2,7 +2,6 @@ import type { TestDefinition, TestResult, TestStep } from "./test-definition";
 import { DeterministicAgent } from "./deterministic-agent";
 import type { ServerControl } from "./server-control";
 import type { SyncSettings, Logger } from "sync-client";
-import { CONFLICT_PATH_REGEX } from "sync-client";
 import { assert } from "./utils/assert";
 import { AssertableState } from "./utils/assertable-state";
 import { sleep } from "./utils/sleep";
@@ -14,10 +13,6 @@ import {
     IS_SYNC_ENABLED_BY_DEFAULT
 } from "./consts";
 import { randomUUID } from "node:crypto";
-
-class ConflictFilesDetectedError extends Error {
-    public override readonly name = "ConflictFilesDetectedError";
-}
 
 export class TestRunner {
     private agents: DeterministicAgent[] = [];
@@ -236,9 +231,6 @@ export class TestRunner {
                 this.logger.info("Barrier complete: all clients converged");
                 return;
             } catch (error) {
-                if (error instanceof ConflictFilesDetectedError) {
-                    throw error;
-                }
                 lastError =
                     error instanceof Error ? error : new Error(String(error));
                 this.logger.info("Barrier: not yet converged, retrying...");
@@ -302,25 +294,6 @@ export class TestRunner {
                 fileMap.set(file, content);
             }
             clientFiles.push(fileMap);
-        }
-
-        const conflictsByClient = clientFiles.map((files) =>
-            Array.from(files.keys()).filter((path) =>
-                CONFLICT_PATH_REGEX.test(path)
-            )
-        );
-        if (conflictsByClient.some((conflicts) => conflicts.length > 0)) {
-            const summary = conflictsByClient
-                .map((conflicts, i) =>
-                    conflicts.length > 0
-                        ? `client ${i}: [${conflicts.join(", ")}]`
-                        : null
-                )
-                .filter((s): s is string => s !== null)
-                .join("; ");
-            throw new ConflictFilesDetectedError(
-                `Found local conflict file(s): ${summary}`
-            );
         }
 
         const referenceFiles = Array.from(clientFiles[0].keys());

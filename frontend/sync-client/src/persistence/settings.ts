@@ -25,7 +25,7 @@ export const DEFAULT_SETTINGS: SyncSettings = {
     webSocketRetryIntervalMs: 3500,
     diffCacheSizeMB: 4,
     enableTelemetry: false,
-    networkRetryIntervalMs: 1000,
+    networkRetryIntervalMs: 1000
 };
 
 export class Settings {

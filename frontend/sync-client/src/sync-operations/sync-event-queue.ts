@@ -1,7 +1,6 @@
 import type { Settings } from "../persistence/settings";
 import type { Logger } from "../tracing/logger";
 import { globsToRegexes } from "../utils/globs-to-regexes";
-import { CONFLICT_PATH_REGEX } from "./conflict-path";
 import { removeFromArray } from "../utils/remove-from-array";
 import { EventListeners } from "../utils/data-structures/event-listeners";
 import {
@@ -16,6 +15,8 @@ import {
 } from "./types";
 import { MinCovered } from "../utils/data-structures/min-covered";
 
+export const STORED_STATE_SCHEMA_VERSION = 2;
+
 export class SyncEventQueue {
     // Fires synchronously whenever the events array length changes (push, pop,
     // remove, bulk-clear). The Syncer mirrors this into its public count
@@ -27,13 +28,17 @@ export class SyncEventQueue {
 
     private readonly _lastSeenUpdateId: MinCovered;
 
-    // Latest state of the filesystem as we know it, excluding
-    // unconfirmed creates but including pending deletes.
-    //
-    // It's always indexed by the latest path on disk.
-    //
-    // It maps a subset of the remote state onto the local filesystem.
-    private readonly documents = new Map<RelativePath, DocumentRecord>();
+    // Primary index of every settled document, keyed by docId. The wire loop
+    // (records ↔ server) updates `remoteRelativePath` here as the server
+    // assigns/relocates a doc; the Reconciler (records ↔ disk) updates
+    // `localPath` here as it places files on disk.
+    private readonly byDocId = new Map<DocumentId, DocumentRecord>();
+
+    // Derived index from `localPath -> record`. Maintained alongside every
+    // mutation that touches `localPath` so callers (the watcher path through
+    // `enqueue`, the Reconciler) get O(1) lookups by disk location. Only
+    // contains records whose `localPath !== undefined`.
+    private readonly _byLocalPath = new Map<RelativePath, DocumentRecord>();
 
     // All outstanding operations in order of occurrence,
     // can include multiple generations of the same document,
@@ -50,12 +55,28 @@ export class SyncEventQueue {
     // because the user explicitly told us to ignore them.
     private userIgnorePatterns: RegExp[];
 
-    // Whether `CONFLICT_PATH_REGEX` is applied at enqueue time. Conflict files
-    // exist because the syncer set them aside; ignoring them at runtime
-    // prevents resync churn. During an offline scan we DO want to surface them
-    // so a stranded conflict file (e.g. one this client previously displaced
-    // and was unable to re-sync) gets picked up as a normal new file.
-    private ignoreConflictPaths = true;
+    // Hard-coded ignores that callers (e.g. the Syncer for `.vaultlink/**`
+    // swap-marker files) pin via `addInternalIgnorePattern`. Folded into
+    // `userIgnorePatterns` so the existing match path doesn't need to know
+    // about two arrays. Stored separately so a later `onSettingsChanged`
+    // event that re-derives `userIgnorePatterns` from settings doesn't
+    // forget the internal patterns.
+    private readonly internalIgnorePatterns: RegExp[] = [];
+
+    // DocIds whose HTTP DELETE has been acked by the server but whose
+    // WebSocket-receipt-driven `removeDocumentById` hasn't run yet (the
+    // record is still in `byDocId` because the wire loop keeps it around to
+    // recognise late remote updates as "file is missing"). The Reconciler
+    // and the remote-update wire-loop handlers consult this set to skip any
+    // work that would resurrect the doc — without it, a placement-pending
+    // record (`localPath === undefined` after the LocalDelete enqueue) would
+    // be re-fetched from the server and written back to disk, or a late
+    // RemoteChange for the same doc would stash the pre-delete bytes into
+    // `pendingPlacementContent` for the Reconciler to "place".
+    //
+    // Cleared as a side effect of `removeDocumentById`. Also cleared on
+    // `clearAllState` / schema-version-mismatch reset.
+    private readonly _pendingServerDeletes = new Set<DocumentId>();
 
     public constructor(
         private readonly settings: Settings,
@@ -69,17 +90,52 @@ export class SyncEventQueue {
         );
 
         this.settings.onSettingsChanged.add((newSettings) => {
-            this.userIgnorePatterns = globsToRegexes(
-                newSettings.ignorePatterns,
-                this.logger
-            );
+            this.userIgnorePatterns = [
+                ...globsToRegexes(newSettings.ignorePatterns, this.logger),
+                ...this.internalIgnorePatterns
+            ];
         });
 
         initialState ??= {};
 
+        const persistedSchemaVersion = initialState.schemaVersion;
+        if (persistedSchemaVersion !== STORED_STATE_SCHEMA_VERSION) {
+            this.logger.info(
+                `Persisted state schema version is ${persistedSchemaVersion ?? "unset"}, expected ${STORED_STATE_SCHEMA_VERSION}; discarding persisted documents and watermark so the offline scan re-derives state from disk`
+            );
+            initialState = {};
+            // Schedule a save so the new schema version sticks even if the user
+            // never makes a change. Don't await here (constructor is sync); the
+            // first real save in `save()` will pin it down anyway.
+            void this.saveData({
+                schemaVersion: STORED_STATE_SCHEMA_VERSION,
+                documents: [],
+                lastSeenUpdateId: 0
+            });
+        }
+
         if (initialState.documents !== undefined) {
             for (const record of initialState.documents) {
-                this.documents.set(record.path, record);
+                this.byDocId.set(record.documentId, record);
+                if (record.localPath !== undefined) {
+                    // Defensive: if two persisted records share the same
+                    // localPath (shouldn't happen given the invariant
+                    // enforced at every mutation point, but persisted
+                    // state from older buggy versions could violate it),
+                    // displace the prior holder so we don't end up with
+                    // a shadowed record on load.
+                    const displaced = this._byLocalPath.get(record.localPath);
+                    if (displaced !== undefined && displaced !== record) {
+                        displaced.localPath = undefined;
+                        this.logger.warn(
+                            `Persisted state had two records sharing localPath ` +
+                                `${record.localPath} (${displaced.documentId} and ` +
+                                `${record.documentId}); clearing the prior holder's ` +
+                                `localPath so the reconciler re-places it`
+                        );
+                    }
+                    this._byLocalPath.set(record.localPath, record);
+                }
             }
         }
         this._lastSeenUpdateId = new MinCovered(
@@ -87,7 +143,7 @@ export class SyncEventQueue {
         );
 
         this.logger.debug(
-            `Loaded ${this.documents.size} documents and lastSeenUpdateId=${this._lastSeenUpdateId.min} from storage`
+            `Loaded ${this.byDocId.size} documents and lastSeenUpdateId=${this._lastSeenUpdateId.min} from storage`
         );
     }
 
@@ -96,7 +152,17 @@ export class SyncEventQueue {
     }
 
     public get syncedDocumentCount(): number {
-        return this.documents.size;
+        return this.byDocId.size;
+    }
+
+    /**
+     * Read-only view of the `localPath -> record` index. Use for O(1) lookups
+     * by disk location; the index is maintained by every mutation that
+     * touches `localPath` (`upsertRecord`, `setLocalPath`, the rename branch
+     * of `enqueue`, `removeDocumentById`).
+     */
+    public get byLocalPath(): ReadonlyMap<RelativePath, DocumentRecord> {
+        return this._byLocalPath;
     }
 
     public get lastSeenUpdateId(): VaultUpdateId {
@@ -108,12 +174,17 @@ export class SyncEventQueue {
     }
 
     /**
-     * Toggle whether `CONFLICT_PATH_REGEX` filters incoming events. The
-     * offline scan flips this off so a stranded conflict file gets surfaced
-     * as a regular create; everywhere else conflict files stay ignored.
+     * Pin an additional ignore pattern that survives setting reloads. Used
+     * by the Syncer to hide internal scratch paths (e.g. `.vaultlink/**`
+     * swap markers written by the Reconciler) from the watcher-driven
+     * enqueue path. The pattern is compiled with the same `globsToRegexes`
+     * used for user-configurable ignores; matching uses the existing
+     * userIgnorePatterns array so there's only one match path.
      */
-    public setIgnoreConflictPaths(ignore: boolean): void {
-        this.ignoreConflictPaths = ignore;
+    public addInternalIgnorePattern(pattern: string): void {
+        const compiled = globsToRegexes([pattern], this.logger);
+        this.internalIgnorePatterns.push(...compiled);
+        this.userIgnorePatterns.push(...compiled);
     }
 
     public async enqueue(input: FileSyncEvent): Promise<void> {
@@ -135,32 +206,10 @@ export class SyncEventQueue {
             return;
         }
 
-        // Drop bare LocalCreate events for conflict paths. Those are
-        // produced by the watcher when the syncer's own write to a
-        // displacement path slips past the `ExpectedFsEvents` filter
-        // (e.g. a sync race where the watcher fires before
-        // `expectCreate` was registered). Re-uploading them as new docs
-        // would invent duplicates on the server. The legitimate way a
-        // conflict-path doc enters the queue is via the displacement
-        // rename's `LocalUpdate` (with `oldPath`) — that branch is
-        // allowed through below so the tracked document's path follows
-        // its file.
-        if (
-            this.ignoreConflictPaths &&
-            CONFLICT_PATH_REGEX.test(path) &&
-            input.type === SyncEventType.LocalCreate
-        ) {
-            this.logger.info(
-                `Ignoring local-create for ${path} as it is a conflict path`
-            );
-            return;
-        }
-
         if (input.type === SyncEventType.LocalCreate) {
             this.events.push({
                 type: SyncEventType.LocalCreate,
                 path,
-                originalPath: path,
                 resolvers: Promise.withResolvers()
             });
             this.notifyPendingUpdateCountChanged();
@@ -169,10 +218,10 @@ export class SyncEventQueue {
 
         const lookupPath =
             input.type === SyncEventType.LocalUpdate &&
-                input.oldPath !== undefined
+            input.oldPath !== undefined
                 ? input.oldPath
                 : path;
-        const record = this.documents.get(lookupPath);
+        const record = this._byLocalPath.get(lookupPath);
 
         // latest creation must take precedence as it's from the doc's latest generation
         const pendingDocumentId: Promise<DocumentId> | undefined =
@@ -180,18 +229,30 @@ export class SyncEventQueue {
 
         const documentId: DocumentId | undefined = record?.documentId;
 
-        if (pendingDocumentId === undefined && documentId === undefined) {
+        const effectiveDocumentId:
+            | Promise<DocumentId>
+            | DocumentId
+            | undefined = pendingDocumentId ?? documentId;
+        if (effectiveDocumentId === undefined) {
             // we can get here when deleting a local document after a remote update
             return;
         }
 
         if (input.type === SyncEventType.LocalDelete) {
+            // Push BEFORE awaiting `setLocalPath` (and its inner `save()`).
+            // See the comment below on the synchronicity contract with
+            // `ensureDraining()`.
             this.events.push({
                 type: SyncEventType.LocalDelete,
-                documentId: (pendingDocumentId ?? documentId)!,
+                documentId: effectiveDocumentId,
                 path: lookupPath
             });
             this.notifyPendingUpdateCountChanged();
+            if (record !== undefined) {
+                // The file is gone from disk; clear the doc's localPath so the
+                // Reconciler doesn't try to operate on a vacated slot.
+                await this.setLocalPath(record.documentId, undefined);
+            }
             return;
         }
 
@@ -211,45 +272,47 @@ export class SyncEventQueue {
                 // overwrote that file), that doc effectively no longer
                 // exists locally — its content was clobbered. Without
                 // explicitly recording the loss the doc would silently
-                // drop out of the documents map below and we'd skip
+                // drop out of the byLocalPath index below and we'd skip
                 // notifying the server, leaving a phantom on the remote
                 // that other agents still see. Enqueue a LocalDelete for
                 // it so the server learns about the deletion.
-                const displacedRecord = this.documents.get(path);
+                const displacedRecord = this._byLocalPath.get(path);
                 if (
                     displacedRecord !== undefined &&
-                    displacedRecord.documentId !== documentId
+                    displacedRecord.documentId !== record.documentId
                 ) {
                     this.events.push({
                         type: SyncEventType.LocalDelete,
                         documentId: displacedRecord.documentId,
-                        // The doc still lives at `path` on the server; the
-                        // OS rename only overwrote our local file. Snapshot
-                        // the path so `processDelete` can issue the server
-                        // DELETE even after `documents.set(path, record)`
-                        // below removes the entry from the map.
+                        // Snapshot the path; once we move `record` onto
+                        // `path` below the displaced doc will no longer
+                        // resolve via `byLocalPath`.
                         path
                     });
+                    // Drop the displaced doc's localPath: its file on
+                    // disk is gone (overwritten by the rename).
+                    // Mutate synchronously so the byLocalPath index is
+                    // correct before we move `record` onto the same
+                    // slot below; the persist runs in the trailing
+                    // `save()` so we don't await before pushing the
+                    // LocalUpdate (synchronicity contract).
+                    this.mutateLocalPathInPlace(displacedRecord, undefined);
+                    needsSave = true;
                 }
-                // Inlined relocation: same shape as `setDocument`'s
-                // relocation branch (mutate the record's path in place,
-                // delete-old, set-new, retarget queued LocalUpdates) but
-                // kept synchronous. Callers fire `enqueue` with `void`
-                // and immediately call `ensureDraining()`; if we awaited
-                // `setDocument()` here, the LocalUpdate push below would
-                // happen after the await and the drain that already
-                // started would see an empty queue, exit, and leave the
-                // event stranded. We mutate `record.path` rather than
-                // re-creating it so any reference held by an in-flight
-                // drain handler sees the new path on its next read.
-                record.path = path;
-                this.documents.delete(input.oldPath);
-                this.documents.set(path, record);
+                // Move record's localPath onto the new slot. We mutate
+                // the record in place rather than re-creating it so any
+                // held reference (drain handlers, queued events) sees
+                // the new path on its next read.
+                this.mutateLocalPathInPlace(record, path);
+                // Retarget any queued LocalUpdates for this doc onto
+                // the new path. The queue's invariant — and what
+                // `skipIfOversized` and the watcher dedup checks bake
+                // in — is that `event.path` always points at the doc's
+                // current disk location.
                 for (const e of this.events) {
-                    // It already has a docId, so there can't be a pending create event for it
                     if (
                         e.type === SyncEventType.LocalUpdate &&
-                        e.documentId === documentId
+                        e.documentId === record.documentId
                     ) {
                         e.path = path;
                     }
@@ -258,11 +321,14 @@ export class SyncEventQueue {
             }
         }
 
-        // Push BEFORE awaiting `save()`. See the comment above on the
-        // synchronicity contract with `ensureDraining()`.
+        // Push BEFORE awaiting `save()`. The synchronicity contract is:
+        // `Syncer.ensureDraining()` runs immediately after each `enqueue`,
+        // and the drain only sees what's in `events[]`. Pushing after an
+        // await would let the drain start, see an empty queue, exit, and
+        // leave the event stranded.
         this.events.push({
             type: SyncEventType.LocalUpdate,
-            documentId: (pendingDocumentId ?? documentId)!,
+            documentId: effectiveDocumentId,
             path,
             originalPath: path,
             isUserRename
@@ -281,7 +347,6 @@ export class SyncEventQueue {
         }
         return event;
     }
-
 
     /**
      * Return the next event without removing it. Drain uses this so the
@@ -308,7 +373,6 @@ export class SyncEventQueue {
         }
     }
 
-
     /**
      * Call once a create has been acknowledged by the server.
      *
@@ -316,7 +380,7 @@ export class SyncEventQueue {
      * this create was still in-flight carry the create's `resolvers.promise`
      * as their `documentId` (see the `pendingDocumentId` branch of
      * `enqueue`). We must rewrite those references to the resolved string
-     * id *before* calling `setDocument`, otherwise its event-rewrite loop
+     * id *before* calling `upsertRecord`, otherwise its event-rewrite loop
      * (which compares `e.documentId === record.documentId`) would silently
      * skip them — leaving their `event.path` pointing at the pre-rename
      * slot and causing the next drain step's `getFileSize(event.path)` to
@@ -333,7 +397,7 @@ export class SyncEventQueue {
             event.resolvers.promise,
             record.documentId
         );
-        await this.setDocument(event.path, record);
+        await this.upsertRecord(record);
         event.resolvers.resolve(record.documentId);
     }
 
@@ -360,76 +424,118 @@ export class SyncEventQueue {
     }
 
     /**
-     * Update the settled document map and persist the new document version.
+     * Insert or merge a document record by `documentId`. When a record with
+     * the same docId already exists it is mutated in place so any held
+     * references (drain handlers, queued events) keep seeing the up-to-date
+     * fields on their next read — this stays load-bearing for the Syncer's
+     * drain handlers, which await across HTTP roundtrips.
      *
-     * If the document is already tracked under a different path (e.g. after a
-     * rename) the old entry is removed so the map stays keyed by the latest
-     * disk path and `getDocumentByDocumentId` can't return a stale match.
-     *
-     * Whenever this relocates a tracked doc it also rewrites the `path`
-     * field of every queued `LocalUpdate` for the same doc. The invariant
-     * the queue relies on — and that `skipIfOversized` and the watcher
-     * dedup checks bake in — is that `event.path` always points at the
-     * doc's current disk location. Letting the map move out from under
-     * the events would leave readers like `getFileSize(event.path)`
-     * pointing at a vacated slot and silently swallowing the event.
+     * Maintains the `byLocalPath` index. If the `localPath` changes the
+     * relocation goes through `setLocalPath` (which also persists), so the
+     * caller doesn't need to call `save()` separately.
      */
-    public async setDocument(
-        path: RelativePath,
-        record: DocumentRecord
-    ): Promise<void> {
-        // If a record for the same docId is already tracked, mutate it in
-        // place instead of inserting a fresh object. Callers (drain
-        // handlers, queued events) hold long-lived references to the
-        // record and read `.path` from it on every access — replacing the
-        // reference would orphan those reads at the old object's path
-        // value. Keeping the same object identity also keeps the
-        // `documents.get(record.path) === record` invariant trivially
-        // true after a rename.
-        let target: DocumentRecord | undefined;
-        for (const [existingPath, existingRecord] of this.documents) {
-            if (existingRecord.documentId === record.documentId) {
-                target = existingRecord;
-                if (existingPath !== path) {
-                    this.documents.delete(existingPath);
-                }
+    public async upsertRecord(record: DocumentRecord): Promise<void> {
+        const existing = this.byDocId.get(record.documentId);
+        if (existing === undefined) {
+            const target: DocumentRecord = { ...record };
+            this.byDocId.set(record.documentId, target);
+            if (target.localPath !== undefined) {
+                // Route through `mutateLocalPathInPlace` so the
+                // localPath/byLocalPath invariant is upheld: if another
+                // record already holds this slot, displace it (clear
+                // its localPath) before installing `target`. Otherwise
+                // we'd leave the displaced record shadowed (its
+                // `localPath` still points at a slot that no longer
+                // belongs to it), which the Reconciler would then
+                // "rescue" by reading/renaming the file at that path
+                // — but that file belongs to `target` now, causing
+                // data loss.
+                target.localPath = undefined;
+                this.mutateLocalPathInPlace(target, record.localPath);
             }
-        }
-        if (target === undefined) {
-            target = { ...record, path };
         } else {
-            target.path = path;
-            target.intendedPath = record.intendedPath;
-            target.parentVersionId = record.parentVersionId;
-            target.remoteHash = record.remoteHash;
-            target.remoteRelativePath = record.remoteRelativePath;
-        }
-        this.documents.set(path, target);
-        for (const e of this.events) {
-            if (
-                e.type === SyncEventType.LocalUpdate &&
-                e.documentId === record.documentId
-            ) {
-                e.path = path;
+            existing.parentVersionId = record.parentVersionId;
+            existing.remoteHash = record.remoteHash;
+            existing.remoteRelativePath = record.remoteRelativePath;
+            if (existing.localPath !== record.localPath) {
+                // setLocalPath re-keys `byLocalPath` and persists.
+                return this.setLocalPath(record.documentId, record.localPath);
             }
         }
         return this.save();
     }
 
-    public async removeDocument(path: RelativePath): Promise<void> {
-        this.documents.delete(path);
+    /**
+     * Update the `localPath` of an already-tracked record (by docId) and
+     * re-key the `byLocalPath` index. Called by both the watcher path
+     * (through `enqueue`) and the Reconciler.
+     *
+     * Pass `undefined` to mark the doc as "no local file" — the Reconciler
+     * will place a file later (e.g. a remote create whose
+     * `remoteRelativePath` slot is occupied at receive time).
+     */
+    public async setLocalPath(
+        documentId: DocumentId,
+        newLocalPath: RelativePath | undefined
+    ): Promise<void> {
+        const record = this.byDocId.get(documentId);
+        if (record === undefined) {
+            return;
+        }
+        this.mutateLocalPathInPlace(record, newLocalPath);
         return this.save();
+    }
+
+    public async removeDocumentById(documentId: DocumentId): Promise<void> {
+        const record = this.byDocId.get(documentId);
+        if (record === undefined) {
+            // Still clear any deletion-pending mark and purge stale
+            // RemoteChange events so a never-tracked doc doesn't accumulate
+            // entries.
+            this._pendingServerDeletes.delete(documentId);
+            this.purgeRemoteChangesForDocumentId(documentId);
+            return;
+        }
+        if (
+            record.localPath !== undefined &&
+            this._byLocalPath.get(record.localPath) === record
+        ) {
+            this._byLocalPath.delete(record.localPath);
+        }
+        this.byDocId.delete(documentId);
+        this._pendingServerDeletes.delete(documentId);
+        // Drop any pending RemoteChange events for this doc. A common case:
+        // a catch-up RemoteChange for the doc was deferred indefinitely
+        // while the user's LocalDelete (and any LocalUpdate behind it) sat
+        // in the queue ahead of it. Once those drain and the doc is
+        // removed, a still-pending RemoteChange for an earlier version
+        // would be processed by `processRemoteCreateForNewDocument` (the
+        // doc is now untracked, and catch-up's `isNewFile=true` semantics
+        // qualify it as a fresh create), resurrecting the doc on disk
+        // with stale bytes that disagree with every other agent.
+        this.purgeRemoteChangesForDocumentId(documentId);
+        return this.save();
+    }
+
+    /**
+     * Mark a doc as "HTTP DELETE has been acked by the server but the
+     * WebSocket receipt that would call `removeDocumentById` hasn't arrived
+     * yet". The Reconciler and remote-update wire-loop handlers consult
+     * `hasPendingServerDelete` to skip any work that would resurrect the
+     * doc. Cleared automatically by `removeDocumentById`.
+     */
+    public markServerDeletePending(documentId: DocumentId): void {
+        this._pendingServerDeletes.add(documentId);
+    }
+
+    public hasPendingServerDelete(documentId: DocumentId): boolean {
+        return this._pendingServerDeletes.has(documentId);
     }
 
     public getDocumentByDocumentId(
         target: DocumentId
     ): DocumentRecord | undefined {
-        for (const record of this.documents.values()) {
-            if (record.documentId === target) {
-                return record;
-            }
-        }
-        return undefined;
+        return this.byDocId.get(target);
     }
 
     public getDocumentByDocumentIdOrFail(target: DocumentId): DocumentRecord {
@@ -440,26 +546,45 @@ export class SyncEventQueue {
         return result;
     }
 
+    public getRecordByLocalPath(
+        path: RelativePath
+    ): DocumentRecord | undefined {
+        return this._byLocalPath.get(path);
+    }
+
     public async save(): Promise<void> {
         return this.saveData({
-            documents: Array.from(this.documents.values()),
+            schemaVersion: STORED_STATE_SCHEMA_VERSION,
+            documents: Array.from(this.byDocId.values()),
             lastSeenUpdateId: this.lastSeenUpdateId
         });
     }
 
-    // todo: let's remove
-    public getSettledDocumentByPath(
-        path: RelativePath
-    ): DocumentRecord | undefined {
-        return this.documents.get(path);
+    public allSettledDocuments(): Map<RelativePath, DocumentRecord> {
+        const result = new Map<RelativePath, DocumentRecord>();
+        for (const record of this.byDocId.values()) {
+            if (record.localPath !== undefined) {
+                result.set(record.localPath, record);
+            }
+        }
+        return result;
     }
 
-    public allSettledDocuments(): Map<RelativePath, DocumentRecord> {
-        return new Map(this.documents.entries());
+    /**
+     * Every tracked record, regardless of whether it has been placed on
+     * disk yet. The Reconciler uses this to find records whose
+     * `localPath === undefined` (e.g. a remote create that landed when
+     * its target slot was occupied) and try to place them once the
+     * obstruction clears. `allSettledDocuments` filters those out, so
+     * relying on it would render placement-pending records invisible
+     * forever.
+     */
+    public allRecords(): Iterable<DocumentRecord> {
+        return this.byDocId.values();
     }
 
     public hasPendingEventsForPath(path: RelativePath): boolean {
-        const record = this.documents.get(path);
+        const record = this._byLocalPath.get(path);
         if (record === undefined) {
             return true; // if we don't know about this path, it must be pending creation
         }
@@ -474,7 +599,7 @@ export class SyncEventQueue {
                 (e.type === SyncEventType.RemoteChange &&
                     // we care about the local path not the remote
                     this.getDocumentByDocumentId(e.remoteVersion.documentId)
-                        ?.path === path)
+                        ?.localPath === path)
         );
     }
 
@@ -490,7 +615,9 @@ export class SyncEventQueue {
 
     public async clearAllState(): Promise<void> {
         this.clearPending();
-        this.documents.clear();
+        this.byDocId.clear();
+        this._byLocalPath.clear();
+        this._pendingServerDeletes.clear();
         this._lastSeenUpdateId.reset();
         await this.save();
     }
@@ -502,10 +629,6 @@ export class SyncEventQueue {
         if (hadEvents) {
             this.notifyPendingUpdateCountChanged();
         }
-    }
-
-    private notifyPendingUpdateCountChanged(): void {
-        this.onPendingUpdateCountChanged.trigger(this.events.length);
     }
 
     public findLatestCreateForPath(
@@ -525,7 +648,9 @@ export class SyncEventQueue {
         newPath: RelativePath
     ): void {
         const createEvent = this.findLatestCreateForPath(oldPath);
-        if (createEvent === undefined) { return; }
+        if (createEvent === undefined) {
+            return;
+        }
 
         const { promise } = createEvent.resolvers;
         createEvent.path = newPath;
@@ -540,6 +665,54 @@ export class SyncEventQueue {
         }
     }
 
+    /**
+     * Synchronous half of `setLocalPath`: mutate `record.localPath` and
+     * re-key `_byLocalPath` without persisting. Used by `enqueue`'s
+     * rename branch where the synchronicity contract requires we push
+     * the LocalUpdate event before awaiting the save.
+     *
+     * Enforces the invariant
+     * `record.localPath !== undefined ⇒ byLocalPath.get(record.localPath) === record`.
+     * If `newLocalPath` is currently held by a different record, that
+     * record is *displaced*: its `localPath` is cleared so it enters
+     * placement-pending state, and the Reconciler's next pass will
+     * re-place it via `tryInitialPlacement`. Without this displacement
+     * the prior holder would remain shadowed (its `localPath === P`
+     * but `byLocalPath[P]` points elsewhere) and the Reconciler could
+     * later try to "rescue" the shadowed record by reading/renaming
+     * the file at `P` — which belongs to the new owner now — causing
+     * data loss. This is the architectural fix for bug D
+     * (`Files from agent-1 missing in agent-0` after a same-path
+     * create cycle).
+     */
+    private mutateLocalPathInPlace(
+        record: DocumentRecord,
+        newLocalPath: RelativePath | undefined
+    ): void {
+        if (
+            record.localPath !== undefined &&
+            this._byLocalPath.get(record.localPath) === record
+        ) {
+            this._byLocalPath.delete(record.localPath);
+        }
+        record.localPath = newLocalPath;
+        if (newLocalPath !== undefined) {
+            const displaced = this._byLocalPath.get(newLocalPath);
+            if (displaced !== undefined && displaced !== record) {
+                // Invariant: `byLocalPath[displaced.localPath] === displaced`.
+                // We're about to overwrite that slot, so clear the
+                // displaced record's localPath; the reconciler will
+                // re-place it via tryInitialPlacement on the next pass.
+                displaced.localPath = undefined;
+            }
+            this._byLocalPath.set(newLocalPath, record);
+        }
+    }
+
+    private notifyPendingUpdateCountChanged(): void {
+        this.onPendingUpdateCountChanged.trigger(this.events.length);
+    }
+
     private rejectAllPendingCreates(): void {
         for (const event of this.events) {
             if (event.type === SyncEventType.LocalCreate) {
@@ -548,6 +721,25 @@ export class SyncEventQueue {
                 });
                 event.resolvers.reject(new Error("Create was cancelled"));
             }
+        }
+    }
+
+    private purgeRemoteChangesForDocumentId(documentId: DocumentId): void {
+        const toRemove = this.events.filter(
+            (e) =>
+                e.type === SyncEventType.RemoteChange &&
+                e.remoteVersion.documentId === documentId
+        );
+        for (const event of toRemove) {
+            if (event.type === SyncEventType.RemoteChange) {
+                // Advance the watermark for the dropped event so the gap
+                // doesn't leave the catch-up replay this id forever.
+                this._lastSeenUpdateId.add(event.remoteVersion.vaultUpdateId);
+            }
+            removeFromArray(this.events, event);
+        }
+        if (toRemove.length > 0) {
+            this.notifyPendingUpdateCountChanged();
         }
     }
 }

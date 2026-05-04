@@ -71,7 +71,9 @@ export class SyncService {
         response: Response,
         operation: string
     ): Promise<void> {
-        if (response.ok) { return; }
+        if (response.ok) {
+            return;
+        }
         const message = `Failed to ${operation}: ${await SyncService.errorFromResponse(response)}`;
         // 429 is the only 4xx the server uses for *transient* contention
         // (`WriteBusyError` → HTTP 429). Every other 4xx means the request
@@ -183,7 +185,8 @@ export class SyncService {
                 (await response.json()) as DocumentUpdateResponse; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
 
             this.logger.debug(
-                `Updated document ${JSON.stringify(result)} with id ${result.documentId
+                `Updated document ${JSON.stringify(result)} with id ${
+                    result.documentId
                 }}`
             );
 
@@ -231,7 +234,8 @@ export class SyncService {
                 (await response.json()) as DocumentUpdateResponse; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
 
             this.logger.debug(
-                `Updated document ${JSON.stringify(result)} with id ${result.documentId
+                `Updated document ${JSON.stringify(result)} with id ${
+                    result.documentId
                 }}`
             );
 
@@ -240,14 +244,12 @@ export class SyncService {
     }
 
     public async delete({
-        documentId,
+        documentId
     }: {
         documentId: DocumentId;
     }): Promise<DocumentVersionWithoutContent> {
         return this.retryForever(async () => {
-            this.logger.debug(
-                `Delete document with id ${documentId}`
-            );
+            this.logger.debug(`Delete document with id ${documentId}`);
 
             // The server identifies the document by its URL path; no body
             // is needed. Sending one was a leftover of an earlier shape.
@@ -264,9 +266,7 @@ export class SyncService {
             const result: DocumentVersionWithoutContent =
                 (await response.json()) as DocumentVersionWithoutContent; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
 
-            this.logger.debug(
-                `Deleted document with id ${documentId}`
-            );
+            this.logger.debug(`Deleted document with id ${documentId}`);
 
             return result;
         });
@@ -338,7 +338,7 @@ export class SyncService {
         return this.retryForever(async () => {
             this.logger.debug(
                 "Getting all documents" +
-                (since != null ? ` since ${since}` : "")
+                    (since != null ? ` since ${since}` : "")
             );
 
             const url = new URL(this.getUrl("/documents"));

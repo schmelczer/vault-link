@@ -65,7 +65,6 @@ export enum SyncStatus {
     SKIPPED = "SKIPPED"
 }
 
-
 export interface HistoryStats {
     success: number;
     error: number;
@@ -83,7 +82,7 @@ export class SyncHistory {
         error: 0
     };
 
-    public constructor(private readonly logger: Logger) { }
+    public constructor(private readonly logger: Logger) {}
 
     public get entries(): readonly HistoryEntry[] {
         return this._entries;
@@ -136,8 +135,8 @@ export class SyncHistory {
             candidate !== undefined &&
             (this._entries[0] === candidate ||
                 candidate.timestamp.getTime() +
-                TIMEOUT_FOR_MERGING_HISTORY_ENTRIES_IN_SECONDS * 1000 >
-                entry.timestamp.getTime())
+                    TIMEOUT_FOR_MERGING_HISTORY_ENTRIES_IN_SECONDS * 1000 >
+                    entry.timestamp.getTime())
         ) {
             return candidate;
         }

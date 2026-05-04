@@ -90,150 +90,61 @@ New migrations: `sqlx migrate add --source src/app_state/database/migrations <na
 
 Read `frontend/sync-client/src/sync-operations/` to follow the sync engine; the rest of `sync-client` is plumbing (filesystem ops, persistence, services, telemetry).
 
-**`SyncEventQueue`** (`sync-event-queue.ts`) holds two things:
+The engine is **two independent loops with separate invariants**:
 
-- `documents: Map<RelativePath, DocumentRecord>` — the local "settled" view of tracked docs.
-- `events: SyncEvent[]` — pending operations (creates, updates, deletes, remote changes) in FIFO drain order.
+- **Wire loop** (`syncer.ts`) — drains the single-consumer FIFO queue. HTTP and WS handlers update record fields (`remoteRelativePath`, `parentVersionId`, `remoteHash`) and write content to the file at `record.localPath`. They never move files for path placement.
+- **Path reconciler** (`reconciler.ts`) — runs after every drained event. Best-effort pass that moves files to make `localPath === remoteRelativePath`. The move graph is topologically sorted; cycles are resolved by reading every file in the cycle into memory and writing each back to its new slot (no tmp files). Records with pending local events are skipped on each pass — the reconciler operates only on settled records. Failures (slot occupied by an untracked file, etc.) are silent skips; the next pass retries.
 
-The map is keyed by `record.path`; the invariant `documents.get(record.path) === record` is maintained by every mutation point (constructor, `setDocument`, the rename branch in `enqueue`). `setDocument` mutates the same record object in place when relocating, so callers holding a reference to the record see path changes on the next read — this is load-bearing for `Syncer`'s drain handlers, which await across HTTP roundtrips and would otherwise see a captured-string-stale path. Always read `record.path` live; only snapshot it into a local for the explicit "did the path change during my await" comparison (`pathBeforeRoundtrip` in `handleMaybeMergingResponse` / `processRemoteUpdate`).
+**`SyncEventQueue`** (`sync-event-queue.ts`) holds:
 
-**`Syncer`** (`syncer.ts`) drains events one at a time. Local creates/updates/deletes round-trip to the server over HTTP; remote changes arrive over the WebSocket and are enqueued as `RemoteChange` events that the same drain processes. `handleMaybeMergingResponse` is the shared response handler for create-and-update flows.
+- `byDocId: Map<DocumentId, DocumentRecord>` — primary record store.
+- `byLocalPath: Map<RelativePath, DocumentRecord>` — derived index for path lookups, maintained at every mutation point.
+- `events: SyncEvent[]` — pending wire ops in FIFO drain order.
 
-**Conflict-uuid paths.** When a remote create or remote-rename can't claim its server-side path locally (the slot is occupied), the local file lands at `conflict-<uuid>-<original>` and `record.intendedPath` records the path the server has it at. All server-bound requests honor `intendedPath`/`event.originalPath`, so the conflict-uuid path never leaks to the server. There is no automatic unwinding — convergence at conflict points is left to manual user resolution.
+```ts
+DocumentRecord = {
+    documentId,
+    parentVersionId,
+    remoteHash?,
+    remoteRelativePath,
+    localPath: RelativePath | undefined
+}
+```
+
+`localPath === undefined` means the doc has no local file yet — typically a remote create whose target slot was occupied at receive time; the reconciler will fetch and place when the slot frees (the bytes wait in `pendingPlacementContent`).
+
+Local FS events from the watcher update `localPath` synchronously at enqueue time via `setLocalPath` / `upsertRecord`. The wire loop never updates it for path placement; only the reconciler does. A user rename onto a tracked slot enqueues a `LocalDelete` for the displaced doc (the OS rename clobbered its content) and clears that doc's `localPath`.
+
+**Pending creates** use a `Promise<DocumentId>` chain to serialize dependent ops (`LocalUpdate`, `LocalDelete`) behind the still-in-flight `LocalCreate`. `resolveCreate` resolves the promise once the server returns a docId, and `replacePendingDocumentId` swaps the resolved id across already-queued events. `findLatestCreateForPath` is the lookup the watcher uses to attach dependents; `updatePendingCreatePath` rewrites a pending create's `event.path` in place when the user renames the file before its create has acked.
 
 **Watermark.** `lastSeenUpdateId` uses a `MinCovered` (a contiguous-prefix tracker over a stream of integers): we only advance the published min when the next consecutive id has been processed, so out-of-order RemoteChange ids don't fool the WebSocket handshake into requesting a too-recent catch-up.
 
-**Server catch-up.** The server's WS handshake replays events newer than the client's `last_seen_vault_update_id` from the `latest_document_versions` view (one row per doc, the latest). On those replayed rows `is_new_file` means *new to this client* (`creation_vault_update_id > last_seen_vault_update_id`), not "this row is the doc's first version" — necessary because the catch-up only carries the latest version; if a doc was created and updated past the watermark, the client never sees its create otherwise.
+**Server catch-up.** The server's WS handshake replays events newer than the client's `last_seen_vault_update_id` from the `latest_document_versions` view (one row per doc, the latest). On those replayed rows `is_new_file` means _new to this client_ (`creation_vault_update_id > last_seen_vault_update_id`), not "this row is the doc's first version" — necessary because the catch-up only carries the latest version; if a doc was created and updated past the watermark, the client never sees its create otherwise.
 
 ## Edge-case patterns the sync engine has to survive
 
-These are non-obvious from reading any single file; they fall out of the
-interaction between the queue, the watcher, the WebSocket, and the
-server's commit ordering. Treat the engine as a black box and what
-follows is the kinds of bugs you should expect to see:
+The two-loop split defuses most of the old race catalogue (slot-collision stashes, conflict-uuid divergence, `MoveOnConflict.NEW`/`EXISTING` policy choices) by separating wire transport from path placement. What's left:
 
-**FIFO drain order ≠ user's perceived order.** The queue is single-consumer
-and FIFO at processing time, but the producers are concurrent and async
-indirected: user FS actions go through watcher → microtask → enqueue
-(several microtasks deep), while WS messages go through the onmessage
-handler. A WS-driven event can land in the queue *between* two user
-actions even when the user "did them in order". When you read a log,
-"Decided to ..." timestamps mark the user's intent; they do **not** map
-to the order of `events.push`.
+**Pending-create docId is a `Promise`, not a string, until the create acks.** Any `LocalUpdate` / `LocalDelete` queued behind a still-in-flight `LocalCreate` carries the create's `resolvers.promise` as its `documentId`. `replacePendingDocumentId` swaps the resolved id across queued events when the create resolves; `===` comparisons against the resolved string elsewhere will silently fail until that swap runs. Anything that walks `events[]` looking for a docId match must either run after the swap or be tolerant of `Promise`-typed ids.
 
-**`event.path` is a side channel through disk.** Drain serialises which
-event runs, but it can't lock disk between events. Between an event's
-enqueue and its drain, another in-band event can have rewritten the
-file at that path (a remote-create that landed on the slot, a delete +
-re-create cycle by the user). Reading at drain time gets *current* disk
-content — which may be a different doc's bytes — and uploading them as
-the queued event's content is a duplicate-create / wrong-content bug.
+**`processCreate` reads `event.path` live, not `event.originalPath`.** The watcher rewrites `event.path` in place via `updatePendingCreatePath` when the user renames a pending-create file. `originalPath` was removed from `LocalCreate` events specifically because reading it would send the stale pre-rename path to the server.
 
-**Pending-create docId is a `Promise`, not a string, until the create
-acks.** Any event queued behind a still-in-flight LocalCreate that
-references the same doc carries the create's `resolvers.promise` as its
-`documentId`. Two consequences: (a) `===` comparisons against the
-resolved string in any rewrite loop silently fail; (b) the order of
-"swap Promise→docId" vs "rewrite paths in events" matters — swap first
-or the rewrite walks past the events you wanted to retarget. This is
-load-bearing in any code that touches the queue right after a create
-resolves.
+**`record.localPath` mutates in place across awaits.** When the watcher renames a doc while a drain handler is awaiting an HTTP roundtrip, the queue mutates the in-flight event's record so subsequent reads see the new path. Snapshotting `record.localPath` into a local at function entry and using it after an `await` reads/writes a now-vacated slot. Read `record.localPath` live; only snapshot for the deliberate "did it change while I was awaiting" comparison.
 
-**`record.path` is mutated in place across awaits.** When a user rename
-runs while a drain handler is awaiting an HTTP roundtrip, the queue
-mutates the in-flight event's record so subsequent reads see the new
-path. Snapshotting `record.path` into a local at function entry and
-using it after an `await` writes/reads from a now-vacated slot.
-Snapshot only for the *deliberate* "did the path change while I was
-awaiting" comparison; everywhere else, read `record.path` live.
+**Reconciler-defer is the wire-loop's contract with the reconciler.** The reconciler skips records where `hasPendingLocalEventsForDocumentId` returns true. Wire-loop handlers can therefore freely write `remoteRelativePath` to whatever the server returned — even if it disagrees with `localPath` — knowing the reconciler won't move the file out from under a queued user rename.
 
-**Conflict-uuid stashes are local-only divergence.** Whenever a slot
-collision deflects a doc to `conflict-<uuid>-…`, only the agent that
-deflected has that file. The cross-agent fuzz assertion ("every path
-matches across clients") will fire on it. By design these are awaiting
-manual user resolution — but if your fix silently creates one in a
-race that *would* converge given more time, the e2e fuzz will show it.
+**Watermark advancement is load-bearing both ways.** Branches that _skip_ a remote event without advancing `lastSeenUpdateId` create permanent gaps that re-deliver forever. Branches that _advance_ without applying the content lose data: the server has no further event to re-deliver, the catch-up only carries the latest version, and any state in between is gone. Don't advance unless the event was actually applied (or deliberately discarded after weighing both halves).
 
-**`MoveOnConflict.NEW` vs `EXISTING` is a policy choice, not a default.**
-NEW preserves the occupant and stashes us at conflict-uuid; EXISTING
-evicts the occupant and stashes *them*. Picking wrong creates either an
-orphaned stash on us or an orphaned tracking entry on the occupant.
-The right choice depends on whether the occupant is tracked, whether
-they have a pending RemoteChange that will move them, and which side
-the server has already committed to.
+**`isNewFile` semantics differ between catch-up and real-time.** On WS handshake replay it means _new to this client_ (`creation_vault_update_id > last_seen_vault_update_id`); on real-time broadcasts it means _this version is the create_ (`creation_vault_update_id == vault_update_id`). A handler that decides based on one interpretation will be wrong on the other channel; reasoning about fetch-and-treat-as-new vs. ignore needs to know which channel delivered the event.
 
-**Pause / disable-sync mid-flight is a destabiliser.** A request whose
-HTTP committed server-side but whose response was discarded by an abort
-leaves the server holding a doc the client has no record of. The next
-re-enable's offline scan re-derives state from disk vs. the (now
-incomplete) `documents` map and emits a fresh LocalCreate — a duplicate
-of a doc already on the server, with a new docId. The catch-up then
-delivers the orphan as a "new" doc and writes it to disk. Final state:
-two files, two docIds, same content. Anything that aborts in-flight
-HTTPs (start-reset, vault change, destroy) needs the queue's documents
-map to be wiped or rebuilt from the server, not just the events array.
+**Pause / disable-sync mid-flight** is the one race the new model doesn't structurally fix. An HTTP that committed server-side but whose response was discarded leaves the server holding a doc the client has no record of. Resume → offline scan → server-side dedupe handles it (the server merges the duplicate create into the existing doc), but if the merge produces a deconflict, the client picks up an extra file. Out of scope for the two-loop split.
 
-**`scheduleSyncForOfflineChanges` clears `events[]` but not `documents`.**
-Every enable-sync wipes pending local events. The offline scan
-re-derives them by comparing disk to the documents map (matching by
-content hash to recognise renames). This is correct *if* the documents
-map reflects the last server state we committed to. If it lags (an
-in-flight create whose response we lost; a remote update we haven't
-applied yet), the scan misclassifies — a real rename becomes a delete
-+ create with a new docId; a still-tracked doc whose file we deleted
-becomes a delete the server hasn't seen.
-
-**Watermark advancement is load-bearing both ways.** Branches that *skip*
-a remote event without advancing `lastSeenUpdateId` create permanent
-gaps that re-deliver forever. Branches that *advance* the watermark
-without applying the content lose data — the server has no further
-event to re-deliver, the catch-up only carries the latest version, and
-any state in between is gone. When in doubt: don't advance unless the
-event was actually applied (or deliberately discarded after weighing
-both halves).
-
-**`isNewFile` semantics differ between catch-up and real-time.** On WS
-handshake replay it means *new to this client* (`creation_vault_update_id
-> last_seen_vault_update_id`); on real-time broadcasts it means *this
-version is the create* (`creation_vault_update_id == vault_update_id`).
-A handler that receives "untracked doc + isNewFile=false" and decides
-based on one of the two interpretations will be wrong on the other
-channel. Reasoning about whether to fetch-and-treat-as-new vs. ignore
-needs to know which channel delivered the event.
-
-**Race-shape catalogue.** Bugs in this codebase tend to fall into a
-small set of shapes; recognising the shape from the log gets you most
-of the way to the cause:
-
-- *Same-path dedup race*: two clients create at the same path. Server
-  deconflicts the second to `path (1)`. The losing client must
-  relocate locally; mishandling routes the local file to a stash.
-- *Concurrent rename of same doc*: both clients rename. Server
-  applies in commit order; the loser's local-rename HTTP must rebase
-  against the server's new path or be dropped.
-- *Local rename + remote rename of same doc*: the local rename's HTTP
-  needs to find the doc at the (now-different) server path; the
-  matching disk file needs to follow without stranding.
-- *Pending create + remote create at same path*: the agent's pending
-  file is already at the slot the remote wants; the remote's pending
-  bytes will reach the slot the agent is trying to upload from.
-- *Create + delete + remote create at same path*: the user's local
-  cycle queues two events; a remote create lands in between. The
-  queued LocalCreate (or a re-emitted offline-scan one) reads disk
-  content placed by the remote and uploads it as a third doc.
-- *Pause-mid-flight*: in-flight HTTP committed server-side, response
-  abandoned client-side. After re-enable the offline scan can't tell
-  the doc was already created and creates a duplicate.
-
-When triaging a fuzz failure, find the divergent file in `e2e-run.log`'s
-final dump (it shows each agent's tracked docs), grep the `log_<i>.log`
-for that path/docId, and match the lifecycle against this catalogue
-before going deeper.
+**Cycle reconciliation uses in-memory content swap.** When the move graph contains a cycle, the reconciler reads every file in the cycle into memory and writes each back to its new slot, with no tmp files. A write-ahead marker at `.vaultlink/swap-<uuid>.json` lists each leg; on startup the reconciler reads the marker, hashes each `from` to determine which legs ran, and replays the rest. The `.vaultlink/**` glob is hard-coded as an internal ignore pattern so swap markers don't get sync'd.
 
 ## Two complementary E2E harnesses
 
 - **`test-client` (fuzz):** random ops across N parallel processes for many minutes. Used by `scripts/e2e.sh`. Catches bugs nobody thought to write a test for, but reproductions are noisy.
-- **`deterministic-tests`:** scripted scenarios with an in-memory FS pinned to a real server. Used to *capture* a fuzz-discovered bug as a minimal repro before fixing it. See `frontend/deterministic-tests/README.md` for the step grammar (`pause-server`, `pause-websocket`, `barrier`, `assert-consistent`, etc.).
+- **`deterministic-tests`:** scripted scenarios with an in-memory FS pinned to a real server. Used to _capture_ a fuzz-discovered bug as a minimal repro before fixing it. See `frontend/deterministic-tests/README.md` for the step grammar (`pause-server`, `pause-websocket`, `barrier`, `assert-consistent`, etc.).
 
 When a fuzz failure surfaces, the workflow is: root-cause from logs → write a deterministic test that fails on the bug → fix → confirm both the deterministic test and `e2e.sh` pass.
 

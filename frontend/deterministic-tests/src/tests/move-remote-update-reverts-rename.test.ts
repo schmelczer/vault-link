@@ -28,7 +28,10 @@ export const moveRemoteUpdateRevertsRenameTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertFileCount(1).assertContent("renamed.md", "updated by client 1");
+                s.assertFileCount(1).assertContent(
+                    "renamed.md",
+                    "updated by client 1"
+                );
             }
         }
     ]

@@ -24,6 +24,10 @@ export async function scheduleOfflineChanges(
 ): Promise<void> {
     const allLocalFiles = new Set(await operations.listFilesRecursively());
     logger.info(`Scheduling sync for ${allLocalFiles.size} local files`);
+    // `allSettledDocuments()` skips records with `localPath === undefined`
+    // — those have no local file by definition and don't participate in
+    // the disk-vs-record diff. The reconciler will place them on its
+    // next pass.
     const allDocuments = queue.allSettledDocuments();
 
     // A doc is "possibly deleted" only if it has no local file. Including
@@ -31,7 +35,14 @@ export async function scheduleOfflineChanges(
     // the update below.
     const locallyPossiblyDeletedFiles: DocumentRecord[] = [];
     for (const record of allDocuments.values()) {
-        if (!allLocalFiles.has(record.path)) {
+        // `localPath` is guaranteed non-undefined for entries in
+        // `allSettledDocuments()`, but narrow explicitly for the type
+        // checker (and so a future change to that helper doesn't
+        // silently break this loop).
+        if (
+            record.localPath !== undefined &&
+            !allLocalFiles.has(record.localPath)
+        ) {
             locallyPossiblyDeletedFiles.push(record);
         }
     }
@@ -57,11 +68,17 @@ export async function scheduleOfflineChanges(
             locallyPossiblyDeletedFiles
         );
         if (matchingDeletedFile !== undefined) {
+            // localPath is guaranteed defined for records in
+            // locallyPossiblyDeletedFiles (we filtered above).
+            const oldPath = matchingDeletedFile.localPath;
+            if (oldPath === undefined) {
+                continue;
+            }
             logger.debug(
-                `File ${path} might have been moved from ${matchingDeletedFile.path} while offline, scheduling sync to move it`
+                `File ${path} might have been moved from ${oldPath} while offline, scheduling sync to move it`
             );
             enqueueUpdate({
-                oldPath: matchingDeletedFile.path,
+                oldPath,
                 relativePath: path
             });
             removeFromArray(locallyPossiblyDeletedFiles, matchingDeletedFile);
@@ -70,7 +87,9 @@ export async function scheduleOfflineChanges(
     }
 
     for (const path of locallyPossibleCreatedFiles) {
-        if (renamedPaths.has(path)) {continue;}
+        if (renamedPaths.has(path)) {
+            continue;
+        }
 
         logger.info(
             `File ${path} was created while offline, scheduling sync to create it`
@@ -80,10 +99,13 @@ export async function scheduleOfflineChanges(
     }
 
     for (const item of locallyPossiblyDeletedFiles) {
+        if (item.localPath === undefined) {
+            continue;
+        }
         logger.info(
-            `File ${item.path} was deleted while offline, scheduling sync to delete it`
+            `File ${item.localPath} was deleted while offline, scheduling sync to delete it`
         );
-        enqueueDelete(item.path);
+        enqueueDelete(item.localPath);
     }
 
     for (const path of syncedLocalFiles) {
