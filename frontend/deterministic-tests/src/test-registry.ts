@@ -98,6 +98,13 @@ import { renameChainDuringPendingCreateTest } from "./tests/rename-chain-during-
 import { remoteRenameCollidesWithPendingLocalCreateTest } from "./tests/remote-rename-collides-with-pending-local-create.test";
 import { remoteUpdateSurvivesUserRenameTest } from "./tests/remote-update-survives-user-rename.test";
 import { sameDocIdCollapseOnLocalCreateAfterRemoteCreateTest } from "./tests/same-doc-id-collapse-on-local-create-after-remote-create.test";
+import { sameDocIdCollapseAfterRemoteQuickWriteAndPendingRenameTest } from "./tests/same-doc-id-collapse-after-remote-quick-write-and-pending-rename.test";
+import { renameOverwritesPendingCreateThenDeleteTest } from "./tests/rename-overwrites-pending-create-then-delete.test";
+import { deleteRecreatedPendingCreateWithStaleDeletingRecordTest } from "./tests/delete-recreated-pending-create-with-stale-deleting-record.test";
+import { queuedCreateDeleteDoesNotHijackReusedPathTest } from "./tests/queued-create-delete-does-not-hijack-reused-path.test";
+import { renamedPendingCreateReusedPathThenDeleteTest } from "./tests/renamed-pending-create-reused-path-then-delete.test";
+import { renamePendingCreateOntoPendingDeletePathTest } from "./tests/rename-pending-create-onto-pending-delete-path.test";
+import { remoteQuickWriteRenameBeforeRecordTest } from "./tests/remote-quick-write-rename-before-record.test";
 
 export const TESTS: Partial<Record<string, TestDefinition>> = {
     "rename-create-conflict": renameCreateConflictTest,
@@ -221,5 +228,19 @@ export const TESTS: Partial<Record<string, TestDefinition>> = {
         remoteRenameCollidesWithPendingLocalCreateTest,
     "remote-update-survives-user-rename": remoteUpdateSurvivesUserRenameTest,
     "same-doc-id-collapse-on-local-create-after-remote-create":
-        sameDocIdCollapseOnLocalCreateAfterRemoteCreateTest
+        sameDocIdCollapseOnLocalCreateAfterRemoteCreateTest,
+    "renamed-pending-create-reused-path-then-delete":
+        renamedPendingCreateReusedPathThenDeleteTest,
+    "rename-pending-create-onto-pending-delete-path":
+        renamePendingCreateOntoPendingDeletePathTest,
+    "rename-overwrites-pending-create-then-delete":
+        renameOverwritesPendingCreateThenDeleteTest,
+    "same-doc-id-collapse-after-remote-quick-write-and-pending-rename":
+        sameDocIdCollapseAfterRemoteQuickWriteAndPendingRenameTest,
+    "delete-recreated-pending-create-with-stale-deleting-record":
+        deleteRecreatedPendingCreateWithStaleDeletingRecordTest,
+    "queued-create-delete-does-not-hijack-reused-path":
+        queuedCreateDeleteDoesNotHijackReusedPathTest,
+    "remote-quick-write-rename-before-record":
+        remoteQuickWriteRenameBeforeRecordTest
 };

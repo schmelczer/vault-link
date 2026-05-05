@@ -53,6 +53,7 @@ export type SyncEvent =
     | {
           type: SyncEventType.LocalCreate;
           path: RelativePath; // current path on disk; mutated in place by `updatePendingCreatePath` when the user renames mid-flight
+          isProcessing: boolean; // true once the wire loop has started this create; deletes after that must wait for the server ack
           resolvers: PromiseWithResolvers<DocumentId>;
       }
     | {

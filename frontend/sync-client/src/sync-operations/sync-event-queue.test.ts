@@ -248,6 +248,38 @@ describe("SyncEventQueue", () => {
         assert.strictEqual(second.isUserRename, true);
     });
 
+    it("settled record owns a path over a stale pending create", async () => {
+        const queue = createQueue();
+        await queue.upsertRecord(fakeRecord("A", { localPath: "b.md" }));
+
+        await queue.enqueue({ type: SyncEventType.LocalCreate, path: "b.md" });
+        await queue.enqueue({
+            type: SyncEventType.LocalUpdate,
+            path: "c.md",
+            oldPath: "b.md"
+        });
+
+        const aRecord = queue.getDocumentByDocumentId("A");
+        assert.strictEqual(aRecord?.localPath, "c.md");
+        assert.strictEqual(
+            queue.getRecordByLocalPath("b.md" as RelativePath),
+            undefined
+        );
+        assert.strictEqual(
+            queue.getRecordByLocalPath("c.md" as RelativePath)?.documentId,
+            "A"
+        );
+
+        const create = await queue.next();
+        assert.strictEqual(create?.type, SyncEventType.LocalCreate);
+        assert.strictEqual(create.path, "b.md");
+
+        const update = await queue.next();
+        assert.strictEqual(update?.type, SyncEventType.LocalUpdate);
+        assert.strictEqual(update.documentId, "A");
+        assert.strictEqual(update.path, "c.md");
+    });
+
     it("byLocalPath stays consistent across upsertRecord, setLocalPath, and rename", async () => {
         const queue = createQueue();
 
@@ -500,6 +532,160 @@ describe("SyncEventQueue", () => {
 
         // Promise was resolved
         assert.strictEqual(await createPromise, "DOC-1");
+    });
+
+    it("delete collapses a pending create that has not started processing", async () => {
+        const queue = createQueue();
+
+        await queue.enqueue({ type: SyncEventType.LocalCreate, path: "a.md" });
+        const create = queue.peekFront();
+        assert.ok(create?.type === SyncEventType.LocalCreate);
+
+        await queue.enqueue({ type: SyncEventType.LocalDelete, path: "a.md" });
+
+        assert.strictEqual(queue.pendingUpdateCount, 0);
+        assert.strictEqual(await queue.next(), undefined);
+        await assert.rejects(create.resolvers.promise, /cancelled/);
+    });
+
+    it("resolveCreate does not claim a localPath after an in-flight pending create was deleted", async () => {
+        const queue = createQueue();
+
+        await queue.enqueue({ type: SyncEventType.LocalCreate, path: "a.md" });
+        const create = queue.peekFront();
+        assert.ok(create?.type === SyncEventType.LocalCreate);
+        create.isProcessing = true;
+
+        await queue.enqueue({ type: SyncEventType.LocalDelete, path: "a.md" });
+
+        await queue.resolveCreate(
+            create,
+            fakeRecord("DOC-1", {
+                localPath: "a.md" as RelativePath,
+                remoteRelativePath: "a.md" as RelativePath
+            })
+        );
+
+        assert.strictEqual(
+            queue.getDocumentByDocumentId("DOC-1")?.localPath,
+            undefined
+        );
+        assert.strictEqual(
+            queue.getRecordByLocalPath("a.md" as RelativePath),
+            undefined
+        );
+
+        const deleteEvent = await queue.next();
+        assert.strictEqual(deleteEvent?.type, SyncEventType.LocalDelete);
+        assert.strictEqual(deleteEvent.documentId, "DOC-1");
+    });
+
+    it("resolveCreate only clears localPath for a pending delete of that path", async () => {
+        const queue = createQueue();
+
+        await queue.enqueue({
+            type: SyncEventType.LocalCreate,
+            path: "old.md"
+        });
+        const create = queue.peekFront();
+        assert.ok(create?.type === SyncEventType.LocalCreate);
+        create.isProcessing = true;
+
+        await queue.enqueue({
+            type: SyncEventType.LocalDelete,
+            path: "old.md"
+        });
+
+        await queue.resolveCreate(
+            create,
+            fakeRecord("DOC-1", {
+                localPath: "new.md" as RelativePath,
+                remoteRelativePath: "new.md" as RelativePath
+            })
+        );
+
+        assert.strictEqual(
+            queue.getDocumentByDocumentId("DOC-1")?.localPath,
+            "new.md"
+        );
+        assert.strictEqual(
+            queue.getRecordByLocalPath("new.md" as RelativePath)?.documentId,
+            "DOC-1"
+        );
+
+        const deleteEvent = await queue.next();
+        assert.strictEqual(deleteEvent?.type, SyncEventType.LocalDelete);
+        assert.strictEqual(deleteEvent.documentId, "DOC-1");
+        assert.strictEqual(deleteEvent.path, "old.md");
+    });
+
+    it("pending create owns a same-path delete over a stale deleting record", async () => {
+        const queue = createQueue();
+        await queue.upsertRecord(
+            fakeRecord("OLD", { localPath: "a.md" as RelativePath })
+        );
+        queue.markServerDeletePending("OLD");
+
+        await queue.enqueue({ type: SyncEventType.LocalCreate, path: "a.md" });
+        const create = queue.peekFront();
+        assert.ok(create?.type === SyncEventType.LocalCreate);
+        create.isProcessing = true;
+
+        await queue.enqueue({ type: SyncEventType.LocalDelete, path: "a.md" });
+
+        assert.strictEqual(
+            queue.getDocumentByDocumentId("OLD")?.localPath,
+            undefined
+        );
+        assert.strictEqual(
+            queue.getRecordByLocalPath("a.md" as RelativePath),
+            undefined
+        );
+
+        const createEvent = await queue.next();
+        assert.strictEqual(createEvent, create);
+
+        const deleteEvent = await queue.next();
+        assert.strictEqual(deleteEvent?.type, SyncEventType.LocalDelete);
+        assert.strictEqual(deleteEvent.documentId, create.resolvers.promise);
+    });
+
+    it("rename of a queued create drains same-path deletes first", async () => {
+        const queue = createQueue();
+        await queue.upsertRecord(
+            fakeRecord("OLD", { localPath: "target.md" as RelativePath })
+        );
+
+        await queue.enqueue({
+            type: SyncEventType.LocalCreate,
+            path: "source.md"
+        });
+        const create = queue.peekFront();
+        assert.ok(create?.type === SyncEventType.LocalCreate);
+
+        await queue.enqueue({
+            type: SyncEventType.LocalDelete,
+            path: "target.md"
+        });
+        await queue.enqueue({
+            type: SyncEventType.LocalUpdate,
+            oldPath: "source.md",
+            path: "target.md"
+        });
+
+        const deleteEvent = await queue.next();
+        assert.strictEqual(deleteEvent?.type, SyncEventType.LocalDelete);
+        assert.strictEqual(deleteEvent.documentId, "OLD");
+        assert.strictEqual(deleteEvent.path, "target.md");
+
+        const createEvent = await queue.next();
+        assert.strictEqual(createEvent, create);
+        assert.strictEqual(createEvent.path, "target.md");
+
+        const updateEvent = await queue.next();
+        assert.strictEqual(updateEvent?.type, SyncEventType.LocalUpdate);
+        assert.strictEqual(updateEvent.documentId, create.resolvers.promise);
+        assert.strictEqual(updateEvent.path, "target.md");
     });
 
     it("findLatestCreateForPath returns the pending create", async () => {

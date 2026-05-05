@@ -210,6 +210,7 @@ export class SyncEventQueue {
             this.events.push({
                 type: SyncEventType.LocalCreate,
                 path,
+                isProcessing: false,
                 resolvers: Promise.withResolvers()
             });
             this.notifyPendingUpdateCountChanged();
@@ -223,22 +224,54 @@ export class SyncEventQueue {
                 : path;
         const record = this._byLocalPath.get(lookupPath);
 
-        // latest creation must take precedence as it's from the doc's latest generation
+        // If a settled record and a pending create both claim this path, the
+        // settled record owns the current disk slot, unless the record is
+        // already being deleted. A deleting record can briefly remain in the
+        // localPath index when a create/delete pair was queued while the
+        // create was pending; it must not steal the next same-path create's
+        // delete/update.
+        const pendingCreate = this.findLatestCreateForPath(lookupPath);
         const pendingDocumentId: Promise<DocumentId> | undefined =
-            this.findLatestCreateForPath(lookupPath)?.resolvers.promise;
+            pendingCreate?.resolvers.promise;
 
-        const documentId: DocumentId | undefined = record?.documentId;
+        const recordIsDeleting =
+            record !== undefined &&
+            (this.hasPendingLocalDeleteForDocumentId(record.documentId) ||
+                this.hasPendingServerDelete(record.documentId));
+        const recordOwnsLookupPath =
+            record !== undefined &&
+            !(recordIsDeleting && pendingDocumentId !== undefined);
+
+        const documentId: DocumentId | undefined = recordOwnsLookupPath
+            ? record.documentId
+            : undefined;
 
         const effectiveDocumentId:
             | Promise<DocumentId>
             | DocumentId
-            | undefined = pendingDocumentId ?? documentId;
+            | undefined = documentId ?? pendingDocumentId;
         if (effectiveDocumentId === undefined) {
             // we can get here when deleting a local document after a remote update
             return;
         }
 
         if (input.type === SyncEventType.LocalDelete) {
+            if (
+                documentId === undefined &&
+                pendingCreate !== undefined &&
+                !pendingCreate.isProcessing
+            ) {
+                this.cancelPendingCreate(pendingCreate);
+                if (recordIsDeleting && record !== undefined) {
+                    // A stale deleting record was still claiming this path.
+                    // The not-yet-started create/delete pair collapsed to
+                    // nothing, and the disk file is gone, so clear the stale
+                    // claim too.
+                    await this.setLocalPath(record.documentId, undefined);
+                }
+                return;
+            }
+
             // Push BEFORE awaiting `setLocalPath` (and its inner `save()`).
             // See the comment below on the synchronicity contract with
             // `ensureDraining()`.
@@ -248,9 +281,14 @@ export class SyncEventQueue {
                 path: lookupPath
             });
             this.notifyPendingUpdateCountChanged();
-            if (record !== undefined) {
+            if (recordOwnsLookupPath && record !== undefined) {
                 // The file is gone from disk; clear the doc's localPath so the
                 // Reconciler doesn't try to operate on a vacated slot.
+                await this.setLocalPath(record.documentId, undefined);
+            } else if (recordIsDeleting && record !== undefined) {
+                // A stale deleting record was still claiming this path while a
+                // newer pending create owned the actual disk file. Drop the
+                // stale claim now that the file is gone.
                 await this.setLocalPath(record.documentId, undefined);
             }
             return;
@@ -259,10 +297,10 @@ export class SyncEventQueue {
         const isUserRename = input.oldPath !== undefined;
         let needsSave = false;
         if (input.oldPath !== undefined) {
-            if (pendingDocumentId !== undefined) {
+            if (!recordOwnsLookupPath && pendingDocumentId !== undefined) {
                 this.updatePendingCreatePath(input.oldPath, path);
             } else {
-                if (record === undefined) {
+                if (record === undefined || !recordOwnsLookupPath) {
                     throw new Error(
                         "Unreachable: record must be defined for non-pending update"
                     );
@@ -352,10 +390,7 @@ export class SyncEventQueue {
      * Return the next event without removing it. Drain uses this so the
      * event stays visible in the queue while it is being processed —
      * critical for `findLatestCreateForPath` to update an in-flight
-     * `LocalCreate`'s path when a rename arrives mid-process. Also marks
-     * the event as in-flight so dedup checks in `enqueue` know not to
-     * fold a fresh content change into an event whose disk read already
-     * happened.
+     * `LocalCreate`'s local read path when a rename arrives mid-process.
      */
     public peekFront(): SyncEvent | undefined {
         return this.events[0];
@@ -397,7 +432,13 @@ export class SyncEventQueue {
             event.resolvers.promise,
             record.documentId
         );
-        await this.upsertRecord(record);
+        const localPath = this.hasPendingLocalDeleteForDocumentId(
+            record.documentId,
+            record.localPath
+        )
+            ? undefined
+            : record.localPath;
+        await this.upsertRecord({ ...record, localPath });
         event.resolvers.resolve(record.documentId);
     }
 
@@ -613,6 +654,18 @@ export class SyncEventQueue {
         );
     }
 
+    public hasPendingLocalDeleteForDocumentId(
+        documentId: DocumentId,
+        path?: RelativePath
+    ): boolean {
+        return this.events.some(
+            (e) =>
+                e.type === SyncEventType.LocalDelete &&
+                e.documentId === documentId &&
+                (path === undefined || e.path === path)
+        );
+    }
+
     public async clearAllState(): Promise<void> {
         this.clearPending();
         this.byDocId.clear();
@@ -643,6 +696,12 @@ export class SyncEventQueue {
         return undefined;
     }
 
+    public hasPendingCreateForPath(path: RelativePath): boolean {
+        return this.events.some(
+            (e) => e.type === SyncEventType.LocalCreate && e.path === path
+        );
+    }
+
     public updatePendingCreatePath(
         oldPath: RelativePath,
         newPath: RelativePath
@@ -654,6 +713,9 @@ export class SyncEventQueue {
 
         const { promise } = createEvent.resolvers;
         createEvent.path = newPath;
+        if (!createEvent.isProcessing) {
+            this.moveBlockingDeletesBeforeCreate(createEvent, newPath);
+        }
 
         for (const e of this.events) {
             if (
@@ -662,6 +724,32 @@ export class SyncEventQueue {
             ) {
                 e.path = newPath;
             }
+        }
+    }
+
+    private moveBlockingDeletesBeforeCreate(
+        createEvent: Extract<SyncEvent, { type: SyncEventType.LocalCreate }>,
+        path: RelativePath
+    ): void {
+        const { promise } = createEvent.resolvers;
+        let createIndex = this.events.indexOf(createEvent);
+        if (createIndex < 0) {
+            return;
+        }
+
+        for (let i = createIndex + 1; i < this.events.length; ) {
+            const event = this.events[i];
+            if (
+                event.type === SyncEventType.LocalDelete &&
+                event.path === path &&
+                event.documentId !== promise
+            ) {
+                this.events.splice(i, 1);
+                this.events.splice(createIndex, 0, event);
+                createIndex++;
+                continue;
+            }
+            i++;
         }
     }
 
@@ -721,6 +809,32 @@ export class SyncEventQueue {
                 });
                 event.resolvers.reject(new Error("Create was cancelled"));
             }
+        }
+    }
+
+    private cancelPendingCreate(
+        createEvent: Extract<SyncEvent, { type: SyncEventType.LocalCreate }>
+    ): void {
+        const { promise } = createEvent.resolvers;
+        const toRemove = this.events.filter(
+            (event) =>
+                event === createEvent ||
+                ((event.type === SyncEventType.LocalUpdate ||
+                    event.type === SyncEventType.LocalDelete) &&
+                    event.documentId === promise)
+        );
+
+        for (const event of toRemove) {
+            removeFromArray(this.events, event);
+        }
+
+        createEvent.resolvers.promise.catch(() => {
+            /* suppressed — the create/delete pair collapsed locally */
+        });
+        createEvent.resolvers.reject(new Error("Create was cancelled"));
+
+        if (toRemove.length > 0) {
+            this.notifyPendingUpdateCountChanged();
         }
     }
 

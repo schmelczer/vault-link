@@ -1,10 +1,17 @@
 import type {
+    HistoryEntry,
     StoredDatabase,
     SyncSettings,
     RelativePath,
     TextWithCursors
 } from "sync-client";
-import { SyncClient, debugging, LogLevel, utils } from "sync-client";
+import {
+    SyncClient,
+    SyncResetError,
+    debugging,
+    LogLevel,
+    utils
+} from "sync-client";
 import { assert } from "./utils/assert";
 import { sleep } from "./utils/sleep";
 import { withTimeout } from "./utils/with-timeout";
@@ -28,6 +35,18 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
     private readonly syncErrors: Error[] = [];
     private readonly pendingSyncOperations = new Set<Promise<void>>();
     private readonly wsFactory = new ManagedWebSocketFactory();
+    private nextWriteRename:
+        | {
+              oldPath: RelativePath;
+              newPath: RelativePath;
+          }
+        | undefined;
+    private nextCreateResponseDrop:
+        | {
+              dropped: Promise<void>;
+              resolveDropped: () => void;
+          }
+        | undefined;
 
     public constructor(
         clientId: number,
@@ -49,7 +68,7 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
                 load: async () => this.data,
                 save: async (data) => void (this.data = data)
             },
-            fetch: fetchImplementation,
+            fetch: this.wrapFetch(fetchImplementation),
             webSocket: this.wsFactory.constructorFn
         });
 
@@ -92,6 +111,65 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
     public resumeWebSocket(): void {
         this.log("Resuming WebSocket message delivery");
         this.wsFactory.resume();
+    }
+
+    public dropNextCreateResponse(): void {
+        assert(
+            this.nextCreateResponseDrop === undefined,
+            `Client ${this.clientId} already has a create response drop armed`
+        );
+        let resolveDropped!: () => void;
+        const dropped = new Promise<void>((resolve) => {
+            resolveDropped = resolve;
+        });
+        this.nextCreateResponseDrop = {
+            dropped,
+            resolveDropped
+        };
+        this.log("Armed next create response drop");
+    }
+
+    public async waitForDroppedCreateResponse(): Promise<void> {
+        assert(
+            this.nextCreateResponseDrop !== undefined,
+            `Client ${this.clientId} has no create response drop armed`
+        );
+        await withTimeout(
+            this.nextCreateResponseDrop.dropped,
+            WAIT_TIMEOUT_MS,
+            `Client ${this.clientId} timed out waiting for create response drop`
+        );
+        this.log("Create response was dropped after server commit");
+    }
+
+    public async waitForHistoryEntry(
+        matches: (entry: HistoryEntry) => boolean,
+        onMatch?: (entry: HistoryEntry) => void
+    ): Promise<void> {
+        const existing = this.client.getHistoryEntries().find(matches);
+        if (existing !== undefined) {
+            onMatch?.(existing);
+            return;
+        }
+
+        await withTimeout(
+            new Promise<void>((resolve) => {
+                const unsubscribe = this.client.onSyncHistoryUpdated.add(() => {
+                    const entry = this.client
+                        .getHistoryEntries()
+                        .find(matches);
+                    if (entry === undefined) {
+                        return;
+                    }
+
+                    unsubscribe();
+                    onMatch?.(entry);
+                    resolve();
+                });
+            }),
+            WAIT_TIMEOUT_MS,
+            `Client ${this.clientId} timed out waiting for history entry`
+        );
     }
 
     public async waitForSync(): Promise<void> {
@@ -160,6 +238,15 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
         return new TextDecoder().decode(bytes);
     }
 
+    public renameNextWrite(oldPath: RelativePath, newPath: RelativePath): void {
+        assert(
+            this.nextWriteRename === undefined,
+            `Client ${this.clientId} already has a next-write rename armed`
+        );
+        this.nextWriteRename = { oldPath, newPath };
+        this.log(`Armed next write rename: ${oldPath} -> ${newPath}`);
+    }
+
     public async cleanup(): Promise<void> {
         this.log("Cleaning up...");
         // Guard against uninitialized client (init() failed partway).
@@ -201,15 +288,37 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
         const isNew = !this.files.has(path);
         await super.write(path, content);
 
+        if (this.isSyncEnabled && isNew) {
+            this.enqueueSync(async () => {
+                this.client.syncLocallyCreatedFile(path);
+            });
+        }
+
+        const nextWriteRename = this.nextWriteRename;
+        if (
+            nextWriteRename !== undefined &&
+            nextWriteRename.oldPath === path
+        ) {
+            this.nextWriteRename = undefined;
+            await super.rename(
+                nextWriteRename.oldPath,
+                nextWriteRename.newPath
+            );
+            if (this.isSyncEnabled) {
+                this.enqueueSync(async () => {
+                    this.client.syncLocallyUpdatedFile({
+                        oldPath: nextWriteRename.oldPath,
+                        relativePath: nextWriteRename.newPath
+                    });
+                });
+            }
+        }
+
         if (!this.isSyncEnabled) {
             return;
         }
 
-        if (isNew) {
-            this.enqueueSync(async () => {
-                this.client.syncLocallyCreatedFile(path);
-            });
-        } else {
+        if (!isNew) {
             this.enqueueSync(async () => {
                 this.client.syncLocallyUpdatedFile({ relativePath: path });
             });
@@ -313,5 +422,43 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
 
     private log(message: string): void {
         this.logger(`[Client ${this.clientId}] ${message}`);
+    }
+
+    private wrapFetch(
+        fetchImplementation: typeof globalThis.fetch
+    ): typeof globalThis.fetch {
+        return async (input, init) => {
+            const response = await fetchImplementation(input, init);
+            const drop = this.nextCreateResponseDrop;
+            if (
+                drop !== undefined &&
+                DeterministicAgent.isCreateDocumentRequest(input, init)
+            ) {
+                this.nextCreateResponseDrop = undefined;
+                drop.resolveDropped();
+                throw new SyncResetError();
+            }
+            return response;
+        };
+    }
+
+    private static isCreateDocumentRequest(
+        input: RequestInfo | URL,
+        init: RequestInit | undefined
+    ): boolean {
+        const method =
+            init?.method ??
+            (typeof Request !== "undefined" && input instanceof Request
+                ? input.method
+                : "GET");
+        if (method.toUpperCase() !== "POST") {
+            return false;
+        }
+
+        const url =
+            input instanceof URL
+                ? input
+                : new URL(typeof input === "string" ? input : input.url);
+        return /\/documents\/?$/.test(url.pathname);
     }
 }

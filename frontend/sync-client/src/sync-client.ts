@@ -507,6 +507,7 @@ export class SyncClient {
         await this.serverConfig.getConfig();
 
         await this.syncer.scheduleSyncForOfflineChanges();
+        this.syncer.resumeDraining();
         this.webSocketManager.start();
 
         this.hasFinishedOfflineSync = true;
@@ -514,6 +515,7 @@ export class SyncClient {
 
     private async pause(): Promise<void> {
         this.hasFinishedOfflineSync = false;
+        this.syncer.pauseDraining();
         this.fetchController.startReset();
         // Signal the service so any `retryForever` loop exits at its next
         // iteration instead of continuing to retry a network request while

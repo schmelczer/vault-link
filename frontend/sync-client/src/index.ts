@@ -34,6 +34,7 @@ export type { ClientCursors } from "./services/types/ClientCursors";
 export type { NetworkConnectionStatus } from "./types/network-connection-status";
 export type { ServerVersionMismatchError } from "./errors/server-version-mismatch-error";
 export type { AuthenticationError } from "./errors/authentication-error";
+export { SyncResetError } from "./errors/sync-reset-error";
 export type { MaybeOutdatedClientCursors } from "./types/maybe-outdated-client-cursors";
 export { DocumentSyncStatus } from "./types/document-sync-status";
 export { SyncClient } from "./sync-client";

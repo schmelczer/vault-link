@@ -144,6 +144,13 @@ export class TestRunner {
                 );
                 break;
 
+            case "rename-next-write":
+                this.getAgent(step.client).renameNextWrite(
+                    step.oldPath,
+                    step.newPath
+                );
+                break;
+
             case "delete":
                 await this.getAgent(step.client).delete(step.path);
                 break;
@@ -177,6 +184,19 @@ export class TestRunner {
                 await this.serverControl.waitForReady();
                 break;
 
+            case "resume-server-until-history-then-pause": {
+                const agent = this.getAgent(step.client);
+                const historySeen = agent.waitForHistoryEntry(
+                    (entry) =>
+                        entry.details.type === step.syncType &&
+                        entry.details.relativePath === step.path,
+                    () => this.serverControl.pause()
+                );
+                this.serverControl.resume();
+                await historySeen;
+                break;
+            }
+
             case "barrier":
                 await this.waitForConvergence();
                 break;
@@ -191,6 +211,14 @@ export class TestRunner {
 
             case "resume-websocket":
                 this.getAgent(step.client).resumeWebSocket();
+                break;
+
+            case "drop-next-create-response":
+                this.getAgent(step.client).dropNextCreateResponse();
+                break;
+
+            case "wait-for-dropped-create-response":
+                await this.getAgent(step.client).waitForDroppedCreateResponse();
                 break;
 
             case "sleep":

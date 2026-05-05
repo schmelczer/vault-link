@@ -18,6 +18,7 @@ export class MockAgent extends MockClient {
 
     // The renamed file finding algorithm isn't too smart so we can't both update and rename the same file
     private readonly doNotTouchWhileOffline: string[] = [];
+    private readonly doNotRenameWhileOffline: string[] = [];
     private lastSyncEnabledState = true;
 
     public constructor(
@@ -60,6 +61,10 @@ export class MockAgent extends MockClient {
             if (historyEntry) {
                 utils.removeFromArray(
                     this.doNotTouchWhileOffline,
+                    historyEntry[1]
+                );
+                utils.removeFromArray(
+                    this.doNotRenameWhileOffline,
                     historyEntry[1]
                 );
             }
@@ -365,6 +370,8 @@ export class MockAgent extends MockClient {
             `Decided to create file ${file} with content ${content}`
         );
 
+        this.doNotRenameWhileOffline.push(file);
+
         return this.write(file, new TextEncoder().encode(` ${content} `));
     }
 
@@ -384,6 +391,8 @@ export class MockAgent extends MockClient {
         this.client.logger.info(
             `Decided to create binary file ${file}: ${uuid}`
         );
+
+        this.doNotRenameWhileOffline.push(file);
 
         return this.write(file, bytes);
     }
@@ -412,10 +421,11 @@ export class MockAgent extends MockClient {
         // Otherwise, the resolution logic couldn't handle it.
         if (
             !this.lastSyncEnabledState &&
-            this.doNotTouchWhileOffline.includes(file)
+            (this.doNotTouchWhileOffline.includes(file) ||
+                this.doNotRenameWhileOffline.includes(file))
         ) {
             this.client.logger.info(
-                `Skipping file ${file} because it has been updated while offline`
+                `Skipping file ${file} because it cannot be renamed while offline`
             );
             return;
         }
@@ -516,6 +526,7 @@ export class MockAgent extends MockClient {
             `Deleting file: ${file} with:\n  content '${new TextDecoder().decode(this.files.get(file))}'`
         );
         await this.delete(file);
+        utils.removeFromArray(this.doNotRenameWhileOffline, file);
     }
 
     private getContent(): string {

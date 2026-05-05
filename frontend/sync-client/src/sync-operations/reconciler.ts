@@ -6,6 +6,7 @@ import type { SyncService } from "../services/sync-service";
 import type { SyncEventQueue } from "./sync-event-queue";
 import type { DocumentId, DocumentRecord, RelativePath } from "./types";
 import { hash } from "../utils/hash";
+import { SyncResetError } from "../errors/sync-reset-error";
 
 const SWAP_MARKER_DIR = ".vaultlink";
 const SWAP_MARKER_PREFIX = "swap-";
@@ -225,6 +226,14 @@ export class Reconciler {
     private async tryInitialPlacement(record: DocumentRecord): Promise<void> {
         const target = record.remoteRelativePath;
 
+        if (this.queue.hasPendingCreateForPath(target)) {
+            this.logger.debug(
+                `Reconciler: cannot place ${record.documentId} at ${target} ` +
+                    `— pending local create still claims that path; will retry next pass`
+            );
+            return;
+        }
+
         // Slot occupancy: pre-check both the disk and our tracked
         // records. Either form of occupancy means we wait — the
         // occupant's own reconciliation pass (after their next wire-loop
@@ -259,6 +268,12 @@ export class Reconciler {
                     vaultUpdateId: record.parentVersionId
                 });
             } catch (e) {
+                if (e instanceof SyncResetError) {
+                    this.logger.info(
+                        `Reconciler: content fetch for ${record.documentId} interrupted by sync reset`
+                    );
+                    return;
+                }
                 this.logger.error(
                     `Reconciler: failed to fetch content for ${record.documentId}: ${String(e)}`
                 );
