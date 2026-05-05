@@ -729,10 +729,11 @@ export class Syncer {
             parentVersionId: response.vaultUpdateId,
             remoteRelativePath: response.relativePath,
             remoteHash,
-            // localPath is unchanged by the wire loop; only the watcher
-            // (via the queue's enqueue rename branch) and the reconciler
-            // touch it. Read from the live record so a rename that
-            // arrived during the await is preserved.
+            // localPath is owned by the watcher and the reconciler. Pass
+            // the value we observed pre-await purely as a hint for the
+            // placement-pending → placed transition; `upsertRecord` ignores
+            // it when an existing localPath is already set, so a watcher
+            // rename that landed during the HTTP roundtrip is preserved.
             localPath: livePath
         });
         this.queue.lastSeenUpdateId = response.vaultUpdateId;
@@ -948,8 +949,10 @@ export class Syncer {
         // doc (a same-path recreate installed a new owner without
         // clearing this record's stale field — same race shape as the
         // processRemoteDelete fix above). Writing to a shadowed slot
-        // would clobber the new owner's bytes. Treat shadowed records
-        // as if they had no local file: stash for the reconciler.
+        // would clobber the new owner's bytes. Clear the stale claim now
+        // so the reconciler treats this record as placement-pending; the
+        // closing `upsertRecord` no longer touches an existing record's
+        // localPath, so the clear has to happen explicitly here.
         const claimedPath = record.localPath;
         const livePath =
             claimedPath !== undefined &&
@@ -960,8 +963,9 @@ export class Syncer {
         if (claimedPath !== undefined && livePath === undefined) {
             this.logger.debug(
                 `Remote update for ${record.documentId} at claimed ${claimedPath} ` +
-                    `but slot is shadowed; deferring write to reconciler`
+                    `but slot is shadowed; clearing stale claim and deferring to reconciler`
             );
+            await this.queue.setLocalPath(record.documentId, undefined);
         }
         if (livePath !== undefined) {
             const currentContent = await this.operations.read(livePath);

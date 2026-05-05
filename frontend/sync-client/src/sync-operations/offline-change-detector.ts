@@ -30,6 +30,28 @@ export async function scheduleOfflineChanges(
     // next pass.
     const allDocuments = queue.allSettledDocuments();
 
+    // Placement-pending records (`localPath === undefined`) name a server
+    // path that the reconciler will eventually place. If the user already
+    // has a local file at that path — common after a sync-disable or
+    // reset that discarded a successful create's response, leaving the
+    // server-known doc as a placement-pending record once catch-up
+    // re-delivered it — treating it as an untracked file would
+    // re-create a duplicate doc at the server's deconflicted path. Bind
+    // each placement-pending record to its on-disk file: a same-hash
+    // file just inherits the record's localPath; a different-hash file
+    // is folded into the sync-up update flow below (an UPDATE on the
+    // existing doc rather than a fresh CREATE).
+    for (const record of queue.allRecords()) {
+        if (record.localPath !== undefined) {
+            continue;
+        }
+        if (!allLocalFiles.has(record.remoteRelativePath)) {
+            continue;
+        }
+        await queue.setLocalPath(record.documentId, record.remoteRelativePath);
+        allDocuments.set(record.remoteRelativePath, record);
+    }
+
     // A doc is "possibly deleted" only if it has no local file. Including
     // docs that still exist locally would queue a spurious delete alongside
     // the update below.

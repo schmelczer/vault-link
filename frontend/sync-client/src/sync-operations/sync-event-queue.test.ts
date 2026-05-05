@@ -290,25 +290,30 @@ describe("SyncEventQueue", () => {
             "A"
         );
 
-        // upsertRecord that relocates the localPath should re-key.
+        // upsertRecord on an existing record with a non-undefined
+        // localPath does NOT rewrite localPath. The watcher path and the
+        // reconciler are the only authorities on localPath of an
+        // already-placed record; letting the wire loop re-key here would
+        // race a user rename that landed during an HTTP roundtrip.
         await queue.upsertRecord(
             fakeRecord("A", { localPath: "renamed.md" as RelativePath })
         );
         assert.strictEqual(queue.byLocalPath.size, 1);
         assert.strictEqual(
-            queue.byLocalPath.get("a.md" as RelativePath),
-            undefined
-        );
-        assert.strictEqual(
-            queue.byLocalPath.get("renamed.md" as RelativePath)?.documentId,
+            queue.byLocalPath.get("a.md" as RelativePath)?.documentId,
             "A"
         );
+        assert.strictEqual(
+            queue.byLocalPath.get("renamed.md" as RelativePath),
+            undefined
+        );
+        assert.strictEqual(queue.getDocumentByDocumentId("A")?.localPath, "a.md");
 
-        // setLocalPath should re-key.
+        // setLocalPath does re-key — it's the explicit path-mutation API.
         await queue.setLocalPath("A", "later.md" as RelativePath);
         assert.strictEqual(queue.byLocalPath.size, 1);
         assert.strictEqual(
-            queue.byLocalPath.get("renamed.md" as RelativePath),
+            queue.byLocalPath.get("a.md" as RelativePath),
             undefined
         );
         assert.strictEqual(
@@ -327,6 +332,73 @@ describe("SyncEventQueue", () => {
         // The record is still tracked by docId.
         assert.strictEqual(
             queue.getDocumentByDocumentId("A")?.localPath,
+            undefined
+        );
+    });
+
+    it("upsertRecord installs localPath only when the existing record has none (placement-pending → placed)", async () => {
+        const queue = createQueue();
+
+        // Same-docId-collapse shape: a placement-pending record (created
+        // earlier by a remote-create handler when the slot was occupied)
+        // gets resolved by a LocalCreate that returns the same docId.
+        // The watcher hasn't touched localPath since the record is
+        // placement-pending, so installing the now-known path is correct.
+        await queue.upsertRecord(fakeRecord("A", { localPath: undefined }));
+        assert.strictEqual(queue.byLocalPath.size, 0);
+
+        await queue.upsertRecord(
+            fakeRecord("A", { localPath: "fresh.md" as RelativePath })
+        );
+        assert.strictEqual(queue.byLocalPath.size, 1);
+        assert.strictEqual(
+            queue.byLocalPath.get("fresh.md" as RelativePath)?.documentId,
+            "A"
+        );
+        assert.strictEqual(
+            queue.getDocumentByDocumentId("A")?.localPath,
+            "fresh.md"
+        );
+    });
+
+    it("upsertRecord ignores stale localPath from the wire loop after a watcher rename", async () => {
+        const queue = createQueue();
+        await queue.upsertRecord(fakeRecord("A"));
+
+        // Watcher renames a.md -> renamed.md while the wire loop is
+        // mid-roundtrip. The wire loop captured an earlier snapshot of
+        // localPath and now tries to write it back through upsertRecord.
+        await queue.enqueue({
+            type: SyncEventType.LocalUpdate,
+            path: "renamed.md",
+            oldPath: "a.md"
+        });
+        assert.strictEqual(
+            queue.getDocumentByDocumentId("A")?.localPath,
+            "renamed.md"
+        );
+
+        await queue.upsertRecord(
+            fakeRecord("A", {
+                parentVersionId: 2,
+                remoteRelativePath: "a.md",
+                remoteHash: "hash-A-v2",
+                localPath: "a.md" as RelativePath
+            })
+        );
+
+        // The watcher's rename wins: localPath stays at renamed.md.
+        const record = queue.getDocumentByDocumentId("A");
+        assert.strictEqual(record?.localPath, "renamed.md");
+        assert.strictEqual(record.parentVersionId, 2);
+        assert.strictEqual(record.remoteRelativePath, "a.md");
+        assert.strictEqual(record.remoteHash, "hash-A-v2");
+        assert.strictEqual(
+            queue.byLocalPath.get("renamed.md" as RelativePath)?.documentId,
+            "A"
+        );
+        assert.strictEqual(
+            queue.byLocalPath.get("a.md" as RelativePath),
             undefined
         );
     });

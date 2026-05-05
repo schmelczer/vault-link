@@ -471,9 +471,14 @@ export class SyncEventQueue {
      * fields on their next read — this stays load-bearing for the Syncer's
      * drain handlers, which await across HTTP roundtrips.
      *
-     * Maintains the `byLocalPath` index. If the `localPath` changes the
-     * relocation goes through `setLocalPath` (which also persists), so the
-     * caller doesn't need to call `save()` separately.
+     * For an existing record this updates the wire fields
+     * (`parentVersionId`, `remoteHash`, `remoteRelativePath`) and, only
+     * when the existing record has no local file yet
+     * (`localPath === undefined`), installs the supplied `localPath`. A
+     * non-undefined existing localPath is owned by the watcher path and
+     * the Reconciler — overwriting it from the wire loop would race a
+     * user rename that landed during an HTTP roundtrip and silently
+     * resurrect a stale slot.
      */
     public async upsertRecord(record: DocumentRecord): Promise<void> {
         const existing = this.byDocId.get(record.documentId);
@@ -498,8 +503,10 @@ export class SyncEventQueue {
             existing.parentVersionId = record.parentVersionId;
             existing.remoteHash = record.remoteHash;
             existing.remoteRelativePath = record.remoteRelativePath;
-            if (existing.localPath !== record.localPath) {
-                // setLocalPath re-keys `byLocalPath` and persists.
+            if (
+                existing.localPath === undefined &&
+                record.localPath !== undefined
+            ) {
                 return this.setLocalPath(record.documentId, record.localPath);
             }
         }
@@ -715,6 +722,7 @@ export class SyncEventQueue {
         createEvent.path = newPath;
         if (!createEvent.isProcessing) {
             this.moveBlockingDeletesBeforeCreate(createEvent, newPath);
+            this.moveBlockingRenamesBeforeCreate(createEvent, newPath);
         }
 
         for (const e of this.events) {
@@ -743,6 +751,58 @@ export class SyncEventQueue {
                 event.type === SyncEventType.LocalDelete &&
                 event.path === path &&
                 event.documentId !== promise
+            ) {
+                this.events.splice(i, 1);
+                this.events.splice(createIndex, 0, event);
+                createIndex++;
+                continue;
+            }
+            i++;
+        }
+    }
+
+    /**
+     * The `path` argument is the create's just-retargeted target. Any
+     * other tracked doc whose server-side path is still `path` (its
+     * watcher-driven local rename hasn't reached the server yet) needs
+     * its pending LocalUpdate to drain *before* this create — otherwise
+     * the create's HTTP request hits the server while the doc is still
+     * at `path` and triggers a same-path same-docId merge that
+     * silently consumes the user's "new doc" intent into the
+     * already-tracked doc. The pending LocalUpdate is the rename that
+     * moves the existing doc off `path` server-side; running it first
+     * frees the slot. Skipped when the create has already been sent —
+     * at that point the merge has already happened or hasn't, and
+     * reordering the queue can't unwind it.
+     */
+    private moveBlockingRenamesBeforeCreate(
+        createEvent: Extract<SyncEvent, { type: SyncEventType.LocalCreate }>,
+        path: RelativePath
+    ): void {
+        const blockingDocIds = new Set<DocumentId>();
+        for (const record of this.byDocId.values()) {
+            if (
+                record.remoteRelativePath === path &&
+                record.localPath !== path
+            ) {
+                blockingDocIds.add(record.documentId);
+            }
+        }
+        if (blockingDocIds.size === 0) {
+            return;
+        }
+
+        let createIndex = this.events.indexOf(createEvent);
+        if (createIndex < 0) {
+            return;
+        }
+
+        for (let i = createIndex + 1; i < this.events.length; ) {
+            const event = this.events[i];
+            if (
+                event.type === SyncEventType.LocalUpdate &&
+                typeof event.documentId === "string" &&
+                blockingDocIds.has(event.documentId)
             ) {
                 this.events.splice(i, 1);
                 this.events.splice(createIndex, 0, event);
