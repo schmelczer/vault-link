@@ -506,12 +506,6 @@ export class Syncer {
             contentBytes
         });
 
-        // If the user renamed the file while the create request was in flight,
-        // event.path now points at the renamed disk slot. Apply response bytes
-        // and install the local record there; the queued LocalUpdate carries
-        // the server-side rename intent.
-        const localPath = event.path;
-
         // Same-docId collapse. While our LocalCreate sat in the queue, a
         // RemoteCreate may have arrived for this same path. The wire-loop's
         // `processRemoteCreateForNewDocument` would have built a record with
@@ -523,8 +517,14 @@ export class Syncer {
         let remoteHash = contentHash;
         if (response.type === "MergingUpdate") {
             const responseBytes = base64ToBytes(response.contentBase64);
+            // Read `event.path` live for both the write target and the
+            // cache key. A user rename arriving between HTTP-send and
+            // HTTP-response rewrites `event.path` via
+            // `updatePendingCreatePath`; the merge write must land on
+            // the current slot so the queued LocalUpdate that follows
+            // sees the merged bytes.
             await this.operations.write(
-                localPath,
+                event.path,
                 contentBytes,
                 responseBytes
             );
@@ -532,13 +532,13 @@ export class Syncer {
             await this.updateCache(
                 response.vaultUpdateId,
                 responseBytes,
-                localPath
+                event.path
             );
         } else {
             await this.updateCache(
                 response.vaultUpdateId,
                 contentBytes,
-                localPath
+                event.path
             );
         }
 
@@ -547,6 +547,17 @@ export class Syncer {
         // its content. (The reconciler's job for this record is now just
         // path placement, if needed.)
         this.pendingPlacementContent.delete(response.documentId);
+
+        // Snapshot `event.path` only after the write has settled. The
+        // write itself can drive synchronous watcher callbacks (e.g.
+        // an atomic-update fileSystemOperations that fires a "file
+        // changed" event back into the queue), and the test harness's
+        // user-facing renames also race here. Either path mutates
+        // `event.path` via `updatePendingCreatePath`; reading it once
+        // up front would lock in a stale slot and leave
+        // `record.localPath` pointing at a vacated path with no
+        // LocalRename ever materializing.
+        const localPath = event.path;
 
         await this.queue.resolveCreate(event, {
             documentId: response.documentId,

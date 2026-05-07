@@ -2,7 +2,11 @@ import type { PersistenceProvider } from "./persistence/persistence";
 import type { HistoryEntry, HistoryStats } from "./tracing/sync-history";
 import { SyncHistory } from "./tracing/sync-history";
 import { Logger, LogLevel, LogLine } from "./tracing/logger";
-import type { RelativePath, StoredSyncState } from "./sync-operations/types";
+import type {
+    DocumentId,
+    RelativePath,
+    StoredSyncState
+} from "./sync-operations/types";
 import { SyncEventQueue } from "./sync-operations/sync-event-queue";
 import * as Sentry from "@sentry/browser";
 import type { SyncSettings } from "./persistence/settings";
@@ -76,6 +80,27 @@ export class SyncClient {
         return this.history.onHistoryUpdated;
     }
 
+    /**
+     * Fires whenever a tracked document's local file moves on disk —
+     * watcher-driven user renames, post-create deconflicts placed by
+     * the reconciler, lost-rename replays in offline scan, slot
+     * displacements when another record claims a path. Both
+     * `oldPath` and `newPath` may be `undefined` (placement-pending
+     * state). Useful for callers that mirror disk-side path state
+     * — e.g. test harnesses tracking which paths are safe to mutate
+     * — and need a signal beyond the user-facing history.
+     */
+    public get onDocumentPathChanged(): EventListeners<
+        (
+            documentId: DocumentId,
+            oldPath: RelativePath | undefined,
+            newPath: RelativePath | undefined
+        ) => unknown
+    > {
+        this.checkIfDestroyed("onDocumentPathChanged getter");
+        return this.syncEventQueue.onDocumentPathChanged;
+    }
+
     public get onSettingsChanged(): EventListeners<
         (newSettings: SyncSettings, oldSettings: SyncSettings) => unknown
     > {
@@ -123,6 +148,7 @@ export class SyncClient {
             Partial<{
                 settings: Partial<SyncSettings>;
                 database: Partial<StoredSyncState>;
+                deviceId: string;
             }>
         >;
         fetch?: typeof globalThis.fetch;
@@ -131,16 +157,29 @@ export class SyncClient {
     }): Promise<SyncClient> {
         const logger = new Logger();
 
-        const deviceId = createClientId();
-
-        logger.info(`Creating SyncClient with client id ${deviceId}`);
-
         const history = new SyncHistory(logger);
 
         let state = (await persistence.load()) ?? {
             settings: undefined,
-            database: undefined
+            database: undefined,
+            deviceId: undefined
         };
+
+        // Persist deviceId across destroy + init so the server's
+        // lost-create dedup (which scopes by device_id) can recognise
+        // a retry as belonging to the same client. Without this,
+        // every fresh `SyncClient` after a destroy would generate a
+        // new deviceId, the server-side query would miss, and the
+        // pending-but-lost create would deconflict instead of
+        // binding to the doc its content was already absorbed into.
+        let deviceId = state.deviceId;
+        if (deviceId === undefined) {
+            deviceId = createClientId();
+            state = { ...state, deviceId };
+            await persistence.save(state);
+        }
+
+        logger.info(`Creating SyncClient with client id ${deviceId}`);
 
         const settings = new Settings(
             logger,

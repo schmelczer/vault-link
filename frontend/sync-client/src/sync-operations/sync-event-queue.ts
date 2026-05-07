@@ -26,6 +26,22 @@ export class SyncEventQueue {
         (count: number) => unknown
     >();
 
+    // Fires whenever a record's `localPath` transitions to a different
+    // value. Subscribers see every disk-side path change — watcher-
+    // driven user renames, post-create deconflicts placed by the
+    // reconciler, lost-rename replays in offline-scan, displacements
+    // when another record claims a slot. Useful for callers that
+    // mirror disk-side state (e.g. test harnesses that maintain a
+    // "do-not-touch" list keyed by current path). Both `oldPath` and
+    // `newPath` may be `undefined` (placement-pending state).
+    public readonly onDocumentPathChanged = new EventListeners<
+        (
+            documentId: DocumentId,
+            oldPath: RelativePath | undefined,
+            newPath: RelativePath | undefined
+        ) => unknown
+    >();
+
     private readonly _lastSeenUpdateId: MinCovered;
 
     // Primary index of every settled document, keyed by docId. The wire loop
@@ -837,13 +853,16 @@ export class SyncEventQueue {
         record: DocumentRecord,
         newLocalPath: RelativePath | undefined
     ): void {
+        const previousLocalPath = record.localPath;
         if (
-            record.localPath !== undefined &&
-            this._byLocalPath.get(record.localPath) === record
+            previousLocalPath !== undefined &&
+            this._byLocalPath.get(previousLocalPath) === record
         ) {
-            this._byLocalPath.delete(record.localPath);
+            this._byLocalPath.delete(previousLocalPath);
         }
         record.localPath = newLocalPath;
+        let displacedRecord: DocumentRecord | undefined;
+        let displacedOldPath: RelativePath | undefined;
         if (newLocalPath !== undefined) {
             const displaced = this._byLocalPath.get(newLocalPath);
             if (displaced !== undefined && displaced !== record) {
@@ -851,9 +870,25 @@ export class SyncEventQueue {
                 // We're about to overwrite that slot, so clear the
                 // displaced record's localPath; the reconciler will
                 // re-place it via tryInitialPlacement on the next pass.
+                displacedOldPath = displaced.localPath;
                 displaced.localPath = undefined;
+                displacedRecord = displaced;
             }
             this._byLocalPath.set(newLocalPath, record);
+        }
+        if (previousLocalPath !== newLocalPath) {
+            this.onDocumentPathChanged.trigger(
+                record.documentId,
+                previousLocalPath,
+                newLocalPath
+            );
+        }
+        if (displacedRecord !== undefined) {
+            this.onDocumentPathChanged.trigger(
+                displacedRecord.documentId,
+                displacedOldPath,
+                undefined
+            );
         }
     }
 

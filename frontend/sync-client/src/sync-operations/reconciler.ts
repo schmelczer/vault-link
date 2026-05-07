@@ -94,6 +94,7 @@ export class Reconciler {
         const allRecords = this.collectAllRecords();
 
         const movesNeeded: PlannedMove[] = [];
+        const deferredPlacements: DocumentRecord[] = [];
 
         for (const record of allRecords) {
             if (record.localPath === record.remoteRelativePath) {
@@ -129,7 +130,7 @@ export class Reconciler {
             }
 
             if (record.localPath === undefined) {
-                await this.tryInitialPlacement(record);
+                deferredPlacements.push(record);
                 continue;
             }
 
@@ -160,11 +161,35 @@ export class Reconciler {
             });
         }
 
-        if (movesNeeded.length === 0) {
-            return;
+        if (movesNeeded.length > 0) {
+            await this.executeMoves(movesNeeded);
         }
 
-        await this.executeMoves(movesNeeded);
+        // Run placements *after* moves so a placement whose target slot
+        // was occupied by a tracked record at the start of the pass can
+        // still succeed once that record's move frees the slot. Without
+        // this ordering, a placement-pending record stalls until the
+        // next reconciler tick — which only fires when new events
+        // arrive, leaving the doc absent on disk if the queue happens
+        // to be quiescent at that moment.
+        for (const record of deferredPlacements) {
+            // Re-check the gating conditions: a pending event may have
+            // been enqueued for this doc while we were processing
+            // moves above, and an interleaved placement would race
+            // it.
+            if (
+                this.queue.hasPendingLocalEventsForDocumentId(record.documentId)
+            ) {
+                continue;
+            }
+            if (this.queue.hasPendingServerDelete(record.documentId)) {
+                continue;
+            }
+            if (record.localPath !== undefined) {
+                continue;
+            }
+            await this.tryInitialPlacement(record);
+        }
     }
 
     /**

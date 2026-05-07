@@ -505,24 +505,46 @@ impl Database {
         // `i64::MAX` makes the upper bound a no-op for callers that don't
         // care about an exact snapshot (they pass `None`).
         let upper = up_to_vault_update_id.unwrap_or(i64::MAX);
+        // Compute "latest version as of `upper`" per document — NOT
+        // global latest. The `latest_document_versions` view is keyed
+        // on global max, so a write that commits between the catch-up's
+        // cursor capture (under broadcast send-lock) and this query
+        // (which runs after drop-lock) would expose a `vault_update_id
+        // > cursor` row that the cursor filter then drops, removing
+        // the doc from the catch-up entirely. The post-cursor live
+        // broadcast then carries `is_new_file = false` (per real-time
+        // semantics it's an update of a previously-existing version),
+        // and the receiving client — which has no record of the doc —
+        // ignores it as stale, stranding the doc forever. Computing
+        // the snapshot from the documents table directly with the
+        // upper bound applied at the GROUP BY layer keeps the
+        // catch-up self-contained at exactly the cursor.
         let query = sqlx::query!(
             r#"
             select
-                vault_update_id,
-                creation_vault_update_id,
-                document_id as "document_id: Hyphenated",
-                relative_path,
-                updated_date as "updated_date: chrono::DateTime<Utc>",
-                is_deleted,
-                user_id,
-                device_id,
-                length(content) as "content_size: u64"
-            from latest_document_versions
-            where vault_update_id > ? and vault_update_id <= ?
-            order by vault_update_id
+                d.vault_update_id,
+                d.creation_vault_update_id,
+                d.document_id as "document_id: Hyphenated",
+                d.relative_path,
+                d.updated_date as "updated_date: chrono::DateTime<Utc>",
+                d.is_deleted,
+                d.user_id,
+                d.device_id,
+                length(d.content) as "content_size: u64"
+            from documents d
+            inner join (
+                select document_id, max(vault_update_id) as max_vid
+                from documents
+                where vault_update_id <= ?
+                group by document_id
+            ) latest_at_cursor
+                on d.document_id = latest_at_cursor.document_id
+                and d.vault_update_id = latest_at_cursor.max_vid
+            where d.vault_update_id > ?
+            order by d.vault_update_id
             "#,
-            vault_update_id,
             upper,
+            vault_update_id,
         );
 
         if let Some(conn) = connection {
@@ -623,6 +645,74 @@ impl Database {
                 .await
         }
         .context("Cannot fetch latest document version")
+    }
+
+    /// Find a doc whose CREATE was authored by this device with
+    /// matching content, and whose creation the requesting client
+    /// hasn't observed yet (`creation_vault_update_id > last_seen`).
+    /// Used by `create_document` to recover from a "lost create"
+    /// race: this device's create response was discarded mid-flight,
+    /// so the retry comes in as a brand-new create — possibly at a
+    /// renamed path. Binding the retry to the existing doc avoids
+    /// duplicating the content under a deconflicted path.
+    ///
+    /// Matches against the doc's CREATION version (not the latest)
+    /// because a same-path concurrent create from another agent may
+    /// have merged into our doc since: the latest version's content
+    /// is the merge result, not what we originally sent. Joining on
+    /// `creation_vault_update_id` recovers the original bytes.
+    ///
+    /// The `device_id` + `creation > last_seen` combination scopes
+    /// the dedup to "we genuinely lost track of our own create";
+    /// another agent's same-content doc won't match because of
+    /// `device_id`, and a doc this client already saw won't match
+    /// because of the watermark check.
+    pub async fn find_unseen_lost_create_by_device_and_content(
+        &self,
+        vault: &VaultId,
+        device_id: &str,
+        last_seen_vault_update_id: VaultUpdateId,
+        content: &[u8],
+        connection: Option<&mut SqliteConnection>,
+    ) -> Result<Option<StoredDocumentVersion>> {
+        let query = sqlx::query_as!(
+            StoredDocumentVersion,
+            r#"
+            select
+                lv.vault_update_id,
+                lv.creation_vault_update_id,
+                lv.document_id as "document_id: Hyphenated",
+                lv.relative_path,
+                lv.updated_date as "updated_date: chrono::DateTime<Utc>",
+                lv.content,
+                lv.is_deleted,
+                lv.user_id,
+                lv.device_id,
+                lv.has_been_merged
+            from latest_document_versions lv
+            inner join documents creation
+                on creation.document_id = lv.document_id
+                and creation.vault_update_id = lv.creation_vault_update_id
+            where creation.device_id = ?
+                and creation.content = ?
+                and lv.is_deleted = false
+                and lv.creation_vault_update_id > ?
+            order by lv.creation_vault_update_id desc
+            limit 1
+            "#,
+            device_id,
+            content,
+            last_seen_vault_update_id,
+        );
+
+        if let Some(conn) = connection {
+            query.fetch_optional(&mut *conn).await
+        } else {
+            query
+                .fetch_optional(&self.get_connection_pool(vault).await?)
+                .await
+        }
+        .context("Cannot fetch lost-create candidate")
     }
 
     pub async fn get_latest_document(

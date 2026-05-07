@@ -105,6 +105,56 @@ pub async fn create_document(
         }
     }
 
+    // Lost-create + local rename recovery. If this device has a doc
+    // the requesting client hasn't seen yet (its create succeeded
+    // server-side but the response was discarded — e.g. a sync
+    // reset mid-flight) and the new request carries the same content
+    // at a different path (the user renamed the file before the
+    // retry), bind the retry to that existing doc instead of
+    // creating a duplicate. The dedup is scoped tightly:
+    //   - same `device_id` (only this client's own lost create),
+    //   - `creation_vault_update_id > last_seen` (client never saw
+    //     this doc, so it can't be deliberately creating another
+    //     copy with matching content),
+    //   - `creation == latest` (the doc has only its create version,
+    //     nobody else has touched it; safe to relocate),
+    //   - exact content match.
+    // Outside that window we fall through to the normal deconflict
+    // path, so legitimate "this device created a duplicate of an
+    // already-acknowledged file" flows still produce a new doc.
+    if let Some(lost_create) = state
+        .database
+        .find_unseen_lost_create_by_device_and_content(
+            &vault_id,
+            &device_id.0,
+            request.last_seen_vault_update_id,
+            &new_content,
+            Some(&mut *transaction),
+        )
+        .await
+        .map_err(server_error)?
+    {
+        info!(
+            "Lost-create recovery: binding retry at `{sanitized_relative_path}` to existing doc {} (was at `{}`) in vault `{vault_id}` for device `{}`",
+            lost_create.document_id,
+            lost_create.relative_path,
+            device_id.0
+        );
+        return update_document::update_document(
+            &sanitized_relative_path,
+            Vec::new(),
+            vault_id,
+            lost_create.document_id,
+            Some(&request.relative_path),
+            new_content,
+            user,
+            device_id,
+            state,
+            transaction,
+        )
+        .await;
+    }
+
     let document_id = uuid::Uuid::new_v4();
 
     let last_update_id = state

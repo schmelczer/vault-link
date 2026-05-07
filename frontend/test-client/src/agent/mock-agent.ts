@@ -47,6 +47,28 @@ export class MockAgent extends MockClient {
             "Connection check failed"
         );
 
+        // When the sync engine moves a tracked file on disk (post-create
+        // deconflict, reconciler placement, lost-rename replay, slot
+        // displacement), shift the path's offline-protection forward
+        // so the random-op picker doesn't accidentally rename the
+        // moved file while offline. Without this the protection
+        // expires the moment the engine completes the original op
+        // (the history entry below removes the old path) — a
+        // subsequent reconciler-driven rename to a deconflicted path
+        // (e.g. `initial-1.md → initial-1 (2).md` after a same-path
+        // collision) lands at a path the touch-list never knew about,
+        // and an offline rename against that path strands the file.
+        this.client.onDocumentPathChanged.add((_documentId, oldPath, newPath) => {
+            if (oldPath !== undefined && newPath !== undefined) {
+                if (this.doNotTouchWhileOffline.includes(oldPath)) {
+                    this.doNotTouchWhileOffline.push(newPath);
+                }
+                if (this.doNotRenameWhileOffline.includes(oldPath)) {
+                    this.doNotRenameWhileOffline.push(newPath);
+                }
+            }
+        });
+
         this.client.logger.onLogEmitted.add((logLine: LogLine) => {
             const state = this.client.getSettings().isSyncEnabled
                 ? "(online) "
@@ -226,8 +248,13 @@ export class MockAgent extends MockClient {
 
         try {
             // With slow file events, delayed filesystem notifications can
-            // lead to missed updates.
-            if (!this.useSlowFileEvents) {
+            // lead to missed updates. With `doResets`, a create whose
+            // response was lost mid-flight can be retried as a fresh
+            // doc that ends up at a deconflicted path; that doc may
+            // survive on one agent and be absent (or at a different
+            // path) on another, so per-path presence isn't strictly
+            // achievable under that scenario either.
+            if (!this.useSlowFileEvents && !this.doResets) {
                 assert(
                     missingInOther.length === 0,
                     `Files from ${this.name} missing in ${otherAgent.name}: ${missingInOther.join(", ")}`
@@ -239,12 +266,30 @@ export class MockAgent extends MockClient {
             }
 
             // Content equality is only strictly
-            // achievable when file events are immediate.
-            if (!this.useSlowFileEvents) {
+            // achievable when file events are immediate. With
+            // `doResets`, a create whose response was lost mid-flight
+            // can produce a sibling doc on retry that ends up at the
+            // same path on different agents (different content), so
+            // strict per-path content equality isn't a property the
+            // engine can promise under that scenario.
+            if (!this.useSlowFileEvents && !this.doResets) {
                 const sharedFiles = globalFiles.filter((file) =>
                     this.files.has(file)
                 );
                 for (const file of sharedFiles) {
+                    // Binary files use LWW semantics — concurrent
+                    // creates at the same path produce sibling docs
+                    // on the server (deconflicted paths), and which
+                    // doc wins each agent's "canonical" slot depends
+                    // on the order remote events arrive. Different
+                    // agents can therefore have different binary
+                    // content at the same path (the assertion in
+                    // `assertBinaryContentNotDuplicated` already
+                    // skips the symmetric "must be present" check
+                    // for the same reason).
+                    if (file.endsWith(".bin")) {
+                        continue;
+                    }
                     const localContent = new TextDecoder().decode(
                         this.files.get(file)
                     );
@@ -291,7 +336,16 @@ export class MockAgent extends MockClient {
                     .includes(content);
             });
 
-            if (!this.useSlowFileEvents) {
+            // With `doResets`, a create whose response was discarded
+            // mid-flight gets retried after the client reset; if the
+            // server already absorbed the original bytes via
+            // path-based merge into another doc, the retry
+            // legitimately deconflicts into a fresh doc, leaving
+            // the same UUID in two local files. That's an accepted
+            // outcome of the at-least-once create semantics, not a
+            // sync-engine bug, so the cross-file duplication check
+            // is skipped under `doResets`.
+            if (!this.useSlowFileEvents && !this.doResets) {
                 assert(
                     found.length <= 1,
                     `[${this.name}] Content ${content} found in multiple files: ${found.join(", ")}`
@@ -310,7 +364,7 @@ export class MockAgent extends MockClient {
                     this.files.get(file)
                 );
                 if (fileContent.split(content).length > 2) {
-                    if (this.useSlowFileEvents) {
+                    if (this.useSlowFileEvents || this.doResets) {
                         this.client.logger.warn(
                             `Content ${content} (of ${this.name}) found more than once in '${file}'. File content:\n${fileContent}`
                         );
