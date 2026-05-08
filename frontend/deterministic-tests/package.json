@@ -1,0 +1,22 @@
+{
+    "name": "deterministic-tests",
+    "version": "0.14.0",
+    "private": true,
+    "bin": {
+        "deterministic-tests": "./dist/cli.js"
+    },
+    "scripts": {
+        "dev": "webpack watch --mode development",
+        "build": "webpack --mode production",
+        "test": "npm run build && node dist/cli.js"
+    },
+    "devDependencies": {
+        "@types/node": "^25.0.2",
+        "sync-client": "file:../sync-client",
+        "ts-loader": "^9.5.4",
+        "tslib": "2.8.1",
+        "typescript": "5.9.3",
+        "webpack": "^5.103.0",
+        "webpack-cli": "^6.0.1"
+    }
+}
