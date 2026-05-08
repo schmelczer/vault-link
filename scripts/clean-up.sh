@@ -1,4 +1,4 @@
 #!/bin/bash
 
-rm -rf sync-server/databases
+rm -rf /host/tmp/vaultlink-e2e-databases
 rm -rf logs

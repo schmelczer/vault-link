@@ -13,7 +13,7 @@ env:
 
 jobs:
   build:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -21,10 +21,9 @@ jobs:
           fetch-depth: 0
 
       - name: Setup Node.js environment
-        uses: actions/setup-node@v4.2.0
+        uses: actions/setup-node@v4
         with:
           node-version: "25.x"
-          check-latest: true
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
