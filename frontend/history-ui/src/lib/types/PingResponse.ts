@@ -3,7 +3,7 @@
 /**
  * Response to a ping request.
  */
-export interface PingResponse {
+export type PingResponse = {
     /**
      * Semantic version of the server.
      */
@@ -16,10 +16,10 @@ export interface PingResponse {
     /**
      * List of file extensions that are allowed to be merged.
      */
-    mergeableFileExtensions: string[];
+    mergeableFileExtensions: Array<string>;
     /**
      * API version ensuring backwards & forwards compatibility between the client
      * and server.
      */
     supportedApiVersion: number;
-}
+};
