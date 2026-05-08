@@ -4,17 +4,15 @@ use reconcile_text::NumberOrText;
 use serde::{self, Deserialize};
 use ts_rs::TS;
 
-use crate::app_state::database::models::{DocumentId, VaultUpdateId};
+use crate::app_state::database::models::VaultUpdateId;
 
 #[derive(TS, Debug, TryFromMultipart)]
 #[ts(export)]
 pub struct CreateDocumentVersion {
-    /// The client can decide the document id (if it wishes to) in order
-    /// to help with syncing. If the client does not provide a document id,
-    /// the server will generate one. If the client provides a document id
-    /// it must not already exist in the database.
-    pub document_id: Option<DocumentId>,
     pub relative_path: String,
+
+    #[ts(type = "number")]
+    pub last_seen_vault_update_id: VaultUpdateId,
 
     #[ts(as = "Vec<u8>")]
     #[form_data(limit = "unlimited")]
@@ -24,7 +22,9 @@ pub struct CreateDocumentVersion {
 #[derive(Debug, TryFromMultipart)]
 pub struct UpdateBinaryDocumentVersion {
     pub parent_version_id: VaultUpdateId,
-    pub relative_path: String,
+    // None on a content-only edit; Some on a user rename. When None,
+    // the server keeps the document at its current path.
+    pub relative_path: Option<String>,
 
     #[form_data(limit = "unlimited")]
     pub content: FieldData<Bytes>,
@@ -34,18 +34,13 @@ pub struct UpdateBinaryDocumentVersion {
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct UpdateTextDocumentVersion {
-    #[ts(as = "i32")]
+    #[ts(type = "number")]
     pub parent_version_id: VaultUpdateId,
 
-    pub relative_path: String,
+    // None on a content-only edit; Some on a user rename. When None,
+    // the server keeps the document at its current path.
+    pub relative_path: Option<String>,
 
     #[ts(type = "Array<number | string>")]
     pub content: Vec<NumberOrText>,
-}
-
-#[derive(TS, Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[ts(export)]
-pub struct DeleteDocumentVersion {
-    pub relative_path: String,
 }

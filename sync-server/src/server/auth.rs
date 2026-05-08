@@ -9,7 +9,7 @@ use axum_extra::{
     TypedHeader,
     headers::{Authorization, authorization::Bearer},
 };
-use log::info;
+use log::{debug, info};
 
 use crate::{
     app_state::{AppState, database::models::VaultId},
@@ -21,10 +21,12 @@ use crate::{
 pub async fn auth_middleware(
     State(state): State<AppState>,
     Path(path_params): Path<HashMap<String, String>>,
-    TypedHeader(auth_header): TypedHeader<Authorization<Bearer>>,
+    auth_header: Option<TypedHeader<Authorization<Bearer>>>,
     mut req: Request,
     next: Next,
 ) -> Result<Response, SyncServerError> {
+    let auth_header = auth_header
+        .ok_or_else(|| unauthenticated_error(anyhow::anyhow!("Missing Authorization header")))?;
     let token = auth_header.token().trim();
     let vault_id = normalize_string(
         path_params
@@ -39,20 +41,24 @@ pub async fn auth_middleware(
     Ok(next.run(req).await)
 }
 
-pub fn auth(state: &AppState, token: &str, vault_id: &VaultId) -> Result<User, SyncServerError> {
-    let user = state
+pub fn authenticate(state: &AppState, token: &str) -> Result<User, SyncServerError> {
+    state
         .config
         .users
         .get_user(token)
         .cloned()
-        .ok_or_else(|| unauthenticated_error(anyhow::anyhow!("Invalid token")))?;
+        .ok_or_else(|| unauthenticated_error(anyhow::anyhow!("Invalid token")))
+}
+
+pub fn auth(state: &AppState, token: &str, vault_id: &VaultId) -> Result<User, SyncServerError> {
+    let user = authenticate(state, token)?;
 
     if match user.vault_access {
         VaultAccess::AllowAccessToAll => true,
         VaultAccess::AllowList(AllowListedVaults { ref allowed }) => allowed.contains(vault_id),
     } {
-        info!(
-            "User `{}` is authenticated and is authorised to access to vault `{vault_id}`",
+        debug!(
+            "User `{}` is authenticated and is authorised to access vault `{vault_id}`",
             user.name
         );
 

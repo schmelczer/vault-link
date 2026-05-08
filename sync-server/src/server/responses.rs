@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use serde::{self, Serialize};
 use ts_rs::TS;
 
@@ -36,7 +37,36 @@ pub struct FetchLatestDocumentsResponse {
     pub last_update_id: VaultUpdateId,
 }
 
-/// Response to an update document request.
+/// Response to a vault history request (paginated).
+#[derive(TS, Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct VaultHistoryResponse {
+    pub versions: Vec<DocumentVersionWithoutContent>,
+    pub has_more: bool,
+}
+
+/// Summary of a single vault returned by the list-vaults endpoint.
+#[derive(TS, Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct VaultInfo {
+    pub name: String,
+    pub document_count: u32,
+    pub created_at: Option<DateTime<Utc>>,
+}
+
+/// Response to listing vaults accessible to the authenticated user.
+#[derive(TS, Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ListVaultsResponse {
+    pub vaults: Vec<VaultInfo>,
+    pub has_more: bool,
+    pub user_name: String,
+}
+
+/// Response to a create/update document request.
 #[derive(TS, Debug, Clone, Serialize)]
 #[serde(tag = "type")]
 #[ts(export)]

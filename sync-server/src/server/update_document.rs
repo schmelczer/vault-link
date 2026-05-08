@@ -16,10 +16,15 @@ use super::{
 use crate::{
     app_state::{
         AppState,
-        database::models::{DocumentId, StoredDocumentVersion, VaultId, VaultUpdateId},
+        database::{
+            WriteTransaction,
+            models::{DocumentId, StoredDocumentVersion, VaultId, VaultUpdateId},
+        },
     },
     config::user_config::User,
-    errors::{SyncServerError, client_error, not_found_error, server_error},
+    errors::{
+        SyncServerError, client_error, not_found_error, server_error, write_transaction_error,
+    },
     server::requests::UpdateBinaryDocumentVersion,
     utils::{
         find_first_available_path::find_first_available_path, is_binary::is_binary,
@@ -46,18 +51,27 @@ pub async fn update_binary(
     State(state): State<AppState>,
     TypedMultipart(request): TypedMultipart<UpdateBinaryDocumentVersion>,
 ) -> Result<Json<DocumentUpdateResponse>, SyncServerError> {
-    let parent_document = get_parent_document(&state, &vault_id, request.parent_version_id).await?;
+    let parent_document =
+        get_parent_document(&state, &vault_id, &document_id, request.parent_version_id).await?;
     let content = request.content.contents.to_vec();
 
+    let transaction = state
+        .database
+        .create_write_transaction(&vault_id)
+        .await
+        .map_err(write_transaction_error)?;
+
     update_document(
-        parent_document,
+        &parent_document.relative_path,
+        parent_document.content,
         vault_id,
         document_id,
+        request.relative_path.as_deref(),
+        content,
         user,
         device_id,
         state,
-        &request.relative_path,
-        content,
+        transaction,
     )
     .await
 }
@@ -74,28 +88,36 @@ pub async fn update_text(
     State(state): State<AppState>,
     Json(request): Json<UpdateTextDocumentVersion>,
 ) -> Result<Json<DocumentUpdateResponse>, SyncServerError> {
-    let parent_document = get_parent_document(&state, &vault_id, request.parent_version_id).await?;
+    let parent_document =
+        get_parent_document(&state, &vault_id, &document_id, request.parent_version_id).await?;
 
-    let edited_text = EditedText::from_diff(
-        str::from_utf8(&parent_document.content)
-            .expect("parent must be valid UTF-8 because it's a text document"),
-        request.content,
-        &*BuiltinTokenizer::Word,
-    )
-    .context("Failed to apply given diff to parent document")
-    .map_err(client_error)?;
+    let parent_text = str::from_utf8(&parent_document.content)
+        .context("Parent version contains binary content; use putBinary instead of putText")
+        .map_err(client_error)?;
+
+    let edited_text = EditedText::from_diff(parent_text, request.content, &*BuiltinTokenizer::Word)
+        .context("Failed to apply given diff to parent document")
+        .map_err(client_error)?;
 
     let content = edited_text.apply().text().into_bytes();
 
+    let transaction = state
+        .database
+        .create_write_transaction(&vault_id)
+        .await
+        .map_err(write_transaction_error)?;
+
     update_document(
-        parent_document,
+        &parent_document.relative_path,
+        parent_document.content,
         vault_id,
         document_id,
+        request.relative_path.as_deref(),
+        content,
         user,
         device_id,
         state,
-        &request.relative_path,
-        content,
+        transaction,
     )
     .await
 }
@@ -103,9 +125,10 @@ pub async fn update_text(
 async fn get_parent_document(
     state: &AppState,
     vault_id: &VaultId,
+    document_id: &DocumentId,
     parent_version_id: VaultUpdateId,
 ) -> Result<StoredDocumentVersion, SyncServerError> {
-    state
+    let parent = state
         .database
         .get_document_version(vault_id, parent_version_id, None)
         .await
@@ -117,29 +140,36 @@ async fn get_parent_document(
                 )))
             },
             Ok,
-        )
+        )?;
+
+    if &parent.document_id != document_id {
+        return Err(client_error(anyhow!(
+            "Parent version `{parent_version_id}` does not belong to document `{document_id}`"
+        )));
+    }
+
+    Ok(parent)
 }
 
 #[allow(clippy::too_many_lines, clippy::too_many_arguments)]
-async fn update_document(
-    parent_document: StoredDocumentVersion,
+pub async fn update_document(
+    parent_relative_path: &str,
+    parent_content: Vec<u8>,
     vault_id: VaultId,
     document_id: DocumentId,
+    relative_path: Option<&str>,
+    content: Vec<u8>,
     user: User,
     device_id: DeviceIdHeader,
     state: AppState,
-    relative_path: &str,
-    content: Vec<u8>,
+    mut transaction: WriteTransaction,
 ) -> Result<Json<DocumentUpdateResponse>, SyncServerError> {
     debug!("Updating document `{document_id}` in vault `{vault_id}`");
 
-    let sanitized_relative_path = sanitize_path(relative_path);
-
-    let mut transaction = state
-        .database
-        .create_write_transaction(&vault_id)
-        .await
-        .map_err(server_error)?;
+    let sanitized_relative_path = relative_path
+        .map(sanitize_path)
+        .transpose()
+        .map_err(client_error)?;
 
     let last_update_id = state
         .database
@@ -175,9 +205,12 @@ async fn update_document(
     }
 
     // Return the latest version if the content and path are the same as the latest
-    // version
-    if content == latest_version.content && sanitized_relative_path == latest_version.relative_path
-    {
+    // version. A missing relative_path means "keep current path", so the path
+    // is implicitly unchanged.
+    let path_unchanged = sanitized_relative_path
+        .as_deref()
+        .is_none_or(|p| p == latest_version.relative_path);
+    if content == latest_version.content && path_unchanged {
         info!(
             "Document content is the same as the latest version for `{document_id}`, skipping update"
         );
@@ -192,62 +225,89 @@ async fn update_document(
         )));
     }
 
+    // For mergability, use whichever path the new version will live at — the
+    // requested rename target if the client sent one, otherwise the existing
+    // server-side path.
+    let mergable_check_path = sanitized_relative_path
+        .as_deref()
+        .unwrap_or(&latest_version.relative_path);
     let are_all_participants_mergable = is_file_type_mergable(
-        &sanitized_relative_path,
+        mergable_check_path,
         &state.config.server.mergeable_file_extensions,
-    ) && !is_binary(&parent_document.content)
+    ) && !is_binary(&parent_content)
         && !is_binary(&latest_version.content)
         && !is_binary(&content);
 
-    let merged_content = if are_all_participants_mergable {
+    let (merged_content, is_different_from_request_content) = if are_all_participants_mergable {
         info!("Merging changes for document `{document_id}` in vault `{vault_id}`");
-        reconcile(
-            str::from_utf8(&parent_document.content)
-                .expect("parent must be valid UTF-8 because it's not binary"),
-            &str::from_utf8(&latest_version.content)
-                .expect("latest_version must be valid UTF-8 because it's not binary")
-                .into(),
-            &str::from_utf8(&content)
-                .expect("content must be valid UTF-8 because it's not binary")
-                .into(),
-            &*BuiltinTokenizer::Word,
-        )
-        .apply()
-        .text()
-        .into_bytes()
+        let parent_text = str::from_utf8(&parent_content)
+            .context("Parent document content is not valid UTF-8")
+            .map_err(client_error)?;
+        let latest_text = str::from_utf8(&latest_version.content)
+            .context("Latest version content is not valid UTF-8")
+            .map_err(client_error)?;
+        let new_text = str::from_utf8(&content)
+            .context("New content is not valid UTF-8")
+            .map_err(client_error)?;
+        let parent_owned = parent_text.to_owned();
+        let latest_owned = latest_text.to_owned();
+        let new_owned = new_text.to_owned();
+        let content_clone = content.clone();
+
+        let (merged, is_different) = tokio::task::spawn_blocking(move || {
+            let merged = reconcile(
+                &parent_owned,
+                &latest_owned.into(),
+                &new_owned.into(),
+                &*BuiltinTokenizer::Word,
+            )
+            .apply()
+            .text()
+            .into_bytes();
+            let is_different = merged != content_clone;
+            (merged, is_different)
+        })
+        .await
+        .map_err(|e| server_error(anyhow::anyhow!("Reconcile task failed: {e}")))?;
+
+        (merged, is_different)
     } else {
-        content.clone()
+        (content, false) // false means that the client doesn't need to refetch the file as we can ensure the remote and local versions are the same as LWW is the merging method for binary files
     };
 
-    let is_different_from_request_content = merged_content != content;
+    // Rename resolution: only apply the client's rename if (a) the client
+    // requested one (`sanitized_relative_path` is `Some`) and (b) the
+    // document's path hasn't changed since this client's parent version.
+    // If the parent and latest paths differ, another client already renamed
+    // the document — keep the latest path (first rename wins). Content
+    // changes from both clients are still merged correctly via the 3-way
+    // reconcile above, independent of which rename wins. A missing
+    // relative_path means "keep current path" (content-only edit).
+    let new_relative_path = match sanitized_relative_path.as_deref() {
+        Some(requested)
+            if parent_relative_path == latest_version.relative_path
+                && requested != latest_version.relative_path =>
+        {
+            let new_path =
+                find_first_available_path(&vault_id, requested, &state.database, &mut transaction)
+                    .await
+                    .map_err(server_error)?;
 
-    // We can only update the relative path if we're the first one to do so
-    let new_relative_path = if parent_document.relative_path == latest_version.relative_path
-        && latest_version.relative_path != sanitized_relative_path
-    {
-        let new_path = find_first_available_path(
-            &vault_id,
-            &sanitized_relative_path,
-            &state.database,
-            &mut transaction,
-        )
-        .await
-        .map_err(server_error)?;
+            if new_path != requested {
+                info!(
+                    "Document already exists at new location: `{requested}` when trying to update it in vault `{vault_id}`, deconflicting by creating at `{new_path}`"
+                );
+            }
 
-        if new_path != sanitized_relative_path {
-            info!(
-                "Document already exists at new location: `{sanitized_relative_path}` when trying to update it in vault `{vault_id}`, deconflicting by creating at `{new_path}`"
-            );
+            new_path
         }
-
-        new_path
-    } else {
-        latest_version.relative_path.clone()
+        _ => latest_version.relative_path.clone(),
     };
 
     let new_version = StoredDocumentVersion {
         document_id,
         vault_update_id: last_update_id + 1,
+        creation_vault_update_id: latest_version.creation_vault_update_id,
         relative_path: new_relative_path,
         content: merged_content,
         updated_date: chrono::Utc::now(),
@@ -259,7 +319,7 @@ async fn update_document(
 
     state
         .database
-        .insert_document_version(&vault_id, &new_version, Some(transaction))
+        .insert_document_version(&vault_id, &new_version, transaction)
         .await
         .map_err(server_error)?;
 

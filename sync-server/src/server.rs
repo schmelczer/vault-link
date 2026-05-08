@@ -4,27 +4,30 @@ mod delete_document;
 mod device_id_header;
 mod fetch_document_version;
 mod fetch_document_version_content;
+mod fetch_document_versions;
 mod fetch_latest_document_version;
 mod fetch_latest_documents;
+mod fetch_vault_history;
 mod index;
+mod list_vaults;
 mod ping;
+mod rate_limit;
 mod requests;
 mod responses;
 mod update_document;
 mod websocket;
 
-use anyhow::{Context as _, Result, anyhow};
+use anyhow::{Context as _, Result};
 use auth::auth_middleware;
 use axum::{
     Router,
     extract::{DefaultBodyLimit, Request},
     http::{self, HeaderValue, Method},
     middleware,
-    response::IntoResponse,
     routing::{IntoMakeService, delete, get, post, put},
 };
 use device_id_header::DEVICE_ID_HEADER_NAME;
-use log::info;
+use log::{info, warn};
 use tokio::signal;
 use tower_http::{
     LatencyUnit,
@@ -41,7 +44,7 @@ use tracing::{Level, info_span};
 use crate::{
     app_state::AppState,
     config::{Config, server_config::ServerConfig},
-    errors::{client_error, not_found_error},
+    consts::GRACEFUL_SHUTDOWN_TIMEOUT,
 };
 
 pub async fn create_server(config: Config) -> Result<()> {
@@ -51,26 +54,33 @@ pub async fn create_server(config: Config) -> Result<()> {
 
     let server_config = app_state.config.server.clone();
 
-    let app = Router::new()
+    let mut app = Router::new()
         .nest("/", get_authed_routes(app_state.clone()))
         .route("/", get(index::index))
+        .route("/assets/*path", get(index::spa_assets))
+        .route("/vaults", get(list_vaults::list_vaults))
         .route("/vaults/:vault_id/ping", get(ping::ping))
         .route("/vaults/:vault_id/ws", get(websocket::websocket_handler))
+        .fallback(index::spa_fallback);
+
+    let cors_layer = build_cors_layer(&server_config).context("Invalid CORS configuration")?;
+
+    if let Some(rate_limit) = server_config.rate_limit_per_user_per_second {
+        info!("Rate limiting enabled: {rate_limit} requests/second per user");
+        let limiter = rate_limit::RateLimiter::new(rate_limit);
+        app = app.layer(middleware::from_fn_with_state(
+            limiter,
+            rate_limit::rate_limit_middleware,
+        ));
+    }
+
+    let app = app
         .layer(DefaultBodyLimit::disable())
         .layer(RequestBodyLimitLayer::new(
             app_state.config.server.max_body_size_mb * 1024 * 1024,
         ))
         .layer(TimeoutLayer::new(server_config.response_timeout))
-        .layer(
-            CorsLayer::new()
-                .allow_origin("*".parse::<HeaderValue>().expect("Failed to parse origin"))
-                .allow_headers([
-                    http::header::CONTENT_TYPE,
-                    http::header::AUTHORIZATION,
-                    DEVICE_ID_HEADER_NAME.clone(),
-                ])
-                .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE]),
-        )
+        .layer(cors_layer)
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(|request: &Request<_>| {
@@ -90,12 +100,39 @@ pub async fn create_server(config: Config) -> Result<()> {
                 .on_eos(DefaultOnEos::new())
                 .on_failure(DefaultOnFailure::new().level(Level::ERROR)),
         )
-        .with_state(app_state)
-        .fallback(handle_404)
-        .fallback(handle_405)
+        .with_state(app_state.clone())
         .into_make_service();
 
-    start_server(app, &server_config).await
+    start_server(app, &server_config, app_state).await
+}
+
+fn build_cors_layer(server_config: &ServerConfig) -> Result<CorsLayer> {
+    let origins = &server_config.allowed_origins;
+
+    let cors = if origins.len() == 1 && origins[0] == "*" {
+        info!("CORS: allowing all origins");
+        let header: HeaderValue = "*"
+            .parse()
+            .context("Failed to parse wildcard CORS origin")?;
+        CorsLayer::new().allow_origin(header)
+    } else {
+        let parsed: Vec<HeaderValue> = origins
+            .iter()
+            .map(|o| {
+                o.parse::<HeaderValue>()
+                    .with_context(|| format!("Failed to parse CORS origin: `{o}`"))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        CorsLayer::new().allow_origin(parsed)
+    };
+
+    Ok(cors
+        .allow_headers([
+            http::header::CONTENT_TYPE,
+            http::header::AUTHORIZATION,
+            DEVICE_ID_HEADER_NAME.clone(),
+        ])
+        .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE]))
 }
 
 fn get_authed_routes(app_state: AppState) -> Router<AppState> {
@@ -121,6 +158,10 @@ fn get_authed_routes(app_state: AppState) -> Router<AppState> {
             put(update_document::update_text),
         )
         .route(
+            "/vaults/:vault_id/documents/:document_id/versions",
+            get(fetch_document_versions::fetch_document_versions),
+        )
+        .route(
             "/vaults/:vault_id/documents/:document_id/versions/:vault_update_id",
             get(fetch_document_version::fetch_document_version),
         )
@@ -132,10 +173,18 @@ fn get_authed_routes(app_state: AppState) -> Router<AppState> {
             "/vaults/:vault_id/documents/:document_id",
             delete(delete_document::delete_document),
         )
+        .route(
+            "/vaults/:vault_id/history",
+            get(fetch_vault_history::fetch_vault_history),
+        )
         .layer(middleware::from_fn_with_state(app_state, auth_middleware))
 }
 
-async fn start_server(app: IntoMakeService<axum::Router>, config: &ServerConfig) -> Result<()> {
+async fn start_server(
+    app: IntoMakeService<axum::Router>,
+    config: &ServerConfig,
+    app_state: AppState,
+) -> Result<()> {
     let address = format!("{}:{}", config.host, config.port);
     let listener = tokio::net::TcpListener::bind(address.clone())
         .await
@@ -148,26 +197,46 @@ async fn start_server(app: IntoMakeService<axum::Router>, config: &ServerConfig)
             .context("Failed to get local address")?
     );
 
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .tcp_nodelay(true)
-        .await
-        .context("Failed to start server")
+    let mut shutdown_rx = app_state.subscribe_shutdown();
+
+    let server = axum::serve(listener, app)
+        .with_graceful_shutdown(async move {
+            shutdown_signal().await;
+            app_state.shutdown();
+        })
+        .tcp_nodelay(true);
+
+    tokio::select! {
+        result = server => result.context("Failed to start server"),
+        () = async {
+            let _ = shutdown_rx.changed().await;
+            info!(
+                "Shutdown signal received, waiting up to {}s for in-flight requests to complete...",
+                GRACEFUL_SHUTDOWN_TIMEOUT.as_secs()
+            );
+            tokio::time::sleep(GRACEFUL_SHUTDOWN_TIMEOUT).await;
+            warn!("Graceful shutdown timed out, forcing exit");
+        } => Ok(()),
+    }
 }
 
 async fn shutdown_signal() {
     let ctrl_c = async {
-        signal::ctrl_c()
-            .await
-            .expect("failed to install Ctrl+C handler");
+        if let Err(e) = signal::ctrl_c().await {
+            log::error!("Failed to install Ctrl+C handler: {e}");
+        }
     };
 
     #[cfg(unix)]
     let terminate = async {
-        signal::unix::signal(signal::unix::SignalKind::terminate())
-            .expect("failed to install signal handler")
-            .recv()
-            .await;
+        match signal::unix::signal(signal::unix::SignalKind::terminate()) {
+            Ok(mut signal) => {
+                signal.recv().await;
+            }
+            Err(e) => {
+                log::error!("Failed to install SIGTERM handler: {e}");
+            }
+        }
     };
 
     #[cfg(not(unix))]
@@ -177,12 +246,4 @@ async fn shutdown_signal() {
         () = ctrl_c => {},
         () = terminate => {},
     }
-}
-
-async fn handle_404() -> impl IntoResponse {
-    not_found_error(anyhow!("Page not found"))
-}
-
-async fn handle_405() -> impl IntoResponse {
-    client_error(anyhow!("Method not allowed"))
 }

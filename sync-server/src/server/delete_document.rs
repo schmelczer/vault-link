@@ -1,4 +1,4 @@
-use anyhow::Context;
+use anyhow::{Context, anyhow};
 use axum::{
     Extension, Json,
     extract::{Path, State},
@@ -7,7 +7,7 @@ use axum_extra::TypedHeader;
 use log::{debug, info};
 use serde::Deserialize;
 
-use super::{device_id_header::DeviceIdHeader, requests::DeleteDocumentVersion};
+use super::device_id_header::DeviceIdHeader;
 use crate::{
     app_state::{
         AppState,
@@ -16,8 +16,8 @@ use crate::{
         },
     },
     config::user_config::User,
-    errors::{SyncServerError, server_error},
-    utils::{normalize::normalize, sanitize_path::sanitize_path},
+    errors::{SyncServerError, not_found_error, server_error, write_transaction_error},
+    utils::normalize::normalize,
 };
 
 #[derive(Deserialize)]
@@ -37,7 +37,6 @@ pub async fn delete_document(
     Extension(user): Extension<User>,
     TypedHeader(device_id): TypedHeader<DeviceIdHeader>,
     State(state): State<AppState>,
-    Json(request): Json<DeleteDocumentVersion>,
 ) -> Result<Json<DocumentVersionWithoutContent>, SyncServerError> {
     debug!("Deleting document `{document_id}` in vault `{vault_id}`");
 
@@ -45,7 +44,7 @@ pub async fn delete_document(
         .database
         .create_write_transaction(&vault_id)
         .await
-        .map_err(server_error)?;
+        .map_err(write_transaction_error)?;
 
     let last_update_id = state
         .database
@@ -59,9 +58,18 @@ pub async fn delete_document(
         .await
         .map_err(server_error)?;
 
-    if let Some(latest_version) = &latest_version
-        && latest_version.is_deleted
-    {
+    let Some(latest_version) = latest_version else {
+        transaction
+            .rollback()
+            .await
+            .context("Failed to roll back transaction")
+            .map_err(server_error)?;
+        return Err(not_found_error(anyhow!(
+            "Document `{document_id}` not found in vault `{vault_id}`"
+        )));
+    };
+
+    if latest_version.is_deleted {
         transaction
             .rollback()
             .await
@@ -69,15 +77,19 @@ pub async fn delete_document(
             .map_err(server_error)?;
 
         info!("Document `{document_id}` has already been deleted",);
-        return Ok(Json(latest_version.clone().into()));
+        return Ok(Json(latest_version.into()));
     }
 
-    let latest_content = latest_version.map_or_else(Vec::new, |version| version.content); // in case the document has never existed before deleting it
+    let new_vault_update_id = last_update_id + 1;
+    let latest_relative_path = latest_version.relative_path;
+    let latest_content = latest_version.content;
+    let creation_vault_update_id = latest_version.creation_vault_update_id;
 
     let new_version = StoredDocumentVersion {
-        vault_update_id: last_update_id + 1,
+        vault_update_id: new_vault_update_id,
+        creation_vault_update_id,
         document_id,
-        relative_path: sanitize_path(&request.relative_path),
+        relative_path: latest_relative_path,
         content: latest_content, // copy the content from the latest version
         updated_date: chrono::Utc::now(),
         is_deleted: true,
@@ -88,7 +100,7 @@ pub async fn delete_document(
 
     state
         .database
-        .insert_document_version(&vault_id, &new_version, Some(transaction))
+        .insert_document_version(&vault_id, &new_version, transaction)
         .await
         .map_err(server_error)?;
 
