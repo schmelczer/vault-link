@@ -1,5 +1,6 @@
 use std::{path::PathBuf, time::Duration};
 
+use anyhow::{Result, ensure};
 use log::debug;
 use serde::{Deserialize, Serialize};
 
@@ -32,6 +33,24 @@ fn default_max_connections_per_vault() -> u32 {
 fn default_cursor_timeout() -> Duration {
     debug!("Using default cursor timeout: {DEFAULT_CURSOR_TIMEOUT:?}");
     DEFAULT_CURSOR_TIMEOUT
+}
+
+impl DatabaseConfig {
+    pub fn validate(&self) -> Result<()> {
+        ensure!(
+            !self.databases_directory_path.as_os_str().is_empty(),
+            "databases_directory_path must not be empty"
+        );
+        ensure!(
+            self.max_connections_per_vault > 0,
+            "max_connections_per_vault must be greater than 0"
+        );
+        ensure!(
+            !self.cursor_timeout.is_zero(),
+            "cursor_timeout must be greater than 0"
+        );
+        Ok(())
+    }
 }
 
 impl Default for DatabaseConfig {

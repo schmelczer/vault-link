@@ -1,32 +1,34 @@
 database:
-  databases_directory_path: databases
-  max_connections_per_vault: 12
+  databases_directory_path: /host/tmp/vaultlink-e2e-databases
+  max_connections_per_vault: 8
   cursor_timeout: 1m
 server:
   host: 0.0.0.0
-  port: 3000
+  port: 3010
   max_body_size_mb: 512
   max_clients_per_vault: 256
+  max_pending_websocket_connections: 4096
+  broadcast_channel_capacity: 1024
   response_timeout: 30m
   mergeable_file_extensions:
-  - md
-  - txt
+    - md
+    - txt
 users:
   user_configs:
-  - name: admin
-    token: test-token-change-me
-    vault_access:
-      type: allow_access_to_all
-  - name: other-admin
-    token: test-token-change-me2
-    vault_access:
-      type: allow_access_to_all
-  - name: test
-    token: other-test-token
-    vault_access:
-      type: allow_list
-      allowed:
-      - default
+    - name: admin
+      token: test-token-change-me
+      vault_access:
+        type: allow_access_to_all
+    - name: other-admin
+      token: test-token-change-me2
+      vault_access:
+        type: allow_access_to_all
+    - name: test
+      token: other-test-token
+      vault_access:
+        type: allow_list
+        allowed:
+          - default
 logging:
   log_directory: logs
   log_rotation: 7days

@@ -27,24 +27,34 @@ pub struct Config {
 }
 
 impl Config {
+    pub fn validate(&self) -> Result<()> {
+        self.server
+            .validate()
+            .context("Invalid server configuration")?;
+        self.logging
+            .validate()
+            .context("Invalid logging configuration")?;
+        self.database
+            .validate()
+            .context("Invalid database configuration")?;
+        Ok(())
+    }
+
     pub async fn read_or_create(path: &Path) -> Result<Self> {
-        let config = if path.exists() {
-            info!(
-                "Loading configuration from `{}`",
-                path.canonicalize().unwrap().display()
-            );
-            Self::load_from_file(path).await?
+        let display_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+
+        if path.exists() {
+            info!("Loading configuration from `{}`", display_path.display());
+            Self::load_from_file(path).await
         } else {
-            Self::default()
-        };
-
-        config.write(path).await?;
-        info!(
-            "Updated configuration at `{}`",
-            path.canonicalize().unwrap().display()
-        );
-
-        Ok(config)
+            let config = Self::default();
+            config.write(path).await?;
+            info!(
+                "Created default configuration at `{}`",
+                display_path.display()
+            );
+            Ok(config)
+        }
     }
 
     pub async fn load_from_file(path: &Path) -> Result<Self> {

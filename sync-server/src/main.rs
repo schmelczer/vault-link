@@ -16,6 +16,7 @@ use consts::DEFAULT_CONFIG_PATH;
 use errors::{SyncServerError, init_error};
 use log::info;
 use server::create_server;
+use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{EnvFilter, fmt::format, layer::SubscriberExt, util::SubscriberInitExt};
 use utils::rotating_file_writer::RotatingFileWriter;
 
@@ -41,11 +42,14 @@ async fn main() -> ExitCode {
         }
     };
 
-    let mut result = set_up_logging(&args, &config.logging);
-
-    if result.is_ok() {
-        result = start_server(config).await;
+    let result = async {
+        config.validate().map_err(init_error)?;
+        // Hold the non-blocking writer guards until shutdown so the
+        // dedicated writer threads stay alive and flush queued log lines.
+        let _log_guards = set_up_logging(&args, &config.logging)?;
+        start_server(config).await
     }
+    .await;
 
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -59,7 +63,7 @@ async fn main() -> ExitCode {
 fn set_up_logging(
     args: &Args,
     logging_config: &config::logging_config::LoggingConfig,
-) -> Result<(), SyncServerError> {
+) -> Result<[WorkerGuard; 2], SyncServerError> {
     let level_filter = logging_config.log_level.as_tracing_level();
 
     let env_filter = EnvFilter::builder()
@@ -80,6 +84,14 @@ fn set_up_logging(
     .context("Failed to create rotating file writer")
     .map_err(init_error)?;
 
+    // Decouple log emission from disk/stderr I/O. Without this, a tokio
+    // worker that holds the writer's std::sync::Mutex while a `write(2)`
+    // is throttled by the kernel (e.g. btrfs writeback) cascades the
+    // stall to every other worker that tries to log, freezing the whole
+    // runtime. The guards must outlive every emitter.
+    let (file_writer, file_guard) = tracing_appender::non_blocking(file_appender);
+    let (stderr_writer, stderr_guard) = tracing_appender::non_blocking(std::io::stderr());
+
     let format = format()
         .with_target(is_debug_mode)
         .with_line_number(is_debug_mode)
@@ -87,12 +99,12 @@ fn set_up_logging(
 
     let stderr_layer = tracing_subscriber::fmt::layer()
         .with_ansi(use_colors)
-        .with_writer(std::io::stderr)
+        .with_writer(stderr_writer)
         .event_format(format.clone());
 
     let file_layer = tracing_subscriber::fmt::layer()
         .with_ansi(false)
-        .with_writer(file_appender)
+        .with_writer(file_writer)
         .event_format(format);
 
     tracing_subscriber::registry()
@@ -103,7 +115,7 @@ fn set_up_logging(
         .context("Failed to initialise tracing")
         .map_err(init_error)?;
 
-    Ok(())
+    Ok([file_guard, stderr_guard])
 }
 
 async fn start_server(config: Config) -> Result<(), SyncServerError> {

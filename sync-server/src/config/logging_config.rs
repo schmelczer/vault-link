@@ -1,10 +1,13 @@
 use std::time::Duration;
 
+use anyhow::{Result, ensure};
 use log::debug;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    consts::{DEFAULT_LOG_DIRECTORY, DEFAULT_LOG_LEVEL, DEFAULT_LOG_ROTATION_INTERVAL},
+    consts::{
+        DEFAULT_LOG_DIRECTORY, DEFAULT_LOG_LEVEL, DEFAULT_LOG_ROTATION_INTERVAL, DURATION_ZERO,
+    },
     utils::log_level::LogLevel,
 };
 
@@ -18,6 +21,20 @@ pub struct LoggingConfig {
 
     #[serde(default = "default_log_level")]
     pub log_level: LogLevel,
+}
+
+impl LoggingConfig {
+    pub fn validate(&self) -> Result<()> {
+        ensure!(
+            !self.log_directory.is_empty(),
+            "log_directory must not be an empty string"
+        );
+        ensure!(
+            self.log_rotation > DURATION_ZERO,
+            "log_rotation must be greater than 0"
+        );
+        Ok(())
+    }
 }
 
 impl Default for LoggingConfig {
