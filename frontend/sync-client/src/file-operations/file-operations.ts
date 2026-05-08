@@ -1,28 +1,40 @@
 import type { Logger } from "../tracing/logger";
 import type { FileSystemOperations } from "./filesystem-operations";
-import type { Database, RelativePath } from "../persistence/database";
+import type { RelativePath } from "../sync-operations/types";
 import { SafeFileSystemOperations } from "./safe-filesystem-operations";
 import type { TextWithCursors } from "reconcile-text";
 import { reconcile } from "reconcile-text";
 import { isFileTypeMergable } from "../utils/is-file-type-mergable";
 import { isBinary } from "../utils/is-binary";
 import type { ServerConfig } from "../services/server-config";
+import { FileNotFoundError } from "../errors/file-not-found-error";
+import { FileAlreadyExistsError } from "../errors/file-already-exists-error";
+import type { ExpectedFsEvents } from "../sync-operations/expected-fs-events";
+
+/**
+ * Outcome of a `move`/`create`. `actualPath` is where the file ended up;
+ * with the conflict-path machinery removed it is always equal to the
+ * requested path. The shape is preserved so callers don't all need to
+ * change.
+ */
+export interface FileOpResult {
+    actualPath: RelativePath;
+}
 
 export class FileOperations {
-    private static readonly PARENTHESES_REGEX = / \((?<count>\d+)\)$/;
     private readonly fs: SafeFileSystemOperations;
 
     public constructor(
         private readonly logger: Logger,
-        private readonly database: Database,
         fs: FileSystemOperations,
         private readonly serverConfig: ServerConfig,
+        private readonly expectedFsEvents: ExpectedFsEvents,
         private readonly nativeLineEndings = "\n"
     ) {
         this.fs = new SafeFileSystemOperations(fs, logger);
     }
 
-    private static getParentDirAndFile(
+    private static getParentDirAndFileName(
         path: RelativePath
     ): [RelativePath, RelativePath] {
         const pathParts = path.split("/");
@@ -45,43 +57,42 @@ export class FileOperations {
     }
 
     /**
-    * Create a file at the specified path.
-    *
-    * If a file with the same name already exists, it is moved before creating the new one.
-    * Parent directories are created if necessary.
-    */
+     * Create a file at the specified path.
+     *
+     * Throws `FileAlreadyExistsError` if a file already lives at `path`.
+     * Parent directories are created if necessary. The reconciler is the
+     * only caller that places files now and pre-checks for conflicts;
+     * the throw guards against a TOCTOU race rather than being a normal
+     * code path.
+     */
     public async create(
         path: RelativePath,
         newContent: Uint8Array
-    ): Promise<void> {
-        await this.ensureClearPath(path);
-        return this.fs.write(path, this.toNativeLineEndings(newContent));
-    }
-
-    public async ensureClearPath(path: RelativePath): Promise<void> {
+    ): Promise<FileOpResult> {
         if (await this.fs.exists(path)) {
-            const deconflictedPath = await this.deconflictPath(path);
-            try {
-                this.logger.debug(
-                    `Didn't expect ${path} to exist, deconflicting by moving it to '${deconflictedPath}'`
-                );
-
-                this.database.move(path, deconflictedPath);
-                await this.fs.rename(path, deconflictedPath, true);
-            } finally {
-                this.fs.unlock(deconflictedPath);
-            }
-        } else {
-            await this.createParentDirectories(path);
+            throw new FileAlreadyExistsError(
+                `Refusing to create '${path}': file already exists`,
+                path
+            );
         }
+        await this.createParentDirectories(path);
+
+        this.expectedFsEvents.expectCreate(path);
+        try {
+            await this.fs.write(path, this.toNativeLineEndings(newContent));
+        } catch (e) {
+            this.expectedFsEvents.unexpectCreate(path);
+            throw e;
+        }
+        return { actualPath: path };
     }
 
     /**
-    * Update the file at the given path.
-    *
-    * Performs a 3-way merge before writing if the file's content differs from `expectedContent`.
-    * Does not recreate the file if it no longer exists, returning an empty array instead.
-    */
+     * Update the file at the given path.
+     *
+     * Performs a 3-way merge before writing if the file's content differs from `expectedContent`.
+     * Does not recreate the file if it no longer exists, returning an empty array instead.
+     */
     public async write(
         path: RelativePath,
         expectedContent: Uint8Array,
@@ -94,58 +105,96 @@ export class FileOperations {
             return;
         }
 
-        if (
-            !isFileTypeMergable(
-                path,
-                (await this.serverConfig.getConfig()).mergeableFileExtensions
-            ) ||
-            isBinary(expectedContent) ||
-            isBinary(newContent)
-        ) {
-            this.logger.debug(
-                `The expected content is not mergable, so we won't perform a 3-way merge, just overwrite it`
-            );
-            await this.fs.write(
-                path,
-                // `newContent` might not be binary so we still have to ensure the line endings are correct
-                this.toNativeLineEndings(newContent)
-            );
-            return;
-        }
-
-        const expectedText = new TextDecoder().decode(expectedContent); // this comes from a previous read which must only have \n line endings
-        const newText = new TextDecoder().decode(newContent); // this comes from the server which stores text with \n line endings
-
-        await this.fs.atomicUpdateText(
-            path,
-            ({ text, cursors }: TextWithCursors): TextWithCursors => {
+        // Single-source the expectation registration: register exactly once
+        // per call, and unexpect from the catch if the underlying fs op
+        // throws (FileNotFoundError or otherwise). The previous shape
+        // registered inside each branch and let the catch swallow
+        // FileNotFoundError, leaking the expectation into the map.
+        this.expectedFsEvents.expectUpdate(path);
+        try {
+            if (
+                !isFileTypeMergable(
+                    path,
+                    (await this.serverConfig.getConfig())
+                        .mergeableFileExtensions
+                ) ||
+                isBinary(expectedContent) ||
+                isBinary(newContent)
+            ) {
                 this.logger.debug(
-                    `Performing a 3-way merge for ${path} with the expected content`
+                    `The expected content is not mergable, so we won't perform a 3-way merge, just overwrite it`
                 );
-
-                text = text.replaceAll(this.nativeLineEndings, "\n");
-                const merged = reconcile(
-                    expectedText,
-                    { text, cursors },
-                    newText
+                await this.fs.write(
+                    path,
+                    // `newContent` might not be binary so we still have to ensure the line endings are correct
+                    this.toNativeLineEndings(newContent)
                 );
-
-                const resultText = merged.text.replaceAll(
-                    "\n",
-                    this.nativeLineEndings
-                );
-
-                return {
-                    text: resultText,
-                    cursors: merged.cursors
-                };
+                return;
             }
-        );
+
+            let expectedText = "";
+            let newText = "";
+            try {
+                expectedText = new TextDecoder("utf-8", { fatal: true }).decode(
+                    expectedContent
+                ); // this comes from a previous read which must only have \n line endings
+                newText = new TextDecoder("utf-8", { fatal: true }).decode(
+                    newContent
+                ); // this comes from the server which stores text with \n line endings
+            } catch (decodeError) {
+                this.logger.warn(
+                    `3-way merge aborted for ${path}: one of expected/new is not valid UTF-8 (${decodeError}); falling back to overwrite`
+                );
+                await this.fs.write(path, this.toNativeLineEndings(newContent));
+                return;
+            }
+
+            await this.fs.atomicUpdateText(
+                path,
+                ({ text, cursors }: TextWithCursors): TextWithCursors => {
+                    this.logger.debug(
+                        `Performing a 3-way merge for ${path} with the expected content`
+                    );
+
+                    text = text.replaceAll(this.nativeLineEndings, "\n");
+                    const merged = reconcile(
+                        expectedText,
+                        { text, cursors },
+                        newText
+                    );
+
+                    const resultText = merged.text.replaceAll(
+                        "\n",
+                        this.nativeLineEndings
+                    );
+
+                    return {
+                        text: resultText,
+                        cursors: merged.cursors
+                    };
+                }
+            );
+        } catch (e) {
+            this.expectedFsEvents.unexpectUpdate(path);
+            if (e instanceof FileNotFoundError) {
+                this.logger.debug(
+                    `File ${path} disappeared during write; not recreating`
+                );
+                return;
+            }
+            throw e;
+        }
     }
 
     public async delete(path: RelativePath): Promise<void> {
         if (await this.exists(path)) {
-            await this.fs.delete(path);
+            this.expectedFsEvents.expectDelete(path);
+            try {
+                await this.fs.delete(path);
+            } catch (e) {
+                this.expectedFsEvents.unexpectDelete(path);
+                throw e;
+            }
             await this.deletingEmptyParentDirectoriesOfDeletedFile(path);
         } else {
             this.logger.debug(`No need to delete '${path}', it doesn't exist`);
@@ -160,23 +209,39 @@ export class FileOperations {
         return this.fs.exists(path);
     }
 
+    /**
+     * Move the file at `oldPath` to `newPath`.
+     *
+     * Throws `FileAlreadyExistsError` if a file already lives at `newPath`
+     * (and `oldPath !== newPath`). The reconciler is the only caller that
+     * relocates tracked records and pre-checks for conflicts; the throw
+     * guards against a TOCTOU race.
+     */
     public async move(
         oldPath: RelativePath,
         newPath: RelativePath
-    ): Promise<void> {
+    ): Promise<FileOpResult> {
         if (oldPath === newPath) {
-            return;
+            return { actualPath: oldPath };
         }
 
-        await this.ensureClearPath(newPath);
+        if (await this.fs.exists(newPath)) {
+            throw new FileAlreadyExistsError(
+                `Refusing to move '${oldPath}' onto '${newPath}': target already exists`,
+                newPath
+            );
+        }
+        await this.createParentDirectories(newPath);
 
-        this.database.move(oldPath, newPath);
-        await this.fs.rename(oldPath, newPath);
+        this.expectedFsEvents.expectRename(oldPath, newPath);
+        try {
+            await this.fs.rename(oldPath, newPath);
+        } catch (e) {
+            this.expectedFsEvents.unexpectRename(oldPath, newPath);
+            throw e;
+        }
         await this.deletingEmptyParentDirectoriesOfDeletedFile(oldPath);
-    }
-
-    public reset(): void {
-        this.fs.reset();
+        return { actualPath: newPath };
     }
 
     private async deletingEmptyParentDirectoriesOfDeletedFile(
@@ -185,7 +250,7 @@ export class FileOperations {
         let directory = path;
         // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
         while (true) {
-            [directory] = FileOperations.getParentDirAndFile(directory);
+            [directory] = FileOperations.getParentDirAndFileName(directory);
             if (directory.length === 0) {
                 break;
             }
@@ -234,57 +299,6 @@ export class FileOperations {
             const parentDir = components.slice(0, i).join("/");
             if (!(await this.fs.exists(parentDir))) {
                 await this.fs.createDirectory(parentDir);
-            }
-        }
-    }
-
-    /**
-    * Deconflicts the given path by appending (1), (2), etc. before the file extension until a non-existent path is found.
-    * The returned path has a lock acquired on it; it must be released by the caller when no longer needed.
-    *
-    * @param path The starting path to deconflict
-    * @returns a non-existent path with a lock acquired on it
-    */
-    private async deconflictPath(path: RelativePath): Promise<RelativePath> {
-        // eslint-disable-next-line prefer-const
-        let [directory, fileName] = FileOperations.getParentDirAndFile(path);
-
-        if (directory) {
-            directory += "/";
-        }
-
-        const nameParts = fileName.split(".");
-        // Handle dotfiles: ".gitignore" should have no extension, ".config.json" should have ".json"
-        const isDotfile = fileName.startsWith(".") && nameParts[0] === "";
-        const extension =
-            nameParts.length > 1 && !(isDotfile && nameParts.length === 2)
-                ? "." + nameParts[nameParts.length - 1]
-                : "";
-        let stem = extension ? nameParts.slice(0, -1).join(".") : fileName;
-        let currentCount = Number.parseInt(
-            FileOperations.PARENTHESES_REGEX.exec(stem)?.groups?.count ?? "0"
-        );
-        stem = stem.replace(FileOperations.PARENTHESES_REGEX, "");
-
-        let newName = path;
-
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-        while (true) {
-            currentCount++;
-            newName = `${directory}${stem} (${currentCount})${extension}`;
-
-            // Avoid multiple deconflictPath calls returning the same path
-            if (this.fs.tryLock(newName)) {
-                const newDocument =
-                    this.database.getLatestDocumentByRelativePath(newName);
-                if (
-                    newDocument?.isDeleted === false || // the document might have been confirmed by the server at a new path but haven't yet moved there locally
-                    (await this.fs.exists(newName, true))
-                ) {
-                    this.fs.unlock(newName);
-                } else {
-                    return newName;
-                }
             }
         }
     }

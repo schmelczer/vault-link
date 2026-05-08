@@ -6,7 +6,6 @@ export interface SyncSettings {
     remoteUri: string;
     token: string;
     vaultName: string;
-    syncConcurrency: number;
     isSyncEnabled: boolean;
     maxFileSizeMB: number;
     ignorePatterns: string[];
@@ -14,22 +13,19 @@ export interface SyncSettings {
     diffCacheSizeMB: number;
     enableTelemetry: boolean;
     networkRetryIntervalMs: number;
-    minimumSaveIntervalMs: number;
 }
 
 export const DEFAULT_SETTINGS: SyncSettings = {
     remoteUri: "",
     token: "",
     vaultName: "default",
-    syncConcurrency: 1,
     isSyncEnabled: false,
     maxFileSizeMB: 10,
     ignorePatterns: [],
     webSocketRetryIntervalMs: 3500,
     diffCacheSizeMB: 4,
     enableTelemetry: false,
-    networkRetryIntervalMs: 1000,
-    minimumSaveIntervalMs: 1000
+    networkRetryIntervalMs: 1000
 };
 
 export class Settings {
@@ -38,7 +34,7 @@ export class Settings {
     >();
 
     private settings: SyncSettings;
-    private readonly lock: Lock = new Lock();
+    private readonly lock: Lock;
 
     public constructor(
         private readonly logger: Logger,
@@ -49,6 +45,8 @@ export class Settings {
             ...DEFAULT_SETTINGS,
             ...(initialState ?? {})
         };
+
+        this.lock = new Lock(Settings.name, this.logger);
 
         this.logger.debug(
             `Loaded settings: ${JSON.stringify(this.settings, null, 2)}`
