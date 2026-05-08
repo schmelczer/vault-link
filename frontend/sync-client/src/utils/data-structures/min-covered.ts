@@ -7,25 +7,19 @@
  *
  * @example
  * ```typescript
- * const covered = new CoveredValues(0);
+ * const covered = new MinCovered(0);
  * covered.add(2); // seenValues = [2], min = 0
  * covered.add(1); // seenValues = [], min = 2
  * covered.min; // returns 2
  * ```
  */
-export class CoveredValues {
+export class MinCovered {
     private seenValues: number[] = [];
 
     public constructor(private minValue: number) {}
 
     public get min(): number {
         return this.minValue;
-    }
-
-    public set min(value: number) {
-        this.minValue = Math.max(value, this.minValue);
-        this.seenValues = this.seenValues.filter((v) => v > this.minValue);
-        this.advanceMinWhilePossible();
     }
 
     public add(value: number | undefined): void {
@@ -47,6 +41,11 @@ export class CoveredValues {
         }
 
         this.advanceMinWhilePossible();
+    }
+
+    public reset(minValue?: number): void {
+        this.minValue = minValue ?? 0;
+        this.seenValues = [];
     }
 
     private advanceMinWhilePossible(): void {

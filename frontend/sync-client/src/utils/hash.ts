@@ -1,12 +1,14 @@
-// https://stackoverflow.com/questions/7616461/generate-a-hash-from-string-in-javascript
-export function hash(content: Uint8Array): string {
-    let result = 0;
-    // eslint-disable-next-line @typescript-eslint/prefer-for-of
-    for (let i = 0; i < content.length; i++) {
-        result = (result << 5) - result + content[i];
-        result |= 0; // Convert to 32bit integer
-    }
-    return Math.abs(result).toString(16).padStart(8, "0");
+export async function hash(content: Uint8Array): Promise<string> {
+    // Re-wrap into a fresh Uint8Array<ArrayBuffer> so SubtleCrypto's
+    // BufferSource overload accepts it without an unsafe type assertion.
+    // The lib types require an ArrayBuffer-backed view; the source may
+    // be backed by SharedArrayBuffer in some runtimes.
+    const buffer = new ArrayBuffer(content.byteLength);
+    new Uint8Array(buffer).set(content);
+    const digest = await crypto.subtle.digest("SHA-256", buffer);
+    const bytes = new Uint8Array(digest);
+    return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-export const EMPTY_HASH = hash(new Uint8Array(0));
+// SHA-256 of empty content, computed once at import time
+export const EMPTY_HASH: Promise<string> = hash(new Uint8Array());
