@@ -2,14 +2,14 @@
 
 set -e
 
-SERVER_URL="http://localhost:3000"
+SERVER_URL="http://localhost:3010"
 MAX_RETRIES=30
 RETRY_INTERVAL_IN_SECONDS=5
 
 echo "Waiting for $SERVER_URL to become available..."
 count=0
 while [ $count -lt $MAX_RETRIES ]; do
-  if curl -s -f -o /dev/null $SERVER_URL; then
+  if curl -s -o /dev/null $SERVER_URL; then
     echo "$SERVER_URL is now available!"
     break
   fi

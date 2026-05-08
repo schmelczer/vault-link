@@ -1,0 +1,11 @@
+# Rustfmt configuration
+# This should match the .editorconfig settings
+
+# Use spaces for indentation (matches .editorconfig indent_style = space)
+hard_tabs = false
+
+# Use 4 spaces for indentation (matches .editorconfig indent_size = 4)
+tab_spaces = 4
+
+# Use Unix line endings (matches .editorconfig end_of_line = lf)
+newline_style = "Unix"
