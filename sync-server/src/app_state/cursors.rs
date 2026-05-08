@@ -42,7 +42,9 @@ impl Cursors {
     ) {
         let mut vault_to_cursors = self.vault_to_cursors.lock().await;
 
-        let all_device_cursors = vault_to_cursors.entry(vault_id).or_insert_with(Vec::new);
+        let all_device_cursors = vault_to_cursors
+            .entry(vault_id.clone())
+            .or_insert_with(Vec::new);
 
         all_device_cursors.retain(|c| &c.client_cursors.device_id != device_id);
         all_device_cursors.push(ClientCursorsWithTimeToLive::new(ClientCursors {
@@ -52,7 +54,7 @@ impl Cursors {
         }));
 
         drop(vault_to_cursors); // Explicitly drop the lock before broadcasting to avoid deadlock
-        self.broadcast_cursors().await;
+        self.broadcast_cursors_for_vault(&vault_id).await;
     }
 
     pub async fn get_cursors(&self, vault_id: &VaultId) -> Vec<ClientCursors> {
@@ -69,45 +71,81 @@ impl Cursors {
             .unwrap_or_default()
     }
 
-    pub fn start_background_task(self) {
+    pub fn start_background_task(self, mut shutdown: tokio::sync::watch::Receiver<()>) {
         tokio::spawn(async move {
             loop {
-                self.remove_expired_cursors().await;
-                tokio::time::sleep(Duration::from_secs(1)).await;
+                tokio::select! {
+                    () = tokio::time::sleep(Duration::from_secs(1)) => {
+                        self.remove_expired_cursors().await;
+                    }
+                    Ok(()) = shutdown.changed() => break,
+                }
             }
         });
     }
 
     async fn remove_expired_cursors(&self) {
-        let mut vault_to_cursors = self.vault_to_cursors.lock().await;
+        let changed_vaults: Vec<VaultId> = {
+            let mut vault_to_cursors = self.vault_to_cursors.lock().await;
 
-        for (_vault_id, cursors) in vault_to_cursors.iter_mut() {
-            cursors.retain(|cursor| !cursor.is_expired(self.config.cursor_timeout));
+            let mut changed = Vec::new();
+            for (vault_id, cursors) in vault_to_cursors.iter_mut() {
+                let before = cursors.len();
+                cursors.retain(|cursor| !cursor.is_expired(self.config.cursor_timeout));
+                if cursors.len() != before {
+                    changed.push(vault_id.clone());
+                }
+            }
+
+            // Remove empty vault entries to prevent unbounded growth
+            vault_to_cursors.retain(|_, cursors| !cursors.is_empty());
+
+            changed
+        };
+
+        for vault_id in &changed_vaults {
+            self.broadcast_cursors_for_vault(vault_id).await;
         }
     }
 
-    async fn broadcast_cursors(&self) {
-        let vault_to_cursors = self.vault_to_cursors.lock().await;
+    async fn broadcast_cursors_for_vault(&self, vault_id: &VaultId) {
+        let client_cursors: Vec<ClientCursors> = {
+            let vault_to_cursors = self.vault_to_cursors.lock().await;
+            vault_to_cursors
+                .get(vault_id)
+                .map(|cursors| cursors.iter().map(|c| c.client_cursors.clone()).collect())
+                .unwrap_or_default()
+        };
 
-        for (vault_id, cursors) in vault_to_cursors.iter() {
-            self.broadcasts
-                .send_document_update(
-                    vault_id.clone(),
-                    WebSocketServerMessageWithOrigin::new(WebSocketServerMessage::CursorPositions(
-                        CursorPositionFromServer {
-                            clients: cursors.iter().map(|c| c.client_cursors.clone()).collect(),
-                        },
-                    )),
-                )
-                .await;
-        }
+        self.broadcasts.send_document_update(
+            vault_id.clone(),
+            WebSocketServerMessageWithOrigin::new(WebSocketServerMessage::CursorPositions(
+                CursorPositionFromServer {
+                    clients: client_cursors,
+                },
+            )),
+        );
     }
 
-    pub async fn remove_cursors_of_device(&self, vault_id: &str, device_id: &str) {
-        let mut vault_to_cursors = self.vault_to_cursors.lock().await;
+    pub async fn remove_cursors_of_device(&self, vault_id: &VaultId, device_id: &DeviceId) {
+        let changed = {
+            let mut vault_to_cursors = self.vault_to_cursors.lock().await;
 
-        if let Some(cursors) = vault_to_cursors.get_mut(vault_id) {
-            cursors.retain(|c| c.client_cursors.device_id != device_id);
+            if let Some(cursors) = vault_to_cursors.get_mut(vault_id) {
+                let before = cursors.len();
+                cursors.retain(|c| c.client_cursors.device_id != *device_id);
+                let changed = cursors.len() != before;
+                if cursors.is_empty() {
+                    vault_to_cursors.remove(vault_id);
+                }
+                changed
+            } else {
+                false
+            }
+        };
+
+        if changed {
+            self.broadcast_cursors_for_vault(vault_id).await;
         }
     }
 }

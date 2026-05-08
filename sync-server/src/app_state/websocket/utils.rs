@@ -9,7 +9,7 @@ use crate::{
         database::models::{DocumentVersionWithoutContent, VaultId, VaultUpdateId},
     },
     config::user_config::User,
-    errors::{SyncServerError, server_error, unauthenticated_error},
+    errors::{SyncServerError, client_error, server_error, unauthenticated_error},
     server::auth::auth,
 };
 
@@ -26,7 +26,7 @@ pub fn get_authenticated_handshake(
     if let Some(Message::Text(message)) = message {
         let message: WebSocketClientMessage = serde_json::from_str(&message)
             .context("Failed to parse message")
-            .map_err(server_error)?;
+            .map_err(client_error)?;
 
         match message {
             WebSocketClientMessage::Handshake(handshake) => {
@@ -44,21 +44,29 @@ pub fn get_authenticated_handshake(
     }
 }
 
+/// Stream the documents the client missed while offline, bounded above
+/// by `up_to_vault_update_id` so the catch-up is a stable snapshot at
+/// exactly that cursor. The WebSocket handshake atomically subscribes
+/// to the broadcast channel and snapshots this cursor under the per-
+/// vault send lock; commits past the cursor are then delivered solely
+/// through the broadcast channel (filtered by the same cursor on the
+/// receive side), so every committed update is delivered exactly once.
 pub async fn get_unseen_documents(
     state: &AppState,
     vault_id: &VaultId,
     last_seen_vault_update_id: Option<VaultUpdateId>,
+    up_to_vault_update_id: VaultUpdateId,
 ) -> Result<Vec<DocumentVersionWithoutContent>, SyncServerError> {
     if let Some(update_id) = last_seen_vault_update_id {
         state
             .database
-            .get_latest_documents_since(vault_id, update_id, None)
+            .get_latest_documents_since(vault_id, update_id, Some(up_to_vault_update_id), None)
             .await
             .map_err(server_error)
     } else {
         state
             .database
-            .get_latest_documents(vault_id, None)
+            .get_latest_documents(vault_id, Some(up_to_vault_update_id), None)
             .await
             .map_err(server_error)
     }

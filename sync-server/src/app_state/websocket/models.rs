@@ -11,7 +11,7 @@ pub struct WebSocketHandshake {
     pub token: String,
     pub device_id: DeviceId,
 
-    #[ts(as = "Option<i32>")]
+    #[ts(type = "number | null")]
     pub last_seen_vault_update_id: Option<VaultUpdateId>,
 }
 
@@ -22,13 +22,14 @@ pub struct CursorPositionFromClient {
 }
 
 #[derive(TS, Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct DocumentWithCursors {
     // It's None in case the document is dirty.
     // We still want to sync the cursor to mark
     // that it exists and can be client-side
     // interpolated. However, the actual
     // position is meaningless.
-    #[ts(as = "Option<u32>")]
+    #[ts(type = "number | null")]
     pub vault_update_id: Option<VaultUpdateId>,
 
     pub document_id: DocumentId,
@@ -57,11 +58,19 @@ pub struct CursorPositionFromServer {
     pub clients: Vec<ClientCursors>,
 }
 
+// One committed version. Non-delete updates are broadcast to every
+// connected client *except* the device that authored them — that
+// device already has the new state via its HTTP response. Deletes are
+// broadcast to every client including the author: the author keeps
+// the document in its sync queue until this receipt arrives so a late
+// remote update can't sneak in between the HTTP response and the
+// queue cleanup. The server also emits these one-at-a-time to catch
+// up a freshly-connected client on versions committed while it was
+// offline, in ascending `vault_update_id` order.
 #[derive(TS, Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct WebSocketVaultUpdate {
-    pub documents: Vec<DocumentVersionWithoutContent>,
-    pub is_initial_sync: bool,
+    pub document: DocumentVersionWithoutContent,
 }
 
 #[derive(TS, Deserialize, Clone, Debug)]
@@ -80,6 +89,10 @@ pub enum WebSocketServerMessage {
     CursorPositions(CursorPositionFromServer),
 }
 
+/// Broadcast envelope carrying the message plus the device that produced
+/// it. The per-recipient send task compares `origin_device_id` against
+/// its own device id to fill in `originates_from_self` before the message
+/// is serialized on the wire.
 #[derive(Clone, Debug)]
 pub struct WebSocketServerMessageWithOrigin {
     pub origin_device_id: Option<DeviceId>,
