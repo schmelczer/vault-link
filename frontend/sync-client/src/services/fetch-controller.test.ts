@@ -3,7 +3,7 @@ import { describe, it, mock, beforeEach, afterEach } from "node:test";
 import assert from "node:assert";
 import { FetchController } from "./fetch-controller";
 import { Logger } from "../tracing/logger";
-import { SyncResetError } from "./sync-reset-error";
+import { SyncResetError } from "../errors/sync-reset-error";
 import { sleep } from "../utils/sleep";
 
 describe("FetchController", () => {

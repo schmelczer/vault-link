@@ -1,6 +1,7 @@
 import { SUPPORTED_API_VERSION } from "../consts";
-import { AuthenticationError } from "./authentication-error";
-import { ServerVersionMismatchError } from "./server-version-mismatch-error";
+import { AuthenticationError } from "../errors/authentication-error";
+import { ServerVersionMismatchError } from "../errors/server-version-mismatch-error";
+import type { Settings } from "../persistence/settings";
 import type { SyncService } from "./sync-service";
 import type { PingResponse } from "./types/PingResponse";
 
@@ -14,7 +15,20 @@ export class ServerConfig {
     private response: Promise<PingResponse> | undefined;
     private config: ServerConfigData | undefined;
 
-    public constructor(private readonly syncService: SyncService) {}
+    public constructor(
+        private readonly syncService: SyncService,
+        settings: Settings
+    ) {
+        settings.onSettingsChanged.add((newSettings, oldSettings) => {
+            if (
+                newSettings.token !== oldSettings.token ||
+                newSettings.vaultName !== oldSettings.vaultName ||
+                newSettings.remoteUri !== oldSettings.remoteUri
+            ) {
+                this.reset();
+            }
+        });
+    }
 
     private static validateConfig(config: ServerConfigData): void {
         if (config.supportedApiVersion !== SUPPORTED_API_VERSION) {
@@ -34,11 +48,6 @@ export class ServerConfig {
         }
     }
 
-    // warm the cache
-    public async initialize(): Promise<void> {
-        await this.getConfig();
-    }
-
     public async checkConnection(forceUpdate = false): Promise<{
         isSuccessful: boolean;
         message: string;
@@ -46,7 +55,7 @@ export class ServerConfig {
         try {
             let { response } = this;
             if (!response || forceUpdate) {
-                response = this.response = this.syncService.ping();
+                response = this.startPing();
             }
 
             const result: PingResponse = await response; // it must be defined, otherwise we would have thrown above
@@ -73,7 +82,7 @@ export class ServerConfig {
 
     public async getConfig(): Promise<ServerConfigData> {
         if (!this.config) {
-            this.response ??= this.syncService.ping();
+            this.response ??= this.startPing();
             this.config = await this.response;
         }
 
@@ -85,5 +94,16 @@ export class ServerConfig {
     public reset(): void {
         this.response = undefined;
         this.config = undefined;
+    }
+
+    private async startPing(): Promise<PingResponse> {
+        const pending = this.syncService.ping().catch((e: unknown) => {
+            if (this.response === pending) {
+                this.response = undefined;
+            }
+            throw e;
+        });
+        this.response = pending;
+        return pending;
     }
 }

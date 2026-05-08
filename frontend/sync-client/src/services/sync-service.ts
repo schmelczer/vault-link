@@ -2,25 +2,27 @@ import type {
     DocumentId,
     RelativePath,
     VaultUpdateId
-} from "../persistence/database";
+} from "../sync-operations/types";
 
 import type { Logger } from "../tracing/logger";
 import type { Settings } from "../persistence/settings";
 import type { FetchController } from "./fetch-controller";
 import { sleep } from "../utils/sleep";
-import { SyncResetError } from "./sync-reset-error";
+import { SyncResetError } from "../errors/sync-reset-error";
+import { HttpClientError } from "../errors/http-client-error";
 import type { SerializedError } from "./types/SerializedError";
 import type { DocumentVersionWithoutContent } from "./types/DocumentVersionWithoutContent";
 import type { DocumentUpdateResponse } from "./types/DocumentUpdateResponse";
 import type { DocumentVersion } from "./types/DocumentVersion";
 import type { FetchLatestDocumentsResponse } from "./types/FetchLatestDocumentsResponse";
 import type { PingResponse } from "./types/PingResponse";
-import type { DeleteDocumentVersion } from "./types/DeleteDocumentVersion";
 import type { UpdateTextDocumentVersion } from "./types/UpdateTextDocumentVersion";
+import { buildVaultUrl } from "./build-vault-url";
 
 export class SyncService {
     private readonly client: typeof globalThis.fetch;
     private readonly pingClient: typeof globalThis.fetch;
+    private isStopped = false;
 
     public constructor(
         private readonly deviceId: string,
@@ -65,28 +67,68 @@ export class SyncService {
         return result;
     }
 
+    private static async throwIfNotOk(
+        response: Response,
+        operation: string
+    ): Promise<void> {
+        if (response.ok) {
+            return;
+        }
+        const message = `Failed to ${operation}: ${await SyncService.errorFromResponse(response)}`;
+        // 429 is the only 4xx the server uses for *transient* contention
+        // (`WriteBusyError` → HTTP 429). Every other 4xx means the request
+        // is permanently rejected and shouldn't be retried.
+        if (response.status === 429) {
+            throw new Error(message);
+        }
+        if (response.status >= 400 && response.status < 500) {
+            throw new HttpClientError(response.status, message);
+        }
+        throw new Error(message);
+    }
+
+    /**
+     * Signal that the service is shutting down so any in-flight
+     * `retryForever` exits at its next iteration instead of looping
+     * indefinitely after the rest of the client has stopped. Idempotent.
+     */
+    public stop(): void {
+        this.isStopped = true;
+    }
+
+    /**
+     * Re-enable the service after a `stop()`. Used when the client pauses
+     * and resumes syncing within the same lifecycle (e.g. user toggles
+     * sync off and on).
+     */
+    public resume(): void {
+        this.isStopped = false;
+    }
+
     public async create({
-        documentId,
         relativePath,
+        lastSeenVaultUpdateId,
         contentBytes
     }: {
-        documentId?: DocumentId;
         relativePath: RelativePath;
+        lastSeenVaultUpdateId: VaultUpdateId;
         contentBytes: Uint8Array;
-    }): Promise<DocumentVersionWithoutContent> {
+    }): Promise<DocumentUpdateResponse> {
         return this.retryForever(async () => {
             const formData = new FormData();
-            if (documentId !== undefined) {
-                formData.append("document_id", documentId);
-            }
+
             formData.append("relative_path", relativePath);
+            formData.append(
+                "last_seen_vault_update_id",
+                lastSeenVaultUpdateId.toString()
+            );
             formData.append(
                 "content",
                 new Blob([new Uint8Array(contentBytes)])
             );
 
             this.logger.debug(
-                `Creating document with id ${documentId} and relative path ${relativePath}`
+                `Creating document with relative path ${relativePath}`
             );
 
             const response = await this.client(this.getUrl("/documents"), {
@@ -95,16 +137,10 @@ export class SyncService {
                 headers: this.getDefaultHeaders()
             });
 
-            if (!response.ok) {
-                throw new Error(
-                    `Failed to create document: ${await SyncService.errorFromResponse(
-                        response
-                    )}`
-                );
-            }
+            await SyncService.throwIfNotOk(response, "create document");
 
-            const result: DocumentVersionWithoutContent =
-                (await response.json()) as DocumentVersionWithoutContent; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
+            const result: DocumentUpdateResponse =
+                (await response.json()) as DocumentUpdateResponse; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
 
             this.logger.debug(`Created document ${JSON.stringify(result)}`);
 
@@ -120,17 +156,17 @@ export class SyncService {
     }: {
         parentVersionId: VaultUpdateId;
         documentId: DocumentId;
-        relativePath: RelativePath;
+        relativePath: RelativePath | undefined;
         content: (number | string)[];
     }): Promise<DocumentUpdateResponse> {
         return this.retryForever(async () => {
             this.logger.debug(
-                `Updating text document ${documentId} with parent version ${parentVersionId} and relative path ${relativePath}, content [${content.join(", ")}]`
+                `Updating text document ${documentId} with parent version ${parentVersionId} and relative path ${relativePath ?? "<unchanged>"}, content [${content.join(", ")}]`
             );
 
             const request: UpdateTextDocumentVersion = {
                 parentVersionId,
-                relativePath,
+                relativePath: relativePath ?? null,
                 content
             };
 
@@ -143,13 +179,7 @@ export class SyncService {
                 }
             );
 
-            if (!response.ok) {
-                throw new Error(
-                    `Failed to update document: ${await SyncService.errorFromResponse(
-                        response
-                    )}`
-                );
-            }
+            await SyncService.throwIfNotOk(response, "update document");
 
             const result: DocumentUpdateResponse =
                 (await response.json()) as DocumentUpdateResponse; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
@@ -172,16 +202,18 @@ export class SyncService {
     }: {
         parentVersionId: VaultUpdateId;
         documentId: DocumentId;
-        relativePath: RelativePath;
+        relativePath: RelativePath | undefined;
         contentBytes: Uint8Array;
     }): Promise<DocumentUpdateResponse> {
         return this.retryForever(async () => {
             this.logger.debug(
-                `Updating binary document ${documentId} with parent version ${parentVersionId} and relative path ${relativePath}`
+                `Updating binary document ${documentId} with parent version ${parentVersionId} and relative path ${relativePath ?? "<unchanged>"}`
             );
             const formData = new FormData();
             formData.append("parent_version_id", parentVersionId.toString());
-            formData.append("relative_path", relativePath);
+            if (relativePath !== undefined) {
+                formData.append("relative_path", relativePath);
+            }
             formData.append(
                 "content",
                 new Blob([new Uint8Array(contentBytes)])
@@ -196,13 +228,7 @@ export class SyncService {
                 }
             );
 
-            if (!response.ok) {
-                throw new Error(
-                    `Failed to update document: ${await SyncService.errorFromResponse(
-                        response
-                    )}`
-                );
-            }
+            await SyncService.throwIfNotOk(response, "update document");
 
             const result: DocumentUpdateResponse =
                 (await response.json()) as DocumentUpdateResponse; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
@@ -218,44 +244,29 @@ export class SyncService {
     }
 
     public async delete({
-        documentId,
-        relativePath
+        documentId
     }: {
         documentId: DocumentId;
-        relativePath: RelativePath;
     }): Promise<DocumentVersionWithoutContent> {
         return this.retryForever(async () => {
-            const request: DeleteDocumentVersion = {
-                relativePath
-            };
+            this.logger.debug(`Delete document with id ${documentId}`);
 
-            this.logger.debug(
-                `Delete document with id ${documentId} and relative path ${relativePath}`
-            );
-
+            // The server identifies the document by its URL path; no body
+            // is needed. Sending one was a leftover of an earlier shape.
             const response = await this.client(
                 this.getUrl(`/documents/${documentId}`),
                 {
                     method: "DELETE",
-                    body: JSON.stringify(request),
-                    headers: this.getDefaultHeaders({ type: "json" })
+                    headers: this.getDefaultHeaders()
                 }
             );
 
-            if (!response.ok) {
-                throw new Error(
-                    `Failed to delete document: ${await SyncService.errorFromResponse(
-                        response
-                    )}`
-                );
-            }
+            await SyncService.throwIfNotOk(response, "delete document");
 
             const result: DocumentVersionWithoutContent =
                 (await response.json()) as DocumentVersionWithoutContent; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
 
-            this.logger.debug(
-                `Deleted document ${relativePath} with id ${documentId}`
-            );
+            this.logger.debug(`Deleted document with id ${documentId}`);
 
             return result;
         });
@@ -276,13 +287,7 @@ export class SyncService {
                 }
             );
 
-            if (!response.ok) {
-                throw new Error(
-                    `Failed to get document: ${await SyncService.errorFromResponse(
-                        response
-                    )}`
-                );
-            }
+            await SyncService.throwIfNotOk(response, "get document");
 
             const result: DocumentVersion =
                 (await response.json()) as DocumentVersion; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
@@ -314,13 +319,10 @@ export class SyncService {
                 }
             );
 
-            if (!response.ok) {
-                throw new Error(
-                    `Failed to get document: ${await SyncService.errorFromResponse(
-                        response
-                    )}`
-                );
-            }
+            await SyncService.throwIfNotOk(
+                response,
+                "get document version content"
+            );
 
             const result = await response.bytes();
             this.logger.debug(
@@ -341,19 +343,13 @@ export class SyncService {
 
             const url = new URL(this.getUrl("/documents"));
             if (since !== undefined) {
-                url.searchParams.append("since", since.toString());
+                url.searchParams.append("since_update_id", since.toString());
             }
             const response = await this.client(url.toString(), {
                 headers: this.getDefaultHeaders()
             });
 
-            if (!response.ok) {
-                throw new Error(
-                    `Failed to get documents: ${await SyncService.errorFromResponse(
-                        response
-                    )}`
-                );
-            }
+            await SyncService.throwIfNotOk(response, "get documents");
 
             const result: FetchLatestDocumentsResponse =
                 (await response.json()) as FetchLatestDocumentsResponse; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
@@ -390,10 +386,7 @@ export class SyncService {
     }
 
     private getUrl(path: string): string {
-        const { vaultName, remoteUri } = this.settings.getSettings();
-        const remoteUriWithoutTrailingSlash = remoteUri.replace(/\/+$/, "");
-        const encodedVaultName = encodeURIComponent(vaultName.trim());
-        return `${remoteUriWithoutTrailingSlash}/vaults/${encodedVaultName}${path}`;
+        return buildVaultUrl(this.settings, path);
     }
 
     private getDefaultHeaders(
@@ -414,13 +407,17 @@ export class SyncService {
     private async retryForever<T>(fn: () => Promise<T>): Promise<T> {
         // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
         while (true) {
+            this.throwIfStopped();
             try {
                 return await fn();
             } catch (e) {
-                // We must not retry errors coming from reset
-                if (e instanceof SyncResetError) {
+                if (
+                    e instanceof SyncResetError ||
+                    e instanceof HttpClientError
+                ) {
                     throw e;
                 }
+                this.throwIfStopped();
 
                 const retryInterval =
                     this.settings.getSettings().networkRetryIntervalMs;
@@ -429,6 +426,12 @@ export class SyncService {
                 );
                 await sleep(retryInterval);
             }
+        }
+    }
+
+    private throwIfStopped(): void {
+        if (this.isStopped) {
+            throw new SyncResetError();
         }
     }
 }

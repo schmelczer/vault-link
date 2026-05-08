@@ -4,8 +4,7 @@ import assert from "node:assert";
 import { WebSocketManager } from "./websocket-manager";
 import type { Logger } from "../tracing/logger";
 import type { Settings } from "../persistence/settings";
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const WebSocket = require("ws") as typeof globalThis.WebSocket;
+import { awaitAll } from "../utils/await-all";
 
 class MockCloseEvent extends Event {
     public code: number;
@@ -91,10 +90,8 @@ function createMockFn<T extends (...args: unknown[]) => unknown>(
 describe("WebSocketManager", () => {
     let mockLogger: Logger = undefined as unknown as Logger;
     let mockSettings: Settings = undefined as unknown as Settings;
-    let deviceId = "test-device-123";
 
     beforeEach(() => {
-        deviceId = "test-device-123";
         const noop = (): void => {
             // Intentionally empty for mock
         };
@@ -116,7 +113,6 @@ describe("WebSocketManager", () => {
 
     it("cleans up promises after message handling", async () => {
         const manager = new WebSocketManager(
-            deviceId,
             mockLogger,
             mockSettings,
             MockWebSocket as unknown as typeof WebSocket
@@ -146,7 +142,6 @@ describe("WebSocketManager", () => {
 
     it("cleans up cursor position promises", async () => {
         const manager = new WebSocketManager(
-            deviceId,
             mockLogger,
             mockSettings,
             MockWebSocket as unknown as typeof WebSocket
@@ -176,7 +171,6 @@ describe("WebSocketManager", () => {
 
     it("logs handshake send errors", async () => {
         const manager = new WebSocketManager(
-            deviceId,
             mockLogger,
             mockSettings,
             MockWebSocket as unknown as typeof WebSocket
@@ -205,7 +199,6 @@ describe("WebSocketManager", () => {
 
     it("completes stop with timeout protection", async () => {
         const manager = new WebSocketManager(
-            deviceId,
             mockLogger,
             mockSettings,
             MockWebSocket as unknown as typeof WebSocket
@@ -220,7 +213,6 @@ describe("WebSocketManager", () => {
 
     it("clears old handlers on reconnection", async () => {
         const manager = new WebSocketManager(
-            deviceId,
             mockLogger,
             mockSettings,
             MockWebSocket as unknown as typeof WebSocket
@@ -255,9 +247,68 @@ describe("WebSocketManager", () => {
         await manager.stop();
     });
 
+    it("handles concurrent stop() calls without stranding either caller", async () => {
+        // Real WebSocket.close() doesn't fire onclose synchronously, and the
+        // socket stays reachable across the close handshake. Model that
+        // here so the manager's `while (isWebSocketConnected)` loop is
+        // actually awaiting when the second stop() races in. Static OPEN
+        // is required because the manager compares readyState against
+        // `factory.OPEN`.
+        class AsyncCloseWebSocket extends MockWebSocket {
+            public static readonly OPEN = WebSocket.OPEN;
+
+            public override close(code?: number, reason?: string): void {
+                if (
+                    this.readyState === WebSocket.CLOSED ||
+                    (this as { _closing?: boolean })._closing === true
+                ) {
+                    return;
+                }
+                (this as { _closing?: boolean })._closing = true;
+                setTimeout(() => {
+                    this.readyState = WebSocket.CLOSED;
+                    this.onclose?.(
+                        new MockCloseEvent("close", {
+                            code: code ?? 1000,
+                            reason: reason ?? ""
+                        })
+                    );
+                }, 5);
+            }
+        }
+
+        const manager = new WebSocketManager(
+            mockLogger,
+            mockSettings,
+            AsyncCloseWebSocket as unknown as typeof WebSocket
+        );
+
+        manager.start();
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
+        const start = Date.now();
+        // Two concurrent stops mimic destroy() racing onSettingsChange.
+        await awaitAll([manager.stop(), manager.stop()]);
+        const elapsed = Date.now() - start;
+
+        // Both should resolve via the normal close path; if the second call
+        // had clobbered the first's resolver, the first would have been
+        // stranded until the 10s disconnect timeout.
+        assert.ok(
+            elapsed < 1000,
+            `concurrent stop() took ${elapsed}ms — expected fast resolution`
+        );
+        const errorCalls = (mockLogger.error as unknown as { calls: unknown[] })
+            .calls;
+        assert.strictEqual(
+            errorCalls.length,
+            0,
+            "no timeout-recovery error should be logged"
+        );
+    });
+
     it("tracks message handling promises", async () => {
         const manager = new WebSocketManager(
-            deviceId,
             mockLogger,
             mockSettings,
             MockWebSocket as unknown as typeof WebSocket
