@@ -500,9 +500,16 @@ export class Syncer {
         // `updatePendingCreatePath` mutates queued creates when a not-yet-sent
         // local file is renamed, so a renamed-away generation does not create
         // a server document at a path that a newer local file has reused.
+        //
+        // `lastSeenUpdateIdForCreate(requestPath)` (rather than the contiguous
+        // `lastSeenUpdateId`) blocks the server from path-merging this POST
+        // into a doc we already track at the same path. Without that, a
+        // same-device rename race can alias two physically distinct local
+        // files onto one docId. See `SyncEventQueue.lastSeenUpdateIdForCreate`.
         const response = await this.syncService.create({
             relativePath: requestPath,
-            lastSeenVaultUpdateId: this.queue.lastSeenUpdateId,
+            lastSeenVaultUpdateId:
+                this.queue.lastSeenUpdateIdForCreate(requestPath),
             contentBytes
         });
 

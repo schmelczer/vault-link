@@ -5,6 +5,7 @@ import type { FileOperations } from "../file-operations/file-operations";
 import { findMatchingFile } from "../utils/find-matching-file";
 import type { SyncEventQueue } from "./sync-event-queue";
 import { removeFromArray } from "../utils/remove-from-array";
+import { FileNotFoundError } from "../errors/file-not-found-error";
 
 /**
  * Scans the local filesystem and the document database to determine
@@ -77,8 +78,26 @@ export async function scheduleOfflineChanges(
     }
 
     const renamedPaths = new Set<RelativePath>();
+    // Track paths that were in `allLocalFiles` at scan-start but have
+    // since disappeared. The scan awaits between `listFilesRecursively`
+    // and each `read`, so a concurrent delete (slow file events, real
+    // user activity) can vacate a slot mid-scan. Throwing would abort
+    // the whole scan; nothing to sync for a file that's already gone.
+    const disappearedPaths = new Set<RelativePath>();
     for (const path of locallyPossibleCreatedFiles) {
-        const content = await operations.read(path);
+        let content: Uint8Array;
+        try {
+            content = await operations.read(path);
+        } catch (e) {
+            if (e instanceof FileNotFoundError) {
+                logger.debug(
+                    `File ${path} disappeared before offline-scan could read it; skipping`
+                );
+                disappearedPaths.add(path);
+                continue;
+            }
+            throw e;
+        }
         const contentHash = await hash(content);
 
         const matchingDeletedFile = await findMatchingFile(
@@ -105,7 +124,7 @@ export async function scheduleOfflineChanges(
     }
 
     for (const path of locallyPossibleCreatedFiles) {
-        if (renamedPaths.has(path)) {
+        if (renamedPaths.has(path) || disappearedPaths.has(path)) {
             continue;
         }
 

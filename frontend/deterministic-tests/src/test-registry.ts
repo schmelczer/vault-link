@@ -105,6 +105,7 @@ import { queuedCreateDeleteDoesNotHijackReusedPathTest } from "./tests/queued-cr
 import { renamedPendingCreateReusedPathThenDeleteTest } from "./tests/renamed-pending-create-reused-path-then-delete.test";
 import { renamePendingCreateOntoPendingDeletePathTest } from "./tests/rename-pending-create-onto-pending-delete-path.test";
 import { remoteQuickWriteRenameBeforeRecordTest } from "./tests/remote-quick-write-rename-before-record.test";
+import { selfMergePendingRenameAliasesSecondCreateTest } from "./tests/self-merge-pending-rename-aliases-second-create.test";
 
 export const TESTS: Partial<Record<string, TestDefinition>> = {
     "rename-create-conflict": renameCreateConflictTest,
@@ -242,5 +243,7 @@ export const TESTS: Partial<Record<string, TestDefinition>> = {
     "queued-create-delete-does-not-hijack-reused-path":
         queuedCreateDeleteDoesNotHijackReusedPathTest,
     "remote-quick-write-rename-before-record":
-        remoteQuickWriteRenameBeforeRecordTest
+        remoteQuickWriteRenameBeforeRecordTest,
+    "self-merge-pending-rename-aliases-second-create":
+        selfMergePendingRenameAliasesSecondCreateTest
 };

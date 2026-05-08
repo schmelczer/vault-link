@@ -41,9 +41,12 @@ echo "Server started with PID: $server_pid"
 
 # Ensure server is killed on script exit
 cleanup_server() {
-    echo "Stopping server (PID: $server_pid)..."
-    kill $server_pid 2>/dev/null || true
-    wait $server_pid 2>/dev/null || true
+    if [ -n "$server_pid" ]; then
+        echo "Stopping server (PID: $server_pid)..."
+        kill $server_pid 2>/dev/null || true
+        wait $server_pid 2>/dev/null || true
+        server_pid=""
+    fi
 }
 trap cleanup_server EXIT
 
@@ -127,6 +130,7 @@ while true; do
     done
 
     if $all_done; then
+        cleanup_server
         echo "All processes completed successfully"
         exit 0
     fi

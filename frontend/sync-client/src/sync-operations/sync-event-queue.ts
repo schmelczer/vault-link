@@ -190,6 +190,52 @@ export class SyncEventQueue {
     }
 
     /**
+     * Watermark to send with our own `POST /documents` requests.
+     *
+     * The contiguous-prefix `lastSeenUpdateId` lags behind reality whenever
+     * there are gaps in the vuid stream we've observed: if the server has
+     * committed vuids 1..N from various clients but we've only processed
+     * a non-contiguous subset, `min` stays at the last hole. The server's
+     * create handler reads this watermark to decide whether to merge a
+     * new POST into an existing doc at the same path:
+     *
+     *   creation_vault_update_id > last_seen_vault_update_id  → merge
+     *
+     * That check is meant to fire only for docs the client genuinely
+     * couldn't have known about. But on a same-device "rename a
+     * pending-create away then create something else at that path" race,
+     * the second POST went out with `last_seen = min` while we already
+     * held a record for the first create at vuid=N — and the server
+     * happily merged the second create into our own doc, aliasing two
+     * physically distinct local files onto a single docId.
+     *
+     * The fix is path-scoped: if we already track a doc whose
+     * `remoteRelativePath` matches the path we're about to POST, the
+     * server's existing doc at that path is exactly the one we'd alias
+     * into. Bumping `last_seen` to that record's `parentVersionId`
+     * forces the server's `creation_vuid > last_seen` check to fail and
+     * fall through to the deconflict path. For paths we don't yet
+     * track, we send the regular `min` watermark — so a legitimate
+     * cross-device merge (two clients independently creating the same
+     * path) still fires when neither side holds a record for the
+     * collision target.
+     */
+    public lastSeenUpdateIdForCreate(
+        requestPath: RelativePath
+    ): VaultUpdateId {
+        let watermark = this._lastSeenUpdateId.min;
+        for (const record of this.byDocId.values()) {
+            if (
+                record.remoteRelativePath === requestPath &&
+                record.parentVersionId > watermark
+            ) {
+                watermark = record.parentVersionId;
+            }
+        }
+        return watermark;
+    }
+
+    /**
      * Pin an additional ignore pattern that survives setting reloads. Used
      * by the Syncer to hide internal scratch paths (e.g. `.vaultlink/**`
      * swap markers written by the Reconciler) from the watcher-driven
