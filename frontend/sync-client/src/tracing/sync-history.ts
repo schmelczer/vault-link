@@ -2,7 +2,7 @@ import {
     MAX_HISTORY_ENTRY_COUNT,
     TIMEOUT_FOR_MERGING_HISTORY_ENTRIES_IN_SECONDS
 } from "../consts";
-import type { RelativePath } from "../persistence/database";
+import type { RelativePath } from "../sync-operations/types";
 import type { Logger } from "./logger";
 import { removeFromArray } from "../utils/remove-from-array";
 import { EventListeners } from "../utils/data-structures/event-listeners";
@@ -28,7 +28,7 @@ export interface SyncDeleteDetails {
     relativePath: RelativePath;
 }
 
-export interface SyncSkippedDetails {
+interface SyncSkippedDetails {
     type: SyncType.SKIPPED;
     relativePath: RelativePath;
 }
@@ -40,12 +40,15 @@ export type SyncDetails =
     | SyncMovedDetails
     | SyncSkippedDetails;
 
-export interface CommonHistoryEntry {
+export interface HistoryEntry {
     status: SyncStatus;
     message: string;
     details: SyncDetails;
+    timestamp: Date;
+    // `author` is the server-side user id and only exists for entries that
+    // round-tripped through the server. Local-only entries (e.g. SKIPPED)
+    // legitimately have no author.
     author?: string;
-    timestamp?: Date;
 }
 
 export enum SyncType {
@@ -61,8 +64,6 @@ export enum SyncStatus {
     ERROR = "ERROR",
     SKIPPED = "SKIPPED"
 }
-
-export type HistoryEntry = CommonHistoryEntry & { timestamp: Date };
 
 export interface HistoryStats {
     success: number;
@@ -88,30 +89,25 @@ export class SyncHistory {
     }
 
     /**
-    * Insert the entry at the beginning of the history list. If the entry
-    * already in the list, it will get moved to the beginning and updated.
-    *
-    * If the entry list is too long, the oldest entry will be removed.
-    */
-    public addHistoryEntry(entry: CommonHistoryEntry): void {
-        const historyEntry = {
-            ...entry,
-            timestamp: entry.timestamp ?? new Date()
-        };
-
-        const candidate = this.findSimilarRecentUpdateEntry(historyEntry);
+     * Insert the entry at the beginning of the history list. If the entry
+     * already in the list, it will get moved to the beginning and updated.
+     *
+     * If the entry list is too long, the oldest entry will be removed.
+     */
+    public addHistoryEntry(entry: HistoryEntry): void {
+        const candidate = this.findSimilarRecentUpdateEntry(entry);
         if (candidate !== undefined) {
             removeFromArray(this._entries, candidate);
         }
 
         // Insert the entry at the beginning
-        this._entries.unshift(historyEntry);
+        this._entries.unshift(entry);
 
         if (this._entries.length > MAX_HISTORY_ENTRY_COUNT) {
             this._entries.pop();
         }
 
-        this.updateSuccessCount(historyEntry);
+        this.updateSuccessCount(entry);
     }
 
     public reset(): void {

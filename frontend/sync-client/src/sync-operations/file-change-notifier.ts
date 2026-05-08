@@ -1,4 +1,4 @@
-import type { RelativePath } from "../persistence/database";
+import type { RelativePath } from "./types";
 import { EventListeners } from "../utils/data-structures/event-listeners";
 
 export class FileChangeNotifier {
