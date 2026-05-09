@@ -15,7 +15,7 @@ import { toUnixPath } from "./path-utils";
 export const VAULTLINK_DIR = ".vaultlink";
 
 export class NodeFileSystemOperations implements FileSystemOperations {
-    public constructor(private readonly basePath: string) {}
+    public constructor(private readonly basePath: string) { }
 
     public async listFilesRecursively(
         directory: RelativePath | undefined
@@ -150,9 +150,24 @@ export class NodeFileSystemOperations implements FileSystemOperations {
                 await fd.close();
             }
             await fs.rename(tmpPath, fullPath);
+            await this.syncDirectory(path.dirname(fullPath));
         } catch (error) {
             await fs.unlink(tmpPath).catch(() => undefined);
             throw error;
+        }
+    }
+
+    // Make the rename durable by fsync'ing the destination's parent directory.
+    // Skipped on Windows: fsync on a directory handle isn't supported there
+    private async syncDirectory(dir: string): Promise<void> {
+        if (process.platform === "win32") {
+            return;
+        }
+        const fd = await fs.open(dir, "r");
+        try {
+            await fd.sync();
+        } finally {
+            await fd.close();
         }
     }
 
