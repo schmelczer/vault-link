@@ -1,5 +1,5 @@
 database:
-  databases_directory_path: databases
+  databases_directory_path: /tmp/databases
   max_connections_per_vault: 8
   cursor_timeout: 1m
 server:
