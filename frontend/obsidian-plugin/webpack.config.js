@@ -47,7 +47,6 @@ module.exports = (env, argv) => ({
                     const destinations = [
                         "/volumes/syncthing/Desktop/test/test/.obsidian/plugins/vault-link",
                         "/volumes/syncthing/Desktop/test/test2/.obsidian/plugins/vault-link"
-                        // "/home/andras/obsidian-test/.obsidian/plugins/vault-link"
                     ];
                     destinations.forEach((destination) => {
                         fs.copy(source, destination)
