@@ -4,12 +4,9 @@ mod delete_document;
 mod device_id_header;
 mod fetch_document_version;
 mod fetch_document_version_content;
-mod fetch_document_versions;
 mod fetch_latest_document_version;
 mod fetch_latest_documents;
-mod fetch_vault_history;
 mod index;
-mod list_vaults;
 mod ping;
 mod rate_limit;
 mod requests;
@@ -57,11 +54,8 @@ pub async fn create_server(config: Config) -> Result<()> {
     let mut app = Router::new()
         .nest("/", get_authed_routes(app_state.clone()))
         .route("/", get(index::index))
-        .route("/assets/*path", get(index::spa_assets))
-        .route("/vaults", get(list_vaults::list_vaults))
         .route("/vaults/:vault_id/ping", get(ping::ping))
-        .route("/vaults/:vault_id/ws", get(websocket::websocket_handler))
-        .fallback(index::spa_fallback);
+        .route("/vaults/:vault_id/ws", get(websocket::websocket_handler));
 
     let cors_layer = build_cors_layer(&server_config).context("Invalid CORS configuration")?;
 
@@ -158,10 +152,6 @@ fn get_authed_routes(app_state: AppState) -> Router<AppState> {
             put(update_document::update_text),
         )
         .route(
-            "/vaults/:vault_id/documents/:document_id/versions",
-            get(fetch_document_versions::fetch_document_versions),
-        )
-        .route(
             "/vaults/:vault_id/documents/:document_id/versions/:vault_update_id",
             get(fetch_document_version::fetch_document_version),
         )
@@ -172,10 +162,6 @@ fn get_authed_routes(app_state: AppState) -> Router<AppState> {
         .route(
             "/vaults/:vault_id/documents/:document_id",
             delete(delete_document::delete_document),
-        )
-        .route(
-            "/vaults/:vault_id/history",
-            get(fetch_vault_history::fetch_vault_history),
         )
         .layer(middleware::from_fn_with_state(app_state, auth_middleware))
 }
