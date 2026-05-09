@@ -1,7 +1,7 @@
 import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
-export const concurrentRenameAndCreateAtTargetTest: TestDefinition = {
+export const concurrentRenameAndCreateAtTargetRenameFirstTest: TestDefinition = {
     description:
         "One client renames X to Y while another creates a new file at Y, " +
         "both offline. We can't merge the create because it would result in a cycle",

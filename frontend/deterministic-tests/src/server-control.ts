@@ -5,7 +5,11 @@ import * as path from "node:path";
 import { sleep } from "./utils/sleep";
 import { findFreePort } from "./utils/find-free-port";
 import type { Logger } from "sync-client";
-import { STOP_TIMEOUT_MS } from "./consts";
+import {
+    STOP_TIMEOUT_MS,
+    SERVER_READY_POLL_INTERVAL_MS,
+    SERVER_READY_MAX_ATTEMPTS
+} from "./consts";
 
 export class ServerControl {
     private process: ChildProcess | null = null;
@@ -101,7 +105,9 @@ export class ServerControl {
         }
     }
 
-    public async waitForReady(maxAttempts = 50): Promise<void> {
+    public async waitForReady(
+        maxAttempts: number = SERVER_READY_MAX_ATTEMPTS
+    ): Promise<void> {
         const pingUrl = `${this.remoteUri}/vaults/test/ping`;
         for (let i = 0; i < maxAttempts; i++) {
             if (this.process?.exitCode !== null) {
@@ -118,7 +124,7 @@ export class ServerControl {
             } catch {
                 // Server not ready yet, continue polling
             }
-            await sleep(100);
+            await sleep(SERVER_READY_POLL_INTERVAL_MS);
         }
         throw new Error("Server failed to start within timeout");
     }
@@ -212,6 +218,9 @@ export class ServerControl {
     }
 
     private writeConfigFile(destPath: string, dbDir: string): void {
+        // Assumes config-e2e.yml has exactly one 2-space-indented `port:` and
+        // one `databases_directory_path:` (under `server:` and `database:`
+        // respectively)
         const baseConfig = fs.readFileSync(this.baseConfigPath, "utf-8");
         const config = baseConfig
             .replace(/^\s*port:\s*\d+/m, `  port: ${this._port}`)

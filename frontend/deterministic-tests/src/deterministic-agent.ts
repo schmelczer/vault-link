@@ -312,6 +312,10 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
                     });
                 });
             }
+            // The rename consumed `path`. Skip the post-update enqueue below
+            // — it would send a syncLocallyUpdatedFile for a path that no
+            // longer exists.
+            return;
         }
 
         if (!this.isSyncEnabled) {
@@ -435,6 +439,13 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
                 DeterministicAgent.isCreateDocumentRequest(input, init)
             ) {
                 this.nextCreateResponseDrop = undefined;
+                // Release the underlying socket: an unread body keeps the
+                // undici connection open until GC.
+                try {
+                    await response.body?.cancel();
+                } catch {
+                    // Best-effort — body may already be consumed/closed.
+                }
                 drop.resolveDropped();
                 throw new SyncResetError();
             }

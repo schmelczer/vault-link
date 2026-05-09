@@ -10,7 +10,7 @@ Each test is a `TestDefinition`: a client count and an ordered list of steps. Th
 
 Tests that don't pause the server share a single server process (vault-name isolation). Tests that use `pause-server`/`resume-server` (SIGSTOP/SIGCONT) each get a dedicated server, since SIGSTOP freezes the entire process.
 
-All tests run in parallel up to a concurrency limit.
+The runner executes two sequential phases: regular tests on the shared server, then pause-server tests on dedicated servers. Within each phase tests run in parallel up to a concurrency limit.
 
 ## Step types
 
@@ -19,12 +19,15 @@ Clients always start with syncing disabled.
 **File operations** (per-client, fire-and-forget — sync is enqueued but not awaited):
 
 - `create`, `update`, `rename`, `delete`
+- `rename-next-write` — arm a deferred rename that fires the next time the given path is written. Lets a test race a user-rename against an in-flight remote create that's about to land at the same path.
 
 **Sync control:**
 
 - `sync` — wait for a specific client or all clients to finish pending operations
 - `barrier` — retry until all clients converge to identical file state (60s timeout)
 - `enable-sync` / `disable-sync` — simulate going online/offline
+- `reset` — reset a client's tracked sync state (keeps disk files); equivalent to a forced re-handshake on next enable
+- `sleep` — wall-clock pause; use sparingly, prefer `barrier` / `sync`
 
 **WebSocket control** (per-client):
 
@@ -33,6 +36,12 @@ Clients always start with syncing disabled.
 **Server control:**
 
 - `pause-server` / `resume-server` — SIGSTOP/SIGCONT the server process
+- `resume-server-until-history-then-pause` — resume the server, wait until a specific client observes a matching history entry (`CREATE`/`UPDATE`/`DELETE` for a path), then re-pause. Used to land exactly one operation across the wire.
+
+**Fault injection** (per-client):
+
+- `drop-next-create-response` — arm a one-shot interceptor that lets the next `POST /documents` reach the server (commit happens) but throws `SyncResetError` before the client sees the response, simulating connection loss after server commit.
+- `wait-for-dropped-create-response` — wait until the armed drop has fired.
 
 **Assertions:**
 
@@ -72,7 +81,9 @@ export const myScenarioTest: TestDefinition = {
     { type: "barrier" },
     {
       type: "assert-consistent",
-      verify: (s) => s.assertFileCount(1).assertContent("A.md", "hello")
+      verify: (s) => {
+        s.assertFileCount(1).assertContent("A.md", "hello");
+      }
     }
   ]
 };
@@ -81,14 +92,18 @@ export const myScenarioTest: TestDefinition = {
 The `verify` callback receives an `AssertableState` object with chainable assertion methods:
 
 ```typescript
-s.assertFileCount(n)                   // exact file count
-s.assertFileExists("path")             // file must exist
-s.assertFileNotExists("path")          // file must not exist
-s.assertContent("path", "expected")    // exact content match
-s.assertContains("path", "a", "b")    // all substrings present
-s.assertAnyFileContains("text")        // substring in any file
-s.assertContentInAtMostOneFile("text") // no duplicate content
-s.ifFileExists("path", (s) => ...)    // conditional assertion
+s.assertFileCount(n);                       // exact file count
+s.assertFileExists("path");                 // file must exist
+s.assertFileNotExists("path");              // file must not exist
+s.assertContent("path", "expected");        // exact content match
+s.assertContains("path", "a", "b");         // all substrings present in file
+s.assertContainsAny("path", "a", "b");      // at least one substring present
+s.assertAnyFileContains("text");            // substring present in some file
+s.assertNoFileContains("text");             // substring absent from every file
+s.assertSubstringCount("path", "x", 3);     // substring appears exactly N times
+s.assertContentInAtMostOneFile("text");     // no duplicate content
+s.ifFileExists("path", (s) => { /* … */ }); // conditional block
+s.getContent("path");                       // raw content (or "" if missing)
 ```
 
 2. Register it in `src/test-registry.ts`:

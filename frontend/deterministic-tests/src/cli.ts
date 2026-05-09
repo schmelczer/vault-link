@@ -33,6 +33,27 @@ function testUsesPauseServer(test: TestDefinition): boolean {
     );
 }
 
+/**
+ * Walk up from the CLI binary's location until we find a directory
+ * containing `sync-server/` and `frontend/`.
+ */
+function findProjectRoot(): string {
+    let dir = path.dirname(__filename);
+    const root = path.parse(dir).root;
+    while (dir !== root) {
+        if (
+            fs.existsSync(path.join(dir, "sync-server")) &&
+            fs.existsSync(path.join(dir, "frontend"))
+        ) {
+            return dir;
+        }
+        dir = path.dirname(dir);
+    }
+    throw new Error(
+        `Could not locate project root (no ancestor of ${__filename} contains both 'sync-server' and 'frontend')`
+    );
+}
+
 interface NamedTestResult {
     name: string;
     result: TestResult;
@@ -100,15 +121,7 @@ async function runDedicatedServerTest(
 }
 
 async function main(): Promise<void> {
-    const cwd = process.cwd();
-    let projectRoot = cwd;
-
-    if (cwd.endsWith("frontend/deterministic-tests")) {
-        projectRoot = path.resolve(cwd, "../..");
-    } else if (cwd.endsWith("frontend")) {
-        projectRoot = path.resolve(cwd, "..");
-    }
-
+    const projectRoot = findProjectRoot();
     const serverPath = path.join(projectRoot, SERVER_BINARY_PATH);
     if (!fs.existsSync(serverPath)) {
         logger.error(`Server binary not found at: ${serverPath}`);
