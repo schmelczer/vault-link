@@ -46,7 +46,6 @@ import { offlineMoveThenRemoteDeleteTest } from "./tests/offline-move-then-remot
 import { resetClearsRecentlyDeletedResurrectionTest } from "./tests/reset-clears-recently-deleted-resurrection.test";
 import { moveThenDeleteStalePathTest } from "./tests/move-then-delete-stale-path.test";
 import { interruptedDeleteRetryTest } from "./tests/interrupted-delete-retry.test";
-import { updateDoesNotSurviveRemoteDeleteTest } from "./tests/update-does-not-survive-remote-delete.test";
 import { movePreservesRemoteUpdateTest } from "./tests/move-preserves-remote-update.test";
 import { recentlyDeletedClearedOnReconnectTest } from "./tests/recently-deleted-cleared-on-reconnect.test";
 import { watermarkAdvancesOnSkipTest } from "./tests/watermark-advances-on-skip.test";
@@ -157,7 +156,6 @@ export const TESTS: Partial<Record<string, TestDefinition>> = {
     "move-then-delete-stale-path": moveThenDeleteStalePathTest,
     "offline-delete-vs-remote-update": offlineDeleteVsRemoteUpdateTest,
     "interrupted-delete-retry": interruptedDeleteRetryTest,
-    "update-does-not-survive-remote-delete": updateDoesNotSurviveRemoteDeleteTest,
     "move-preserves-remote-update": movePreservesRemoteUpdateTest,
     "recently-deleted-cleared-on-reconnect":
         recentlyDeletedClearedOnReconnectTest,

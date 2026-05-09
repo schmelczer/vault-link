@@ -53,14 +53,11 @@ Clients always start with syncing disabled.
 # Build server first
 cd sync-server && cargo build --release && cd -
 
-# Run all tests
-cd frontend && npm run build -w sync-client && npm run test -w deterministic-tests
+# Build the client
+cd frontend && npm run build -w sync-client
 
-# Filter by name
-npm run test -w deterministic-tests -- --filter=rename
-
-# Control parallelism (default: number of CPU cores)
-npm run test -w deterministic-tests -- -j 4
+# Run the tests filtering by name with concurrency
+npm run test -w deterministic-tests -- --filter=rename -j 4
 ```
 
 ## Adding a test
