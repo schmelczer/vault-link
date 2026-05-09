@@ -5,6 +5,7 @@
         "sync-client",
         "obsidian-plugin",
         "test-client",
+        "deterministic-tests",
         "local-client-cli"
     ],
     "prettier": {
@@ -17,7 +18,7 @@
         "build": "npm run build --workspaces",
         "dev": "concurrently --kill-others \"npm run dev -w sync-client\" \"npm run dev -w obsidian-plugin\"",
         "test": "npm run test --workspaces",
-        "lint": "eslint --fix sync-client obsidian-plugin test-client local-client-cli && prettier --write \"**/*.ts\"",
+        "lint": "eslint --fix sync-client obsidian-plugin test-client deterministic-tests local-client-cli && prettier --write \"**/*.ts\"",
         "update": "ncu -u -ws"
     },
     "devDependencies": {
