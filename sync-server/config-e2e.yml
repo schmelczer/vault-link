@@ -1,5 +1,5 @@
 database:
-  databases_directory_path: /host/tmp/vaultlink-e2e-databases
+  databases_directory_path: databases
   max_connections_per_vault: 8
   cursor_timeout: 1m
 server:

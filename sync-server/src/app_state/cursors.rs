@@ -18,6 +18,8 @@ use crate::{
     errors::SyncServerError,
 };
 
+const CURSOR_CLEANUP_INTERVAL: Duration = Duration::from_secs(1);
+
 #[derive(Clone, Debug)]
 pub struct Cursors {
     config: DatabaseConfig,
@@ -76,7 +78,7 @@ impl Cursors {
         tokio::spawn(async move {
             loop {
                 tokio::select! {
-                    () = tokio::time::sleep(Duration::from_secs(1)) => {
+                    () = tokio::time::sleep(CURSOR_CLEANUP_INTERVAL) => {
                         self.remove_expired_cursors().await?;
                     }
                     Ok(()) = shutdown.changed() => break,

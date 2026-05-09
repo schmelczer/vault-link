@@ -51,6 +51,9 @@ pub fn get_authenticated_handshake(
 /// vault send lock; commits past the cursor are then delivered solely
 /// through the broadcast channel (filtered by the same cursor on the
 /// receive side), so every committed update is delivered exactly once.
+/// We could've used a read transaction but that would've meant all other
+/// clients would need to wait for the new client to catch up before
+/// sending any updates.
 pub async fn get_unseen_documents(
     state: &AppState,
     vault_id: &VaultId,
