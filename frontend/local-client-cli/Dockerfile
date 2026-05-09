@@ -1,4 +1,4 @@
-FROM node:22-slim AS builder
+FROM node:25-slim AS builder
 
 WORKDIR /build
 
@@ -7,7 +7,7 @@ COPY . .
 RUN npm ci
 RUN npm run build
 
-FROM node:22-alpine
+FROM node:25-alpine
 
 LABEL org.opencontainers.image.title="VaultLink Local CLI"
 LABEL org.opencontainers.image.description="Standalone CLI for VaultLink sync client"

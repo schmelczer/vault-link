@@ -14,7 +14,9 @@ export function renderCursorsInFileExplorer(
     app: App
 ): void {
     const fileExplorers = app.workspace.getLeavesOfType("file-explorer");
-    if (fileExplorers.length == 0) return;
+    if (fileExplorers.length == 0) {
+        return;
+    }
 
     const [fileExplorer] = fileExplorers;
 
@@ -34,7 +36,7 @@ export function renderCursorsInFileExplorer(
             (parent) => {
                 cursors.forEach((cursor) => {
                     cursor.documentsWithCursors.forEach((document) => {
-                        if (document.relative_path.startsWith(key)) {
+                        if (document.relativePath.startsWith(key)) {
                             parent.appendChild(
                                 createSpan({
                                     text: cursor.userName,

@@ -266,9 +266,8 @@ export class SyncSettingsTab extends PluginSettingTab {
 
                             new Notice("Checking connection to the server...");
                             new Notice(
-                                (
-                                    await this.syncClient.checkConnection()
-                                ).serverMessage
+                                (await this.syncClient.checkConnection())
+                                    .serverMessage
                             );
                             await this.statusDescription.updateConnectionState();
                         } else {
@@ -349,22 +348,6 @@ export class SyncSettingsTab extends PluginSettingTab {
                             patterns
                         );
                     })
-            );
-
-        new Setting(containerEl)
-            .setName("Sync concurrency")
-            .setDesc(
-                "How many concurrent sync operations to run. Setting this value higher may increase the overall performance, however, it will require more memory as well. If you notice frequent crashes, especially on mobile, set this to 1."
-            )
-            .addSlider((text) =>
-                text
-                    .setLimits(1, 16, 1)
-                    .setDynamicTooltip()
-                    .setInstant(false)
-                    .setValue(this.syncClient.getSettings().syncConcurrency)
-                    .onChange(async (value) =>
-                        this.syncClient.setSetting("syncConcurrency", value)
-                    )
             );
 
         new Setting(containerEl)
@@ -480,40 +463,6 @@ export class SyncSettingsTab extends PluginSettingTab {
 
                         return this.syncClient.setSetting(
                             "networkRetryIntervalMs",
-                            parsedValue
-                        );
-                    })
-            );
-
-        new Setting(containerEl)
-            .setName("Minimum save interval (ms)")
-            .setDesc(
-                "The minimum time between saving settings and database to disk, in milliseconds. Lower values save more frequently but may impact performance."
-            )
-            .addText((input) =>
-                input
-                    .setValue(
-                        this.syncClient
-                            .getSettings()
-                            .minimumSaveIntervalMs.toString()
-                    )
-                    .onChange(async (value) => {
-                        if (value === "") {
-                            return;
-                        }
-                        let parsedValue = Number.parseInt(value, 10);
-                        if (Number.isNaN(parsedValue) || parsedValue < 0) {
-                            parsedValue =
-                                this.syncClient.getSettings()
-                                    .minimumSaveIntervalMs;
-                        }
-
-                        if (value !== parsedValue.toString()) {
-                            input.setValue(parsedValue.toString());
-                        }
-
-                        return this.syncClient.setSetting(
-                            "minimumSaveIntervalMs",
                             parsedValue
                         );
                     })

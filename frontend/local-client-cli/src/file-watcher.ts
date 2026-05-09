@@ -1,15 +1,20 @@
 import Watcher from "watcher";
 import * as path from "path";
 import type { SyncClient, RelativePath } from "sync-client";
+import { toUnixPath, matchesGlob } from "./path-utils";
 
 export class FileWatcher {
     private watcher: Watcher | undefined;
     private isRunning = false;
+    private readonly ignorePatterns: string[];
 
     public constructor(
         private readonly basePath: string,
-        private readonly client: SyncClient
-    ) {}
+        private readonly client: SyncClient,
+        ignorePatterns: string[] = []
+    ) {
+        this.ignorePatterns = ignorePatterns;
+    }
 
     public start(): void {
         if (this.isRunning) {
@@ -22,7 +27,8 @@ export class FileWatcher {
             recursive: true,
             renameDetection: true,
             renameTimeout: 125,
-            ignoreInitial: true
+            ignoreInitial: true,
+            ignore: (filePath: string): boolean => this.shouldIgnore(filePath)
         });
 
         this.watcher.on("add", (filePath: string) => {
@@ -56,66 +62,32 @@ export class FileWatcher {
         this.client.logger.info("File watcher stopped");
     }
 
+    private shouldIgnore(filePath: string): boolean {
+        const rel = toUnixPath(path.relative(this.basePath, filePath));
+        return this.ignorePatterns.some((pattern) => matchesGlob(rel, pattern));
+    }
+
     private handleCreate(relativePath: RelativePath): void {
-        this.client
-            .syncLocallyCreatedFile(relativePath)
-            .catch((err: unknown) => {
-                this.client.logger.error(
-                    `Failed to sync created file ${relativePath}: ${this.formatError(err)}`
-                );
-            });
+        this.client.syncLocallyCreatedFile(relativePath);
     }
 
     private handleChange(relativePath: RelativePath): void {
-        this.client
-            .syncLocallyUpdatedFile({ relativePath })
-            .catch((err: unknown) => {
-                this.client.logger.error(
-                    `Failed to sync updated file ${relativePath}: ${this.formatError(err)}`
-                );
-            });
+        this.client.syncLocallyUpdatedFile({ relativePath });
     }
 
     private handleDelete(relativePath: RelativePath): void {
-        this.client
-            .syncLocallyDeletedFile(relativePath)
-            .catch((err: unknown) => {
-                this.client.logger.error(
-                    `Failed to sync deleted file ${relativePath}: ${this.formatError(err)}`
-                );
-            });
+        this.client.syncLocallyDeletedFile(relativePath);
     }
 
     private handleRename(oldPath: RelativePath, newPath: RelativePath): void {
         this.client.logger.info(`File renamed: ${oldPath} -> ${newPath}`);
-        this.client
-            .syncLocallyUpdatedFile({
-                oldPath,
-                relativePath: newPath
-            })
-            .catch((err: unknown) => {
-                this.client.logger.error(
-                    `Failed to sync renamed file ${oldPath} -> ${newPath}: ${this.formatError(err)}`
-                );
-            });
+        this.client.syncLocallyUpdatedFile({
+            oldPath,
+            relativePath: newPath
+        });
     }
 
     private toRelativePath(absolutePath: string): RelativePath {
-        const relative = path.relative(this.basePath, absolutePath);
-        return this.toUnixPath(relative);
-    }
-
-    /**
-    * Convert a native platform path to forward slashes
-    */
-    private toUnixPath(nativePath: string): string {
-        if (path.sep === "\\") {
-            return nativePath.replace(/\\/g, "/");
-        }
-        return nativePath;
-    }
-
-    private formatError(err: unknown): string {
-        return err instanceof Error ? err.message : String(err);
+        return toUnixPath(path.relative(this.basePath, absolutePath));
     }
 }

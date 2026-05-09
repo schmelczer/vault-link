@@ -135,14 +135,14 @@ export default class VaultLinkPlugin extends Plugin {
             nativeLineEndings: Platform.isWin ? "\r\n" : "\n",
             ...(IS_DEBUG_BUILD
                 ? {
-                    fetch: debugging.slowFetchFactory(1),
-                    webSocket: debugging.slowWebSocketFactory(1, new Logger())
-                }
+                      fetch: debugging.slowFetchFactory(1),
+                      webSocket: debugging.slowWebSocketFactory(1, new Logger())
+                  }
                 : {})
         });
 
         if (IS_DEBUG_BUILD) {
-            debugging.logToConsole(client);
+            debugging.logToConsole(client.logger);
         }
 
         return client;
@@ -231,9 +231,9 @@ export default class VaultLinkPlugin extends Plugin {
                     }
                 }
             ),
-            this.app.vault.on("create", async (file: TAbstractFile) => {
+            this.app.vault.on("create", (file: TAbstractFile) => {
                 if (file instanceof TFile) {
-                    await client.syncLocallyCreatedFile(file.path);
+                    client.syncLocallyCreatedFile(file.path);
                 }
             }),
             this.app.vault.on("modify", async (file: TAbstractFile) => {
@@ -241,14 +241,14 @@ export default class VaultLinkPlugin extends Plugin {
                     await this.rateLimitedUpdate(file.path, client);
                 }
             }),
-            this.app.vault.on("delete", async (file: TAbstractFile) => {
-                await client.syncLocallyDeletedFile(file.path);
+            this.app.vault.on("delete", (file: TAbstractFile) => {
+                client.syncLocallyDeletedFile(file.path);
             }),
             this.app.vault.on(
                 "rename",
-                async (file: TAbstractFile, oldPath: string) => {
+                (file: TAbstractFile, oldPath: string) => {
                     if (file instanceof TFile) {
-                        await client.syncLocallyUpdatedFile({
+                        client.syncLocallyUpdatedFile({
                             oldPath,
                             relativePath: file.path
                         });
@@ -267,13 +267,11 @@ export default class VaultLinkPlugin extends Plugin {
         if (!this.rateLimitedUpdatesPerFile.has(path)) {
             this.rateLimitedUpdatesPerFile.set(
                 path,
-                rateLimit(
-                    async () =>
-                        client.syncLocallyUpdatedFile({
-                            relativePath: path
-                        }),
-                    MIN_WAIT_BETWEEN_UPDATES_IN_MS
-                )
+                rateLimit(async () => {
+                    client.syncLocallyUpdatedFile({
+                        relativePath: path
+                    });
+                }, MIN_WAIT_BETWEEN_UPDATES_IN_MS)
             );
         }
         await this.rateLimitedUpdatesPerFile.get(path)?.();
