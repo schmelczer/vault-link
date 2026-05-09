@@ -71,7 +71,13 @@ pub async fn create_server(config: Config) -> Result<()> {
     let app = app
         .layer(DefaultBodyLimit::disable())
         .layer(RequestBodyLimitLayer::new(
-            app_state.config.server.max_body_size_mb * 1024 * 1024,
+            app_state
+                .config
+                .server
+                .max_body_size_mb
+                .checked_mul(1024)
+                .and_then(|kb| kb.checked_mul(1024))
+                .context("max_body_size_mb is too large")?,
         ))
         .layer(TimeoutLayer::new(server_config.response_timeout))
         .layer(cors_layer)
@@ -104,7 +110,7 @@ pub async fn create_server(config: Config) -> Result<()> {
 fn build_cors_layer(server_config: &ServerConfig) -> Result<CorsLayer> {
     let origins = &server_config.allowed_origins;
 
-    let cors = if origins.len() == 1 && origins[0] == "*" {
+    let cors = if origins.len() == 1 && origins.first().is_some_and(|origin| origin == "*") {
         info!("CORS: allowing all origins");
         let header: HeaderValue = "*"
             .parse()

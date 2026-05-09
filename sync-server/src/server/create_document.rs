@@ -60,7 +60,7 @@ pub async fn create_document(
         .get_latest_non_deleted_document_by_path(
             &vault_id,
             &sanitized_relative_path,
-            Some(&mut *transaction),
+            Some(transaction.connection_mut().map_err(server_error)?),
         )
         .await
         .map_err(server_error)?;
@@ -129,7 +129,7 @@ pub async fn create_document(
             &device_id.0,
             request.last_seen_vault_update_id,
             &new_content,
-            Some(&mut *transaction),
+            Some(transaction.connection_mut().map_err(server_error)?),
         )
         .await
         .map_err(server_error)?
@@ -157,7 +157,10 @@ pub async fn create_document(
 
     let last_update_id = state
         .database
-        .get_max_update_id_in_vault(&vault_id, Some(&mut *transaction))
+        .get_max_update_id_in_vault(
+            &vault_id,
+            Some(transaction.connection_mut().map_err(server_error)?),
+        )
         .await
         .map_err(server_error)?;
 
@@ -176,7 +179,9 @@ pub async fn create_document(
         );
     }
 
-    let new_vault_update_id = last_update_id + 1;
+    let new_vault_update_id = last_update_id
+        .checked_add(1)
+        .ok_or_else(|| server_error(anyhow::anyhow!("Vault update id overflow")))?;
     let new_version = StoredDocumentVersion {
         vault_update_id: new_vault_update_id,
         creation_vault_update_id: new_vault_update_id,

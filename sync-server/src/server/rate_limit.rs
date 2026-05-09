@@ -32,26 +32,23 @@ struct BucketState {
 
 impl RateLimiter {
     /// Create a new per-user rate limiter.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `max_per_second` is 0.
     pub fn new(max_per_second: u64) -> Self {
-        assert!(
-            max_per_second > 0,
-            "max_per_second must be > 0 (set rate_limit_per_user_per_second to null in config to disable)"
-        );
-
         Self {
             max_per_second,
             buckets: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
-    fn get_or_create_bucket(&self, token: &str) -> Arc<TokenBucket> {
-        self.buckets
+    fn get_or_create_bucket(
+        &self,
+        token: &str,
+    ) -> std::result::Result<Arc<TokenBucket>, StatusCode> {
+        let mut buckets = self
+            .buckets
             .lock()
-            .expect("rate limiter lock poisoned")
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+        Ok(buckets
             .entry(token.to_owned())
             .or_insert_with(|| {
                 Arc::new(TokenBucket {
@@ -62,23 +59,26 @@ impl RateLimiter {
                     max_tokens: self.max_per_second,
                 })
             })
-            .clone()
+            .clone())
     }
 }
 
 impl TokenBucket {
-    fn try_acquire(&self) -> bool {
-        let mut state = self.state.lock().expect("token bucket lock poisoned");
+    fn try_acquire(&self) -> std::result::Result<bool, StatusCode> {
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         let now = Instant::now();
         if now.duration_since(state.last_refill).as_secs() >= 1 {
             state.tokens = self.max_tokens;
             state.last_refill = now;
         }
         if state.tokens > 0 {
-            state.tokens -= 1;
-            true
+            state.tokens = state.tokens.saturating_sub(1);
+            Ok(true)
         } else {
-            false
+            Ok(false)
         }
     }
 }
@@ -88,13 +88,13 @@ pub async fn rate_limit_middleware(
     auth_header: Option<TypedHeader<Authorization<Bearer>>>,
     req: Request,
     next: Next,
-) -> Result<Response, StatusCode> {
+) -> std::result::Result<Response, StatusCode> {
     let Some(TypedHeader(auth)) = auth_header else {
         return Ok(next.run(req).await);
     };
 
-    let bucket = limiter.get_or_create_bucket(auth.token());
-    if bucket.try_acquire() {
+    let bucket = limiter.get_or_create_bucket(auth.token())?;
+    if bucket.try_acquire()? {
         Ok(next.run(req).await)
     } else {
         Err(StatusCode::TOO_MANY_REQUESTS)

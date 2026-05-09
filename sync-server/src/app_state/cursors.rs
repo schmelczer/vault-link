@@ -15,6 +15,7 @@ use super::{
 };
 use crate::{
     app_state::websocket::models::DocumentWithCursors, config::database_config::DatabaseConfig,
+    errors::SyncServerError,
 };
 
 #[derive(Clone, Debug)]
@@ -39,7 +40,7 @@ impl Cursors {
         user_name: String,
         device_id: &DeviceId,
         document_to_cursors: Vec<DocumentWithCursors>,
-    ) {
+    ) -> Result<(), SyncServerError> {
         let mut vault_to_cursors = self.vault_to_cursors.lock().await;
 
         let all_device_cursors = vault_to_cursors
@@ -54,7 +55,7 @@ impl Cursors {
         }));
 
         drop(vault_to_cursors); // Explicitly drop the lock before broadcasting to avoid deadlock
-        self.broadcast_cursors_for_vault(&vault_id).await;
+        self.broadcast_cursors_for_vault(&vault_id).await
     }
 
     pub async fn get_cursors(&self, vault_id: &VaultId) -> Vec<ClientCursors> {
@@ -76,15 +77,17 @@ impl Cursors {
             loop {
                 tokio::select! {
                     () = tokio::time::sleep(Duration::from_secs(1)) => {
-                        self.remove_expired_cursors().await;
+                        self.remove_expired_cursors().await?;
                     }
                     Ok(()) = shutdown.changed() => break,
                 }
             }
+
+            Ok::<(), SyncServerError>(())
         });
     }
 
-    async fn remove_expired_cursors(&self) {
+    async fn remove_expired_cursors(&self) -> Result<(), SyncServerError> {
         let changed_vaults: Vec<VaultId> = {
             let mut vault_to_cursors = self.vault_to_cursors.lock().await;
 
@@ -104,11 +107,13 @@ impl Cursors {
         };
 
         for vault_id in &changed_vaults {
-            self.broadcast_cursors_for_vault(vault_id).await;
+            self.broadcast_cursors_for_vault(vault_id).await?;
         }
+
+        Ok(())
     }
 
-    async fn broadcast_cursors_for_vault(&self, vault_id: &VaultId) {
+    async fn broadcast_cursors_for_vault(&self, vault_id: &VaultId) -> Result<(), SyncServerError> {
         let client_cursors: Vec<ClientCursors> = {
             let vault_to_cursors = self.vault_to_cursors.lock().await;
             vault_to_cursors
@@ -124,10 +129,14 @@ impl Cursors {
                     clients: client_cursors,
                 },
             )),
-        );
+        )
     }
 
-    pub async fn remove_cursors_of_device(&self, vault_id: &VaultId, device_id: &DeviceId) {
+    pub async fn remove_cursors_of_device(
+        &self,
+        vault_id: &VaultId,
+        device_id: &DeviceId,
+    ) -> Result<(), SyncServerError> {
         let changed = {
             let mut vault_to_cursors = self.vault_to_cursors.lock().await;
 
@@ -145,8 +154,9 @@ impl Cursors {
         };
 
         if changed {
-            self.broadcast_cursors_for_vault(vault_id).await;
+            self.broadcast_cursors_for_vault(vault_id).await?;
         }
+        Ok(())
     }
 }
 

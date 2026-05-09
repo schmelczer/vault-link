@@ -1,3 +1,19 @@
+#![cfg_attr(
+    test,
+    allow(
+        clippy::arithmetic_side_effects,
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        clippy::panic,
+        clippy::panic_in_result_fn,
+        clippy::todo,
+        clippy::unimplemented,
+        clippy::unreachable,
+        clippy::unwrap_in_result,
+        clippy::unwrap_used
+    )
+)]
+
 mod app_state;
 mod cli;
 mod config;

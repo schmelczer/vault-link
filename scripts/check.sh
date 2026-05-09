@@ -21,9 +21,10 @@ cargo test --verbose
 
 if [[ "$FIX_MODE" == true ]]; then
     cargo clippy --all-targets --all-features --fix --allow-dirty --allow-staged
+    cargo clippy --all-targets --all-features -- -D warnings
     cargo fmt --all
 else
-    cargo clippy --all-targets --all-features
+    cargo clippy --all-targets --all-features -- -D warnings
     cargo fmt --all -- --check
 fi
 

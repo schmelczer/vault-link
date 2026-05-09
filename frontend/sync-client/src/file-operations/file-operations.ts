@@ -11,16 +11,6 @@ import { FileNotFoundError } from "../errors/file-not-found-error";
 import { FileAlreadyExistsError } from "../errors/file-already-exists-error";
 import type { ExpectedFsEvents } from "../sync-operations/expected-fs-events";
 
-/**
- * Outcome of a `move`/`create`. `actualPath` is where the file ended up;
- * with the conflict-path machinery removed it is always equal to the
- * requested path. The shape is preserved so callers don't all need to
- * change.
- */
-export interface FileOpResult {
-    actualPath: RelativePath;
-}
-
 export class FileOperations {
     private readonly fs: SafeFileSystemOperations;
 
@@ -68,7 +58,7 @@ export class FileOperations {
     public async create(
         path: RelativePath,
         newContent: Uint8Array
-    ): Promise<FileOpResult> {
+    ): Promise<RelativePath> {
         if (await this.fs.exists(path)) {
             throw new FileAlreadyExistsError(
                 `Refusing to create '${path}': file already exists`,
@@ -84,7 +74,7 @@ export class FileOperations {
             this.expectedFsEvents.unexpectCreate(path);
             throw e;
         }
-        return { actualPath: path };
+        return path;
     }
 
     /**
@@ -220,9 +210,9 @@ export class FileOperations {
     public async move(
         oldPath: RelativePath,
         newPath: RelativePath
-    ): Promise<FileOpResult> {
+    ): Promise<RelativePath> {
         if (oldPath === newPath) {
-            return { actualPath: oldPath };
+            return oldPath;
         }
 
         if (await this.fs.exists(newPath)) {
@@ -241,7 +231,7 @@ export class FileOperations {
             throw e;
         }
         await this.deletingEmptyParentDirectoriesOfDeletedFile(oldPath);
-        return { actualPath: newPath };
+        return newPath;
     }
 
     private async deletingEmptyParentDirectoriesOfDeletedFile(

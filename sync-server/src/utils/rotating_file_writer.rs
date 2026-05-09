@@ -52,14 +52,14 @@ impl RotatingFileWriter {
     /// Parse timestamp from log filename and return as `SystemTime`
     fn parse_log_timestamp(filename: &str, file_prefix: &str) -> Option<SystemTime> {
         // Expected format: {prefix}.{timestamp}.log where timestamp is %Y-%m-%d_%H-%M-%S
-        let prefix_len = file_prefix.len() + 1; // +1 for the dot
+        let prefix_len = file_prefix.len().checked_add(1)?; // +1 for the dot
         let timestamp_str = filename.get(prefix_len..filename.len().checked_sub(4)?)?;
 
         let dt = NaiveDateTime::parse_from_str(timestamp_str, "%Y-%m-%d_%H-%M-%S").ok()?;
         let timestamp = dt.and_utc();
         let secs: u64 = timestamp.timestamp().try_into().ok()?;
 
-        Some(UNIX_EPOCH + Duration::from_secs(secs))
+        UNIX_EPOCH.checked_add(Duration::from_secs(secs))
     }
 
     fn find_latest_log_file(directory: &Path, file_prefix: &str) -> Option<String> {
@@ -86,7 +86,9 @@ impl RotatingFileWriter {
         Self::find_latest_log_file(directory, file_prefix)
             .and_then(|filename| Self::parse_log_timestamp(&filename, file_prefix))
             .map_or_else(SystemTime::now, |last_rotation| {
-                last_rotation + rotation_duration
+                last_rotation
+                    .checked_add(rotation_duration)
+                    .unwrap_or_else(SystemTime::now)
             })
     }
 
@@ -136,7 +138,9 @@ impl RotatingFileWriter {
             .open(&filepath)?;
 
         inner.current_file = Some(file);
-        inner.next_rotation_time = SystemTime::now() + inner.rotation_duration;
+        inner.next_rotation_time = SystemTime::now()
+            .checked_add(inner.rotation_duration)
+            .unwrap_or_else(SystemTime::now);
 
         Ok(())
     }

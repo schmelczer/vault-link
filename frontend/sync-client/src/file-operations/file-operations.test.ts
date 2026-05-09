@@ -85,7 +85,7 @@ describe("File operations", () => {
         const result = await ops.create("a", new Uint8Array());
 
         assertSetContainsExactly(fs.names, "a");
-        assert.equal(result.actualPath, "a");
+        assert.equal(result, "a");
     });
 
     it("create throws FileAlreadyExistsError when the path is occupied", async () => {
@@ -109,7 +109,7 @@ describe("File operations", () => {
 
         const result = await ops.move("a", "b");
         assertSetContainsExactly(fs.names, "b");
-        assert.equal(result.actualPath, "b");
+        assert.equal(result, "b");
     });
 
     it("move with same source and target is a no-op", async () => {
@@ -119,7 +119,7 @@ describe("File operations", () => {
         const result = await ops.move("a", "a");
 
         assertSetContainsExactly(fs.names, "a");
-        assert.equal(result.actualPath, "a");
+        assert.equal(result, "a");
     });
 
     it("move throws FileAlreadyExistsError when the target is occupied", async () => {

@@ -7,7 +7,11 @@ use log::{debug, info, warn};
 use tokio::sync::{Mutex, broadcast};
 
 use super::models::{WebSocketServerMessage, WebSocketServerMessageWithOrigin};
-use crate::{app_state::database::models::VaultId, config::server_config::ServerConfig};
+use crate::{
+    app_state::database::models::VaultId,
+    config::server_config::ServerConfig,
+    errors::{SyncServerError, client_error, server_error},
+};
 
 #[derive(Debug, Clone)]
 pub struct Broadcasts {
@@ -60,30 +64,31 @@ impl Broadcasts {
 
     pub fn get_receiver(
         &self,
-        vault: VaultId,
+        vault: &VaultId,
         max_clients: usize,
-    ) -> Result<broadcast::Receiver<WebSocketServerMessageWithOrigin>, crate::errors::SyncServerError>
-    {
+    ) -> Result<broadcast::Receiver<WebSocketServerMessageWithOrigin>, SyncServerError> {
         let mut tx_map = self
             .tx
             .lock()
-            .expect("broadcasts.tx mutex poisoned — a previous holder panicked");
+            .map_err(|_| server_error(anyhow::anyhow!("broadcasts.tx mutex poisoned")))?;
 
         let count_before_prune = tx_map
-            .get(&vault)
+            .get(vault)
             .map_or(0, tokio::sync::broadcast::Sender::receiver_count);
         let pruned = Self::prune_inactive_vaults(&mut tx_map);
-        let pruned_self = pruned.contains(&vault);
+        let pruned_self = pruned
+            .iter()
+            .any(|pruned_vault| pruned_vault.as_str() == vault);
 
         let sender = tx_map
-            .entry(vault.clone())
+            .entry(vault.to_owned())
             .or_insert_with(|| broadcast::channel(self.broadcast_channel_capacity).0);
 
         // Hold the lock across the count check *and* the subscribe so the
         // `max_clients` cap is atomic: two concurrent callers can't both
         // observe `receiver_count() < max_clients` and both subscribe.
         if sender.receiver_count() >= max_clients {
-            return Err(crate::errors::client_error(anyhow::anyhow!(
+            return Err(client_error(anyhow::anyhow!(
                 "Vault has reached the maximum number of clients ({max_clients})"
             )));
         }
@@ -100,8 +105,13 @@ impl Broadcasts {
     /// Notify all clients (who are subscribed to the vault) about an update.
     /// Synchronous: safe to invoke from a handler between `commit()` and
     /// function return without worrying about task cancellation dropping
-    /// the broadcast mid-flight. Failures are logged, never propagated.
-    pub fn send_document_update(&self, vault: VaultId, document: WebSocketServerMessageWithOrigin) {
+    /// the broadcast mid-flight. Mutex poison is returned; send failures
+    /// are logged because they can happen when receivers disconnect.
+    pub fn send_document_update(
+        &self,
+        vault: &str,
+        document: WebSocketServerMessageWithOrigin,
+    ) -> Result<(), SyncServerError> {
         let vault_update_id = match &document.message {
             WebSocketServerMessage::VaultUpdate(u) => Some(u.document.vault_update_id),
             WebSocketServerMessage::CursorPositions(_) => None,
@@ -110,18 +120,21 @@ impl Broadcasts {
             WebSocketServerMessage::VaultUpdate(u) => Some(u.document.is_deleted),
             WebSocketServerMessage::CursorPositions(_) => None,
         };
-        let mut tx_map = self
-            .tx
-            .lock()
-            .expect("broadcasts.tx mutex poisoned — a previous holder panicked");
+        let mut tx_map = self.tx.lock().map_err(|_| {
+            server_error(anyhow::anyhow!(
+                "broadcasts.tx mutex poisoned; skipping document update broadcast"
+            ))
+        })?;
         let count_before_prune = tx_map
-            .get(&vault)
+            .get(vault)
             .map_or(0, tokio::sync::broadcast::Sender::receiver_count);
         let pruned = Self::prune_inactive_vaults(&mut tx_map);
-        let pruned_self = pruned.contains(&vault);
+        let pruned_self = pruned
+            .iter()
+            .any(|pruned_vault| pruned_vault.as_str() == vault);
 
         let sender = tx_map
-            .entry(vault.clone())
+            .entry(vault.to_owned())
             .or_insert_with(|| broadcast::channel(self.broadcast_channel_capacity).0);
 
         let count_before_send = sender.receiver_count();
@@ -131,7 +144,7 @@ impl Broadcasts {
                 "[BCAST] send_document_update vault={vault} vuid={vault_update_id:?} is_deleted={is_deleted:?} count_before_prune={count_before_prune} pruned_self={pruned_self} count_before_send=0 SKIPPED"
             );
             debug!("Skipping broadcast, no clients connected for vault `{vault}`");
-            return;
+            return Ok(());
         }
 
         let send_result = sender.send(document);
@@ -143,5 +156,6 @@ impl Broadcasts {
                 "[BCAST] send_document_update vault={vault} vuid={vault_update_id:?} is_deleted={is_deleted:?} count_before_prune={count_before_prune} pruned_self={pruned_self} count_before_send={count_before_send} FAILED err={e}"
             ),
         }
+        Ok(())
     }
 }

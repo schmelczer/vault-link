@@ -27,7 +27,7 @@ use crate::{
     },
     server::requests::UpdateBinaryDocumentVersion,
     utils::{
-        find_first_available_path::find_first_available_path, is_binary::is_binary,
+        find_first_available_path::find_first_available_path, is_binary::as_non_binary_text,
         is_file_type_mergable::is_file_type_mergable, normalize::normalize,
         sanitize_path::sanitize_path,
     },
@@ -173,13 +173,20 @@ pub async fn update_document(
 
     let last_update_id = state
         .database
-        .get_max_update_id_in_vault(&vault_id, Some(&mut transaction))
+        .get_max_update_id_in_vault(
+            &vault_id,
+            Some(transaction.connection_mut().map_err(server_error)?),
+        )
         .await
         .map_err(server_error)?;
 
     let latest_version = state
         .database
-        .get_latest_document(&vault_id, &document_id, Some(&mut transaction))
+        .get_latest_document(
+            &vault_id,
+            &document_id,
+            Some(transaction.connection_mut().map_err(server_error)?),
+        )
         .await
         .map_err(server_error)?
         .map_or_else(
@@ -225,64 +232,56 @@ pub async fn update_document(
         )));
     }
 
-    // For mergability, use whichever path the new version will live at — the
-    // requested rename target if the client sent one, otherwise the existing
-    // server-side path.
+    // For mergability, use whichever path the new version will live at:
+    // - the requested rename target if the client sent one
+    // - otherwise the existing server-side path.
     let mergable_check_path = sanitized_relative_path
         .as_deref()
         .unwrap_or(&latest_version.relative_path);
-    let are_all_participants_mergable = is_file_type_mergable(
+
+    let mergeable_texts = if is_file_type_mergable(
         mergable_check_path,
         &state.config.server.mergeable_file_extensions,
-    ) && !is_binary(&parent_content)
-        && !is_binary(&latest_version.content)
-        && !is_binary(&content);
-
-    let (merged_content, is_different_from_request_content) = if are_all_participants_mergable {
-        info!("Merging changes for document `{document_id}` in vault `{vault_id}`");
-        let parent_text = str::from_utf8(&parent_content)
-            .context("Parent document content is not valid UTF-8")
-            .map_err(client_error)?;
-        let latest_text = str::from_utf8(&latest_version.content)
-            .context("Latest version content is not valid UTF-8")
-            .map_err(client_error)?;
-        let new_text = str::from_utf8(&content)
-            .context("New content is not valid UTF-8")
-            .map_err(client_error)?;
-        let parent_owned = parent_text.to_owned();
-        let latest_owned = latest_text.to_owned();
-        let new_owned = new_text.to_owned();
-        let content_clone = content.clone();
-
-        let (merged, is_different) = tokio::task::spawn_blocking(move || {
-            let merged = reconcile(
-                &parent_owned,
-                &latest_owned.into(),
-                &new_owned.into(),
-                &*BuiltinTokenizer::Word,
-            )
-            .apply()
-            .text()
-            .into_bytes();
-            let is_different = merged != content_clone;
-            (merged, is_different)
-        })
-        .await
-        .map_err(|e| server_error(anyhow::anyhow!("Reconcile task failed: {e}")))?;
-
-        (merged, is_different)
+    ) {
+        as_non_binary_texts(&parent_content, &latest_version.content, &content)
     } else {
-        (content, false) // false means that the client doesn't need to refetch the file as we can ensure the remote and local versions are the same as LWW is the merging method for binary files
+        None
     };
+    let are_all_participants_mergable = mergeable_texts.is_some();
 
-    // Rename resolution: only apply the client's rename if (a) the client
-    // requested one (`sanitized_relative_path` is `Some`) and (b) the
-    // document's path hasn't changed since this client's parent version.
-    // If the parent and latest paths differ, another client already renamed
-    // the document — keep the latest path (first rename wins). Content
-    // changes from both clients are still merged correctly via the 3-way
-    // reconcile above, independent of which rename wins. A missing
-    // relative_path means "keep current path" (content-only edit).
+    let (merged_content, is_same_as_request) =
+        if let Some((parent_text, latest_text, new_text)) = mergeable_texts {
+            info!("Merging changes for document `{document_id}` in vault `{vault_id}`");
+
+            let parent_owned = parent_text.to_owned();
+            let latest_owned = latest_text.to_owned();
+            let new_owned = new_text.to_owned();
+            let content_clone = content.clone();
+
+            let merged = tokio::task::spawn_blocking(move || {
+                let merged = reconcile(
+                    &parent_owned,
+                    &latest_owned.into(),
+                    &new_owned.into(),
+                    &*BuiltinTokenizer::Word,
+                )
+                .apply()
+                .text()
+                .into_bytes();
+                merged
+            })
+            .await
+            .map_err(|e| server_error(anyhow::anyhow!("Reconcile task failed: {e}")))?;
+
+            let is_same = merged == content_clone;
+            (merged, is_same)
+        } else {
+            (content, true) // true means that the client doesn't need to refetch the file as we can ensure the remote and local versions are the same as LWW is the merging method for binary files
+        };
+
+    // First rename wins: apply the client's rename only if the doc's path
+    // hasn't changed since its parent version. Content from both clients
+    // still merges via the 3-way reconcile above
     let new_relative_path = match sanitized_relative_path.as_deref() {
         Some(requested)
             if parent_relative_path == latest_version.relative_path
@@ -306,7 +305,9 @@ pub async fn update_document(
 
     let new_version = StoredDocumentVersion {
         document_id,
-        vault_update_id: last_update_id + 1,
+        vault_update_id: last_update_id
+            .checked_add(1)
+            .ok_or_else(|| server_error(anyhow!("Vault update id overflow")))?,
         creation_vault_update_id: latest_version.creation_vault_update_id,
         relative_path: new_relative_path,
         content: merged_content,
@@ -314,7 +315,7 @@ pub async fn update_document(
         is_deleted: false,
         user_id: user.name,
         device_id: device_id.0,
-        has_been_merged: are_all_participants_mergable && is_different_from_request_content,
+        has_been_merged: are_all_participants_mergable && !is_same_as_request,
     };
 
     state
@@ -323,9 +324,21 @@ pub async fn update_document(
         .await
         .map_err(server_error)?;
 
-    Ok(Json(if is_different_from_request_content {
-        DocumentUpdateResponse::MergingUpdate(new_version.into())
-    } else {
+    Ok(Json(if is_same_as_request {
         DocumentUpdateResponse::FastForwardUpdate(new_version.into())
+    } else {
+        DocumentUpdateResponse::MergingUpdate(new_version.into())
     }))
+}
+
+fn as_non_binary_texts<'a>(
+    parent_content: &'a [u8],
+    latest_content: &'a [u8],
+    new_content: &'a [u8],
+) -> Option<(&'a str, &'a str, &'a str)> {
+    Some((
+        as_non_binary_text(parent_content)?,
+        as_non_binary_text(latest_content)?,
+        as_non_binary_text(new_content)?,
+    ))
 }

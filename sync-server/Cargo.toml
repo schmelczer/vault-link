@@ -26,7 +26,6 @@ sqlx = { version = "0.8.6", features = ["sqlite", "runtime-tokio", "uuid", "chro
 chrono = { version = "0.4.41", features = ["serde"] }
 rand = "0.9.0"
 sanitize-filename = "0.6.0"
-regex = "1.12.2"
 clap = { version = "4.5.38", features = ["derive"] }
 futures = "0.3.31"
 serde_yaml = "0.9.34"
@@ -49,16 +48,19 @@ rust_2018_idioms = { level = "warn", priority = -1 }
 missing_debug_implementations = "warn"
 
 [lints.clippy]
+arithmetic_side_effects = "deny"
 await_holding_lock = "warn"
 dbg_macro = "warn"
 disallowed_macros = { level = "deny", priority = 1 }
 empty_enums = "warn"
 enum_glob_use = "warn"
+expect_used = "deny"
 exit = "warn"
 filter_map_next = "warn"
 fn_params_excessive_bools = "warn"
 if_let_mutex = "warn"
 imprecise_flops = "warn"
+indexing_slicing = "deny"
 inefficient_to_string = "warn"
 linkedlist = "warn"
 lossy_float_literal = "warn"
@@ -68,13 +70,19 @@ mem_forget = "warn"
 needless_borrow = "warn"
 needless_continue = "warn"
 option_option = "warn"
+panic = "deny"
+panic_in_result_fn = "deny"
 rest_pat_in_fully_bound_structs = "warn"
 str_to_string = "warn"
 suboptimal_flops = "warn"
-todo = "warn"
+todo = "deny"
 uninlined_format_args = "warn"
+unimplemented = "deny"
+unreachable = "deny"
 unnested_or_patterns = "warn"
 unused_self = "warn"
+unwrap_in_result = "deny"
+unwrap_used = "deny"
 verbose_file_reads = "warn"
 
 large_stack_arrays = { level = "allow", priority = 1 } # https://github.com/rust-lang/rust-clippy/issues/13774
@@ -88,7 +96,7 @@ single_call_fn = { level = "allow", priority = 1 }
 similar_names = { level = "allow", priority = 1 }
 missing_docs_in_private_items = { level = "allow", priority = 1 }
 
-pedantic = { level = "warn", priority = 0 }
+pedantic = { level = "warn", priority = -1 }
 
 [package.metadata.cargo-machete]
 ignored = ["humantime-serde"]  # only used in serde macro

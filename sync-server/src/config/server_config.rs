@@ -71,6 +71,10 @@ impl ServerConfig {
             self.max_pending_websocket_connections > 0,
             "max_pending_websocket_connections must be greater than 0"
         );
+        ensure!(
+            self.rate_limit_per_user_per_second != Some(0),
+            "rate_limit_per_user_per_second must be greater than 0 when set (use null to disable rate limiting)"
+        );
 
         Ok(())
     }

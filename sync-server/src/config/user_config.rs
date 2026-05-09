@@ -20,15 +20,7 @@ where
     let mut user_token_map = BiHashMap::new();
     for user in &users {
         if let Some(existing_name) = user_token_map.get_by_right(&user.token) {
-            let redacted = if user.token.len() > 6 {
-                format!(
-                    "{}...{}",
-                    &user.token[..3],
-                    &user.token[user.token.len() - 3..]
-                )
-            } else {
-                "***".to_owned()
-            };
+            let redacted = redact_token(&user.token);
             return Err(D::Error::custom(format!(
                 "Duplicate user token found: `{redacted}` for users `{}` and `{}`. User tokens \
                 must be unique.",
@@ -47,6 +39,23 @@ where
     }
 
     Ok(users)
+}
+
+fn redact_token(token: &str) -> String {
+    if token.chars().count() <= 6 {
+        return "***".to_owned();
+    }
+
+    let prefix = token.chars().take(3).collect::<String>();
+    let suffix = token
+        .chars()
+        .rev()
+        .take(3)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect::<String>();
+    format!("{prefix}...{suffix}")
 }
 
 impl UserConfig {

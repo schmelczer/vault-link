@@ -1,10 +1,3 @@
-use std::sync::LazyLock;
-
-use regex::Regex;
-
-static DEDUP_SUFFIX_REGEX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r" \((\d+)\)$").expect("invalid regex"));
-
 pub fn dedup_paths(path: &str) -> impl Iterator<Item = String> {
     let mut path_parts = path.split('/').collect::<Vec<_>>();
     let file_name = path_parts
@@ -24,35 +17,39 @@ pub fn dedup_paths(path: &str) -> impl Iterator<Item = String> {
     let (stem, extension) = if is_simple_dotfile {
         (file_name.clone(), String::new())
     } else {
-        // Regular file or dotfile with extension
-        let name_parts = file_name.rsplitn(2, '.').collect::<Vec<_>>();
-        let mut reverse_parts = name_parts.into_iter().rev();
-        match (reverse_parts.next(), reverse_parts.next()) {
-            (Some(stem), maybe_extension) => (
-                stem.to_owned(),
-                maybe_extension
-                    .map(|ext| format!(".{ext}"))
-                    .unwrap_or_default(),
-            ),
-            _ => unreachable!("Path must have at least one part"),
+        match file_name.rsplit_once('.') {
+            Some((stem, extension)) => (stem.to_owned(), format!(".{extension}")),
+            None => (file_name.clone(), String::new()),
         }
     };
 
-    let start_number = DEDUP_SUFFIX_REGEX
-        .captures(&stem)
-        .and_then(|caps| caps.get(1))
-        .and_then(|m| m.as_str().parse::<u32>().ok())
-        .unwrap_or(0);
+    let (clean_stem, start_number) = strip_dedup_suffix(&stem);
+    let clean_stem = clean_stem.to_owned();
 
-    let clean_stem = DEDUP_SUFFIX_REGEX.replace(&stem, "").to_string();
-
-    (start_number..).map(move |dedup_number| {
+    std::iter::successors(Some(start_number), |dedup_number| {
+        dedup_number.checked_add(1)
+    })
+    .map(move |dedup_number| {
         if dedup_number == 0 {
             format!("{directory}{clean_stem}{extension}")
         } else {
             format!("{directory}{clean_stem} ({dedup_number}){extension}")
         }
     })
+}
+
+fn strip_dedup_suffix(stem: &str) -> (&str, u64) {
+    let Some(without_closing_paren) = stem.strip_suffix(')') else {
+        return (stem, 0);
+    };
+    let Some((clean_stem, number)) = without_closing_paren.rsplit_once(" (") else {
+        return (stem, 0);
+    };
+    if number.is_empty() || !number.chars().all(|c| c.is_ascii_digit()) {
+        return (stem, 0);
+    }
+
+    (clean_stem, number.parse::<u64>().unwrap_or(0))
 }
 
 #[cfg(test)]
@@ -103,7 +100,7 @@ mod test {
     }
 
     #[test]
-    fn test_regex_capturing_group() {
+    fn test_dedup_suffix_parsing() {
         // Single digit in parentheses
         let mut deduped = dedup_paths("document (5).md");
         assert_eq!(deduped.next(), Some("document (5).md".to_owned()));

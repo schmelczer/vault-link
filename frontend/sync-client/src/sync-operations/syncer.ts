@@ -1103,7 +1103,7 @@ export class Syncer {
                         remoteHash,
                         localPath: target
                     });
-                    const result = await this.operations.create(
+                    const createdPath = await this.operations.create(
                         target,
                         remoteContent
                     );
@@ -1112,7 +1112,7 @@ export class Syncer {
                     );
                     localPath =
                         liveRecord === undefined
-                            ? result.actualPath
+                            ? createdPath
                             : liveRecord.localPath;
                     await this.updateCache(
                         remoteVersion.vaultUpdateId,

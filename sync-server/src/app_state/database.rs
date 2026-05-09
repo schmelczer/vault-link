@@ -5,7 +5,7 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
-use anyhow::{Context as _, Result};
+use anyhow::{Context as _, Result, anyhow};
 use log::info;
 use models::{
     DocumentId, DocumentVersionWithoutContent, StoredDocumentVersion, VaultId, VaultUpdateId,
@@ -132,6 +132,12 @@ impl WriteTransaction {
         }
         Ok(())
     }
+
+    pub fn connection_mut(&mut self) -> Result<&mut SqliteConnection> {
+        self.conn
+            .as_deref_mut()
+            .context("WriteTransaction already consumed")
+    }
 }
 
 impl Drop for WriteTransaction {
@@ -144,25 +150,6 @@ impl Drop for WriteTransaction {
             // uncommitted transactions when the connection closes.
             log::warn!("WriteTransaction dropped without commit or rollback");
         }
-    }
-}
-
-impl std::ops::Deref for WriteTransaction {
-    type Target = SqliteConnection;
-    fn deref(&self) -> &Self::Target {
-        self.conn
-            .as_ref()
-            .expect("BUG: WriteTransaction dereferenced after being consumed")
-            .deref()
-    }
-}
-
-impl std::ops::DerefMut for WriteTransaction {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.conn
-            .as_mut()
-            .expect("BUG: WriteTransaction dereferenced after being consumed")
-            .deref_mut()
     }
 }
 
@@ -797,7 +784,7 @@ impl Database {
         let _send_guard = self.broadcasts.acquire_send_lock(vault_id).await;
 
         query
-            .execute(&mut *transaction)
+            .execute(transaction.connection_mut()?)
             .await
             .context("Cannot insert document version")?;
 
@@ -821,7 +808,8 @@ impl Database {
         } else {
             WebSocketServerMessageWithOrigin::with_origin(version.device_id.clone(), envelope)
         };
-        self.broadcasts.send_document_update(vault_id, with_origin);
+        self.broadcasts
+            .send_document_update(vault_id, with_origin)?;
 
         Ok(())
     }

@@ -48,13 +48,20 @@ pub async fn delete_document(
 
     let last_update_id = state
         .database
-        .get_max_update_id_in_vault(&vault_id, Some(&mut transaction))
+        .get_max_update_id_in_vault(
+            &vault_id,
+            Some(transaction.connection_mut().map_err(server_error)?),
+        )
         .await
         .map_err(server_error)?;
 
     let latest_version = state
         .database
-        .get_latest_document(&vault_id, &document_id, Some(&mut transaction))
+        .get_latest_document(
+            &vault_id,
+            &document_id,
+            Some(transaction.connection_mut().map_err(server_error)?),
+        )
         .await
         .map_err(server_error)?;
 
@@ -80,7 +87,9 @@ pub async fn delete_document(
         return Ok(Json(latest_version.into()));
     }
 
-    let new_vault_update_id = last_update_id + 1;
+    let new_vault_update_id = last_update_id
+        .checked_add(1)
+        .ok_or_else(|| server_error(anyhow!("Vault update id overflow")))?;
     let latest_relative_path = latest_version.relative_path;
     let latest_content = latest_version.content;
     let creation_vault_update_id = latest_version.creation_vault_update_id;

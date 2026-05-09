@@ -306,7 +306,7 @@ async fn websocket(
                                     &device_id,
                                     docs,
                                 )
-                                .await;
+                                .await?;
                         }
                     }
                 }
@@ -351,7 +351,7 @@ async fn websocket(
     state
         .cursors
         .remove_cursors_of_device(&vault_id, &authed_handshake.handshake.device_id)
-        .await;
+        .await?;
 
     match &result {
         Ok(()) => {
