@@ -8,7 +8,8 @@ import type { Logger } from "sync-client";
 import {
     STOP_TIMEOUT_MS,
     SERVER_READY_POLL_INTERVAL_MS,
-    SERVER_READY_MAX_ATTEMPTS
+    SERVER_READY_MAX_ATTEMPTS,
+    SERVER_START_MAX_ATTEMPTS
 } from "./consts";
 
 export class ServerControl {
@@ -42,10 +43,32 @@ export class ServerControl {
             throw new Error("Server is already running");
         }
 
+        // Retry on bind failure: findFreePort closes its probe before we
+        // spawn, so under heavy parallelism another process can grab the
+        // same port. Each attempt picks a fresh port.
+        let lastError: unknown;
+        for (let attempt = 1; attempt <= SERVER_START_MAX_ATTEMPTS; attempt++) {
+            try {
+                await this.startOnce();
+                return;
+            } catch (error) {
+                lastError = error;
+                this.logger.warn(
+                    `Server start attempt ${attempt}/${SERVER_START_MAX_ATTEMPTS} failed: ${error instanceof Error ? error.message : String(error)}`
+                );
+                // startOnce already cleaned up its child + tempdir on failure.
+            }
+        }
+        throw new Error(
+            `Server failed to start after ${SERVER_START_MAX_ATTEMPTS} attempts: ${lastError instanceof Error ? lastError.message : String(lastError)}`,
+            { cause: lastError instanceof Error ? lastError : undefined }
+        );
+    }
+
+    private async startOnce(): Promise<void> {
         const reservation = await findFreePort();
         this._port = reservation.port;
-        // Prefer tmpfs (/host/tmp) over disk-backed /tmp for faster SQLite I/O
-        const tmpBase = fs.existsSync("/host/tmp") ? "/host/tmp" : os.tmpdir();
+        const tmpBase = os.tmpdir();
         this.tempDir = fs.mkdtempSync(path.join(tmpBase, "vault-link-test-"));
         const tempConfigPath = path.join(this.tempDir, "config.yml");
         const dbDir = path.join(this.tempDir, "databases");
@@ -214,7 +237,36 @@ export class ServerControl {
     }
 
     public isRunning(): boolean {
-        return this.process?.pid !== undefined;
+        const proc = this.process;
+        return (
+            proc !== null &&
+            proc.pid !== undefined &&
+            proc.exitCode === null &&
+            proc.signalCode === null
+        );
+    }
+
+    /**
+     * Synchronously SIGCONT-then-SIGKILL the child process. Safe to call
+     * from a `process.on("exit", ...)` handler, where async work cannot
+     * run. Used as a last-resort cleanup so a SIGSTOP'd server doesn't
+     * outlive the test runner and wedge the next CI invocation.
+     */
+    public forceKillSync(): void {
+        const proc = this.process;
+        if (proc?.pid === undefined) {
+            return;
+        }
+        try {
+            process.kill(proc.pid, "SIGCONT");
+        } catch {
+            // Process may already be gone or never paused.
+        }
+        try {
+            process.kill(proc.pid, "SIGKILL");
+        } catch {
+            // Process already gone.
+        }
     }
 
     private writeConfigFile(destPath: string, dbDir: string): void {

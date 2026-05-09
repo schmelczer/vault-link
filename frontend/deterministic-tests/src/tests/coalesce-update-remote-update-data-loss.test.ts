@@ -3,8 +3,14 @@ import type { TestDefinition } from "../test-definition";
 
 export const coalesceUpdateRemoteUpdateDataLossTest: TestDefinition = {
     description:
-        "Client 0 edits a file while client 1 is offline. Client 1 reconnects " +
-        "and immediately edits the same file. Both edits should be preserved.",
+        "Divergent offline edits with text-merge expectation. Client 0's " +
+        "remote update fully lands before Client 1 reconnects (`sync`-after " +
+        "the c0 update enforces this), so Client 1's offline edit merges " +
+        "against a server-known version, not a coalesced batch. Both " +
+        "additions must survive in the final merged content. (Filename's " +
+        "'coalesce' framing is aspirational — a true update-coalesce test " +
+        "would skip the c0 sync and queue overlapping local + remote " +
+        "updates against the same parent version.)",
     clients: 2,
     steps: [
         {

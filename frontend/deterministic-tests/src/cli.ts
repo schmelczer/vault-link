@@ -4,7 +4,7 @@ import { ServerManager } from "./server-manager";
 import { PrefixedLogger } from "./prefixed-logger";
 import { TESTS } from "./test-registry";
 import type { TestDefinition, TestResult } from "./test-definition";
-import { parseConcurrency } from "./parse-concurrency";
+import { parseArgs } from "./parse-args";
 import { runWithConcurrency } from "./run-with-concurrency";
 import { TOKEN, SERVER_BINARY_PATH, CONFIG_PATH } from "./consts";
 import * as path from "node:path";
@@ -29,7 +29,10 @@ serverManager.installSignalHandlers();
 
 function testUsesPauseServer(test: TestDefinition): boolean {
     return test.steps.some(
-        (step) => step.type === "pause-server" || step.type === "resume-server"
+        (step) =>
+            step.type === "pause-server" ||
+            step.type === "resume-server" ||
+            step.type === "resume-server-until-history-then-pause"
     );
 }
 
@@ -134,8 +137,7 @@ async function main(): Promise<void> {
         process.exit(1);
     }
 
-    const filterArg = process.argv.find((a) => a.startsWith("--filter="));
-    const filter = filterArg?.slice("--filter=".length);
+    const { filter, concurrency } = parseArgs(process.argv);
 
     const testsToRun: [string, TestDefinition][] = [];
     for (const [key, test] of Object.entries(TESTS)) {
@@ -160,7 +162,6 @@ async function main(): Promise<void> {
         process.exit(1);
     }
 
-    const concurrency = parseConcurrency();
     const regularTests = testsToRun.filter(([, t]) => !testUsesPauseServer(t));
     const pauseTests = testsToRun.filter(([, t]) => testUsesPauseServer(t));
 

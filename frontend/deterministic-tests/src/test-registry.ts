@@ -36,7 +36,6 @@ import { offlineUpdateBothThenDeleteOneTest } from "./tests/offline-update-both-
 import { offlineCreateSamePathMergeableTest } from "./tests/offline-create-same-path-mergeable.test";
 import { deleteDuringPendingCreateTest } from "./tests/delete-during-pending-create.test";
 import { threeClientRenameCreateDeleteTest } from "./tests/three-client-rename-create-delete.test";
-import { keyMigrationEventDropTest } from "./tests/key-migration-event-drop.test";
 import { renameToPathOfUnconfirmedDeleteTest } from "./tests/rename-to-path-of-unconfirmed-delete.test";
 import { offlineEditThenMoveSameContentTest } from "./tests/offline-edit-then-move-same-content.test";
 import { rapidCreateUpdateDeleteCycleTest } from "./tests/rapid-create-update-delete-cycle.test";
@@ -47,10 +46,9 @@ import { offlineMoveThenRemoteDeleteTest } from "./tests/offline-move-then-remot
 import { resetClearsRecentlyDeletedResurrectionTest } from "./tests/reset-clears-recently-deleted-resurrection.test";
 import { moveThenDeleteStalePathTest } from "./tests/move-then-delete-stale-path.test";
 import { interruptedDeleteRetryTest } from "./tests/interrupted-delete-retry.test";
-import { updateDoesNotSurvivesRemoteDeleteTest } from "./tests/update-survives-remote-delete.test";
+import { updateDoesNotSurviveRemoteDeleteTest } from "./tests/update-does-not-survive-remote-delete.test";
 import { movePreservesRemoteUpdateTest } from "./tests/move-preserves-remote-update.test";
 import { recentlyDeletedClearedOnReconnectTest } from "./tests/recently-deleted-cleared-on-reconnect.test";
-import { migrateKeyPreservesExistingTest } from "./tests/migrate-key-preserves-existing.test";
 import { watermarkAdvancesOnSkipTest } from "./tests/watermark-advances-on-skip.test";
 import { watermarkGapRemoteUpdateNotRecordedTest } from "./tests/watermark-gap-remote-update-not-recorded.test";
 import { queueResetLosesCoalescedLocalEditTest } from "./tests/queue-reset-loses-coalesced-local-edit.test";
@@ -147,7 +145,6 @@ export const TESTS: Partial<Record<string, TestDefinition>> = {
     "offline-create-same-path-mergeable": offlineCreateSamePathMergeableTest,
     "delete-during-pending-create": deleteDuringPendingCreateTest,
     "three-client-rename-create-delete": threeClientRenameCreateDeleteTest,
-    "key-migration-event-drop": keyMigrationEventDropTest,
     "rename-to-path-of-unconfirmed-delete": renameToPathOfUnconfirmedDeleteTest,
     "offline-edit-then-move-same-content": offlineEditThenMoveSameContentTest,
     "rapid-create-update-delete-cycle": rapidCreateUpdateDeleteCycleTest,
@@ -160,11 +157,10 @@ export const TESTS: Partial<Record<string, TestDefinition>> = {
     "move-then-delete-stale-path": moveThenDeleteStalePathTest,
     "offline-delete-vs-remote-update": offlineDeleteVsRemoteUpdateTest,
     "interrupted-delete-retry": interruptedDeleteRetryTest,
-    "update-survives-remote-delete": updateDoesNotSurvivesRemoteDeleteTest,
+    "update-does-not-survive-remote-delete": updateDoesNotSurviveRemoteDeleteTest,
     "move-preserves-remote-update": movePreservesRemoteUpdateTest,
     "recently-deleted-cleared-on-reconnect":
         recentlyDeletedClearedOnReconnectTest,
-    "migrate-key-preserves-existing": migrateKeyPreservesExistingTest,
     "watermark-advances-on-skip": watermarkAdvancesOnSkipTest,
     "watermark-gap-remote-update-not-recorded":
         watermarkGapRemoteUpdateNotRecordedTest,

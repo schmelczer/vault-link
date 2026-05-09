@@ -37,15 +37,15 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
     private readonly wsFactory = new ManagedWebSocketFactory();
     private nextWriteRename:
         | {
-              oldPath: RelativePath;
-              newPath: RelativePath;
-          }
+            oldPath: RelativePath;
+            newPath: RelativePath;
+        }
         | undefined;
     private nextCreateResponseDrop:
         | {
-              dropped: Promise<void>;
-              resolveDropped: () => void;
-          }
+            dropped: Promise<void>;
+            resolveDropped: () => void;
+        }
         | undefined;
 
     public constructor(
@@ -82,10 +82,10 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
                     this.logger(`${prefix} WARN: ${line.message}`);
                     break;
                 case LogLevel.INFO:
-                    this.logger(`${prefix} ${line.message}`);
+                    this.logger(`${prefix} INFO: ${line.message}`);
                     break;
                 case LogLevel.DEBUG:
-                    // Skip debug logs to reduce noise
+                    this.logger(`${prefix} DEBUG: ${line.message}`);
                     break;
             }
         });
@@ -271,8 +271,18 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
                 this.log(`Cleanup waitUntilFinished failed: ${error}`);
             }
         }
+        // Surface any background sync errors that arrived after the last
+        // waitForSync (e.g. between the final assert-consistent and here).
+        // Without this, regressions that fault the engine during the very
+        // last step of a test would be silently swallowed.
+        const pendingErrors = this.syncErrors.splice(0);
         await this.client.destroy();
         this.log("Cleanup complete");
+        if (pendingErrors.length > 0) {
+            throw new Error(
+                `Client ${this.clientId} had ${pendingErrors.length} background sync error(s) during cleanup:\n${pendingErrors.map((e) => e.message).join("\n")}`
+            );
+        }
     }
 
     public override async read(path: RelativePath): Promise<Uint8Array> {
@@ -439,8 +449,6 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
                 DeterministicAgent.isCreateDocumentRequest(input, init)
             ) {
                 this.nextCreateResponseDrop = undefined;
-                // Release the underlying socket: an unread body keeps the
-                // undici connection open until GC.
                 try {
                     await response.body?.cancel();
                 } catch {
