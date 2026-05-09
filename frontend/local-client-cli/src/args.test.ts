@@ -169,7 +169,6 @@ test("parseArgs - parse ERROR log level", () => {
     assert.equal(args.logLevel, LogLevel.ERROR);
 });
 
-
 test("parseArgs - reads required options from environment variables", () => {
     process.env.VAULTLINK_LOCAL_PATH = "/env/path";
     process.env.VAULTLINK_REMOTE_URI = "https://env.example.com";

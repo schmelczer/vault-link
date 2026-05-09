@@ -136,8 +136,7 @@ async fn websocket(
     //    catch-up and in a contended-then-released broadcast is
     //    delivered exactly once (via the catch-up).
     let send_guard = state.broadcasts.acquire_send_lock(&vault_id).await;
-    let mut broadcast_receiver = match state.broadcasts.get_receiver(vault_id.clone(), max_clients)
-    {
+    let mut broadcast_receiver = match state.broadcasts.get_receiver(&vault_id, max_clients) {
         Ok(receiver) => receiver,
         Err(err) => {
             drop(send_guard);

@@ -89,18 +89,19 @@ export const myScenarioTest: TestDefinition = {
 The `verify` callback receives an `AssertableState` object with chainable assertion methods:
 
 ```typescript
-s.assertFileCount(n);                       // exact file count
-s.assertFileExists("path");                 // file must exist
-s.assertFileNotExists("path");              // file must not exist
-s.assertContent("path", "expected");        // exact content match
-s.assertContains("path", "a", "b");         // all substrings present in file
-s.assertContainsAny("path", "a", "b");      // at least one substring present
-s.assertAnyFileContains("text");            // substring present in some file
-s.assertNoFileContains("text");             // substring absent from every file
-s.assertSubstringCount("path", "x", 3);     // substring appears exactly N times
-s.assertContentInAtMostOneFile("text");     // no duplicate content
-s.ifFileExists("path", (s) => { /* … */ }); // conditional block
-s.getContent("path");                       // raw content (or "" if missing)
+s.assertFileCount(n); // exact file count
+s.assertFileExists("path"); // file must exist
+s.assertFileNotExists("path"); // file must not exist
+s.assertContent("path", "expected"); // exact content match
+s.assertContains("path", "a", "b"); // all substrings present in file
+s.assertContainsAny("path", "a", "b"); // at least one substring present
+s.assertAnyFileContains("text"); // substring present in some file
+s.assertNoFileContains("text"); // substring absent from every file
+s.assertContentInAtMostOneFile("text"); // no duplicate content
+s.ifFileExists("path", (s) => {
+  /* … */
+}); // conditional block
+s.getContent("path"); // raw content (or "" if missing)
 ```
 
 2. Register it in `src/test-registry.ts`:

@@ -15,7 +15,7 @@ import { toUnixPath } from "./path-utils";
 export const VAULTLINK_DIR = ".vaultlink";
 
 export class NodeFileSystemOperations implements FileSystemOperations {
-    public constructor(private readonly basePath: string) { }
+    public constructor(private readonly basePath: string) {}
 
     public async listFilesRecursively(
         directory: RelativePath | undefined

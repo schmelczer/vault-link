@@ -10,7 +10,7 @@ use crate::{
     },
     config::user_config::User,
     errors::{SyncServerError, client_error, server_error, unauthenticated_error},
-    server::auth::auth,
+    server::auth::authenticate_for_vault,
 };
 
 pub struct AuthenticatedWebSocketHandshake {
@@ -30,7 +30,7 @@ pub fn get_authenticated_handshake(
 
         match message {
             WebSocketClientMessage::Handshake(handshake) => {
-                let user = auth(state, handshake.token.trim(), vault_id)?;
+                let user = authenticate_for_vault(state, handshake.token.trim(), vault_id)?;
                 Ok(AuthenticatedWebSocketHandshake { handshake, user })
             }
             WebSocketClientMessage::CursorPositions(_) => Err(unauthenticated_error(

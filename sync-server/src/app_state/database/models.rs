@@ -83,7 +83,6 @@ pub struct DocumentVersion {
     pub device_id: DeviceId,
 }
 
-
 impl From<StoredDocumentVersion> for DocumentVersion {
     fn from(value: StoredDocumentVersion) -> Self {
         Self {

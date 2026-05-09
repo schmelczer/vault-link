@@ -1,7 +1,7 @@
 import type { TestDefinition, TestResult, TestStep } from "./test-definition";
 import { DeterministicAgent } from "./deterministic-agent";
 import type { ServerControl } from "./server-control";
-import type { SyncSettings, Logger } from "sync-client";
+import { SyncType, type SyncSettings, type Logger } from "sync-client";
 import { assert } from "./utils/assert";
 import { AssertableState } from "./utils/assertable-state";
 import { sleep } from "./utils/sleep";
@@ -188,9 +188,11 @@ export class TestRunner {
                 const agent = this.getAgent(step.client);
                 const historySeen = agent.waitForHistoryEntry(
                     (entry) =>
-                        entry.details.type === step.syncType &&
+                        entry.details.type === SyncType[step.syncType] &&
                         entry.details.relativePath === step.path,
-                    () => this.serverControl.pause()
+                    () => {
+                        this.serverControl.pause();
+                    }
                 );
                 this.serverControl.resume();
                 await historySeen;

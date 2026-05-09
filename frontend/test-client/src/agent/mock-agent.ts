@@ -58,16 +58,18 @@ export class MockAgent extends MockClient {
         // (e.g. `initial-1.md → initial-1 (2).md` after a same-path
         // collision) lands at a path the touch-list never knew about,
         // and an offline rename against that path strands the file.
-        this.client.onDocumentPathChanged.add((_documentId, oldPath, newPath) => {
-            if (oldPath !== undefined && newPath !== undefined) {
-                if (this.doNotTouchWhileOffline.includes(oldPath)) {
-                    this.doNotTouchWhileOffline.push(newPath);
-                }
-                if (this.doNotRenameWhileOffline.includes(oldPath)) {
-                    this.doNotRenameWhileOffline.push(newPath);
+        this.client.onDocumentPathChanged.add(
+            (_documentId, oldPath, newPath) => {
+                if (oldPath !== undefined && newPath !== undefined) {
+                    if (this.doNotTouchWhileOffline.includes(oldPath)) {
+                        this.doNotTouchWhileOffline.push(newPath);
+                    }
+                    if (this.doNotRenameWhileOffline.includes(oldPath)) {
+                        this.doNotRenameWhileOffline.push(newPath);
+                    }
                 }
             }
-        });
+        );
 
         this.client.logger.onLogEmitted.add((logLine: LogLine) => {
             const state = this.client.getSettings().isSyncEnabled

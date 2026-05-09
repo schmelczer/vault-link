@@ -118,7 +118,7 @@ impl Cursors {
         };
 
         self.broadcasts.send_document_update(
-            vault_id.clone(),
+            vault_id,
             WebSocketServerMessageWithOrigin::new(WebSocketServerMessage::CursorPositions(
                 CursorPositionFromServer {
                     clients: client_cursors,

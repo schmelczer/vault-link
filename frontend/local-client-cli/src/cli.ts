@@ -1,11 +1,10 @@
 import * as path from "path";
 import * as fs from "fs/promises";
 import * as fsSync from "fs";
-import type { NetworkConnectionStatus } from "sync-client";
+import type { NetworkConnectionStatus, Logger } from "sync-client";
 import {
     SyncClient,
     DEFAULT_SETTINGS,
-    Logger,
     LogLevel,
     LogLine,
     type SyncSettings,

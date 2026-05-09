@@ -92,10 +92,6 @@ export class Locks<T> {
         this.waiters.clear();
     }
 
-    public isLocked(key: T): boolean {
-        return this.locked.has(key);
-    }
-
     /**
      * Attempts to acquire a lock immediately without waiting.
      * Must call `unlock()` if successful.

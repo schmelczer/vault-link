@@ -136,9 +136,7 @@ pub async fn create_document(
     {
         info!(
             "Lost-create recovery: binding retry at `{sanitized_relative_path}` to existing doc {} (was at `{}`) in vault `{vault_id}` for device `{}`",
-            lost_create.document_id,
-            lost_create.relative_path,
-            device_id.0
+            lost_create.document_id, lost_create.relative_path, device_id.0
         );
         return update_document::update_document(
             &sanitized_relative_path,

@@ -37,15 +37,15 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
     private readonly wsFactory = new ManagedWebSocketFactory();
     private nextWriteRename:
         | {
-            oldPath: RelativePath;
-            newPath: RelativePath;
-        }
+              oldPath: RelativePath;
+              newPath: RelativePath;
+          }
         | undefined;
     private nextCreateResponseDrop:
         | {
-            dropped: Promise<void>;
-            resolveDropped: () => void;
-        }
+              dropped: Promise<void>;
+              resolveDropped: () => void;
+          }
         | undefined;
 
     public constructor(
@@ -138,13 +138,12 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
             this.nextCreateResponseDrop === undefined,
             `Client ${this.clientId} already has a create response drop armed`
         );
-        let resolveDropped: () => void = () => {};
-        const dropped = new Promise<void>((resolve) => {
-            resolveDropped = resolve;
-        });
+        const resolvers = Promise.withResolvers<undefined>();
         this.nextCreateResponseDrop = {
-            dropped,
-            resolveDropped
+            dropped: resolvers.promise as Promise<void>,
+            resolveDropped: (): void => {
+                resolvers.resolve(undefined);
+            }
         };
         this.log("Armed next create response drop");
     }
@@ -175,9 +174,7 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
         await withTimeout(
             new Promise<void>((resolve) => {
                 const unsubscribe = this.client.onSyncHistoryUpdated.add(() => {
-                    const entry = this.client
-                        .getHistoryEntries()
-                        .find(matches);
+                    const entry = this.client.getHistoryEntries().find(matches);
                     if (entry === undefined) {
                         return;
                     }
@@ -324,11 +321,8 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
             });
         }
 
-        const nextWriteRename = this.nextWriteRename;
-        if (
-            nextWriteRename !== undefined &&
-            nextWriteRename.oldPath === path
-        ) {
+        const { nextWriteRename } = this;
+        if (nextWriteRename?.oldPath === path) {
             this.nextWriteRename = undefined;
             await super.rename(
                 nextWriteRename.oldPath,
@@ -480,5 +474,4 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
             return response;
         };
     }
-
 }

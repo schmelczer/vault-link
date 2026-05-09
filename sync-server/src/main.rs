@@ -14,7 +14,7 @@ use cli::args::Args;
 use config::Config;
 use consts::DEFAULT_CONFIG_PATH;
 use errors::{SyncServerError, init_error};
-use log::info;
+use log::{error, info, warn};
 use server::create_server;
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{EnvFilter, fmt::format, layer::SubscriberExt, util::SubscriberInitExt};
@@ -36,28 +36,61 @@ async fn main() -> ExitCode {
         .map_err(init_error)
     {
         Ok(config) => config,
-        Err(e) => {
-            eprintln!("{}", e.serialize());
-            return ExitCode::FAILURE;
+        Err(error) => {
+            return exit_with_startup_error(&args, &error);
         }
     };
 
-    let result = async {
-        config.validate().map_err(init_error)?;
-        // Hold the non-blocking writer guards until shutdown so the
-        // dedicated writer threads stay alive and flush queued log lines.
-        let _log_guards = set_up_logging(&args, &config.logging)?;
-        start_server(config).await
+    if let Err(error) = config.validate().map_err(init_error) {
+        return exit_with_startup_error(&args, &error);
     }
-    .await;
 
-    match result {
+    // Hold the non-blocking writer guards until shutdown so the dedicated
+    // writer threads stay alive and flush queued log lines.
+    let _log_guards = match set_up_logging(&args, &config.logging) {
+        Ok(log_guards) => log_guards,
+        Err(error) => {
+            return exit_with_startup_error(&args, &error);
+        }
+    };
+
+    match start_server(config).await {
         Ok(()) => ExitCode::SUCCESS,
-        Err(e) => {
-            eprintln!("{}", e.serialize());
+        Err(error) => {
+            let serialized = error.serialize();
+            warn!("{serialized}");
             ExitCode::FAILURE
         }
     }
+}
+
+fn exit_with_startup_error(args: &Args, err: &SyncServerError) -> ExitCode {
+    let _ = set_up_stderr_logging(args);
+
+    let serialized = err.serialize();
+    error!("{serialized}");
+
+    ExitCode::FAILURE
+}
+
+fn set_up_stderr_logging(args: &Args) -> Result<(), SyncServerError> {
+    let env_filter = EnvFilter::builder()
+        .with_default_directive(tracing::Level::WARN.into())
+        .from_env()
+        .context("Failed to create logging env filter")
+        .map_err(init_error)?;
+
+    let stderr_layer = tracing_subscriber::fmt::layer()
+        .with_ansi(args.color.use_colors())
+        .with_writer(std::io::stderr)
+        .event_format(format().compact());
+
+    tracing_subscriber::registry()
+        .with(env_filter)
+        .with(stderr_layer)
+        .try_init()
+        .context("Failed to initialise fallback tracing")
+        .map_err(init_error)
 }
 
 fn set_up_logging(

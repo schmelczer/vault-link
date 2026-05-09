@@ -13,8 +13,6 @@ import { HttpClientError } from "../errors/http-client-error";
 import type { SerializedError } from "./types/SerializedError";
 import type { DocumentVersionWithoutContent } from "./types/DocumentVersionWithoutContent";
 import type { DocumentUpdateResponse } from "./types/DocumentUpdateResponse";
-import type { DocumentVersion } from "./types/DocumentVersion";
-import type { FetchLatestDocumentsResponse } from "./types/FetchLatestDocumentsResponse";
 import type { PingResponse } from "./types/PingResponse";
 import type { UpdateTextDocumentVersion } from "./types/UpdateTextDocumentVersion";
 import { buildVaultUrl } from "./build-vault-url";
@@ -272,32 +270,6 @@ export class SyncService {
         });
     }
 
-    public async get({
-        documentId
-    }: {
-        documentId: DocumentId;
-    }): Promise<DocumentVersion> {
-        return this.retryForever(async () => {
-            this.logger.debug(`Getting document with id ${documentId}`);
-
-            const response = await this.client(
-                this.getUrl(`/documents/${documentId}`),
-                {
-                    headers: this.getDefaultHeaders()
-                }
-            );
-
-            await SyncService.throwIfNotOk(response, "get document");
-
-            const result: DocumentVersion =
-                (await response.json()) as DocumentVersion; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
-
-            this.logger.debug(`Got document ${JSON.stringify(result)}`);
-
-            return result;
-        });
-    }
-
     public async getDocumentVersionContent({
         documentId,
         vaultUpdateId
@@ -328,36 +300,6 @@ export class SyncService {
             this.logger.debug(
                 `Got document version content for document ${documentId} version ${vaultUpdateId}`
             );
-            return result;
-        });
-    }
-
-    public async getAll(
-        since?: VaultUpdateId
-    ): Promise<FetchLatestDocumentsResponse> {
-        return this.retryForever(async () => {
-            this.logger.debug(
-                "Getting all documents" +
-                    (since != null ? ` since ${since}` : "")
-            );
-
-            const url = new URL(this.getUrl("/documents"));
-            if (since !== undefined) {
-                url.searchParams.append("since_update_id", since.toString());
-            }
-            const response = await this.client(url.toString(), {
-                headers: this.getDefaultHeaders()
-            });
-
-            await SyncService.throwIfNotOk(response, "get documents");
-
-            const result: FetchLatestDocumentsResponse =
-                (await response.json()) as FetchLatestDocumentsResponse; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
-
-            this.logger.debug(
-                `Got ${result.latestDocuments.length} document metadata`
-            );
-
             return result;
         });
     }

@@ -7,16 +7,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 VaultLink is a self-hosted Obsidian file-sync system. Two halves of one repo:
 
 - `sync-server/` — Rust (axum + sqlx/SQLite). Source of truth for vault state, broadcasts changes via WebSocket.
-- `frontend/` — npm workspaces. The sync engine (`sync-client`) is consumed by an Obsidian plugin, a standalone CLI, a fuzz E2E harness, a scripted determinism harness, and a history UI.
+- `frontend/` — npm workspaces. The sync engine (`sync-client`) is consumed by an Obsidian plugin, a standalone CLI, a fuzz E2E harness, and a scripted determinism harness.
 
-The HTTP/WS API types are generated from Rust (`ts-rs`) and mirrored into the TS workspaces. **Never hand-edit files in `frontend/sync-client/src/services/types/` or `frontend/history-ui/src/lib/types/`** — run `scripts/update-api-types.sh` after changing anything Serde-derived in the server.
+The HTTP/WS API types are generated from Rust (`ts-rs`) and mirrored into the TS workspaces. **Never hand-edit files in `frontend/sync-client/src/services/types/`** — run `scripts/update-api-types.sh` after changing anything Serde-derived in the server.
 
 ### Frontend workspaces
 
 - `sync-client` — the sync engine; published to consumers via `dist/`. All other TS workspaces depend on it via `file:../sync-client`.
 - `obsidian-plugin` — Obsidian plugin built from `sync-client`.
 - `local-client-cli` — same engine wrapped as a standalone CLI.
-- `history-ui` — vault-history web UI.
 - `test-client` — fuzz E2E harness (random ops across N processes).
 - `deterministic-tests` — scripted multi-client tests with an in-memory FS, run against a real server.
 
@@ -67,7 +66,7 @@ Frontend dev (sync-client + obsidian-plugin watch in parallel):
 cd frontend && npm install && npm run dev
 ```
 
-Regenerate TS bindings from Rust types (touches `frontend/{sync-client,history-ui}/src/.../types/`):
+Regenerate TS bindings from Rust types (touches `frontend/sync-client/src/services/types/`):
 
 ```sh
 scripts/update-api-types.sh

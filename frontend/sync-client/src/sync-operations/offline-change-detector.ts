@@ -7,6 +7,24 @@ import type { SyncEventQueue } from "./sync-event-queue";
 import { removeFromArray } from "../utils/remove-from-array";
 import { FileNotFoundError } from "../errors/file-not-found-error";
 
+async function readOrUndefined(
+    operations: FileOperations,
+    path: RelativePath,
+    logger: Logger
+): Promise<Uint8Array | undefined> {
+    try {
+        return await operations.read(path);
+    } catch (e) {
+        if (e instanceof FileNotFoundError) {
+            logger.debug(
+                `File ${path} disappeared before offline-scan could read it; skipping`
+            );
+            return undefined;
+        }
+        throw e;
+    }
+}
+
 /**
  * Scans the local filesystem and the document database to determine
  * which files were created, updated, moved, or deleted while the
@@ -85,18 +103,10 @@ export async function scheduleOfflineChanges(
     // the whole scan; nothing to sync for a file that's already gone.
     const disappearedPaths = new Set<RelativePath>();
     for (const path of locallyPossibleCreatedFiles) {
-        let content: Uint8Array;
-        try {
-            content = await operations.read(path);
-        } catch (e) {
-            if (e instanceof FileNotFoundError) {
-                logger.debug(
-                    `File ${path} disappeared before offline-scan could read it; skipping`
-                );
-                disappearedPaths.add(path);
-                continue;
-            }
-            throw e;
+        const content = await readOrUndefined(operations, path, logger);
+        if (content === undefined) {
+            disappearedPaths.add(path);
+            continue;
         }
         const contentHash = await hash(content);
 
@@ -148,8 +158,7 @@ export async function scheduleOfflineChanges(
     for (const path of syncedLocalFiles) {
         const record = allDocuments.get(path);
         if (
-            record !== undefined &&
-            record.localPath !== undefined &&
+            record?.localPath !== undefined &&
             record.localPath !== record.remoteRelativePath &&
             !allLocalFiles.has(record.remoteRelativePath) &&
             queue.byLocalPath.get(record.remoteRelativePath) === undefined

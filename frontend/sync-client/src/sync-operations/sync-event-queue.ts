@@ -220,9 +220,7 @@ export class SyncEventQueue {
      * path) still fires when neither side holds a record for the
      * collision target.
      */
-    public lastSeenUpdateIdForCreate(
-        requestPath: RelativePath
-    ): VaultUpdateId {
+    public lastSeenUpdateIdForCreate(requestPath: RelativePath): VaultUpdateId {
         let watermark = this._lastSeenUpdateId.min;
         for (const record of this.byDocId.values()) {
             if (
@@ -324,7 +322,7 @@ export class SyncEventQueue {
                 !pendingCreate.isProcessing
             ) {
                 this.cancelPendingCreate(pendingCreate);
-                if (recordIsDeleting && record !== undefined) {
+                if (recordIsDeleting) {
                     // A stale deleting record was still claiming this path.
                     // The not-yet-started create/delete pair collapsed to
                     // nothing, and the disk file is gone, so clear the stale
@@ -343,11 +341,11 @@ export class SyncEventQueue {
                 path: lookupPath
             });
             this.notifyPendingUpdateCountChanged();
-            if (recordOwnsLookupPath && record !== undefined) {
+            if (recordOwnsLookupPath) {
                 // The file is gone from disk; clear the doc's localPath so the
                 // Reconciler doesn't try to operate on a vacated slot.
                 await this.setLocalPath(record.documentId, undefined);
-            } else if (recordIsDeleting && record !== undefined) {
+            } else if (recordIsDeleting) {
                 // A stale deleting record was still claiming this path while a
                 // newer pending create owned the actual disk file. Drop the
                 // stale claim now that the file is gone.
@@ -648,14 +646,6 @@ export class SyncEventQueue {
         return this.byDocId.get(target);
     }
 
-    public getDocumentByDocumentIdOrFail(target: DocumentId): DocumentRecord {
-        const result = this.getDocumentByDocumentId(target);
-        if (!result) {
-            throw new Error(`No document found with id ${target}`);
-        }
-        return result;
-    }
-
     public getRecordByLocalPath(
         path: RelativePath
     ): DocumentRecord | undefined {
@@ -814,6 +804,7 @@ export class SyncEventQueue {
                 event.path === path &&
                 event.documentId !== promise
             ) {
+                // eslint-disable-next-line no-restricted-syntax -- splice-by-index here is a reorder, not an item removal
                 this.events.splice(i, 1);
                 this.events.splice(createIndex, 0, event);
                 createIndex++;
@@ -866,6 +857,7 @@ export class SyncEventQueue {
                 typeof event.documentId === "string" &&
                 blockingDocIds.has(event.documentId)
             ) {
+                // eslint-disable-next-line no-restricted-syntax -- splice-by-index here is a reorder, not an item removal
                 this.events.splice(i, 1);
                 this.events.splice(createIndex, 0, event);
                 createIndex++;
@@ -907,8 +899,8 @@ export class SyncEventQueue {
             this._byLocalPath.delete(previousLocalPath);
         }
         record.localPath = newLocalPath;
-        let displacedRecord: DocumentRecord | undefined;
-        let displacedOldPath: RelativePath | undefined;
+        let displacedRecord: DocumentRecord | undefined = undefined;
+        let displacedOldPath: RelativePath | undefined = undefined;
         if (newLocalPath !== undefined) {
             const displaced = this._byLocalPath.get(newLocalPath);
             if (displaced !== undefined && displaced !== record) {

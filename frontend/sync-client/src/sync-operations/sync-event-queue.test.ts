@@ -307,7 +307,10 @@ describe("SyncEventQueue", () => {
             queue.byLocalPath.get("renamed.md" as RelativePath),
             undefined
         );
-        assert.strictEqual(queue.getDocumentByDocumentId("A")?.localPath, "a.md");
+        assert.strictEqual(
+            queue.getDocumentByDocumentId("A")?.localPath,
+            "a.md"
+        );
 
         // setLocalPath does re-key — it's the explicit path-mutation API.
         await queue.setLocalPath("A", "later.md" as RelativePath);

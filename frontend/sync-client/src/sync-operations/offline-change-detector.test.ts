@@ -2,7 +2,10 @@ import { describe, it } from "node:test";
 import assert from "node:assert";
 import { Logger } from "../tracing/logger";
 import { Settings } from "../persistence/settings";
-import { STORED_STATE_SCHEMA_VERSION, SyncEventQueue } from "./sync-event-queue";
+import {
+    STORED_STATE_SCHEMA_VERSION,
+    SyncEventQueue
+} from "./sync-event-queue";
 import { scheduleOfflineChanges } from "./offline-change-detector";
 import type { FileOperations } from "../file-operations/file-operations";
 import type { RelativePath } from "./types";
@@ -22,19 +25,20 @@ const makeQueue = async (): Promise<SyncEventQueue> => {
     );
 };
 
-const makeOperations = (
-    files: Record<string, Uint8Array>
-): FileOperations => {
-    return {
-        listFilesRecursively: async () => Object.keys(files),
+const makeOperations = (files: Record<string, Uint8Array>): FileOperations => {
+    const map = new Map<RelativePath, Uint8Array>(Object.entries(files));
+    const partial: Partial<FileOperations> = {
+        listFilesRecursively: async () => [...map.keys()],
         read: async (path: RelativePath) => {
-            const data = files[path];
+            const data = map.get(path);
             if (data === undefined) {
                 throw new Error(`File not found: ${path}`);
             }
             return data;
         }
-    } as unknown as FileOperations;
+    };
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    return partial as FileOperations;
 };
 
 describe("scheduleOfflineChanges", () => {
@@ -70,7 +74,8 @@ describe("scheduleOfflineChanges", () => {
             operations,
             queue,
             (path) => enqueued.push({ kind: "create", path }),
-            (args) => enqueued.push({ kind: "update", path: args.relativePath }),
+            (args) =>
+                enqueued.push({ kind: "update", path: args.relativePath }),
             (path) => enqueued.push({ kind: "delete", path })
         );
 
@@ -109,13 +114,12 @@ describe("scheduleOfflineChanges", () => {
             operations,
             queue,
             (path) => enqueued.push({ kind: "create", path }),
-            (args) => enqueued.push({ kind: "update", path: args.relativePath }),
+            (args) =>
+                enqueued.push({ kind: "update", path: args.relativePath }),
             (path) => enqueued.push({ kind: "delete", path })
         );
 
-        assert.deepStrictEqual(enqueued, [
-            { kind: "update", path: "doc.md" }
-        ]);
+        assert.deepStrictEqual(enqueued, [{ kind: "update", path: "doc.md" }]);
     });
 
     it("schedules a delete for a settled record whose local file is missing", async () => {
@@ -136,13 +140,12 @@ describe("scheduleOfflineChanges", () => {
             operations,
             queue,
             (path) => enqueued.push({ kind: "create", path }),
-            (args) => enqueued.push({ kind: "update", path: args.relativePath }),
+            (args) =>
+                enqueued.push({ kind: "update", path: args.relativePath }),
             (path) => enqueued.push({ kind: "delete", path })
         );
 
-        assert.deepStrictEqual(enqueued, [
-            { kind: "delete", path: "gone.md" }
-        ]);
+        assert.deepStrictEqual(enqueued, [{ kind: "delete", path: "gone.md" }]);
     });
 
     it("detects an offline rename when an untracked file matches a deleted record's content hash", async () => {

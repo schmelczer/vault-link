@@ -79,10 +79,7 @@ impl IntoResponse for SyncServerError {
             Self::InitError(_) | Self::ServerError(_) => {
                 error!("{serialized}");
             }
-            Self::ClientError(_) | Self::NotFound(_) => {
-                warn!("{serialized}");
-            }
-            Self::TooManyRequests(_) => {
+            Self::ClientError(_) | Self::NotFound(_) | Self::TooManyRequests(_) => {
                 warn!("{serialized}");
             }
             Self::Unauthenticated(_) | Self::PermissionDeniedError(_) => {}

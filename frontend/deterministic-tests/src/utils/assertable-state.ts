@@ -106,22 +106,6 @@ export class AssertableState {
         return this;
     }
 
-    public assertSubstringCount(
-        path: string,
-        substring: string,
-        expected: number
-    ): this {
-        this.assertFileExists(path);
-        const content = this.files.get(path) ?? "";
-        const actual = content.split(substring).length - 1;
-        if (actual !== expected) {
-            throw new Error(
-                `Expected "${substring}" to appear ${expected} time(s) in "${path}", found ${actual}. Content: "${content}"`
-            );
-        }
-        return this;
-    }
-
     public assertContentInAtMostOneFile(substring: string): this {
         const matches = Array.from(this.files.entries()).filter(([, content]) =>
             content.includes(substring)
@@ -142,9 +126,5 @@ export class AssertableState {
             fn(this);
         }
         return this;
-    }
-
-    public getContent(path: string): string {
-        return this.files.get(path) ?? "";
     }
 }

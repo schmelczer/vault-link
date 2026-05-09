@@ -34,7 +34,7 @@ pub async fn auth_middleware(
             .ok_or_else(|| unauthenticated_error(anyhow::anyhow!("Missing vault_id")))?,
     );
 
-    let user = auth(&state, token, &vault_id)?;
+    let user = authenticate_for_vault(&state, token, &vault_id)?;
 
     req.extensions_mut().insert(user);
 
@@ -50,7 +50,11 @@ pub fn authenticate(state: &AppState, token: &str) -> Result<User, SyncServerErr
         .ok_or_else(|| unauthenticated_error(anyhow::anyhow!("Invalid token")))
 }
 
-pub fn auth(state: &AppState, token: &str, vault_id: &VaultId) -> Result<User, SyncServerError> {
+pub fn authenticate_for_vault(
+    state: &AppState,
+    token: &str,
+    vault_id: &VaultId,
+) -> Result<User, SyncServerError> {
     let user = authenticate(state, token)?;
 
     if match user.vault_access {

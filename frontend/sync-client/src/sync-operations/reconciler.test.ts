@@ -2,7 +2,10 @@ import { describe, it } from "node:test";
 import assert from "node:assert";
 import { Logger, LogLevel } from "../tracing/logger";
 import { Settings } from "../persistence/settings";
-import { STORED_STATE_SCHEMA_VERSION, SyncEventQueue } from "./sync-event-queue";
+import {
+    STORED_STATE_SCHEMA_VERSION,
+    SyncEventQueue
+} from "./sync-event-queue";
 import { Reconciler } from "./reconciler";
 import { SyncResetError } from "../errors/sync-reset-error";
 import type { FileOperations } from "../file-operations/file-operations";
@@ -32,18 +35,22 @@ describe("Reconciler", () => {
             localPath: undefined
         });
 
-        const operations = {
+        const operationsPartial: Partial<FileOperations> = {
             exists: async () => false,
             create: async () => {
                 assert.fail("reset-interrupted placement should not write");
             }
-        } as unknown as FileOperations;
+        };
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        const operations = operationsPartial as FileOperations;
 
-        const syncService = {
+        const syncServicePartial: Partial<SyncService> = {
             getDocumentVersionContent: async () => {
                 throw new SyncResetError();
             }
-        } as unknown as SyncService;
+        };
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        const syncService = syncServicePartial as SyncService;
 
         const reconciler = new Reconciler(
             logger,

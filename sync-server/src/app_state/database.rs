@@ -34,6 +34,10 @@ use super::websocket::{
 use crate::config::database_config::DatabaseConfig;
 use crate::consts::IDLE_POOL_TIMEOUT;
 
+fn duration_millis_u64(duration: Duration) -> u64 {
+    u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
+}
+
 /// Holds separate reader and writer pools for a single vault.
 /// The writer pool has exactly 1 connection so writes never compete
 /// with reads for pool slots.
@@ -182,7 +186,7 @@ fn rollback_before_acquire(
 
 impl Database {
     fn now_ms(&self) -> u64 {
-        self.epoch.elapsed().as_millis() as u64
+        duration_millis_u64(self.epoch.elapsed())
     }
 
     pub async fn try_new(
@@ -817,8 +821,7 @@ impl Database {
         } else {
             WebSocketServerMessageWithOrigin::with_origin(version.device_id.clone(), envelope)
         };
-        self.broadcasts
-            .send_document_update(vault_id.clone(), with_origin);
+        self.broadcasts.send_document_update(vault_id, with_origin);
 
         Ok(())
     }
@@ -831,7 +834,7 @@ impl Database {
         let idle_pools: Vec<(VaultId, Arc<VaultPool>)> = {
             let mut pools = self.connection_pools.lock().await;
             let now_ms = self.now_ms();
-            let idle_threshold_ms = IDLE_POOL_TIMEOUT.as_millis() as u64;
+            let idle_threshold_ms = duration_millis_u64(IDLE_POOL_TIMEOUT);
 
             let vaults_to_remove: Vec<VaultId> = pools
                 .iter()

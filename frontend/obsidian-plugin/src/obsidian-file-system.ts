@@ -139,10 +139,6 @@ export class ObsidianFileSystemOperations implements FileSystemOperations {
         return (await this.statFile(path)).size;
     }
 
-    public async getModificationTime(path: RelativePath): Promise<Date> {
-        return new Date((await this.statFile(path)).mtime);
-    }
-
     public async exists(path: RelativePath): Promise<boolean> {
         return this.vault.adapter.exists(normalizePath(path));
     }

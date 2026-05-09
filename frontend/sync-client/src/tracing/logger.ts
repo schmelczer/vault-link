@@ -54,11 +54,6 @@ export class Logger {
         );
     }
 
-    public reset(): void {
-        this.messages.length = 0;
-        this.debug("Logger has been reset");
-    }
-
     private pushMessage(message: string, level: LogLevel): void {
         const logLine = new LogLine(level, message);
         this.messages.push(logLine);

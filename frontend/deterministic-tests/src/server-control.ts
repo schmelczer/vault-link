@@ -46,7 +46,7 @@ export class ServerControl {
         // Retry on bind failure: findFreePort closes its probe before we
         // spawn, so under heavy parallelism another process can grab the
         // same port. Each attempt picks a fresh port.
-        let lastError: unknown;
+        let lastError: unknown = undefined;
         for (let attempt = 1; attempt <= SERVER_START_MAX_ATTEMPTS; attempt++) {
             try {
                 await this.startOnce();
@@ -63,69 +63,6 @@ export class ServerControl {
             `Server failed to start after ${SERVER_START_MAX_ATTEMPTS} attempts: ${lastError instanceof Error ? lastError.message : String(lastError)}`,
             { cause: lastError instanceof Error ? lastError : undefined }
         );
-    }
-
-    private async startOnce(): Promise<void> {
-        const reservation = await findFreePort();
-        this._port = reservation.port;
-        const tmpBase = os.tmpdir();
-        this.tempDir = fs.mkdtempSync(path.join(tmpBase, "vault-link-test-"));
-        const tempConfigPath = path.join(this.tempDir, "config.yml");
-        const dbDir = path.join(this.tempDir, "databases");
-
-        this.writeConfigFile(tempConfigPath, dbDir);
-
-        this.logger.info(
-            `Starting server: ${this.serverPath} (port ${this._port})`
-        );
-
-        // Release the port reservation right before spawning to minimize
-        // the TOCTOU window between port discovery and server binding.
-        reservation.release();
-
-        this.process = spawn(this.serverPath, [tempConfigPath], {
-            stdio: ["ignore", "pipe", "pipe"],
-            detached: false
-        });
-
-        this.process.stdout?.on("data", (data: Buffer) => {
-            this.logger.info(`[SERVER] ${data.toString().trim()}`);
-        });
-
-        this.process.stderr?.on("data", (data: Buffer) => {
-            this.logger.info(`[SERVER] ${data.toString().trim()}`);
-        });
-
-        this.process.on("error", (err) => {
-            this.logger.error(`[SERVER] Process error: ${err.message}`);
-        });
-
-        const currentProcess = this.process;
-        currentProcess.on("exit", (code, signal) => {
-            this.logger.info(
-                `Server exited with code ${code}, signal ${signal}`
-            );
-            // Only clear state if this handler is for the current process.
-            // A fast stop→start cycle could create a new process before this
-            // handler fires — clearing state here would corrupt the new one.
-            if (this.process === currentProcess) {
-                this.process = null;
-                this._isPaused = false;
-            }
-        });
-
-        try {
-            await this.waitForReady();
-        } catch (error) {
-            // Kill the spawned process if it failed to become ready,
-            // preventing a zombie process from lingering.
-            try {
-                await this.stop();
-            } catch {
-                // Best-effort cleanup
-            }
-            throw error;
-        }
     }
 
     public async waitForReady(
@@ -239,8 +176,7 @@ export class ServerControl {
     public isRunning(): boolean {
         const proc = this.process;
         return (
-            proc !== null &&
-            proc.pid !== undefined &&
+            proc?.pid !== undefined &&
             proc.exitCode === null &&
             proc.signalCode === null
         );
@@ -266,6 +202,69 @@ export class ServerControl {
             process.kill(proc.pid, "SIGKILL");
         } catch {
             // Process already gone.
+        }
+    }
+
+    private async startOnce(): Promise<void> {
+        const reservation = await findFreePort();
+        this._port = reservation.port;
+        const tmpBase = os.tmpdir();
+        this.tempDir = fs.mkdtempSync(path.join(tmpBase, "vault-link-test-"));
+        const tempConfigPath = path.join(this.tempDir, "config.yml");
+        const dbDir = path.join(this.tempDir, "databases");
+
+        this.writeConfigFile(tempConfigPath, dbDir);
+
+        this.logger.info(
+            `Starting server: ${this.serverPath} (port ${this._port})`
+        );
+
+        // Release the port reservation right before spawning to minimize
+        // the TOCTOU window between port discovery and server binding.
+        reservation.release();
+
+        this.process = spawn(this.serverPath, [tempConfigPath], {
+            stdio: ["ignore", "pipe", "pipe"],
+            detached: false
+        });
+
+        this.process.stdout?.on("data", (data: Buffer) => {
+            this.logger.info(`[SERVER] ${data.toString().trim()}`);
+        });
+
+        this.process.stderr?.on("data", (data: Buffer) => {
+            this.logger.info(`[SERVER] ${data.toString().trim()}`);
+        });
+
+        this.process.on("error", (err) => {
+            this.logger.error(`[SERVER] Process error: ${err.message}`);
+        });
+
+        const currentProcess = this.process;
+        currentProcess.on("exit", (code, signal) => {
+            this.logger.info(
+                `Server exited with code ${code}, signal ${signal}`
+            );
+            // Only clear state if this handler is for the current process.
+            // A fast stop→start cycle could create a new process before this
+            // handler fires — clearing state here would corrupt the new one.
+            if (this.process === currentProcess) {
+                this.process = null;
+                this._isPaused = false;
+            }
+        });
+
+        try {
+            await this.waitForReady();
+        } catch (error) {
+            // Kill the spawned process if it failed to become ready,
+            // preventing a zombie process from lingering.
+            try {
+                await this.stop();
+            } catch {
+                // Best-effort cleanup
+            }
+            throw error;
         }
     }
 

@@ -4,8 +4,6 @@ mod delete_document;
 mod device_id_header;
 mod fetch_document_version;
 mod fetch_document_version_content;
-mod fetch_latest_document_version;
-mod fetch_latest_documents;
 mod index;
 mod ping;
 mod rate_limit;
@@ -14,13 +12,14 @@ mod responses;
 mod update_document;
 mod websocket;
 
-use anyhow::{Context as _, Result};
+use anyhow::{Context as _, Result, anyhow};
 use auth::auth_middleware;
 use axum::{
     Router,
     extract::{DefaultBodyLimit, Request},
     http::{self, HeaderValue, Method},
     middleware,
+    response::IntoResponse,
     routing::{IntoMakeService, delete, get, post, put},
 };
 use device_id_header::DEVICE_ID_HEADER_NAME;
@@ -42,6 +41,7 @@ use crate::{
     app_state::AppState,
     config::{Config, server_config::ServerConfig},
     consts::GRACEFUL_SHUTDOWN_TIMEOUT,
+    errors::not_found_error,
 };
 
 pub async fn create_server(config: Config) -> Result<()> {
@@ -95,6 +95,7 @@ pub async fn create_server(config: Config) -> Result<()> {
                 .on_failure(DefaultOnFailure::new().level(Level::ERROR)),
         )
         .with_state(app_state.clone())
+        .fallback(handle_404)
         .into_make_service();
 
     start_server(app, &server_config, app_state).await
@@ -133,15 +134,7 @@ fn get_authed_routes(app_state: AppState) -> Router<AppState> {
     Router::new()
         .route(
             "/vaults/:vault_id/documents",
-            get(fetch_latest_documents::fetch_latest_documents),
-        )
-        .route(
-            "/vaults/:vault_id/documents",
             post(create_document::create_document),
-        )
-        .route(
-            "/vaults/:vault_id/documents/:document_id",
-            get(fetch_latest_document_version::fetch_latest_document_version),
         )
         .route(
             "/vaults/:vault_id/documents/:document_id/binary",
@@ -232,4 +225,8 @@ async fn shutdown_signal() {
         () = ctrl_c => {},
         () = terminate => {},
     }
+}
+
+async fn handle_404() -> impl IntoResponse {
+    not_found_error(anyhow!("Endpoint not found"))
 }

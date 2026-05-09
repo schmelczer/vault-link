@@ -56,13 +56,7 @@ export class SyncClient {
         private readonly contentCache: FixedSizeDocumentCache,
         private readonly serverConfig: ServerConfig,
         private readonly syncService: SyncService,
-        private readonly expectedFsEvents: ExpectedFsEvents,
-        private readonly persistence: PersistenceProvider<
-            Partial<{
-                settings: Partial<SyncSettings>;
-                database: Partial<StoredSyncState>;
-            }>
-        >
+        private readonly expectedFsEvents: ExpectedFsEvents
     ) {}
 
     public get syncedDocumentCount(): number {
@@ -172,7 +166,7 @@ export class SyncClient {
         // new deviceId, the server-side query would miss, and the
         // pending-but-lost create would deconflict instead of
         // binding to the doc its content was already absorbed into.
-        let deviceId = state.deviceId;
+        let { deviceId } = state;
         if (deviceId === undefined) {
             deviceId = createClientId();
             state = { ...state, deviceId };
@@ -269,8 +263,7 @@ export class SyncClient {
             contentCache,
             serverConfig,
             syncService,
-            expectedFsEvents,
-            persistence
+            expectedFsEvents
         );
 
         logger.info("SyncClient created successfully");
@@ -320,26 +313,6 @@ export class SyncClient {
             await this.startSyncing();
             this.logger.info("SyncClient has successfully started");
         }
-    }
-
-    /**
-     * Reload settings from disk overriding current in-memory settings.
-     * Missing values will be filled in from DEFAULT_SETTINGS rather than
-     * retaining current in-memory settings.
-     */
-    public async reloadSettings(): Promise<void> {
-        this.checkIfDestroyed("reloadSettings");
-
-        const state = (await this.persistence.load()) ?? {
-            settings: undefined
-        };
-
-        const settings = {
-            ...DEFAULT_SETTINGS,
-            ...(state.settings ?? {})
-        };
-
-        await this.setSettings(settings);
     }
 
     public async checkConnection(): Promise<NetworkConnectionStatus> {
