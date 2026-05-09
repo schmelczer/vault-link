@@ -4,23 +4,25 @@ mod delete_document;
 mod device_id_header;
 mod fetch_document_version;
 mod fetch_document_version_content;
+mod fetch_document_versions;
 mod fetch_latest_document_version;
 mod fetch_latest_documents;
+mod fetch_vault_history;
 mod index;
+mod list_vaults;
 mod ping;
 mod requests;
 mod responses;
 mod update_document;
 mod websocket;
 
-use anyhow::{Context as _, Result, anyhow};
+use anyhow::{Context as _, Result};
 use auth::auth_middleware;
 use axum::{
     Router,
     extract::{DefaultBodyLimit, Request},
     http::{self, HeaderValue, Method},
     middleware,
-    response::IntoResponse,
     routing::{IntoMakeService, delete, get, post, put},
 };
 use device_id_header::DEVICE_ID_HEADER_NAME;
@@ -41,7 +43,6 @@ use tracing::{Level, info_span};
 use crate::{
     app_state::AppState,
     config::{Config, server_config::ServerConfig},
-    errors::{client_error, not_found_error},
 };
 
 pub async fn create_server(config: Config) -> Result<()> {
@@ -54,8 +55,11 @@ pub async fn create_server(config: Config) -> Result<()> {
     let app = Router::new()
         .nest("/", get_authed_routes(app_state.clone()))
         .route("/", get(index::index))
+        .route("/assets/*path", get(index::spa_assets))
+        .route("/vaults", get(list_vaults::list_vaults))
         .route("/vaults/:vault_id/ping", get(ping::ping))
         .route("/vaults/:vault_id/ws", get(websocket::websocket_handler))
+        .fallback(index::spa_fallback)
         .layer(DefaultBodyLimit::disable())
         .layer(RequestBodyLimitLayer::new(
             app_state.config.server.max_body_size_mb * 1024 * 1024,
@@ -91,8 +95,6 @@ pub async fn create_server(config: Config) -> Result<()> {
                 .on_failure(DefaultOnFailure::new().level(Level::ERROR)),
         )
         .with_state(app_state)
-        .fallback(handle_404)
-        .fallback(handle_405)
         .into_make_service();
 
     start_server(app, &server_config).await
@@ -121,6 +123,10 @@ fn get_authed_routes(app_state: AppState) -> Router<AppState> {
             put(update_document::update_text),
         )
         .route(
+            "/vaults/:vault_id/documents/:document_id/versions",
+            get(fetch_document_versions::fetch_document_versions),
+        )
+        .route(
             "/vaults/:vault_id/documents/:document_id/versions/:vault_update_id",
             get(fetch_document_version::fetch_document_version),
         )
@@ -131,6 +137,10 @@ fn get_authed_routes(app_state: AppState) -> Router<AppState> {
         .route(
             "/vaults/:vault_id/documents/:document_id",
             delete(delete_document::delete_document),
+        )
+        .route(
+            "/vaults/:vault_id/history",
+            get(fetch_vault_history::fetch_vault_history),
         )
         .layer(middleware::from_fn_with_state(app_state, auth_middleware))
 }
@@ -177,12 +187,4 @@ async fn shutdown_signal() {
         () = ctrl_c => {},
         () = terminate => {},
     }
-}
-
-async fn handle_404() -> impl IntoResponse {
-    not_found_error(anyhow!("Page not found"))
-}
-
-async fn handle_405() -> impl IntoResponse {
-    client_error(anyhow!("Method not allowed"))
 }
