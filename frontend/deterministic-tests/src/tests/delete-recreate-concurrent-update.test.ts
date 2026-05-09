@@ -35,7 +35,14 @@ export const deleteRecreateConcurrentUpdateTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertFileExists("A.md").assertContains("A.md", "recreated");
+                // The description commits to "client 0's recreated content
+                // preserved" — so pin to a single file at A.md with the
+                // recreated content. A deconflicted "updated by client 1"
+                // file would slip past assertContains/assertFileExists.
+                s.assertFileCount(1).assertContent(
+                    "A.md",
+                    "recreated by client 0"
+                );
             }
         }
     ]

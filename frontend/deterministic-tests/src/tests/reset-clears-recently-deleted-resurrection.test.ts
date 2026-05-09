@@ -3,9 +3,12 @@ import type { TestDefinition } from "../test-definition";
 
 export const resetClearsRecentlyDeletedResurrectionTest: TestDefinition = {
     description:
-        "Client 0 deletes a file. Client 1 toggles sync off and on " +
-        "(simulating reconnect). The deleted file should NOT reappear " +
-        "on Client 1 after the sync reset.",
+        "Client 0 deletes a file. Client 1 calls `reset` (clears tracked " +
+        "state — recently-deleted set, watermark, doc records — but keeps " +
+        "disk files). After the reset and re-handshake, the deleted file " +
+        "should NOT reappear via offline-scan resurrection. This is the " +
+        "stronger probe than disable/enable-sync, which keeps the " +
+        "recently-deleted suppression set intact.",
     clients: 2,
     steps: [
         {
@@ -28,8 +31,7 @@ export const resetClearsRecentlyDeletedResurrectionTest: TestDefinition = {
             }
         },
 
-        { type: "disable-sync", client: 1 },
-        { type: "enable-sync", client: 1 },
+        { type: "reset", client: 1 },
 
         { type: "barrier" },
 

@@ -40,6 +40,10 @@ export const mcMultiDeleteOfflineRenameTest: TestDefinition = {
                     .assertFileExists("file-5.md")
                     .assertFileNotExists("file-2.md")
                     .assertFileNotExists("file-4.md");
+                // The offline rename of a remotely-deleted file must
+                // preserve "content-2" somewhere — either at renamed.md
+                // or as a deconflict.
+                s.assertAnyFileContains("content-2");
                 s.ifFileExists("renamed.md", (inner) =>
                     inner.assertContent("renamed.md", "content-2")
                 );

@@ -44,9 +44,22 @@ export const offlineConcurrentRenamesTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
+                // Two concurrent offline renames of the same source:
+                // exactly one file must remain (count 1), it must hold
+                // "shared-content", and that file must be one of the two
+                // rename targets — neither rename may silently land at
+                // some unrelated path.
                 s.assertFileNotExists("A.md")
                     .assertFileCount(1)
                     .assertAnyFileContains("shared-content");
+                if (
+                    !s.files.has("B.md") &&
+                    !s.files.has("C.md")
+                ) {
+                    throw new Error(
+                        `Expected the surviving file to be B.md or C.md. Files: [${Array.from(s.files.keys()).join(", ")}]`
+                    );
+                }
                 s.ifFileExists("B.md", (inner) =>
                     inner.assertContent("B.md", "shared-content")
                 );

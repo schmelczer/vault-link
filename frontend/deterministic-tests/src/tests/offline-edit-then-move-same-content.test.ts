@@ -3,7 +3,12 @@ import type { TestDefinition } from "../test-definition";
 
 export const offlineEditThenMoveSameContentTest: TestDefinition = {
     description:
-        "A file is renamed and edited to match a deleted file's content. Both clients must converge despite the ambiguity.",
+        "Single-client offline sequence on Client 0: delete A.md, rename " +
+        "B.md to C.md, then update C.md so its content equals the deleted " +
+        "A.md's content. The ambiguity is for the engine: the resulting " +
+        "C.md content matches a doc that was just deleted, but it must " +
+        "still be tracked as the renamed-from-B doc, not resurrected as A. " +
+        "Both clients must converge to a single C.md with 'content A'.",
     clients: 2,
     steps: [
         {

@@ -29,7 +29,13 @@ export const createRenameResponseSkipsFileTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertFileCount(1).assertAnyFileContains("the-content");
+                // The rename must land at renamed.md on both clients.
+                // assertAnyFileContains alone would have passed even if
+                // the rename were dropped server-side and both clients
+                // converged on doc.md with "the-content".
+                s.assertFileCount(1)
+                    .assertContent("renamed.md", "the-content")
+                    .assertFileNotExists("doc.md");
             }
         }
     ]

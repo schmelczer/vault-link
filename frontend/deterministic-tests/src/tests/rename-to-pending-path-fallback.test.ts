@@ -33,10 +33,14 @@ export const renameToPendingPathFallbackTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertFileNotExists("B.md").assertContains(
-                    "A.md",
-                    "tracked B content"
-                );
+                // The rename clobbers the unsynced A.md on disk, so the
+                // expected post-converge state is exactly one file at A.md
+                // with the renamed-from-B content. A regression that
+                // produced a deconflicted A (1).md carrying the lost
+                // "pending A content" would slip past assertContains.
+                s.assertFileNotExists("B.md")
+                    .assertFileCount(1)
+                    .assertContent("A.md", "tracked B content");
             }
         }
     ]

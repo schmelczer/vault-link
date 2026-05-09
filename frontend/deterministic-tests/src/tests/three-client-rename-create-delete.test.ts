@@ -49,6 +49,10 @@ export const threeClientRenameCreateDeleteTest: TestDefinition = {
                 s.assertFileNotExists("X.md").assertAnyFileContains(
                     "new from C"
                 );
+                // Each contributing client's content must appear in at
+                // most one file (no silent duplication via remote replay).
+                s.assertContentInAtMostOneFile("new from C");
+                s.assertContentInAtMostOneFile("original from A");
             }
         }
     ]

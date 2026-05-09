@@ -65,10 +65,12 @@ export const offlineUpdateBothThenDeleteOneTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertContent(
-                    "A.md",
-                    "A updated by client 0"
-                ).assertFileNotExists("B.md");
+                // Delete must win for B.md: pin file count to 1 so a
+                // deconflict carrying client 1's update of B.md cannot
+                // silently sneak in.
+                s.assertFileCount(1)
+                    .assertContent("A.md", "A updated by client 0")
+                    .assertFileNotExists("B.md");
             }
         }
     ]

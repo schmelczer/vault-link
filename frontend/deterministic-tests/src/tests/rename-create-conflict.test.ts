@@ -3,7 +3,13 @@ import type { TestDefinition } from "../test-definition";
 
 export const renameCreateConflictTest: TestDefinition = {
     description:
-        "Client 0 creates A.md and syncs. Client 1 renames A.md to B.md and syncs. Client 0 (offline) creates B.md with the same content. After reconnecting, both clients should converge with only B.md.",
+        "Client 0 creates A.md and syncs. Client 1 renames A.md to B.md and " +
+        "syncs. Client 0 (offline) creates B.md with the same content. After " +
+        "reconnecting, both clients converge to two files: B.md (from the " +
+        "rename, content 'hi') and a deconflicted B (1).md (the offline " +
+        "create, content 'hi') — content dedup is content-hash + parent " +
+        "version based, not body-only, so even identical content from " +
+        "different doc lineages produces a distinct file.",
     clients: 2,
     steps: [
         { type: "enable-sync", client: 0 },

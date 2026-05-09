@@ -33,7 +33,10 @@ export const deleteByOtherClientThenRecreateTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertContent("A.md", "recreated by client 0");
+                s.assertFileCount(1).assertContent(
+                    "A.md",
+                    "recreated by client 0"
+                );
             }
         }
     ]

@@ -30,6 +30,11 @@ export const mcDeleteThenOfflineRenameTest: TestDefinition = {
                 s.assertContent("C.md", "unrelated").assertFileNotExists(
                     "A.md"
                 );
+                // The offline-renamed file must survive — either as B.md
+                // (rename preserved) or as a deconflict carrying "original".
+                // A regression that silently drops both leaves only C.md,
+                // which we explicitly forbid here.
+                s.assertAnyFileContains("original");
                 s.ifFileExists("B.md", (inner) =>
                     inner.assertContent("B.md", "original")
                 );

@@ -30,7 +30,7 @@ export const onlineDeleteRecreateRapidCycleTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertContent("A.md", "round 3");
+                s.assertFileCount(1).assertContent("A.md", "round 3");
             }
         }
     ]

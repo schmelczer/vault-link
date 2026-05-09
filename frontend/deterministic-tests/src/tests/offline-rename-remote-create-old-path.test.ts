@@ -3,9 +3,12 @@ import type { TestDefinition } from "../test-definition";
 
 export const offlineRenameRemoteCreateOldPathTest: TestDefinition = {
     description:
+        "Offline-rename vs. concurrent remote-update of the same doc. " +
         "Client 0 renames X.md to Y.md while offline. Client 1 updates X.md " +
-        "(same document). When Client 0 reconnects, the rename and update " +
-        "should merge. Y.md should exist with Client 1's content.",
+        "(same document) and syncs. When Client 0 reconnects, the rename " +
+        "and update must merge: Y.md must hold Client 1's updated content. " +
+        "(Filename is legacy — there is no remote create at the old path; " +
+        "this is the rename-vs-update mirror of offline-edit-remote-rename.)",
     clients: 2,
     steps: [
         { type: "create", client: 0, path: "X.md", content: "original" },
@@ -41,7 +44,9 @@ export const offlineRenameRemoteCreateOldPathTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertFileCount(1).assertContains(
+                // Pin exact content + path: rename and update must
+                // collapse onto Y.md with Client 1's update.
+                s.assertFileCount(1).assertContent(
                     "Y.md",
                     "updated-by-client-1"
                 );

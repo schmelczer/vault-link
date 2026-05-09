@@ -29,9 +29,13 @@ export const offlineDeleteRemoteRenameTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertFileNotExists("A.md").assertFileNotExists(
-                    "A_renamed.md"
-                );
+                // Delete+rename: client 0's offline delete must propagate.
+                // Final state is no files; require it explicitly so a
+                // regression producing some divergent identical filename
+                // on both clients can't slip past the per-name checks.
+                s.assertFileNotExists("A.md")
+                    .assertFileNotExists("A_renamed.md")
+                    .assertFileCount(0);
             }
         }
     ]

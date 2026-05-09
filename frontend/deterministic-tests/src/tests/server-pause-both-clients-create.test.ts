@@ -3,7 +3,13 @@ import type { TestDefinition } from "../test-definition";
 
 export const serverPauseBothClientsCreateTest: TestDefinition = {
     description:
-        "Client 0 creates a file, then the server is paused. Client 1 creates a different file while the server is paused. After the server resumes, both files should exist on both clients.",
+        "Client 0 creates and FULLY syncs alpha.md before the server is " +
+        "paused, then Client 1 creates beta.md while the server is paused. " +
+        "After resume, both clients must hold both files. The `sync` after " +
+        "Client 0's create is required: without it the create is fire-" +
+        "and-forget and SIGSTOP can land before the POST hits the server, " +
+        "reducing the test to two creates against a paused server (a " +
+        "different scenario from the named one).",
     clients: 2,
     steps: [
         { type: "enable-sync", client: 0 },
@@ -16,6 +22,10 @@ export const serverPauseBothClientsCreateTest: TestDefinition = {
             path: "alpha.md",
             content: "from client 0"
         },
+        // Deterministic happens-before: alpha.md is on the server before
+        // SIGSTOP. Without this, the test races the in-flight POST.
+        { type: "sync", client: 0 },
+
         { type: "pause-server" },
 
         {
@@ -26,16 +36,14 @@ export const serverPauseBothClientsCreateTest: TestDefinition = {
         },
 
         { type: "resume-server" },
-
         { type: "barrier" },
 
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertContains("alpha.md", "from client 0").assertContains(
-                    "beta.md",
-                    "from client 1"
-                );
+                s.assertFileCount(2)
+                    .assertContent("alpha.md", "from client 0")
+                    .assertContent("beta.md", "from client 1");
             }
         }
     ]

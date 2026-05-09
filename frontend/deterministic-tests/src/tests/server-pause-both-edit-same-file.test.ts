@@ -58,7 +58,11 @@ export const serverPauseBothEditSameFileTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertFileCount(1).assertContains(
+                // Post-merge update must REPLACE the merged content, not
+                // append to it. assertContent pins the exact state so a
+                // regression that re-merges the new write with leftover
+                // markers from the previous merge is caught.
+                s.assertFileCount(1).assertContent(
                     "shared.md",
                     "post-merge edit from client 0"
                 );

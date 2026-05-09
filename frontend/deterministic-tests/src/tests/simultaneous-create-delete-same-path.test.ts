@@ -3,9 +3,14 @@ import type { TestDefinition } from "../test-definition";
 
 export const simultaneousCreateDeleteSamePathTest: TestDefinition = {
     description:
-        "Client 0 creates A.md and syncs to both clients. Client 0 deletes A.md while " +
-        "Client 1 (offline) updates A.md with different content. When Client 1 reconnects, " +
-        "the update and delete must be reconciled. Both clients must converge.",
+        "Client 0 creates A.md and syncs. Client 1 disables sync. Client 0 " +
+        "deletes A.md and that delete reaches the server before Client 1 " +
+        "reconnects. While offline, Client 1 updates A.md. On reconnect, " +
+        "Client 1's update lands against an already-deleted server doc — " +
+        "delete must win, both clients converge to zero files. (Filename is " +
+        "legacy: there is no 'create' here; the scenario is online-delete " +
+        "vs. offline-update, distinct from update-survives-remote-delete " +
+        "where both clients are offline at delete time.)",
     clients: 2,
     steps: [
         { type: "create", client: 0, path: "A.md", content: "original from 0" },

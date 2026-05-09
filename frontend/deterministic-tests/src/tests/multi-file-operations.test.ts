@@ -3,8 +3,11 @@ import type { TestDefinition } from "../test-definition";
 
 export const multiFileOperationsTest: TestDefinition = {
     description:
-        "Client 0 deletes A.md while client 1 is offline. Client 1 updates B.md and renames A.md to D.md offline. " +
-        "After client 1 reconnects, both clients must converge with B.md updated and C.md intact.",
+        "Client 0 deletes A.md while client 1 is offline. Client 1 updates B.md " +
+        "and renames its stale A.md to D.md offline. After client 1 reconnects, " +
+        "B.md must hold client 1's update, C.md must be unchanged, A.md must be " +
+        "gone, and the offline-renamed file must be preserved at D.md (post as " +
+        "a new doc since A.md was deleted server-side).",
     clients: 2,
     steps: [
         { type: "create", client: 0, path: "A.md", content: "content-a" },
@@ -33,12 +36,14 @@ export const multiFileOperationsTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertContains("B.md", "updated")
-                    .assertFileExists("C.md")
+                // Pin B.md/C.md/D.md exactly: a regression that loses
+                // client 1's offline rename (no D.md) or that drops the
+                // B.md update would otherwise pass the loose checks.
+                s.assertFileCount(3)
+                    .assertContent("B.md", "updated by client 1")
+                    .assertContent("C.md", "content-c")
+                    .assertContent("D.md", "content-a")
                     .assertFileNotExists("A.md");
-                s.ifFileExists("D.md", (inner) =>
-                    inner.assertContent("D.md", "content-a")
-                );
             }
         }
     ]
