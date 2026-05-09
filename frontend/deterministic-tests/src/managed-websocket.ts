@@ -139,11 +139,21 @@ class ManagedWebSocket implements WebSocket {
     }
 
     public resume(): void {
-        this.paused = false;
-        const messages = this.bufferedMessages.splice(0);
-        for (const msg of messages) {
-            this.externalOnMessage?.(msg);
+        // Drain buffered messages BEFORE flipping `paused` to false.
+        // If `externalOnMessage` is async (its return type is `unknown`),
+        // dispatch yields control between buffered messages, and a fresh
+        // live `ws.onmessage` event firing during that yield would jump
+        // ahead of unprocessed buffered messages — silently reordering
+        // events relative to the wire. Keeping `paused = true` during the
+        // drain forces the live handler to keep buffering, so we splice
+        // those late arrivals onto the tail and dispatch them in order.
+        while (this.bufferedMessages.length > 0) {
+            const messages = this.bufferedMessages.splice(0);
+            for (const msg of messages) {
+                this.externalOnMessage?.(msg);
+            }
         }
+        this.paused = false;
     }
 
     public send(data: string | ArrayBufferLike | Blob | ArrayBufferView): void {
@@ -157,6 +167,17 @@ class ManagedWebSocket implements WebSocket {
     public addEventListener(
         ...args: Parameters<WebSocket["addEventListener"]>
     ): void {
+        // Only the `.onmessage` setter routes through the pause buffer.
+        // If sync-client ever attaches "message" listeners via
+        // addEventListener instead, those messages would bypass pause/resume
+        // and deterministic tests would silently lose their fault injection.
+        if (args[0] === "message") {
+            throw new Error(
+                "ManagedWebSocket: addEventListener('message') bypasses the " +
+                    "pause buffer. Use the .onmessage setter instead, or " +
+                    "extend ManagedWebSocket to route message listeners."
+            );
+        }
         this.ws.addEventListener(...args);
     }
 
@@ -176,6 +197,11 @@ class ManagedWebSocket implements WebSocket {
  * for pause/resume control from the test harness
  */
 export class ManagedWebSocketFactory {
+    // Append-only: closed sockets stay tracked. Bounded per test (one
+    // factory per agent, each test discards its agents on cleanup), so
+    // not a real leak — but iterating over closed instances on
+    // pause/resume is a deliberate no-op since their `.onmessage` is
+    // already detached.
     private readonly instances: ManagedWebSocket[] = [];
     // Sticky pause state: applied to current instances on `pause()` AND
     // to any new instance created later (e.g. WS reconnect after a

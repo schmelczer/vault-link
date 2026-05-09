@@ -55,5 +55,17 @@ export class ServerManager {
                 })
                 .then(() => process.exit(143));
         });
+
+        // Last-resort synchronous cleanup. Runs even when the process is
+        // exiting via process.exit() from unhandledRejection /
+        // uncaughtException — paths where async stopAll() cannot complete.
+        // SIGSTOP'd servers MUST receive SIGCONT before SIGKILL or the
+        // kernel keeps them as zombies holding the test's tmpdir, and the
+        // next CI run can't reuse the port.
+        process.on("exit", () => {
+            for (const server of this.activeServers) {
+                server.forceKillSync();
+            }
+        });
     }
 }

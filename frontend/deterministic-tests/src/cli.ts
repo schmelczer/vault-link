@@ -4,7 +4,7 @@ import { ServerManager } from "./server-manager";
 import { PrefixedLogger } from "./prefixed-logger";
 import { TESTS } from "./test-registry";
 import type { TestDefinition, TestResult } from "./test-definition";
-import { parseConcurrency } from "./parse-concurrency";
+import { parseArgs } from "./parse-args";
 import { runWithConcurrency } from "./run-with-concurrency";
 import { TOKEN, SERVER_BINARY_PATH, CONFIG_PATH } from "./consts";
 import * as path from "node:path";
@@ -29,7 +29,31 @@ serverManager.installSignalHandlers();
 
 function testUsesPauseServer(test: TestDefinition): boolean {
     return test.steps.some(
-        (step) => step.type === "pause-server" || step.type === "resume-server"
+        (step) =>
+            step.type === "pause-server" ||
+            step.type === "resume-server" ||
+            step.type === "resume-server-until-history-then-pause"
+    );
+}
+
+/**
+ * Walk up from the CLI binary's location until we find a directory
+ * containing `sync-server/` and `frontend/`.
+ */
+function findProjectRoot(): string {
+    let dir = path.dirname(__filename);
+    const root = path.parse(dir).root;
+    while (dir !== root) {
+        if (
+            fs.existsSync(path.join(dir, "sync-server")) &&
+            fs.existsSync(path.join(dir, "frontend"))
+        ) {
+            return dir;
+        }
+        dir = path.dirname(dir);
+    }
+    throw new Error(
+        `Could not locate project root (no ancestor of ${__filename} contains both 'sync-server' and 'frontend')`
     );
 }
 
@@ -100,15 +124,7 @@ async function runDedicatedServerTest(
 }
 
 async function main(): Promise<void> {
-    const cwd = process.cwd();
-    let projectRoot = cwd;
-
-    if (cwd.endsWith("frontend/deterministic-tests")) {
-        projectRoot = path.resolve(cwd, "../..");
-    } else if (cwd.endsWith("frontend")) {
-        projectRoot = path.resolve(cwd, "..");
-    }
-
+    const projectRoot = findProjectRoot();
     const serverPath = path.join(projectRoot, SERVER_BINARY_PATH);
     if (!fs.existsSync(serverPath)) {
         logger.error(`Server binary not found at: ${serverPath}`);
@@ -121,8 +137,7 @@ async function main(): Promise<void> {
         process.exit(1);
     }
 
-    const filterArg = process.argv.find((a) => a.startsWith("--filter="));
-    const filter = filterArg?.slice("--filter=".length);
+    const { filter, concurrency } = parseArgs(process.argv);
 
     const testsToRun: [string, TestDefinition][] = [];
     for (const [key, test] of Object.entries(TESTS)) {
@@ -147,7 +162,6 @@ async function main(): Promise<void> {
         process.exit(1);
     }
 
-    const concurrency = parseConcurrency();
     const regularTests = testsToRun.filter(([, t]) => !testUsesPauseServer(t));
     const pauseTests = testsToRun.filter(([, t]) => testUsesPauseServer(t));
 

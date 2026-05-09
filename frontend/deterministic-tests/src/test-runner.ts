@@ -266,18 +266,10 @@ export class TestRunner {
             }
         }
 
-        // Final attempt — let the error propagate
-        await this.waitAllAgentsSettled();
-
-        try {
-            await this.assertConsistent();
-            this.logger.info("Barrier complete: all clients converged");
-        } catch (error) {
-            throw new Error(
-                `Convergence timed out after ${CONVERGENCE_TIMEOUT_MS}ms: ${error instanceof Error ? error.message : String(error)}`,
-                { cause: lastError }
-            );
-        }
+        throw new Error(
+            `Convergence timed out after ${CONVERGENCE_TIMEOUT_MS}ms: ${lastError?.message ?? "no consistency check ran"}`,
+            { cause: lastError }
+        );
     }
 
     /**
