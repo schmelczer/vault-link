@@ -1,6 +1,7 @@
 import * as fs from "fs/promises";
 import type { Dirent } from "fs";
 import * as path from "path";
+import { randomUUID } from "crypto";
 import type {
     FileSystemOperations,
     RelativePath,
@@ -8,8 +9,13 @@ import type {
 } from "sync-client";
 import { toUnixPath } from "./path-utils";
 
+// VaultLink's per-vault metadata directory. Holds the persisted sync database
+// and the tmp files atomicWrite renames into place; the matching `${VAULTLINK_DIR}/**`
+// ignore pattern keeps everything in here invisible to the file watcher.
+export const VAULTLINK_DIR = ".vaultlink";
+
 export class NodeFileSystemOperations implements FileSystemOperations {
-    public constructor(private readonly basePath: string) {}
+    public constructor(private readonly basePath: string) { }
 
     public async listFilesRecursively(
         directory: RelativePath | undefined
@@ -132,12 +138,37 @@ export class NodeFileSystemOperations implements FileSystemOperations {
         content: Uint8Array | string,
         encoding?: BufferEncoding
     ): Promise<void> {
-        const tmpPath = fullPath + ".tmp";
-        await fs.writeFile(tmpPath, content, encoding);
-        const fd = await fs.open(tmpPath, "r");
-        await fd.datasync();
-        await fd.close();
-        await fs.rename(tmpPath, fullPath);
+        const tmpDir = path.join(this.basePath, VAULTLINK_DIR);
+        await fs.mkdir(tmpDir, { recursive: true });
+        const tmpPath = path.join(tmpDir, `atomic-write-${randomUUID()}.tmp`);
+        try {
+            await fs.writeFile(tmpPath, content, encoding);
+            const fd = await fs.open(tmpPath, "r");
+            try {
+                await fd.datasync();
+            } finally {
+                await fd.close();
+            }
+            await fs.rename(tmpPath, fullPath);
+            await this.syncDirectory(path.dirname(fullPath));
+        } catch (error) {
+            await fs.unlink(tmpPath).catch(() => undefined);
+            throw error;
+        }
+    }
+
+    // Make the rename durable by fsync'ing the destination's parent directory.
+    // Skipped on Windows: fsync on a directory handle isn't supported there
+    private async syncDirectory(dir: string): Promise<void> {
+        if (process.platform === "win32") {
+            return;
+        }
+        const fd = await fs.open(dir, "r");
+        try {
+            await fd.sync();
+        } finally {
+            await fd.close();
+        }
     }
 
     private async walkDirectory(

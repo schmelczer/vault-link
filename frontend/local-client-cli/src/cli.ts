@@ -7,12 +7,12 @@ import {
     DEFAULT_SETTINGS,
     Logger,
     LogLevel,
-    type LogLine,
+    LogLine,
     type SyncSettings,
     type StoredDatabase
 } from "sync-client";
-import { parseArgs } from "./args";
-import { NodeFileSystemOperations } from "./node-filesystem";
+import { parseArgs, type LineEndingMode } from "./args";
+import { NodeFileSystemOperations, VAULTLINK_DIR } from "./node-filesystem";
 import { FileWatcher } from "./file-watcher";
 import { formatLogLine } from "./logger-formatter";
 import packageJson from "../package.json";
@@ -50,7 +50,7 @@ function createLogHandler(minLevel: LogLevel): (logLine: LogLine) => void {
 const HEALTH_CHECK_INTERVAL_MS = 30 * 1000;
 const PROGRESS_LOG_INTERVAL_MS = 2000;
 
-function resolveLineEndings(mode: "auto" | "lf" | "crlf"): string {
+function resolveLineEndings(mode: LineEndingMode): string {
     switch (mode) {
         case "lf":
             return "\n";
@@ -65,9 +65,13 @@ async function main(): Promise<void> {
     const args = parseArgs(process.argv);
     const absolutePath = path.resolve(args.localPath);
 
-    const logger = new Logger();
     const logHandler = createLogHandler(args.logLevel);
-    logger.onLogEmitted.add(logHandler);
+    // Boot-time messages are emitted directly through logHandler before the
+    // SyncClient (and its Logger) exist; afterwards every log line flows
+    // through client.logger.
+    const emitBoot = (level: LogLevel, message: string): void => {
+        logHandler(new LogLine(level, message));
+    };
 
     if (!fsSync.existsSync(absolutePath)) {
         fsSync.mkdirSync(absolutePath, { recursive: true });
@@ -76,27 +80,31 @@ async function main(): Promise<void> {
     try {
         const stats = await fs.stat(absolutePath);
         if (!stats.isDirectory()) {
-            logger.error(`${absolutePath} is not a directory`);
+            emitBoot(LogLevel.ERROR, `${absolutePath} is not a directory`);
             process.exit(1);
         }
     } catch (error) {
-        logger.error(
+        emitBoot(
+            LogLevel.ERROR,
             `Cannot access directory ${absolutePath}: ${error instanceof Error ? error.message : String(error)}`
         );
         process.exit(1);
     }
 
     if (!args.quiet) {
-        logger.info(`VaultLink Local CLI v${packageJson.version}`);
-        logger.info(`Local path: ${absolutePath}`);
-        logger.info(`Remote URI: ${args.remoteUri}`);
-        logger.info(`Vault name: ${args.vaultName}`);
+        emitBoot(LogLevel.INFO, `VaultLink Local CLI v${packageJson.version}`);
+        emitBoot(LogLevel.INFO, `Local path: ${absolutePath}`);
+        emitBoot(LogLevel.INFO, `Remote URI: ${args.remoteUri}`);
+        emitBoot(LogLevel.INFO, `Vault name: ${args.vaultName}`);
         if (args.lineEndings !== "auto") {
-            logger.info(`Line endings: ${args.lineEndings.toUpperCase()}`);
+            emitBoot(
+                LogLevel.INFO,
+                `Line endings: ${args.lineEndings.toUpperCase()}`
+            );
         }
     }
 
-    const dataDir = path.join(absolutePath, ".vaultlink");
+    const dataDir = path.join(absolutePath, VAULTLINK_DIR);
     const dataFile = path.join(dataDir, "sync-data.json");
 
     await fs.mkdir(dataDir, { recursive: true });
@@ -105,8 +113,7 @@ async function main(): Promise<void> {
 
     const ignorePatterns = [
         ...(args.ignorePatterns ?? []),
-        ".vaultlink/**",
-        ".git/**"
+        `${VAULTLINK_DIR}/**`
     ];
 
     const settings: SyncSettings = {
@@ -134,7 +141,10 @@ async function main(): Promise<void> {
                     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
                     database = JSON.parse(content) as Partial<StoredDatabase>;
                 } catch {
-                    logger.warn(`Cannot read data file at ${dataFile}`);
+                    emitBoot(
+                        LogLevel.WARNING,
+                        `Cannot read data file at ${dataFile}`
+                    );
                 }
 
                 return {
@@ -269,7 +279,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
-    // Last-resort handler before the logger exists
     // eslint-disable-next-line no-console
     console.error(
         `Unexpected error: ${error instanceof Error ? error.message : String(error)}`

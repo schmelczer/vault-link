@@ -2,7 +2,8 @@ import { Command, Option } from "commander";
 import packageJson from "../package.json";
 import { LogLevel } from "sync-client";
 
-type LineEndingMode = "auto" | "lf" | "crlf";
+export const LINE_ENDING_MODES = ["auto", "lf", "crlf"] as const;
+export type LineEndingMode = (typeof LINE_ENDING_MODES)[number];
 
 interface CliArgs {
     remoteUri: string;
@@ -21,6 +22,35 @@ interface CliArgs {
 
 const VALID_PROTOCOLS = ["http://", "https://", "ws://", "wss://"];
 
+const REQUIRED_OPTIONS = {
+    localPath: {
+        flags: "-l, --local-path <path>",
+        env: "VAULTLINK_LOCAL_PATH"
+    },
+    remoteUri: {
+        flags: "-r, --remote-uri <uri>",
+        env: "VAULTLINK_REMOTE_URI"
+    },
+    token: { flags: "-t, --token <token>", env: "VAULTLINK_TOKEN" },
+    vaultName: {
+        flags: "-v, --vault-name <name>",
+        env: "VAULTLINK_VAULT_NAME"
+    }
+} as const;
+
+function requireOption<T>(
+    value: T | undefined,
+    name: keyof typeof REQUIRED_OPTIONS
+): T {
+    if (value === undefined) {
+        const { flags, env } = REQUIRED_OPTIONS[name];
+        throw new Error(
+            `required option '${flags}' not specified (or set ${env})`
+        );
+    }
+    return value;
+}
+
 export function parseArgs(argv: string[]): CliArgs {
     const program = new Command();
 
@@ -32,23 +62,25 @@ export function parseArgs(argv: string[]): CliArgs {
         .version(packageJson.version)
         .addOption(
             new Option(
-                "-l, --local-path <path>",
+                REQUIRED_OPTIONS.localPath.flags,
                 "Local directory path to sync"
-            ).env("VAULTLINK_LOCAL_PATH")
+            ).env(REQUIRED_OPTIONS.localPath.env)
         )
         .addOption(
-            new Option("-r, --remote-uri <uri>", "Remote server URI").env(
-                "VAULTLINK_REMOTE_URI"
-            )
+            new Option(
+                REQUIRED_OPTIONS.remoteUri.flags,
+                "Remote server URI"
+            ).env(REQUIRED_OPTIONS.remoteUri.env)
         )
         .addOption(
-            new Option("-t, --token <token>", "Authentication token").env(
-                "VAULTLINK_TOKEN"
-            )
+            new Option(
+                REQUIRED_OPTIONS.token.flags,
+                "Authentication token"
+            ).env(REQUIRED_OPTIONS.token.env)
         )
         .addOption(
-            new Option("-v, --vault-name <name>", "Vault name").env(
-                "VAULTLINK_VAULT_NAME"
+            new Option(REQUIRED_OPTIONS.vaultName.flags, "Vault name").env(
+                REQUIRED_OPTIONS.vaultName.env
             )
         )
         .addOption(
@@ -105,7 +137,7 @@ export function parseArgs(argv: string[]): CliArgs {
                 "[OPTIONAL] Line ending style: auto (platform default), lf, crlf"
             )
                 .default("auto")
-                .choices(["auto", "lf", "crlf"])
+                .choices([...LINE_ENDING_MODES])
                 .env("VAULTLINK_LINE_ENDINGS")
         )
         .addHelpText(
@@ -144,22 +176,6 @@ Environment variables:
     const lineEndingsStr = (opts.lineEndings as string | undefined) ?? "auto";
     /* eslint-enable @typescript-eslint/no-unsafe-type-assertion */
 
-    const requireOption = <T>(value: T | undefined, name: string): T => {
-        if (value === undefined) {
-            const option = program.options.find(
-                (o) => o.attributeName() === name
-            );
-            const envHint =
-                option?.envVar !== undefined
-                    ? ` (or set ${option.envVar})`
-                    : "";
-            throw new Error(
-                `required option '${option?.flags ?? name}' not specified${envHint}`
-            );
-        }
-        return value;
-    };
-
     const requiredLocalPath = requireOption(localPath, "localPath");
     const requiredRemoteUri = requireOption(remoteUri, "remoteUri");
     const requiredToken = requireOption(token, "token");
@@ -187,13 +203,11 @@ Environment variables:
     }
     const logLevel = logLevelUpper;
 
-    const validLineEndings: readonly string[] = ["auto", "lf", "crlf"];
-    const isLineEndingMode = (value: string): value is LineEndingMode => {
-        return validLineEndings.includes(value);
-    };
+    const isLineEndingMode = (value: string): value is LineEndingMode =>
+        (LINE_ENDING_MODES as readonly string[]).includes(value);
     if (!isLineEndingMode(lineEndingsStr)) {
         throw new Error(
-            `Invalid line endings mode '${lineEndingsStr}'. Valid values are: ${validLineEndings.join(", ")}`
+            `Invalid line endings mode '${lineEndingsStr}'. Valid values are: ${LINE_ENDING_MODES.join(", ")}`
         );
     }
     const lineEndings = lineEndingsStr;
