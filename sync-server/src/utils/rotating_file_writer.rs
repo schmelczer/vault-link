@@ -2,11 +2,12 @@ use std::{
     fs::{self, OpenOptions},
     io::{self, Write},
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, MutexGuard},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use chrono::NaiveDateTime;
+use log::warn;
 use tracing_subscriber::fmt::MakeWriter;
 
 #[derive(Clone)]
@@ -93,6 +94,17 @@ impl RotatingFileWriter {
         SystemTime::now() >= inner.next_rotation_time
     }
 
+    fn lock_inner(&self) -> MutexGuard<'_, RotatingFileWriterInner> {
+        match self.inner.lock() {
+            Ok(inner) => inner,
+            Err(poisoned) => {
+                warn!("RotatingFileWriter mutex was poisoned, recovering");
+                self.inner.clear_poison();
+                poisoned.into_inner()
+            }
+        }
+    }
+
     fn open_or_create_log_file(inner: &mut RotatingFileWriterInner) -> io::Result<()> {
         // If we haven't reached rotation time and there's an existing log file, reuse it
         if !Self::should_rotate(inner)
@@ -132,10 +144,7 @@ impl RotatingFileWriter {
 
 impl Write for RotatingFileWriter {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let mut inner = self.inner.lock().unwrap_or_else(|poisoned| {
-            eprintln!("RotatingFileWriter mutex was poisoned, recovering");
-            poisoned.into_inner()
-        });
+        let mut inner = self.lock_inner();
 
         // Reset file handle after poison recovery so the next branch
         // re-opens a valid file rather than writing to a potentially
@@ -154,10 +163,7 @@ impl Write for RotatingFileWriter {
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        let mut inner = self.inner.lock().unwrap_or_else(|poisoned| {
-            eprintln!("RotatingFileWriter mutex was poisoned, recovering");
-            poisoned.into_inner()
-        });
+        let mut inner = self.lock_inner();
         if let Some(ref mut file) = inner.current_file {
             file.flush()
         } else {

@@ -1,0 +1,4 @@
+disallowed-macros = [
+    { path = "std::eprintln", reason = "use log::info! or log::warn! instead" },
+    { path = "std::println", reason = "use log::info! or log::warn! instead" },
+]

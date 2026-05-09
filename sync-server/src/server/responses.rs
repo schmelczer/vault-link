@@ -1,9 +1,7 @@
 use serde::{self, Serialize};
 use ts_rs::TS;
 
-use crate::app_state::database::models::{
-    DocumentVersion, DocumentVersionWithoutContent, VaultUpdateId,
-};
+use crate::app_state::database::models::{DocumentVersion, DocumentVersionWithoutContent};
 
 /// Response to a ping request.
 #[derive(TS, Debug, Clone, Serialize)]
@@ -23,17 +21,6 @@ pub struct PingResponse {
     /// API version ensuring backwards & forwards compatibility between the client
     /// and server.
     pub supported_api_version: u32,
-}
-
-/// Response to a fetch latest documents request.
-#[derive(TS, Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[ts(export)]
-pub struct FetchLatestDocumentsResponse {
-    pub latest_documents: Vec<DocumentVersionWithoutContent>,
-
-    /// The update ID of the latest document in the response.
-    pub last_update_id: VaultUpdateId,
 }
 
 /// Response to a create/update document request.

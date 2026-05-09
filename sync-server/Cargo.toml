@@ -51,7 +51,8 @@ missing_debug_implementations = "warn"
 [lints.clippy]
 await_holding_lock = "warn"
 dbg_macro = "warn"
-empty_enum = "warn"
+disallowed_macros = { level = "deny", priority = 1 }
+empty_enums = "warn"
 enum_glob_use = "warn"
 exit = "warn"
 filter_map_next = "warn"

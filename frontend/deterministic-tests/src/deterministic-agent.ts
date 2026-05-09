@@ -59,6 +59,26 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
         this.data.settings = { ...initialSettings };
     }
 
+    private static isCreateDocumentRequest(
+        input: RequestInfo | URL,
+        init: RequestInit | undefined
+    ): boolean {
+        const method =
+            init?.method ??
+            (typeof Request !== "undefined" && input instanceof Request
+                ? input.method
+                : "GET");
+        if (method.toUpperCase() !== "POST") {
+            return false;
+        }
+
+        const url =
+            input instanceof URL
+                ? input
+                : new URL(typeof input === "string" ? input : input.url);
+        return /\/documents\/?$/.test(url.pathname);
+    }
+
     public async init(
         fetchImplementation: typeof globalThis.fetch
     ): Promise<void> {
@@ -118,7 +138,7 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
             this.nextCreateResponseDrop === undefined,
             `Client ${this.clientId} already has a create response drop armed`
         );
-        let resolveDropped!: () => void;
+        let resolveDropped: () => void = () => {};
         const dropped = new Promise<void>((resolve) => {
             resolveDropped = resolve;
         });
@@ -461,23 +481,4 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
         };
     }
 
-    private static isCreateDocumentRequest(
-        input: RequestInfo | URL,
-        init: RequestInit | undefined
-    ): boolean {
-        const method =
-            init?.method ??
-            (typeof Request !== "undefined" && input instanceof Request
-                ? input.method
-                : "GET");
-        if (method.toUpperCase() !== "POST") {
-            return false;
-        }
-
-        const url =
-            input instanceof URL
-                ? input
-                : new URL(typeof input === "string" ? input : input.url);
-        return /\/documents\/?$/.test(url.pathname);
-    }
 }

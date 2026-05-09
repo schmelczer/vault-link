@@ -11,7 +11,7 @@ use crate::{
         AppState,
         database::models::{DocumentId, VaultId, VaultUpdateId},
     },
-    errors::{SyncServerError, client_error, not_found_error, server_error},
+    errors::{SyncServerError, not_found_error, server_error},
     utils::normalize::normalize,
 };
 
@@ -52,7 +52,7 @@ pub async fn fetch_document_version_content(
         )?;
 
     if result.document_id != document_id {
-        return Err(client_error(anyhow!(
+        return Err(not_found_error(anyhow!(
             "Document with document id `{document_id}` does not have a version with id \
             `{vault_update_id}`",
         )));
