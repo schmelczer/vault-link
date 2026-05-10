@@ -118,7 +118,7 @@ Local FS events from the watcher update `localPath` synchronously at enqueue tim
 
 **Watermark.** `lastSeenUpdateId` uses a `MinCovered` (a contiguous-prefix tracker over a stream of integers): we only advance the published min when the next consecutive id has been processed, so out-of-order RemoteChange ids don't fool the WebSocket handshake into requesting a too-recent catch-up.
 
-**Server catch-up.** The server's WS handshake replays events newer than the client's `last_seen_vault_update_id` from the `latest_document_versions` view (one row per doc, the latest). On those replayed rows `is_new_file` means _new to this client_ (`creation_vault_update_id > last_seen_vault_update_id`), not "this row is the doc's first version" — necessary because the catch-up only carries the latest version; if a doc was created and updated past the watermark, the client never sees its create otherwise.
+**Server catch-up.** The server's WS handshake replays events newer than the client's `last_seen_vault_update_id`, computed as the latest version per document as of the cursor. The catch-up only carries each doc's *latest* version, not its full history. The client treats any RemoteChange whose `documentId` it has no record of as a fresh create and downloads the bytes.
 
 ## Edge-case patterns the sync engine has to survive
 
@@ -133,8 +133,6 @@ The two-loop split defuses most of the old race catalogue (slot-collision stashe
 **Reconciler-defer is the wire-loop's contract with the reconciler.** The reconciler skips records where `hasPendingLocalEventsForDocumentId` returns true. Wire-loop handlers can therefore freely write `remoteRelativePath` to whatever the server returned — even if it disagrees with `localPath` — knowing the reconciler won't move the file out from under a queued user rename.
 
 **Watermark advancement is load-bearing both ways.** Branches that _skip_ a remote event without advancing `lastSeenUpdateId` create permanent gaps that re-deliver forever. Branches that _advance_ without applying the content lose data: the server has no further event to re-deliver, the catch-up only carries the latest version, and any state in between is gone. Don't advance unless the event was actually applied (or deliberately discarded after weighing both halves).
-
-**`isNewFile` semantics differ between catch-up and real-time.** On WS handshake replay it means _new to this client_ (`creation_vault_update_id > last_seen_vault_update_id`); on real-time broadcasts it means _this version is the create_ (`creation_vault_update_id == vault_update_id`). A handler that decides based on one interpretation will be wrong on the other channel; reasoning about fetch-and-treat-as-new vs. ignore needs to know which channel delivered the event.
 
 **Pause / disable-sync mid-flight** is the one race the new model doesn't structurally fix. An HTTP that committed server-side but whose response was discarded leaves the server holding a doc the client has no record of. Resume → offline scan → server-side dedupe handles it (the server merges the duplicate create into the existing doc), but if the merge produces a deconflict, the client picks up an extra file. Out of scope for the two-loop split.
 

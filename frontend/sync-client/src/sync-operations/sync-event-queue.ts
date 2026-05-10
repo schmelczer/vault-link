@@ -618,9 +618,8 @@ export class SyncEventQueue {
         // in the queue ahead of it. Once those drain and the doc is
         // removed, a still-pending RemoteChange for an earlier version
         // would be processed by `processRemoteCreateForNewDocument` (the
-        // doc is now untracked, and catch-up's `isNewFile=true` semantics
-        // qualify it as a fresh create), resurrecting the doc on disk
-        // with stale bytes that disagree with every other agent.
+        // doc is now untracked), resurrecting the doc on disk with stale
+        // bytes that disagree with every other agent.
         this.purgeRemoteChangesForDocumentId(documentId);
         return this.save();
     }

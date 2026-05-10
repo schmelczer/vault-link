@@ -703,8 +703,7 @@ export class Syncer {
         if (response.isDeleted) {
             await this.processRemoteDelete(record.localPath, {
                 ...response,
-                contentSize: 0,
-                isNewFile: false
+                contentSize: 0
             });
             return;
         }
@@ -857,14 +856,6 @@ export class Syncer {
                 }
             }
             return this.processRemoteUpdate(trackedRecord, remoteVersion);
-        }
-
-        if (!remoteVersion.isNewFile) {
-            this.queue.lastSeenUpdateId = remoteVersion.vaultUpdateId;
-            this.logger.debug(
-                `Ignoring stale RemoteChange for untracked, non-new document ${remoteVersion.documentId}`
-            );
-            return;
         }
 
         return this.processRemoteCreateForNewDocument(remoteVersion);

@@ -5,14 +5,12 @@ export const catchupCreateAndUpdateNotSkippedTest: TestDefinition = {
     description:
         "Client 1 disconnects (sync disabled). Client 0 creates a doc and " +
         "then updates it. When Client 1 reconnects, the server's catch-up " +
-        "stream sends only the doc's *latest* version (the update), not the " +
-        "full history. Pre-fix the wire's `is_new_file` was set to " +
-        "`creation == latest_version`, so the catch-up flagged the doc as " +
-        "non-new even though Client 1 had never seen its creation. Client " +
-        "1's `processRemoteChange` then dropped it as a 'stale RemoteChange " +
-        "for untracked, non-new document' and the doc was silently lost. " +
-        "Post-fix `is_new_file` in the catch-up stream means 'new relative " +
-        "to the recipient's watermark' (`creation > last_seen_vault_update_id`).",
+        "stream sends only the doc's *latest* version (the update), not " +
+        "the full history. Client 1 must still pick up the doc — any handler " +
+        "that gates the create-on-untracked path on a server-supplied " +
+        "'is this the first version' flag would drop it (the latest version " +
+        "is not the create), silently leaking the doc. The client treats " +
+        "every untracked-doc RemoteChange as a fresh create.",
     clients: 2,
     steps: [
         { type: "enable-sync", client: 0 },
@@ -36,7 +34,7 @@ export const catchupCreateAndUpdateNotSkippedTest: TestDefinition = {
 
         // Client 0 updates the doc (vault_update_id v_X > v_C). The
         // server's `latest_document_versions` view now returns the
-        // *update* row — its `creation_vault_update_id != vault_update_id`.
+        // *update* row — the create row is no longer the latest.
         {
             type: "update",
             client: 0,
@@ -46,10 +44,9 @@ export const catchupCreateAndUpdateNotSkippedTest: TestDefinition = {
         { type: "sync", client: 0 },
 
         // Client 1 reconnects. Server's catch-up replays docs with
-        // `vault_update_id > last_seen`. For doc.md it sends v_X with
-        // `is_new_file` derived from `creation_vault_update_id >
-        // last_seen_vault_update_id` (post-fix) — so Client 1 treats it
-        // as a fresh create and downloads the latest content.
+        // `vault_update_id > last_seen`. For doc.md it sends v_X; Client
+        // 1 has no record of the doc, so it treats the RemoteChange as a
+        // fresh create and downloads the latest content.
         { type: "enable-sync", client: 1 },
         { type: "barrier" },
 

@@ -9,8 +9,4 @@ export interface DocumentVersionWithoutContent {
     userId: string;
     deviceId: string;
     contentSize: number;
-    /**
-     * True iff this is the first version of the document
-     */
-    isNewFile: boolean;
 }

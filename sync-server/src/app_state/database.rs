@@ -405,7 +405,6 @@ impl Database {
             r#"
             select
                 vault_update_id,
-                creation_vault_update_id,
                 document_id as "document_id: Hyphenated",
                 relative_path,
                 updated_date as "updated_date: chrono::DateTime<Utc>",
@@ -439,7 +438,6 @@ impl Database {
                     user_id: row.user_id,
                     device_id: row.device_id,
                     content_size: row.content_size.unwrap_or(0),
-                    is_new_file: row.creation_vault_update_id == row.vault_update_id,
                 })
                 .collect()
         })
@@ -466,19 +464,14 @@ impl Database {
         // cursor capture (under broadcast send-lock) and this query
         // (which runs after drop-lock) would expose a `vault_update_id
         // > cursor` row that the cursor filter then drops, removing
-        // the doc from the catch-up entirely. The post-cursor live
-        // broadcast then carries `is_new_file = false` (per real-time
-        // semantics it's an update of a previously-existing version),
-        // and the receiving client — which has no record of the doc —
-        // ignores it as stale, stranding the doc forever. Computing
-        // the snapshot from the documents table directly with the
-        // upper bound applied at the GROUP BY layer keeps the
-        // catch-up self-contained at exactly the cursor.
+        // the doc from the catch-up entirely. Computing the snapshot
+        // from the documents table directly with the upper bound
+        // applied at the GROUP BY layer keeps the catch-up
+        // self-contained at exactly the cursor.
         let query = sqlx::query!(
             r#"
             select
                 d.vault_update_id,
-                d.creation_vault_update_id,
                 d.document_id as "document_id: Hyphenated",
                 d.relative_path,
                 d.updated_date as "updated_date: chrono::DateTime<Utc>",
@@ -523,17 +516,6 @@ impl Database {
                     user_id: row.user_id,
                     device_id: row.device_id,
                     content_size: row.content_size.unwrap_or(0),
-                    // For catch-up streams, "new file" means "new to this
-                    // recipient" — the doc was created past the recipient's
-                    // watermark. The catch-up only carries the doc's
-                    // *latest* version (not its full history), so using
-                    // `creation == latest` instead would mis-flag every
-                    // doc that was created and then updated before the
-                    // client reconnected, and the client's
-                    // `processRemoteChange` would drop it as "stale
-                    // RemoteChange for untracked, non-new document",
-                    // silently leaking docs to clients catching up.
-                    is_new_file: row.creation_vault_update_id > vault_update_id,
                 })
                 .collect()
         })
