@@ -208,14 +208,24 @@ async fn websocket(
         loop {
             match broadcast_receiver.recv().await {
                 Ok(update) => {
-                    // Drop messages this device authored because the HTTP
-                    // response already carried authoritative state back.
-                    // Delete broadcasts are sent without an origin so the
-                    // author also receives them — that's the receipt the
-                    // client needs to drop the doc from its sync queue.
-                    if Some(&device_id) == update.origin_device_id.as_ref() {
-                        continue;
-                    }
+                    // Always deliver vault updates to the originating
+                    // device too. The HTTP response is the *normal* path
+                    // for the originator to learn its own update, and
+                    // the client-side wire loop dedupes redundant
+                    // broadcasts via the `parentVersionId` check. But
+                    // when the response is lost mid-flight (sync reset,
+                    // pause/resume, dropped TCP) the originator has no
+                    // record of the doc; if the broadcast is also
+                    // suppressed AND the next handshake's cursor was
+                    // captured before the commit (cursor < vuid), the
+                    // doc falls through both delivery paths and is
+                    // stranded forever on the originator. Letting the
+                    // self-broadcast through closes that window — the
+                    // message processes as a remote create on the
+                    // originator's reconnected WS and the file is
+                    // restored. (Cursor messages still get the inner
+                    // self-filter below; we drop our own cursor entries
+                    // from the `clients` payload.)
 
                     // Filter out vault updates already covered by the
                     // catch-up snapshot. The handshake atomically

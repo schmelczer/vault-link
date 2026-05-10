@@ -80,28 +80,13 @@ pub enum WebSocketServerMessage {
     CursorPositions(CursorPositionFromServer),
 }
 
-/// Broadcast envelope carrying the message plus the device that produced
-/// it. The per-recipient send task compares `origin_device_id` against
-/// its own device id to fill in `originates_from_self` before the message
-/// is serialized on the wire.
 #[derive(Clone, Debug)]
 pub struct WebSocketServerMessageWithOrigin {
-    pub origin_device_id: Option<DeviceId>,
     pub message: WebSocketServerMessage,
 }
 
 impl WebSocketServerMessageWithOrigin {
     pub fn new(message: WebSocketServerMessage) -> Self {
-        Self {
-            origin_device_id: None,
-            message,
-        }
-    }
-
-    pub fn with_origin(origin_device_id: DeviceId, message: WebSocketServerMessage) -> Self {
-        Self {
-            origin_device_id: Some(origin_device_id),
-            message,
-        }
+        Self { message }
     }
 }

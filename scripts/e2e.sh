@@ -31,7 +31,7 @@ sleep 1
 
 # Clean databases (uses tmpfs via /dev/shm for zero disk I/O)
 echo "Cleaning databases..."
-rm -rf /host/tmp/vaultlink-e2e-databases
+rm -rf /tmp/databases
 
 # Start the server in the background
 echo "Starting server..."

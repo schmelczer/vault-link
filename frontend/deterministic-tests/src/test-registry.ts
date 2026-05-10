@@ -103,6 +103,7 @@ import { renamedPendingCreateReusedPathThenDeleteTest } from "./tests/renamed-pe
 import { renamePendingCreateOntoPendingDeletePathTest } from "./tests/rename-pending-create-onto-pending-delete-path.test";
 import { remoteQuickWriteRenameBeforeRecordTest } from "./tests/remote-quick-write-rename-before-record.test";
 import { selfMergePendingRenameAliasesSecondCreateTest } from "./tests/self-merge-pending-rename-aliases-second-create.test";
+import { disableMidCreateThenDeleteTest } from "./tests/disable-mid-create-then-delete.test";
 
 export const TESTS: Partial<Record<string, TestDefinition>> = {
     "rename-create-conflict": renameCreateConflictTest,
@@ -239,5 +240,6 @@ export const TESTS: Partial<Record<string, TestDefinition>> = {
     "remote-quick-write-rename-before-record":
         remoteQuickWriteRenameBeforeRecordTest,
     "self-merge-pending-rename-aliases-second-create":
-        selfMergePendingRenameAliasesSecondCreateTest
+        selfMergePendingRenameAliasesSecondCreateTest,
+    "disable-mid-create-then-delete": disableMidCreateThenDeleteTest
 };
