@@ -79,14 +79,3 @@ pub enum WebSocketServerMessage {
     VaultUpdate(WebSocketVaultUpdate),
     CursorPositions(CursorPositionFromServer),
 }
-
-#[derive(Clone, Debug)]
-pub struct WebSocketServerMessageWithOrigin {
-    pub message: WebSocketServerMessage,
-}
-
-impl WebSocketServerMessageWithOrigin {
-    pub fn new(message: WebSocketServerMessage) -> Self {
-        Self { message }
-    }
-}

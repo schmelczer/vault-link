@@ -7,10 +7,7 @@ use super::{
     database::models::{DeviceId, VaultId},
     websocket::{
         broadcasts::Broadcasts,
-        models::{
-            ClientCursors, CursorPositionFromServer, WebSocketServerMessage,
-            WebSocketServerMessageWithOrigin,
-        },
+        models::{ClientCursors, CursorPositionFromServer, WebSocketServerMessage},
     },
 };
 use crate::{
@@ -126,11 +123,9 @@ impl Cursors {
 
         self.broadcasts.send_document_update(
             vault_id,
-            WebSocketServerMessageWithOrigin::new(WebSocketServerMessage::CursorPositions(
-                CursorPositionFromServer {
-                    clients: client_cursors,
-                },
-            )),
+            WebSocketServerMessage::CursorPositions(CursorPositionFromServer {
+                clients: client_cursors,
+            }),
         )
     }
 

@@ -238,13 +238,13 @@ async fn websocket(
                     // Cursor messages aren't versioned and are always
                     // forwarded.
                     if let WebSocketServerMessage::VaultUpdate(WebSocketVaultUpdate { document }) =
-                        &update.message
+                        &update
                         && document.vault_update_id <= cursor
                     {
                         continue;
                     }
 
-                    let message = match update.message {
+                    let message = match update {
                         WebSocketServerMessage::CursorPositions(CursorPositionFromServer {
                             clients,
                         }) => WebSocketServerMessage::CursorPositions(CursorPositionFromServer {
@@ -253,7 +253,7 @@ async fn websocket(
                                 .filter(|client| client.device_id != device_id)
                                 .collect(),
                         }),
-                        WebSocketServerMessage::VaultUpdate(_) => update.message,
+                        update @ WebSocketServerMessage::VaultUpdate(_) => update,
                     };
 
                     send_update_over_websocket(&message, &mut sender).await?;

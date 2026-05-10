@@ -29,7 +29,7 @@ use uuid::fmt::Hyphenated;
 
 use super::websocket::{
     broadcasts::Broadcasts,
-    models::{WebSocketServerMessage, WebSocketServerMessageWithOrigin, WebSocketVaultUpdate},
+    models::{WebSocketServerMessage, WebSocketVaultUpdate},
 };
 use crate::config::database_config::DatabaseConfig;
 use crate::consts::IDLE_POOL_TIMEOUT;
@@ -800,11 +800,12 @@ impl Database {
         // delivery channel — and the client-side `parentVersionId`
         // dedup absorbs the redundant message when the response made it
         // through.
-        let envelope = WebSocketServerMessage::VaultUpdate(WebSocketVaultUpdate {
-            document: version.clone().into(),
-        });
-        self.broadcasts
-            .send_document_update(vault_id, WebSocketServerMessageWithOrigin::new(envelope))?;
+        self.broadcasts.send_document_update(
+            vault_id,
+            WebSocketServerMessage::VaultUpdate(WebSocketVaultUpdate {
+                document: version.clone().into(),
+            }),
+        )?;
 
         Ok(())
     }

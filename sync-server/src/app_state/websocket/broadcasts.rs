@@ -6,7 +6,7 @@ use std::{
 use log::{debug, info, warn};
 use tokio::sync::{Mutex, broadcast};
 
-use super::models::{WebSocketServerMessage, WebSocketServerMessageWithOrigin};
+use super::models::WebSocketServerMessage;
 use crate::{
     app_state::database::models::VaultId,
     config::server_config::ServerConfig,
@@ -21,11 +21,11 @@ pub struct Broadcasts {
     // this non-async lets `send_document_update` run without an `.await`,
     // so an axum handler that is cancelled between `transaction.commit()`
     // and the broadcast can never drop the notification mid-flight.
-    tx: Arc<StdMutex<HashMap<VaultId, broadcast::Sender<WebSocketServerMessageWithOrigin>>>>,
+    tx: Arc<StdMutex<HashMap<VaultId, broadcast::Sender<WebSocketServerMessage>>>>,
     send_locks: Arc<Mutex<HashMap<VaultId, Arc<tokio::sync::Mutex<()>>>>>,
 }
 
-type TxMap = HashMap<VaultId, broadcast::Sender<WebSocketServerMessageWithOrigin>>;
+type TxMap = HashMap<VaultId, broadcast::Sender<WebSocketServerMessage>>;
 
 impl Broadcasts {
     pub fn new(server_config: &ServerConfig) -> Self {
@@ -66,7 +66,7 @@ impl Broadcasts {
         &self,
         vault: &VaultId,
         max_clients: usize,
-    ) -> Result<broadcast::Receiver<WebSocketServerMessageWithOrigin>, SyncServerError> {
+    ) -> Result<broadcast::Receiver<WebSocketServerMessage>, SyncServerError> {
         let mut tx_map = self
             .tx
             .lock()
@@ -110,13 +110,13 @@ impl Broadcasts {
     pub fn send_document_update(
         &self,
         vault: &str,
-        document: WebSocketServerMessageWithOrigin,
+        document: WebSocketServerMessage,
     ) -> Result<(), SyncServerError> {
-        let vault_update_id = match &document.message {
+        let vault_update_id = match &document {
             WebSocketServerMessage::VaultUpdate(u) => Some(u.document.vault_update_id),
             WebSocketServerMessage::CursorPositions(_) => None,
         };
-        let is_deleted = match &document.message {
+        let is_deleted = match &document {
             WebSocketServerMessage::VaultUpdate(u) => Some(u.document.is_deleted),
             WebSocketServerMessage::CursorPositions(_) => None,
         };
