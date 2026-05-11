@@ -1,6 +1,7 @@
 use crate::app_state::database::{WriteTransaction, models::VaultId};
+use crate::errors::{SyncServerError, server_error};
 use crate::utils::dedup_paths::dedup_paths;
-use anyhow::{Result, anyhow};
+use anyhow::anyhow;
 use log::{debug, info};
 
 pub async fn find_first_available_path(
@@ -8,7 +9,7 @@ pub async fn find_first_available_path(
     sanitized_relative_path: &str,
     database: &crate::app_state::database::Database,
     transaction: &mut WriteTransaction,
-) -> Result<String> {
+) -> Result<String, SyncServerError> {
     info!("Finding first available path for `{sanitized_relative_path}` in vault `{vault_id}`");
     for candidate in dedup_paths(sanitized_relative_path) {
         debug!("Checking candidate path for deconflicting names: `{candidate}`");
@@ -16,7 +17,7 @@ pub async fn find_first_available_path(
             .get_latest_non_deleted_document_by_path(
                 vault_id,
                 &candidate,
-                Some(transaction.connection_mut()?),
+                Some(transaction.connection_mut().map_err(server_error)?),
             )
             .await?
             .is_none()
@@ -30,7 +31,7 @@ pub async fn find_first_available_path(
         );
     }
 
-    Err(anyhow!(
+    Err(server_error(anyhow!(
         "No available path candidates produced for `{sanitized_relative_path}` in vault `{vault_id}`"
-    ))
+    )))
 }

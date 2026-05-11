@@ -163,15 +163,26 @@ pub fn too_many_requests_error(error: anyhow::Error) -> SyncServerError {
     SyncServerError::TooManyRequests(error)
 }
 
-/// Maps a `create_write_transaction` error to 429 if the database is busy,
-/// or 500 for all other failures.
-pub fn write_transaction_error(error: anyhow::Error) -> SyncServerError {
-    if error
-        .downcast_ref::<crate::app_state::database::WriteBusyError>()
-        .is_some()
-    {
+/// Maps a database-operation error to 429 if the database is busy or the
+/// pool acquire timed out (both retryable), or 500 for all other failures.
+pub fn database_error(error: anyhow::Error) -> SyncServerError {
+    if is_database_busy(&error) {
         too_many_requests_error(error)
     } else {
         server_error(error)
     }
+}
+
+fn is_database_busy(error: &anyhow::Error) -> bool {
+    if error
+        .downcast_ref::<crate::app_state::database::WriteBusyError>()
+        .is_some()
+    {
+        return true;
+    }
+    error.chain().any(|cause| {
+        cause
+            .downcast_ref::<sqlx::Error>()
+            .is_some_and(crate::app_state::database::is_sqlite_busy_error)
+    })
 }

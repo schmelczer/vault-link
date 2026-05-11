@@ -14,7 +14,7 @@ use crate::{
         database::models::{StoredDocumentVersion, VaultId},
     },
     config::user_config::User,
-    errors::{SyncServerError, client_error, server_error, write_transaction_error},
+    errors::{SyncServerError, client_error, server_error},
     server::{responses::DocumentUpdateResponse, update_document},
     utils::{
         find_first_available_path::find_first_available_path, is_binary::is_binary,
@@ -49,8 +49,7 @@ pub async fn create_document(
     let mut transaction = state
         .database
         .create_write_transaction(&vault_id)
-        .await
-        .map_err(write_transaction_error)?;
+        .await?;
 
     let sanitized_relative_path = sanitize_path(&request.relative_path).map_err(client_error)?;
     let new_content = request.content.contents.to_vec();
@@ -62,8 +61,7 @@ pub async fn create_document(
             &sanitized_relative_path,
             Some(transaction.connection_mut().map_err(server_error)?),
         )
-        .await
-        .map_err(server_error)?;
+        .await?;
 
     if let Some(latest_version) = latest_version {
         // Only merge with an existing document the client couldn't have
@@ -131,8 +129,7 @@ pub async fn create_document(
             &new_content,
             Some(transaction.connection_mut().map_err(server_error)?),
         )
-        .await
-        .map_err(server_error)?
+        .await?
     {
         info!(
             "Lost-create recovery: binding retry at `{sanitized_relative_path}` to existing doc {} (was at `{}`) in vault `{vault_id}` for device `{}`",
@@ -161,8 +158,7 @@ pub async fn create_document(
             &vault_id,
             Some(transaction.connection_mut().map_err(server_error)?),
         )
-        .await
-        .map_err(server_error)?;
+        .await?;
 
     let deduped_path = find_first_available_path(
         &vault_id,
@@ -170,8 +166,7 @@ pub async fn create_document(
         &state.database,
         &mut transaction,
     )
-    .await
-    .map_err(server_error)?;
+    .await?;
 
     if deduped_path != sanitized_relative_path {
         info!(
@@ -198,8 +193,7 @@ pub async fn create_document(
     state
         .database
         .insert_document_version(&vault_id, &new_version, transaction)
-        .await
-        .map_err(server_error)?;
+        .await?;
 
     Ok(Json(DocumentUpdateResponse::FastForwardUpdate(
         new_version.into(),

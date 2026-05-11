@@ -65,13 +65,11 @@ pub async fn get_unseen_documents(
             .database
             .get_latest_documents_since(vault_id, update_id, Some(up_to_vault_update_id), None)
             .await
-            .map_err(server_error)
     } else {
         state
             .database
             .get_latest_documents(vault_id, Some(up_to_vault_update_id), None)
             .await
-            .map_err(server_error)
     }
 }
 

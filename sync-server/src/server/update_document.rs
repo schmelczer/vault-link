@@ -22,9 +22,7 @@ use crate::{
         },
     },
     config::user_config::User,
-    errors::{
-        SyncServerError, client_error, not_found_error, server_error, write_transaction_error,
-    },
+    errors::{SyncServerError, client_error, not_found_error, server_error},
     server::requests::UpdateBinaryDocumentVersion,
     utils::{
         find_first_available_path::find_first_available_path, is_binary::as_non_binary_text,
@@ -58,8 +56,7 @@ pub async fn update_binary(
     let transaction = state
         .database
         .create_write_transaction(&vault_id)
-        .await
-        .map_err(write_transaction_error)?;
+        .await?;
 
     update_document(
         &parent_document.relative_path,
@@ -104,8 +101,7 @@ pub async fn update_text(
     let transaction = state
         .database
         .create_write_transaction(&vault_id)
-        .await
-        .map_err(write_transaction_error)?;
+        .await?;
 
     update_document(
         &parent_document.relative_path,
@@ -131,8 +127,7 @@ async fn get_parent_document(
     let parent = state
         .database
         .get_document_version(vault_id, parent_version_id, None)
-        .await
-        .map_err(server_error)?
+        .await?
         .map_or_else(
             || {
                 Err(not_found_error(anyhow!(
@@ -177,8 +172,7 @@ pub async fn update_document(
             &vault_id,
             Some(transaction.connection_mut().map_err(server_error)?),
         )
-        .await
-        .map_err(server_error)?;
+        .await?;
 
     let latest_version = state
         .database
@@ -187,8 +181,7 @@ pub async fn update_document(
             &document_id,
             Some(transaction.connection_mut().map_err(server_error)?),
         )
-        .await
-        .map_err(server_error)?
+        .await?
         .map_or_else(
             || {
                 Err(not_found_error(anyhow!(
@@ -199,11 +192,7 @@ pub async fn update_document(
         )?;
 
     if latest_version.is_deleted {
-        transaction
-            .rollback()
-            .await
-            .context("Failed to roll back transaction")
-            .map_err(server_error)?;
+        transaction.rollback().await?;
 
         info!("Document `{document_id}` has been deleted, ignoring update to it",);
         return Ok(Json(DocumentUpdateResponse::FastForwardUpdate(
@@ -221,11 +210,7 @@ pub async fn update_document(
         info!(
             "Document content is the same as the latest version for `{document_id}`, skipping update"
         );
-        transaction
-            .rollback()
-            .await
-            .context("Failed to roll back transaction")
-            .map_err(server_error)?;
+        transaction.rollback().await?;
 
         return Ok(Json(DocumentUpdateResponse::FastForwardUpdate(
             latest_version.into(),
@@ -289,8 +274,7 @@ pub async fn update_document(
         {
             let new_path =
                 find_first_available_path(&vault_id, requested, &state.database, &mut transaction)
-                    .await
-                    .map_err(server_error)?;
+                    .await?;
 
             if new_path != requested {
                 info!(
@@ -321,8 +305,7 @@ pub async fn update_document(
     state
         .database
         .insert_document_version(&vault_id, &new_version, transaction)
-        .await
-        .map_err(server_error)?;
+        .await?;
 
     Ok(Json(if is_same_as_request {
         DocumentUpdateResponse::FastForwardUpdate(new_version.into())

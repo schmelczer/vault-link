@@ -162,8 +162,7 @@ async fn websocket(
     let cursor = state
         .database
         .get_max_update_id_in_vault(&vault_id, None)
-        .await
-        .map_err(server_error)?;
+        .await?;
     drop(send_guard);
 
     // Catch-up on versions committed while this client was offline,

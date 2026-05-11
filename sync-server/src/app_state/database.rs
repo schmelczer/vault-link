@@ -5,12 +5,14 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
-use anyhow::{Context as _, Result, anyhow};
+use anyhow::{Context as _, Result};
 use log::info;
 use models::{
     DocumentId, DocumentVersionWithoutContent, StoredDocumentVersion, VaultId, VaultUpdateId,
 };
 use sqlx::{ConnectOptions, Connection, sqlite::SqliteConnectOptions, types::chrono::Utc};
+
+use crate::errors::{SyncServerError, database_error, server_error};
 
 pub mod models;
 
@@ -19,6 +21,24 @@ pub mod models;
 #[derive(Debug, thiserror::Error)]
 #[error("Database is busy")]
 pub struct WriteBusyError;
+
+/// Detects whether a `sqlx::Error` indicates the database is currently
+/// unavailable for a retryable reason: a `SQLITE_BUSY` from the engine, or
+/// a `PoolTimedOut` from our short acquire timeout. Both should surface as
+/// 429 so the client retries instead of treating it as a server fault.
+pub fn is_sqlite_busy_error(err: &sqlx::Error) -> bool {
+    match err {
+        sqlx::Error::Database(db_err) => {
+            // SQLITE_BUSY base code is 5. Extended codes share base 5.
+            let busy_by_code = db_err
+                .code()
+                .is_some_and(|c| c.parse::<u32>().is_ok_and(|n| n & 0xFF == 5));
+            busy_by_code || db_err.message().contains("database is locked")
+        }
+        sqlx::Error::PoolTimedOut => true,
+        _ => false,
+    }
+}
 
 use sqlx::{
     Pool, Sqlite, pool::PoolConnection, sqlite::SqliteConnection, sqlite::SqlitePoolOptions,
@@ -32,7 +52,7 @@ use super::websocket::{
     models::{WebSocketServerMessage, WebSocketVaultUpdate},
 };
 use crate::config::database_config::DatabaseConfig;
-use crate::consts::IDLE_POOL_TIMEOUT;
+use crate::consts::{IDLE_POOL_TIMEOUT, POOL_ACQUIRE_TIMEOUT};
 
 fn duration_millis_u64(duration: Duration) -> u64 {
     u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
@@ -87,22 +107,16 @@ impl WriteTransaction {
         pool: &Pool<Sqlite>,
         write_guard: tokio::sync::OwnedMutexGuard<()>,
     ) -> Result<Self> {
-        let mut conn = pool
-            .acquire()
-            .await
-            .context("Cannot acquire connection for write transaction")?;
+        let mut conn = match pool.acquire().await {
+            Ok(conn) => conn,
+            Err(e) if is_sqlite_busy_error(&e) => return Err(WriteBusyError.into()),
+            Err(e) => {
+                return Err(anyhow::Error::from(e)
+                    .context("Cannot acquire connection for write transaction"));
+            }
+        };
         if let Err(e) = sqlx::query("BEGIN IMMEDIATE").execute(&mut *conn).await {
-            let is_busy = match &e {
-                sqlx::Error::Database(db_err) => {
-                    // SQLITE_BUSY base code is 5. Extended codes share base 5.
-                    let busy_by_code = db_err
-                        .code()
-                        .is_some_and(|c| c.parse::<u32>().is_ok_and(|n| n & 0xFF == 5));
-                    busy_by_code || db_err.message().contains("database is locked")
-                }
-                _ => false,
-            };
-            if is_busy {
+            if is_sqlite_busy_error(&e) {
                 return Err(WriteBusyError.into());
             }
             return Err(e).context("Cannot begin immediate transaction");
@@ -113,22 +127,24 @@ impl WriteTransaction {
         })
     }
 
-    pub async fn commit(mut self) -> Result<()> {
+    pub async fn commit(mut self) -> Result<(), SyncServerError> {
         if let Some(mut conn) = self.conn.take() {
             sqlx::query("COMMIT")
                 .execute(&mut *conn)
                 .await
-                .context("Failed to commit transaction")?;
+                .context("Failed to commit transaction")
+                .map_err(database_error)?;
         }
         Ok(())
     }
 
-    pub async fn rollback(mut self) -> Result<()> {
+    pub async fn rollback(mut self) -> Result<(), SyncServerError> {
         if let Some(mut conn) = self.conn.take() {
             sqlx::query("ROLLBACK")
                 .execute(&mut *conn)
                 .await
-                .context("Failed to rollback transaction")?;
+                .context("Failed to rollback transaction")
+                .map_err(database_error)?;
         }
         Ok(())
     }
@@ -265,10 +281,14 @@ impl Database {
         drop(init_conn);
 
         // Per-connection PRAGMAs shared by both reader and writer pools.
-        // journal_mode = WAL is a no-op on an already-WAL database.
+        // Database-level PRAGMAs (auto_vacuum, journal_mode) are deliberately
+        // omitted here: they require a write lock to verify or set, so issuing
+        // them on every new pool connection blocks behind any in-flight writer
+        // and can fail with SQLITE_BUSY just to open a connection. The init
+        // connection above set them once; the WAL mode persists in the database
+        // header, so subsequent opens pick it up automatically.
         let base_options = SqliteConnectOptions::new()
             .filename(file_name.clone())
-            .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
             .busy_timeout(Duration::from_secs(30))
             .log_slow_statements(log::LevelFilter::Warn, Duration::from_secs(30))
             // In WAL mode, NORMAL is safe: data survives OS crashes, only the
@@ -292,6 +312,7 @@ impl Database {
         // Reader pool: multiple connections for concurrent reads.
         let reader = SqlitePoolOptions::new()
             .max_connections(config.max_connections_per_vault)
+            .acquire_timeout(POOL_ACQUIRE_TIMEOUT)
             .acquire_slow_threshold(Duration::from_secs(30))
             // Disabled: the health-check query is subject to busy_timeout
             // and blocks all connection checkouts when a write is active,
@@ -309,6 +330,7 @@ impl Database {
         // reader pool ensures writes never compete with reads for pool slots.
         let writer = SqlitePoolOptions::new()
             .max_connections(1)
+            .acquire_timeout(POOL_ACQUIRE_TIMEOUT)
             .acquire_slow_threshold(Duration::from_secs(30))
             .test_before_acquire(false)
             .before_acquire(rollback_before_acquire)
@@ -375,7 +397,10 @@ impl Database {
         Ok(self.get_vault_pools(vault).await?.reader)
     }
 
-    pub async fn create_write_transaction(&self, vault: &VaultId) -> Result<WriteTransaction> {
+    pub async fn create_write_transaction(
+        &self,
+        vault: &VaultId,
+    ) -> Result<WriteTransaction, SyncServerError> {
         let write_lock = {
             let mut locks = self.write_locks.lock().await;
             locks
@@ -384,8 +409,10 @@ impl Database {
                 .clone()
         };
         let write_guard = write_lock.lock_owned().await;
-        let pools = self.get_vault_pools(vault).await?;
-        WriteTransaction::new(&pools.writer, write_guard).await
+        let pools = self.get_vault_pools(vault).await.map_err(database_error)?;
+        WriteTransaction::new(&pools.writer, write_guard)
+            .await
+            .map_err(database_error)
     }
 
     /// Return the latest state of all documents in the vault, optionally
@@ -397,7 +424,7 @@ impl Database {
         vault: &VaultId,
         up_to_vault_update_id: Option<VaultUpdateId>,
         connection: Option<&mut SqliteConnection>,
-    ) -> Result<Vec<DocumentVersionWithoutContent>> {
+    ) -> Result<Vec<DocumentVersionWithoutContent>, SyncServerError> {
         // `i64::MAX` makes the upper bound a no-op for callers that don't
         // care about an exact snapshot (they pass `None`).
         let upper = up_to_vault_update_id.unwrap_or(i64::MAX);
@@ -423,7 +450,12 @@ impl Database {
             query.fetch_all(&mut *conn).await
         } else {
             query
-                .fetch_all(&self.get_connection_pool(vault).await?)
+                .fetch_all(
+                    &self
+                        .get_connection_pool(vault)
+                        .await
+                        .map_err(database_error)?,
+                )
                 .await
         }
         .context("Cannot fetch latest documents")
@@ -441,6 +473,7 @@ impl Database {
                 })
                 .collect()
         })
+        .map_err(database_error)
     }
 
     /// Return the latest state of all documents (including deleted) in the
@@ -454,7 +487,7 @@ impl Database {
         vault_update_id: VaultUpdateId,
         up_to_vault_update_id: Option<VaultUpdateId>,
         connection: Option<&mut SqliteConnection>,
-    ) -> Result<Vec<DocumentVersionWithoutContent>> {
+    ) -> Result<Vec<DocumentVersionWithoutContent>, SyncServerError> {
         // `i64::MAX` makes the upper bound a no-op for callers that don't
         // care about an exact snapshot (they pass `None`).
         let upper = up_to_vault_update_id.unwrap_or(i64::MAX);
@@ -499,7 +532,12 @@ impl Database {
             query.fetch_all(&mut *conn).await
         } else {
             query
-                .fetch_all(&self.get_connection_pool(vault).await?)
+                .fetch_all(
+                    &self
+                        .get_connection_pool(vault)
+                        .await
+                        .map_err(database_error)?,
+                )
                 .await
         }
         .with_context(|| {
@@ -519,13 +557,14 @@ impl Database {
                 })
                 .collect()
         })
+        .map_err(database_error)
     }
 
     pub async fn get_max_update_id_in_vault(
         &self,
         vault: &VaultId,
         connection: Option<&mut SqliteConnection>,
-    ) -> Result<i64> {
+    ) -> Result<i64, SyncServerError> {
         let query = sqlx::query!(
             r#"
             select coalesce(max(vault_update_id), 0) as max_vault_update_id
@@ -537,11 +576,17 @@ impl Database {
             query.fetch_one(&mut *conn).await
         } else {
             query
-                .fetch_one(&self.get_connection_pool(vault).await?)
+                .fetch_one(
+                    &self
+                        .get_connection_pool(vault)
+                        .await
+                        .map_err(database_error)?,
+                )
                 .await
         }
         .map(|row| row.max_vault_update_id)
         .context("Cannot fetch max update id in vault")
+        .map_err(database_error)
     }
 
     pub async fn get_latest_non_deleted_document_by_path(
@@ -549,7 +594,7 @@ impl Database {
         vault: &VaultId,
         relative_path: &str,
         connection: Option<&mut SqliteConnection>,
-    ) -> Result<Option<StoredDocumentVersion>> {
+    ) -> Result<Option<StoredDocumentVersion>, SyncServerError> {
         let query = sqlx::query_as!(
             StoredDocumentVersion,
             r#"
@@ -578,10 +623,16 @@ impl Database {
             query.fetch_optional(&mut *conn).await
         } else {
             query
-                .fetch_optional(&self.get_connection_pool(vault).await?)
+                .fetch_optional(
+                    &self
+                        .get_connection_pool(vault)
+                        .await
+                        .map_err(database_error)?,
+                )
                 .await
         }
         .context("Cannot fetch latest document version")
+        .map_err(database_error)
     }
 
     /// Find a doc whose CREATE was authored by this device with
@@ -611,7 +662,7 @@ impl Database {
         last_seen_vault_update_id: VaultUpdateId,
         content: &[u8],
         connection: Option<&mut SqliteConnection>,
-    ) -> Result<Option<StoredDocumentVersion>> {
+    ) -> Result<Option<StoredDocumentVersion>, SyncServerError> {
         let query = sqlx::query_as!(
             StoredDocumentVersion,
             r#"
@@ -646,10 +697,16 @@ impl Database {
             query.fetch_optional(&mut *conn).await
         } else {
             query
-                .fetch_optional(&self.get_connection_pool(vault).await?)
+                .fetch_optional(
+                    &self
+                        .get_connection_pool(vault)
+                        .await
+                        .map_err(database_error)?,
+                )
                 .await
         }
         .context("Cannot fetch lost-create candidate")
+        .map_err(database_error)
     }
 
     pub async fn get_latest_document(
@@ -657,7 +714,7 @@ impl Database {
         vault: &VaultId,
         document_id: &DocumentId,
         connection: Option<&mut SqliteConnection>,
-    ) -> Result<Option<StoredDocumentVersion>> {
+    ) -> Result<Option<StoredDocumentVersion>, SyncServerError> {
         let document_id = document_id.as_hyphenated();
         let query = sqlx::query_as!(
             StoredDocumentVersion,
@@ -683,10 +740,16 @@ impl Database {
             query.fetch_optional(&mut *conn).await
         } else {
             query
-                .fetch_optional(&self.get_connection_pool(vault).await?)
+                .fetch_optional(
+                    &self
+                        .get_connection_pool(vault)
+                        .await
+                        .map_err(database_error)?,
+                )
                 .await
         }
         .context("Cannot fetch latest document version")
+        .map_err(database_error)
     }
 
     pub async fn get_document_version(
@@ -694,7 +757,7 @@ impl Database {
         vault: &VaultId,
         vault_update_id: VaultUpdateId,
         connection: Option<&mut SqliteConnection>,
-    ) -> Result<Option<StoredDocumentVersion>> {
+    ) -> Result<Option<StoredDocumentVersion>, SyncServerError> {
         let query = sqlx::query_as!(
             StoredDocumentVersion,
             r#"
@@ -718,10 +781,16 @@ impl Database {
             query.fetch_optional(&mut *conn).await
         } else {
             query
-                .fetch_optional(&self.get_connection_pool(vault).await?)
+                .fetch_optional(
+                    &self
+                        .get_connection_pool(vault)
+                        .await
+                        .map_err(database_error)?,
+                )
                 .await
         }
         .context("Cannot fetch document version")
+        .map_err(database_error)
     }
 
     // inserting the document must be the last step of the transaction
@@ -730,7 +799,7 @@ impl Database {
         vault_id: &VaultId,
         version: &StoredDocumentVersion,
         mut transaction: WriteTransaction,
-    ) -> Result<()> {
+    ) -> Result<(), SyncServerError> {
         let document_id = version.document_id.as_hyphenated();
         let query = sqlx::query!(
             r#"
@@ -766,14 +835,12 @@ impl Database {
         let _send_guard = self.broadcasts.acquire_send_lock(vault_id).await;
 
         query
-            .execute(transaction.connection_mut()?)
+            .execute(transaction.connection_mut().map_err(server_error)?)
             .await
-            .context("Cannot insert document version")?;
+            .context("Cannot insert document version")
+            .map_err(database_error)?;
 
-        transaction
-            .commit()
-            .await
-            .context("Failed to commit transaction")?;
+        transaction.commit().await?;
 
         // Broadcast every commit to every connected client, including
         // the originator. The HTTP response is the originator's normal

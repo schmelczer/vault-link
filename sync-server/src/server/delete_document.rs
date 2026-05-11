@@ -1,4 +1,4 @@
-use anyhow::{Context, anyhow};
+use anyhow::anyhow;
 use axum::{
     Extension, Json,
     extract::{Path, State},
@@ -16,7 +16,7 @@ use crate::{
         },
     },
     config::user_config::User,
-    errors::{SyncServerError, not_found_error, server_error, write_transaction_error},
+    errors::{SyncServerError, not_found_error, server_error},
     utils::normalize::normalize,
 };
 
@@ -43,8 +43,7 @@ pub async fn delete_document(
     let mut transaction = state
         .database
         .create_write_transaction(&vault_id)
-        .await
-        .map_err(write_transaction_error)?;
+        .await?;
 
     let last_update_id = state
         .database
@@ -52,8 +51,7 @@ pub async fn delete_document(
             &vault_id,
             Some(transaction.connection_mut().map_err(server_error)?),
         )
-        .await
-        .map_err(server_error)?;
+        .await?;
 
     let latest_version = state
         .database
@@ -62,26 +60,17 @@ pub async fn delete_document(
             &document_id,
             Some(transaction.connection_mut().map_err(server_error)?),
         )
-        .await
-        .map_err(server_error)?;
+        .await?;
 
     let Some(latest_version) = latest_version else {
-        transaction
-            .rollback()
-            .await
-            .context("Failed to roll back transaction")
-            .map_err(server_error)?;
+        transaction.rollback().await?;
         return Err(not_found_error(anyhow!(
             "Document `{document_id}` not found in vault `{vault_id}`"
         )));
     };
 
     if latest_version.is_deleted {
-        transaction
-            .rollback()
-            .await
-            .context("Failed to roll back transaction")
-            .map_err(server_error)?;
+        transaction.rollback().await?;
 
         info!("Document `{document_id}` has already been deleted",);
         return Ok(Json(latest_version.into()));
@@ -110,8 +99,7 @@ pub async fn delete_document(
     state
         .database
         .insert_document_version(&vault_id, &new_version, transaction)
-        .await
-        .map_err(server_error)?;
+        .await?;
 
     Ok(Json(new_version.into()))
 }
