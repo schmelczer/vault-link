@@ -3,7 +3,7 @@ use std::{
     sync::{Arc, Mutex as StdMutex},
 };
 
-use log::{debug, info, warn};
+use log::{debug, warn};
 use tokio::sync::{Mutex, broadcast};
 
 use super::models::WebSocketServerMessage;
@@ -72,13 +72,7 @@ impl Broadcasts {
             .lock()
             .map_err(|_| server_error(anyhow::anyhow!("broadcasts.tx mutex poisoned")))?;
 
-        let count_before_prune = tx_map
-            .get(vault)
-            .map_or(0, tokio::sync::broadcast::Sender::receiver_count);
-        let pruned = Self::prune_inactive_vaults(&mut tx_map);
-        let pruned_self = pruned
-            .iter()
-            .any(|pruned_vault| pruned_vault.as_str() == vault);
+        Self::prune_inactive_vaults(&mut tx_map);
 
         let sender = tx_map
             .entry(vault.to_owned())
@@ -94,11 +88,6 @@ impl Broadcasts {
         }
 
         let receiver = sender.subscribe();
-        let count_after = sender.receiver_count();
-        info!(
-            "[BCAST] get_receiver vault={vault} count_before_prune={count_before_prune} pruned_self={pruned_self} pruned_total={} count_after_subscribe={count_after}",
-            pruned.len()
-        );
         Ok(receiver)
     }
 
@@ -112,26 +101,12 @@ impl Broadcasts {
         vault: &str,
         document: WebSocketServerMessage,
     ) -> Result<(), SyncServerError> {
-        let vault_update_id = match &document {
-            WebSocketServerMessage::VaultUpdate(u) => Some(u.document.vault_update_id),
-            WebSocketServerMessage::CursorPositions(_) => None,
-        };
-        let is_deleted = match &document {
-            WebSocketServerMessage::VaultUpdate(u) => Some(u.document.is_deleted),
-            WebSocketServerMessage::CursorPositions(_) => None,
-        };
         let mut tx_map = self.tx.lock().map_err(|_| {
             server_error(anyhow::anyhow!(
                 "broadcasts.tx mutex poisoned; skipping document update broadcast"
             ))
         })?;
-        let count_before_prune = tx_map
-            .get(vault)
-            .map_or(0, tokio::sync::broadcast::Sender::receiver_count);
-        let pruned = Self::prune_inactive_vaults(&mut tx_map);
-        let pruned_self = pruned
-            .iter()
-            .any(|pruned_vault| pruned_vault.as_str() == vault);
+        Self::prune_inactive_vaults(&mut tx_map);
 
         let sender = tx_map
             .entry(vault.to_owned())
@@ -140,21 +115,12 @@ impl Broadcasts {
         let count_before_send = sender.receiver_count();
 
         if count_before_send == 0 {
-            info!(
-                "[BCAST] send_document_update vault={vault} vuid={vault_update_id:?} is_deleted={is_deleted:?} count_before_prune={count_before_prune} pruned_self={pruned_self} count_before_send=0 SKIPPED"
-            );
             debug!("Skipping broadcast, no clients connected for vault `{vault}`");
             return Ok(());
         }
 
-        let send_result = sender.send(document);
-        match &send_result {
-            Ok(n) => info!(
-                "[BCAST] send_document_update vault={vault} vuid={vault_update_id:?} is_deleted={is_deleted:?} count_before_prune={count_before_prune} pruned_self={pruned_self} count_before_send={count_before_send} SENT delivered_to={n}"
-            ),
-            Err(e) => warn!(
-                "[BCAST] send_document_update vault={vault} vuid={vault_update_id:?} is_deleted={is_deleted:?} count_before_prune={count_before_prune} pruned_self={pruned_self} count_before_send={count_before_send} FAILED err={e}"
-            ),
+        if let Err(e) = sender.send(document) {
+            warn!("Failed to send document update broadcast: {e}");
         }
         Ok(())
     }
