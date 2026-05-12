@@ -23,7 +23,7 @@ pub const DEFAULT_LOG_ROTATION_INTERVAL: Duration = Duration::from_hours(24);
 pub const IDLE_POOL_TIMEOUT: Duration = Duration::from_mins(5);
 
 /// Fail fast on pool acquire so a transiently locked database surfaces as
-/// a 429 in seconds, not after a 30s busy_timeout. Callers retry.
+/// a 429 in seconds, not after a 30s `busy_timeout`. Callers retry.
 pub const POOL_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(5);
 pub const GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
 pub const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);

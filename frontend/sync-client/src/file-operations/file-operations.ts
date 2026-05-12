@@ -9,7 +9,6 @@ import { isBinary } from "../utils/is-binary";
 import type { ServerConfig } from "../services/server-config";
 import { FileNotFoundError } from "../errors/file-not-found-error";
 import { FileAlreadyExistsError } from "../errors/file-already-exists-error";
-import type { ExpectedFsEvents } from "../sync-operations/expected-fs-events";
 
 export class FileOperations {
     private readonly fs: SafeFileSystemOperations;
@@ -18,7 +17,6 @@ export class FileOperations {
         private readonly logger: Logger,
         fs: FileSystemOperations,
         private readonly serverConfig: ServerConfig,
-        private readonly expectedFsEvents: ExpectedFsEvents,
         private readonly nativeLineEndings = "\n"
     ) {
         this.fs = new SafeFileSystemOperations(fs, logger);
@@ -67,13 +65,7 @@ export class FileOperations {
         }
         await this.createParentDirectories(path);
 
-        this.expectedFsEvents.expectCreate(path);
-        try {
-            await this.fs.write(path, this.toNativeLineEndings(newContent));
-        } catch (e) {
-            this.expectedFsEvents.unexpectCreate(path);
-            throw e;
-        }
+        await this.fs.write(path, this.toNativeLineEndings(newContent));
         return path;
     }
 
@@ -95,12 +87,6 @@ export class FileOperations {
             return;
         }
 
-        // Single-source the expectation registration: register exactly once
-        // per call, and unexpect from the catch if the underlying fs op
-        // throws (FileNotFoundError or otherwise). The previous shape
-        // registered inside each branch and let the catch swallow
-        // FileNotFoundError, leaking the expectation into the map.
-        this.expectedFsEvents.expectUpdate(path);
         try {
             if (
                 !isFileTypeMergable(
@@ -165,7 +151,6 @@ export class FileOperations {
                 }
             );
         } catch (e) {
-            this.expectedFsEvents.unexpectUpdate(path);
             if (e instanceof FileNotFoundError) {
                 this.logger.debug(
                     `File ${path} disappeared during write; not recreating`
@@ -178,13 +163,7 @@ export class FileOperations {
 
     public async delete(path: RelativePath): Promise<void> {
         if (await this.exists(path)) {
-            this.expectedFsEvents.expectDelete(path);
-            try {
-                await this.fs.delete(path);
-            } catch (e) {
-                this.expectedFsEvents.unexpectDelete(path);
-                throw e;
-            }
+            await this.fs.delete(path);
             await this.deletingEmptyParentDirectoriesOfDeletedFile(path);
         } else {
             this.logger.debug(`No need to delete '${path}', it doesn't exist`);
@@ -223,13 +202,7 @@ export class FileOperations {
         }
         await this.createParentDirectories(newPath);
 
-        this.expectedFsEvents.expectRename(oldPath, newPath);
-        try {
-            await this.fs.rename(oldPath, newPath);
-        } catch (e) {
-            this.expectedFsEvents.unexpectRename(oldPath, newPath);
-            throw e;
-        }
+        await this.fs.rename(oldPath, newPath);
         await this.deletingEmptyParentDirectoriesOfDeletedFile(oldPath);
         return newPath;
     }

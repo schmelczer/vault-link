@@ -247,36 +247,33 @@ describe("SyncEventQueue", () => {
         assert.strictEqual(second.isUserRename, true);
     });
 
-    it("settled record owns a path over a stale pending create", async () => {
+    it("drops LocalCreate echoes for paths already tracked", async () => {
+        // The syncer's own remote-create writes (quick-write +
+        // reconciler placements) upsert the record at `localPath`
+        // before calling `operations.create`. The watcher echo then
+        // re-enters as a LocalCreate at the same path — it must be
+        // dropped here, otherwise the wire-loop would POST a duplicate
+        // and the server would deconflict it into a phantom file.
         const queue = createQueue();
         await queue.upsertRecord(fakeRecord("A", { localPath: "b.md" }));
 
         await queue.enqueue({ type: SyncEventType.LocalCreate, path: "b.md" });
-        await queue.enqueue({
-            type: SyncEventType.LocalUpdate,
-            path: "c.md",
-            oldPath: "b.md"
-        });
 
-        const aRecord = queue.getDocumentByDocumentId("A");
-        assert.strictEqual(aRecord?.localPath, "c.md");
-        assert.strictEqual(
-            queue.getRecordByLocalPath("b.md" as RelativePath),
-            undefined
-        );
-        assert.strictEqual(
-            queue.getRecordByLocalPath("c.md" as RelativePath)?.documentId,
-            "A"
-        );
+        assert.strictEqual(await queue.next(), undefined);
+    });
+
+    it("admits LocalCreate when the prior owner is pending server delete", async () => {
+        // A user create at a path whose previous doc is in the
+        // HTTP-acked-but-WS-pending window is genuine — propagate it.
+        const queue = createQueue();
+        await queue.upsertRecord(fakeRecord("A", { localPath: "b.md" }));
+        queue.markServerDeletePending("A");
+
+        await queue.enqueue({ type: SyncEventType.LocalCreate, path: "b.md" });
 
         const create = await queue.next();
         assert.strictEqual(create?.type, SyncEventType.LocalCreate);
         assert.strictEqual(create.path, "b.md");
-
-        const update = await queue.next();
-        assert.strictEqual(update?.type, SyncEventType.LocalUpdate);
-        assert.strictEqual(update.documentId, "A");
-        assert.strictEqual(update.path, "c.md");
     });
 
     it("byLocalPath stays consistent across upsertRecord, setLocalPath, and rename", async () => {

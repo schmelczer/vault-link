@@ -306,9 +306,65 @@ export class Reconciler {
             }
         }
 
+        // Re-check ownership after the content fetch. A user rename or
+        // other interleaved op may have placed bytes / claimed the slot
+        // during the await. Without this, `upsertRecord` below would
+        // displace the new owner (clearing its `localPath`) and the
+        // following `operations.create` would then throw
+        // `FileAlreadyExistsError`, leaving the displaced record
+        // placement-pending with its bytes orphaned on disk.
+        try {
+            if (await this.operations.exists(target)) {
+                this.logger.debug(
+                    `Reconciler: cannot place ${record.documentId} at ${target} ` +
+                        `— slot newly occupied on disk after fetch; will retry next pass`
+                );
+                return;
+            }
+        } catch (e) {
+            this.logger.error(
+                `Reconciler: existence check failed for ${target}: ${String(e)}`
+            );
+            return;
+        }
+        if (this.queue.byLocalPath.get(target) !== undefined) {
+            this.logger.debug(
+                `Reconciler: cannot place ${record.documentId} at ${target} ` +
+                    `— slot newly tracked by another record after fetch; will retry next pass`
+            );
+            return;
+        }
+
+        // Install the slot *before* the disk write so the watcher's
+        // create echo, when it arrives, sees `byLocalPath[target]` set
+        // and the queue's enqueue-time echo guard drops it. Also pre-
+        // populates `remoteHash` so any downstream operation that
+        // compares against it (e.g. `processLocalUpdate`'s hashChanged
+        // skip) sees the right value. Mirrors the ordering in
+        // `processRemoteCreateForNewDocument`'s quick-write branch.
+        const contentHash = await hash(content);
+        try {
+            await this.queue.upsertRecord({
+                documentId: record.documentId,
+                parentVersionId: record.parentVersionId,
+                remoteRelativePath: record.remoteRelativePath,
+                remoteHash: contentHash,
+                localPath: target
+            });
+        } catch (e) {
+            this.logger.error(
+                `Reconciler: upsertRecord before create failed for ${record.documentId}: ${String(e)}`
+            );
+            return;
+        }
+
         try {
             await this.operations.create(target, content);
         } catch (e) {
+            // Roll back the slot claim so a later pass can retry or
+            // re-resolve. Without this, the record looks placed but the
+            // bytes never made it to disk.
+            await this.queue.setLocalPath(record.documentId, undefined);
             if (e instanceof FileNotFoundError) {
                 this.logger.debug(
                     `Reconciler: create at ${target} hit FileNotFound (likely parent ` +
@@ -329,14 +385,6 @@ export class Reconciler {
             return;
         }
 
-        try {
-            await this.queue.setLocalPath(record.documentId, target);
-        } catch (e) {
-            this.logger.error(
-                `Reconciler: setLocalPath after create failed for ${record.documentId}: ${String(e)}`
-            );
-            return;
-        }
         this.pendingPlacementContent.delete(record.documentId);
         this.logger.debug(
             `Reconciler: placed ${record.documentId} at ${target}`
@@ -663,8 +711,10 @@ export class Reconciler {
         // We pass the freshly-read pre-write content as
         // `expectedContent` so the 3-way merge inside `operations.write`
         // becomes a clean overwrite (no concurrent edits to merge with).
-        // `operations.write` registers `expectUpdate` itself, so the
-        // watcher swallows each leg's modify event.
+        // Each leg's echo modify event is harmless: the wire-loop's
+        // `processLocalUpdate` re-hashes the file and compares to
+        // `record.remoteHash`, which was set to match the just-written
+        // bytes — so the echo is dropped as a no-op.
         const writtenLegs: SwapLeg[] = [];
         for (const leg of legs) {
             const newBytes = contentByDocId.get(leg.documentId);

@@ -145,9 +145,9 @@ export class SyncEventQueue {
                         displaced.localPath = undefined;
                         this.logger.warn(
                             `Persisted state had two records sharing localPath ` +
-                                `${record.localPath} (${displaced.documentId} and ` +
-                                `${record.documentId}); clearing the prior holder's ` +
-                                `localPath so the reconciler re-places it`
+                            `${record.localPath} (${displaced.documentId} and ` +
+                            `${record.documentId}); clearing the prior holder's ` +
+                            `localPath so the reconciler re-places it`
                         );
                     }
                     this._byLocalPath.set(record.localPath, record);
@@ -267,6 +267,16 @@ export class SyncEventQueue {
         }
 
         if (input.type === SyncEventType.LocalCreate) {
+            const owner = this._byLocalPath.get(path);
+            if (
+                owner !== undefined &&
+                !this.hasPendingServerDelete(owner.documentId)
+            ) {
+                this.logger.debug(
+                    `Ignoring LocalCreate echo at ${path}: slot is already tracked by ${owner.documentId}`
+                );
+                return;
+            }
             this.events.push({
                 type: SyncEventType.LocalCreate,
                 path,
@@ -279,7 +289,7 @@ export class SyncEventQueue {
 
         const lookupPath =
             input.type === SyncEventType.LocalUpdate &&
-            input.oldPath !== undefined
+                input.oldPath !== undefined
                 ? input.oldPath
                 : path;
         const record = this._byLocalPath.get(lookupPath);
@@ -796,7 +806,7 @@ export class SyncEventQueue {
             return;
         }
 
-        for (let i = createIndex + 1; i < this.events.length; ) {
+        for (let i = createIndex + 1; i < this.events.length;) {
             const event = this.events[i];
             if (
                 event.type === SyncEventType.LocalDelete &&
@@ -849,7 +859,7 @@ export class SyncEventQueue {
             return;
         }
 
-        for (let i = createIndex + 1; i < this.events.length; ) {
+        for (let i = createIndex + 1; i < this.events.length;) {
             const event = this.events[i];
             if (
                 event.type === SyncEventType.LocalUpdate &&

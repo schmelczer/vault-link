@@ -592,10 +592,28 @@ export class Syncer {
     ): Promise<void> {
         const documentId = await event.documentId;
         const record = this.queue.getDocumentByDocumentId(documentId);
-        if (
-            record?.localPath !== undefined &&
-            record.localPath !== event.path
-        ) {
+        if (record === undefined) {
+            // The doc is no longer tracked. Typical cause: a remote delete
+            // arrived first and `processRemoteDelete` already ran
+            // `removeDocumentById`, but `operations.delete` fired a
+            // watcher echo that landed in the queue as a stale LocalDelete.
+            // Without this skip we'd re-send DELETE to the server for a
+            // doc that's already gone.
+            this.logger.debug(
+                `Skipping local-delete for ${documentId} — doc no longer tracked`
+            );
+            return;
+        }
+        if (this.queue.hasPendingServerDelete(documentId)) {
+            // We already initiated the server delete; nothing more to do.
+            // Reaches here when a LocalDelete echo lands behind the
+            // already-queued LocalDelete that drove the server delete.
+            this.logger.debug(
+                `Skipping local-delete for ${documentId} — server delete already pending`
+            );
+            return;
+        }
+        if (record.localPath !== undefined && record.localPath !== event.path) {
             this.logger.debug(
                 `Skipping local-delete for ${documentId} at ${event.path}: ` +
                     `record now owns ${record.localPath}`

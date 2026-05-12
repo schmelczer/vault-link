@@ -244,7 +244,8 @@ pub async fn update_document(
             let content_clone = content.clone();
 
             let merged = tokio::task::spawn_blocking(move || {
-                let merged = reconcile(
+                
+                reconcile(
                     &parent_owned,
                     &latest_owned.into(),
                     &new_owned.into(),
@@ -252,8 +253,7 @@ pub async fn update_document(
                 )
                 .apply()
                 .text()
-                .into_bytes();
-                merged
+                .into_bytes()
             })
             .await
             .map_err(|e| server_error(anyhow::anyhow!("Reconcile task failed: {e}")))?;

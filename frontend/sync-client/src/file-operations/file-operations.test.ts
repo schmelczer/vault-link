@@ -7,7 +7,6 @@ import { assertSetContainsExactly } from "../utils/assert-set-contains-exactly";
 import type { FileSystemOperations } from "./filesystem-operations";
 import type { TextWithCursors } from "reconcile-text";
 import type { ServerConfig, ServerConfigData } from "../services/server-config";
-import { ExpectedFsEvents } from "../sync-operations/expected-fs-events";
 import { FileAlreadyExistsError } from "../errors/file-already-exists-error";
 
 class MockServerConfig implements Pick<ServerConfig, "getConfig"> {
@@ -72,8 +71,7 @@ function makeOps(): {
     const ops = new FileOperations(
         new Logger(),
         fs,
-        new MockServerConfig() as ServerConfig, // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
-        new ExpectedFsEvents()
+        new MockServerConfig() as ServerConfig // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
     );
     return { fs, ops };
 }
