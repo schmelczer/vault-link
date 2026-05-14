@@ -7,7 +7,7 @@ import { randomCasing } from "./utils/random-casing";
 import { TimeoutError } from "./utils/with-timeout";
 import { TestErrorTracker } from "./utils/test-error-tracker";
 
-const TEST_ITERATIONS = 5;
+const TEST_ITERATIONS = 50;
 const MAX_INITIAL_DOCS = 10;
 
 // Simulate async file access by injecting waiting time before returning from file operations.

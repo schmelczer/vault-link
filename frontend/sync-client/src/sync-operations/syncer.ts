@@ -876,6 +876,23 @@ export class Syncer {
             return this.processRemoteUpdate(trackedRecord, remoteVersion);
         }
 
+        // Tombstoned: we removed this doc in this session via
+        // `removeDocumentById` (either WS delete receipt or PUT response
+        // with `isDeleted=true`). A late RemoteChange for the same doc
+        // can still reach us — buffered in the network-chaos jitter
+        // pipeline, or re-enqueued after the delete's purge — and
+        // without this gate `processRemoteCreateForNewDocument` would
+        // happily fetch pre-delete bytes and resurrect the doc, blocking
+        // any other doc whose `remoteRelativePath` happens to be the
+        // same slot.
+        if (this.queue.hasBeenDeleted(remoteVersion.documentId)) {
+            this.queue.lastSeenUpdateId = remoteVersion.vaultUpdateId;
+            this.logger.debug(
+                `Discarding stale remote update for tombstoned ${remoteVersion.documentId} at ${remoteVersion.relativePath}`
+            );
+            return;
+        }
+
         return this.processRemoteCreateForNewDocument(remoteVersion);
     }
 

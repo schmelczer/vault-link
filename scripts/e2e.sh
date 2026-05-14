@@ -91,25 +91,10 @@ print_failed_log() {
     return 1
 }
 
-E2E_TIMEOUT=${2:-3600}
-start_time=$(date +%s)
-echo "Monitoring $process_count processes (timeout: ${E2E_TIMEOUT}s)"
+echo "Monitoring $process_count processes"
 
 # Monitor processes
 while true; do
-    # Script-level timeout to prevent indefinite hangs
-    current_time=$(date +%s)
-    elapsed=$((current_time - start_time))
-    if [ $elapsed -ge $E2E_TIMEOUT ]; then
-        echo "E2E timeout reached (${E2E_TIMEOUT}s). Killing remaining processes."
-        for pid in "${pids[@]}"; do
-            if [ -n "$pid" ]; then
-                kill $pid 2>/dev/null || true
-            fi
-        done
-        exit 1
-    fi
-
     if print_failed_log; then
         # Kill remaining processes
         for pid in "${pids[@]}"; do

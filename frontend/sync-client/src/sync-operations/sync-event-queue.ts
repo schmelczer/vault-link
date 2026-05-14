@@ -94,6 +94,16 @@ export class SyncEventQueue {
     // `clearAllState` / schema-version-mismatch reset.
     private readonly _pendingServerDeletes = new Set<DocumentId>();
 
+    // DocIds we've seen deleted in this session. `removeDocumentById`
+    // adds here so that any stale `RemoteChange` for that doc that
+    // arrives later (e.g. an older vuid buffered in the network-chaos
+    // jitter pipeline, or a re-enqueue that landed after the delete's
+    // `purgeRemoteChangesForDocumentId`) is recognised in
+    // `processRemoteChange` and skipped instead of falling through to
+    // `processRemoteCreateForNewDocument` and resurrecting the doc
+    // with pre-delete bytes. Cleared on `clearAllState`.
+    private readonly _deletedDocumentIds = new Set<DocumentId>();
+
     public constructor(
         private readonly settings: Settings,
         private readonly logger: Logger,
@@ -605,6 +615,15 @@ export class SyncEventQueue {
     }
 
     public async removeDocumentById(documentId: DocumentId): Promise<void> {
+        // Record the tombstone unconditionally: `processRemoteChange`
+        // checks it to drop late RemoteChanges that would otherwise
+        // resurrect the doc via `processRemoteCreateForNewDocument`.
+        // Purging the queue (below) only catches events that are
+        // already enqueued; events that arrive after this point (e.g.
+        // a stale broadcast buffered in the network-chaos jitter
+        // pipeline, or a re-enqueue that lands after this purge) need
+        // the tombstone to be skipped.
+        this._deletedDocumentIds.add(documentId);
         const record = this.byDocId.get(documentId);
         if (record === undefined) {
             // Still clear any deletion-pending mark and purge stale
@@ -632,6 +651,10 @@ export class SyncEventQueue {
         // bytes that disagree with every other agent.
         this.purgeRemoteChangesForDocumentId(documentId);
         return this.save();
+    }
+
+    public hasBeenDeleted(documentId: DocumentId): boolean {
+        return this._deletedDocumentIds.has(documentId);
     }
 
     /**
@@ -739,6 +762,7 @@ export class SyncEventQueue {
         this.byDocId.clear();
         this._byLocalPath.clear();
         this._pendingServerDeletes.clear();
+        this._deletedDocumentIds.clear();
         this._lastSeenUpdateId.reset();
         await this.save();
     }
