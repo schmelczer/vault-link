@@ -9,7 +9,7 @@ env:
 
 jobs:
   publish-plugin:
-    runs-on: ubuntu-latest
+    runs-on: docker
 
     steps:
       - uses: actions/checkout@v4
@@ -28,7 +28,7 @@ jobs:
           npm run build
 
       - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: https://github.com/dtolnay/rust-toolchain@stable
         with:
           toolchain: "1.92.0"
           components: clippy, rustfmt
@@ -41,31 +41,15 @@ jobs:
       - name: Build Linux and Windows binaries
         run: ./scripts/build-sync-server-binaries.sh
 
-      - name: Create release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SERVER_URL: ${{ github.server_url }}
-          REPO: ${{ github.repository }}
+      - name: Stage release assets
         run: |
-          tag="${GITHUB_REF#refs/tags/}"
-
           mkdir -p release
           cp frontend/obsidian-plugin/dist/* release/
           cp sync-server/artifacts/sync-server-* release/
 
-          # Create draft release via Forgejo API
-          RELEASE_ID=$(curl -s -X POST \
-            "${SERVER_URL}/api/v1/repos/${REPO}/releases" \
-            -H "Authorization: token ${GITHUB_TOKEN}" \
-            -H "Content-Type: application/json" \
-            -d "{\"tag_name\": \"${tag}\", \"name\": \"${tag}\", \"draft\": true}" \
-            | jq -r '.id')
-
-          # Upload release assets
-          for file in release/*; do
-            filename=$(basename "$file")
-            curl -s -X POST \
-              "${SERVER_URL}/api/v1/repos/${REPO}/releases/${RELEASE_ID}/assets?name=${filename}" \
-              -H "Authorization: token ${GITHUB_TOKEN}" \
-              -F "attachment=@${file}"
-          done
+      - name: Create draft release
+        uses: http://forgejo:3000/andras/ci-actions/forgejo-release@main
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          files: release
+          draft: "true"
