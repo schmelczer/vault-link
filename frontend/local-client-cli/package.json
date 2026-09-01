@@ -18,7 +18,7 @@
         "sync-client": "file:../sync-client",
         "ts-loader": "^9.5.4",
         "tslib": "2.8.1",
-        "tsx": "^4.21.0",
+        "tsx": "^4.23.13",
         "typescript": "5.9.3",
         "webpack": "^5.103.0",
         "webpack-cli": "^6.0.1"
