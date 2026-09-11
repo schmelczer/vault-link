@@ -22,7 +22,7 @@
         "update": "ncu -u -ws"
     },
     "devDependencies": {
-        "concurrently": "^9.2.1",
+        "concurrently": "^9.2.4",
         "eclint": "^2.8.1",
         "eslint": "9.38.0",
         "eslint-plugin-unused-imports": "^4.1.4",
