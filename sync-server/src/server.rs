@@ -1,17 +1,8 @@
 pub mod auth;
-mod create_document;
-mod delete_document;
 mod device_id_header;
-mod fetch_document_version;
-mod fetch_document_version_content;
-mod fetch_latest_document_version;
-mod fetch_latest_documents;
-mod index;
-mod ping;
+mod endpoints;
 mod requests;
 mod responses;
-mod update_document;
-mod websocket;
 
 use anyhow::{Context as _, Result, anyhow};
 use auth::auth_middleware;
@@ -21,7 +12,7 @@ use axum::{
     http::{self, HeaderValue, Method},
     middleware,
     response::IntoResponse,
-    routing::{IntoMakeService, delete, get, post, put},
+    routing::{IntoMakeService, get},
 };
 use device_id_header::DEVICE_ID_HEADER_NAME;
 use log::info;
@@ -53,9 +44,12 @@ pub async fn create_server(config: Config) -> Result<()> {
 
     let app = Router::new()
         .nest("/", get_authed_routes(app_state.clone()))
-        .route("/", get(index::index))
-        .route("/vaults/:vault_id/ping", get(ping::ping))
-        .route("/vaults/:vault_id/ws", get(websocket::websocket_handler))
+        .route("/", get(endpoints::index::index))
+        .route("/vaults/:vault_id/ping", get(endpoints::ping::ping))
+        .route(
+            "/vaults/:vault_id/ws",
+            get(endpoints::websocket::websocket_handler),
+        )
         .layer(DefaultBodyLimit::disable())
         .layer(RequestBodyLimitLayer::new(
             app_state.config.server.max_body_size_mb * 1024 * 1024,
@@ -69,7 +63,7 @@ pub async fn create_server(config: Config) -> Result<()> {
                     http::header::AUTHORIZATION,
                     DEVICE_ID_HEADER_NAME.clone(),
                 ])
-                .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE]),
+                .allow_methods([Method::GET, Method::PUT]),
         )
         .layer(
             TraceLayer::new_for_http()
@@ -102,35 +96,16 @@ fn get_authed_routes(app_state: AppState) -> Router<AppState> {
     Router::new()
         .route(
             "/vaults/:vault_id/documents",
-            get(fetch_latest_documents::fetch_latest_documents),
-        )
-        .route(
-            "/vaults/:vault_id/documents",
-            post(create_document::create_document),
+            get(endpoints::fetch_latest_documents::fetch_latest_documents),
         )
         .route(
             "/vaults/:vault_id/documents/:document_id",
-            get(fetch_latest_document_version::fetch_latest_document_version),
-        )
-        .route(
-            "/vaults/:vault_id/documents/:document_id/binary",
-            put(update_document::update_binary),
-        )
-        .route(
-            "/vaults/:vault_id/documents/:document_id/text",
-            put(update_document::update_text),
-        )
-        .route(
-            "/vaults/:vault_id/documents/:document_id/versions/:vault_update_id",
-            get(fetch_document_version::fetch_document_version),
+            get(endpoints::fetch_latest_document_version::fetch_latest_document_version)
+                .put(endpoints::push_document::push_document),
         )
         .route(
             "/vaults/:vault_id/documents/:document_id/versions/:vault_update_id/content",
-            get(fetch_document_version_content::fetch_document_version_content),
-        )
-        .route(
-            "/vaults/:vault_id/documents/:document_id",
-            delete(delete_document::delete_document),
+            get(endpoints::fetch_document_version_content::fetch_document_version_content),
         )
         .layer(middleware::from_fn_with_state(app_state, auth_middleware))
 }

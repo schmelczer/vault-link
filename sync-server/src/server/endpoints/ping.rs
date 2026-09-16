@@ -9,7 +9,7 @@ use axum_extra::{
 use log::debug;
 use serde::Deserialize;
 
-use super::{auth::auth, responses::PingResponse};
+use crate::server::{auth::auth, responses::PingResponse};
 use crate::{
     app_state::{AppState, database::models::VaultId},
     consts::SUPPORTED_API_VERSION,

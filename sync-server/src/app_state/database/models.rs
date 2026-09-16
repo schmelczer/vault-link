@@ -20,8 +20,6 @@ pub struct StoredDocumentVersion {
     pub is_deleted: bool,
     pub user_id: UserId,
     pub device_id: DeviceId,
-    #[allow(dead_code)] // This is for manual analysis
-    pub has_been_merged: bool,
 }
 
 impl PartialEq<Self> for StoredDocumentVersion {

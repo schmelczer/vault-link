@@ -4,7 +4,9 @@ CREATE TABLE IF NOT EXISTS documents (
     relative_path TEXT NOT NULL,
     updated_date TIMESTAMP NOT NULL,
     content BLOB NOT NULL,
-    is_deleted BOOLEAN NOT NULL
+    is_deleted BOOLEAN NOT NULL,
+    user_id TEXT NOT NULL,
+    device_id TEXT NOT NULL
 );
 
 CREATE VIEW IF NOT EXISTS latest_document_versions AS
@@ -19,3 +21,10 @@ ON d.vault_update_id = max_versions.max_version_id;
 
 CREATE INDEX IF NOT EXISTS idx_documents_vault_id_relative_path
 ON documents (relative_path);
+
+-- The immutable version and its acknowledgement commit in one transaction.
+CREATE TABLE push_acknowledgements (
+    request_id TEXT NOT NULL PRIMARY KEY,
+    request_fingerprint BLOB NOT NULL,
+    vault_update_id INTEGER NOT NULL REFERENCES documents(vault_update_id)
+);
