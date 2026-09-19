@@ -53,12 +53,10 @@ export const utils = {
     removeFromArray
 };
 
-export type {
-    FileManifest,
-    FileManifestEntries,
-    EventRecord,
-    EventBatch,
-    VaultSnapshot,
-    PutFileContent,
-    PushFileManifest
-} from "./services/protocol";
+export type { EventBatch } from "./services/types/EventBatch";
+export type { EventRecord } from "./services/types/EventRecord";
+export type { FileManifest } from "./services/types/FileManifest";
+export type { PushFileManifest } from "./services/types/PushFileManifest";
+export type { PutFileContent } from "./services/types/PutFileContent";
+export type { VaultSnapshot } from "./services/types/VaultSnapshot";
+export type { FileManifestEntries } from "./types/file-manifest-entries";
