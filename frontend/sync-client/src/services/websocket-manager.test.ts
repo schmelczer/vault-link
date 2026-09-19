@@ -134,9 +134,21 @@ describe("WebSocketManager", () => {
         const mockWs = (manager as unknown as { webSocket: MockWebSocket })
             .webSocket;
 
-        mockWs.simulateMessage({ type: "vaultUpdate", updates: [] });
-        mockWs.simulateMessage({ type: "vaultUpdate", updates: [] });
-        mockWs.simulateMessage({ type: "vaultUpdate", updates: [] });
+        mockWs.simulateMessage({
+            type: "vaultEvents",
+            headEventId: 0,
+            events: []
+        });
+        mockWs.simulateMessage({
+            type: "vaultEvents",
+            headEventId: 0,
+            events: []
+        });
+        mockWs.simulateMessage({
+            type: "vaultEvents",
+            headEventId: 0,
+            events: []
+        });
 
         await new Promise((resolve) => setTimeout(resolve, 100));
 
@@ -218,6 +230,31 @@ describe("WebSocketManager", () => {
         assert.ok(true);
     });
 
+    it("uses a secure URL, preserves the configured prefix, and encodes the vault", async () => {
+        mockSettings = {
+            getSettings: () => ({
+                remoteUri: "https://example.com/sync/",
+                vaultName: "team/a ?",
+                webSocketRetryIntervalMs: 1000
+            })
+        } as unknown as Settings;
+        const manager = new WebSocketManager(
+            deviceId,
+            mockLogger,
+            mockSettings,
+            MockWebSocket as unknown as typeof WebSocket
+        );
+
+        manager.start();
+        const mockWs = (manager as unknown as { webSocket: MockWebSocket })
+            .webSocket;
+        assert.strictEqual(
+            String(mockWs.url),
+            "wss://example.com/sync/vaults/team%2Fa%20%3F/ws"
+        );
+        await manager.stop();
+    });
+
     it("clears old handlers on reconnection", async () => {
         const manager = new WebSocketManager(
             deviceId,
@@ -278,7 +315,11 @@ describe("WebSocketManager", () => {
 
         const mockWs = (manager as unknown as { webSocket: MockWebSocket })
             .webSocket;
-        mockWs.simulateMessage({ type: "vaultUpdate", updates: [] });
+        mockWs.simulateMessage({
+            type: "vaultEvents",
+            headEventId: 0,
+            events: []
+        });
 
         await new Promise((resolve) => setTimeout(resolve, 10));
 
