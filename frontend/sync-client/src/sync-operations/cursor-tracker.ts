@@ -138,7 +138,7 @@ export class CursorTracker {
             const record = this.database.getLatestDocumentByRelativePath(
                 doc.relative_path
             );
-            if (record?.metadata?.hash !== hash(readContent)) {
+            if (record?.metadata?.hash !== (await hash(readContent))) {
                 doc.vault_update_id = null;
             }
         }
@@ -178,6 +178,15 @@ export class CursorTracker {
 
             result.push({
                 ...clientCursors,
+                documentsWithCursors: clientCursors.documentsWithCursors.map(
+                    (document) => ({
+                        ...document,
+                        relative_path:
+                            this.database.getDocumentByDocumentId(
+                                document.document_id
+                            )?.relativePath ?? document.relative_path
+                    })
+                ),
                 isOutdated:
                     clientCursors.upToDateness === DocumentUpToDateness.Prior
             });
@@ -223,8 +232,8 @@ export class CursorTracker {
     private async getDocumentUpToDateness(
         document: DocumentWithCursors
     ): Promise<DocumentUpToDateness> {
-        const record = this.database.getLatestDocumentByRelativePath(
-            document.relative_path
+        const record = this.database.getDocumentByDocumentId(
+            document.document_id
         );
 
         if (!record) {
@@ -245,13 +254,16 @@ export class CursorTracker {
             return DocumentUpToDateness.Prior;
         }
 
-        const currentContent = await this.fileOperations.read(
-            document.relative_path
-        );
+        let currentContent: Uint8Array;
+        try {
+            currentContent = await this.fileOperations.read(
+                record.relativePath
+            );
+        } catch {
+            return DocumentUpToDateness.Prior;
+        }
 
-        return this.database.getLatestDocumentByRelativePath(
-            document.relative_path
-        )?.metadata?.hash === hash(currentContent)
+        return record.metadata?.hash === (await hash(currentContent))
             ? DocumentUpToDateness.UpToDate
             : DocumentUpToDateness.Prior;
     }
