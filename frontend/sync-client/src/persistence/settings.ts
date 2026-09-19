@@ -56,7 +56,10 @@ export class Settings {
     }
 
     public getSettings(): SyncSettings {
-        return this.settings;
+        return {
+            ...this.settings,
+            ignorePatterns: [...this.settings.ignorePatterns]
+        };
     }
 
     public async setSetting<T extends keyof SyncSettings>(
@@ -74,21 +77,14 @@ export class Settings {
                 `Updating settings with: ${JSON.stringify(value)}`
             );
             const oldSettings = this.settings;
-            this.settings = {
-                ...this.settings,
-                ...value
-            };
+            const next = { ...this.settings, ...value };
+            await this.saveData(next);
+            this.settings = next;
 
             await this.onSettingsChanged.triggerAsync(
-                this.settings,
+                this.getSettings(),
                 oldSettings
             );
-
-            await this.save();
         });
-    }
-
-    private async save(): Promise<void> {
-        await this.saveData(this.settings);
     }
 }
