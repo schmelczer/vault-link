@@ -72,21 +72,27 @@ export class CursorTracker {
             }
         );
 
-        this.fileChangeNotifier.onFileChanged.add(async (relativePath) =>
-            this.updateLock.withLock(async () => {
+        this.fileChangeNotifier.onFileChanged.add(async (relativePath) => {
+            const cursors = await this.updateLock.withLock(async () => {
                 for (const clientCursor of this.knownRemoteCursors) {
                     if (
                         clientCursor.documentsWithCursors.some(
                             (document) =>
-                                document.relative_path === relativePath
+                                document.relative_path === relativePath ||
+                                this.database.getDocumentByDocumentId(
+                                    document.document_id
+                                )?.relativePath === relativePath
                         )
                     ) {
                         clientCursor.upToDateness =
                             await this.getDocumentsUpToDateness(clientCursor);
                     }
                 }
-            })
-        );
+                return this.getRelevantAndPruneKnownClientCursors();
+            });
+
+            this.onRemoteCursorsUpdated.trigger(cursors);
+        });
     }
 
     /// Update the local cursors for the given documents.
@@ -166,13 +172,20 @@ export class CursorTracker {
         const result: MaybeOutdatedClientCursors[] = [];
         const included = new Set<string>();
 
-        const relevantCursors = [];
+        const retainedCursors = [];
+        const retainedFuture = new Set<string>();
         for (const clientCursors of [...this.knownRemoteCursors].reverse()) {
-            if (included.has(clientCursors.deviceId)) {
+            if (clientCursors.upToDateness === DocumentUpToDateness.Later) {
+                // Retain the latest future position so it can become relevant
+                // after the corresponding content or manifest is applied.
+                if (!retainedFuture.has(clientCursors.deviceId)) {
+                    retainedCursors.unshift(clientCursors);
+                    retainedFuture.add(clientCursors.deviceId);
+                }
                 continue;
             }
 
-            if (clientCursors.upToDateness === DocumentUpToDateness.Later) {
+            if (included.has(clientCursors.deviceId)) {
                 continue;
             }
 
@@ -192,10 +205,10 @@ export class CursorTracker {
             });
 
             included.add(clientCursors.deviceId);
-            relevantCursors.unshift(clientCursors); // to reverse order back to normal
+            retainedCursors.unshift(clientCursors); // to reverse order back to normal
         }
 
-        this.knownRemoteCursors = relevantCursors;
+        this.knownRemoteCursors = retainedCursors;
 
         return result;
     }
