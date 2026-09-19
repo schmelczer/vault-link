@@ -1,7 +1,5 @@
 import * as Sentry from "@sentry/browser";
-
-// @ts-expect-error, injected by webpack
-const packageVersion = __CURRENT_VERSION__; // eslint-disable-line
+import { packageVersion } from "./package-version";
 
 export const setUpTelemetry = (): (() => void) => {
     Sentry.init({
