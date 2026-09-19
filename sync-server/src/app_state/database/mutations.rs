@@ -1,4 +1,7 @@
-use super::{Database, Transaction, models::*};
+use super::{
+    Database, Transaction,
+    models::{EventRecord, FileManifest, StoredDocumentVersion, VaultUpdateId},
+};
 use anyhow::Result;
 
 impl Database {

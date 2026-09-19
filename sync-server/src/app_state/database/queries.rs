@@ -1,4 +1,10 @@
-use super::{Database, Transaction, models::*};
+use super::{
+    Database, Transaction,
+    models::{
+        DocumentId, EventBatch, FileManifest, StoredDocumentVersion, VaultId, VaultSnapshot,
+        VaultUpdateId,
+    },
+};
 use anyhow::{Result, ensure};
 
 impl Database {

@@ -75,7 +75,7 @@ async fn websocket(
     // notifications are only wakeups, so lag and commit/notify crashes are safe.
     let result = async {
         loop {
-            let batch = state.database.events_after(&vault, after).await.map_err(|error| server_error(error.into()))?;
+            let batch = state.database.events_after(&vault, after).await.map_err(server_error)?;
 
             if !batch.events.is_empty() {
                 let head = batch.head_event_id;
@@ -107,12 +107,12 @@ async fn websocket(
                             }
                         }
                     },
-                    Some(Ok(Message::Ping(_))) | Some(Ok(Message::Pong(_))) => {},
+                    Some(Ok(Message::Ping(_) | Message::Pong(_))) => {},
                     _ => break,
                 }
             }
         }
-        
+
         Ok(())
     }.await;
 
