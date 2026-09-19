@@ -19,10 +19,7 @@ pub fn validate_file_manifest(entries: &FileManifestEntries) -> Result<()> {
     let mut nodes: BTreeMap<String, (String, bool)> = BTreeMap::new();
 
     for path in entries.values() {
-        ensure!(
-            !path.is_empty() && path.len() <= 240,
-            "Path must contain 1–240 UTF-8 bytes"
-        );
+        ensure!(!path.is_empty(), "Path must not be empty");
 
         ensure!(
             path.nfc().collect::<String>() == *path,
@@ -136,16 +133,9 @@ mod tests {
     }
 
     #[test]
-    fn enforces_the_path_length_limit_in_utf8_bytes() {
-        for path in ["a".repeat(240), "é".repeat(120)] {
+    fn does_not_impose_a_cross_platform_total_path_limit() {
+        for path in ["a".repeat(300), "é".repeat(200)] {
             validate_file_manifest(&manifest(&[&path])).unwrap();
-
-            let too_long = format!("{path}a");
-
-            assert!(
-                validate_file_manifest(&manifest(&[&too_long])).is_err(),
-                "accepted a path over 240 bytes: {too_long:?}"
-            );
         }
     }
 

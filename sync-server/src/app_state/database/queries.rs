@@ -1,23 +1,28 @@
 use super::{
     Database, Transaction,
     models::{
-        DocumentId, DocumentVersionWithoutContent, EventBatch, FileManifest, StoredDocumentVersion,
-        VaultId, VaultSnapshot, VaultUpdateId,
+        DocumentId, DocumentVersionWithoutContent, EventBatch, EventRecord, FileManifest,
+        StoredDocumentVersion, VaultEvent, VaultId, VaultSnapshot, VaultUpdateId,
     },
 };
-use anyhow::{Result, ensure};
+use anyhow::{Context as _, Result, ensure};
 
 impl Database {
     pub async fn get_request_event(
         tx: &mut Transaction<'_>,
         request_id: uuid::Uuid,
-    ) -> Result<Option<(Vec<u8>, String)>> {
-        Ok(sqlx::query_as(
-            "SELECT request_fingerprint, event_json FROM events WHERE request_id = ?",
-        )
-        .bind(request_id.to_string())
-        .fetch_optional(&mut **tx)
-        .await?)
+    ) -> Result<Option<(Vec<u8>, VaultEvent)>> {
+        let row: Option<(Vec<u8>, VaultUpdateId)> =
+            sqlx::query_as("SELECT request_fingerprint, event_id FROM events WHERE request_id = ?")
+                .bind(request_id.to_string())
+                .fetch_optional(&mut **tx)
+                .await?;
+        match row {
+            Some((fingerprint, event_id)) => {
+                Ok(Some((fingerprint, Self::event_by_id(tx, event_id).await?)))
+            }
+            None => Ok(None),
+        }
     }
 
     pub async fn get_latest_document_version(
@@ -70,6 +75,24 @@ impl Database {
             return Ok(FileManifest::default());
         };
 
+        Self::file_manifest_by_id(tx, file_manifest_id)
+            .await?
+            .context("Latest file manifest is missing")
+    }
+
+    async fn file_manifest_by_id(
+        tx: &mut Transaction<'_>,
+        file_manifest_id: VaultUpdateId,
+    ) -> Result<Option<FileManifest>> {
+        let exists = sqlx::query_scalar::<_, VaultUpdateId>(
+            "SELECT file_manifest_id FROM file_manifests WHERE file_manifest_id = ?",
+        )
+        .bind(file_manifest_id)
+        .fetch_optional(&mut **tx)
+        .await?;
+        if exists.is_none() {
+            return Ok(None);
+        }
         let entries = sqlx::query_as::<_, (uuid::fmt::Hyphenated, String)>(
             "SELECT document_id, path FROM file_manifest_entries WHERE file_manifest_id = ?",
         )
@@ -80,10 +103,28 @@ impl Database {
         .map(|(document_id, path)| (document_id.into_uuid(), path))
         .collect();
 
-        Ok(FileManifest {
+        Ok(Some(FileManifest {
             file_manifest_id,
             entries,
-        })
+        }))
+    }
+
+    async fn event_by_id(tx: &mut Transaction<'_>, event_id: VaultUpdateId) -> Result<VaultEvent> {
+        let document = sqlx::query_as::<_, DocumentVersionWithoutContent>(
+            "SELECT vault_update_id, document_id, updated_date, user_id, device_id,
+                    length(content) AS content_size
+             FROM documents WHERE vault_update_id = ?",
+        )
+        .bind(event_id)
+        .fetch_optional(&mut **tx)
+        .await?;
+        if let Some(document) = document {
+            return Ok(VaultEvent::Content { document });
+        }
+        let file_manifest = Self::file_manifest_by_id(tx, event_id)
+            .await?
+            .context("Event has no normalized content or file manifest")?;
+        Ok(VaultEvent::FileManifest { file_manifest })
     }
 
     pub async fn latest_event_id(tx: &mut Transaction<'_>) -> Result<VaultUpdateId> {
@@ -126,17 +167,21 @@ impl Database {
             "Event cursor is outside this vault's history"
         );
 
-        let rows: Vec<String> = sqlx::query_scalar(
-            "SELECT event_json FROM events WHERE event_id > ? ORDER BY event_id",
+        let rows: Vec<(VaultUpdateId, String)> = sqlx::query_as(
+            "SELECT event_id, request_id FROM events WHERE event_id > ? ORDER BY event_id",
         )
         .bind(after)
         .fetch_all(&mut *tx)
         .await?;
 
-        let events = rows
-            .iter()
-            .map(|json| serde_json::from_str(json))
-            .collect::<Result<_, _>>()?;
+        let mut events = Vec::with_capacity(rows.len());
+        for (event_id, request_id) in rows {
+            events.push(EventRecord {
+                event_id,
+                request_id: request_id.parse()?,
+                event: Self::event_by_id(&mut tx, event_id).await?,
+            });
+        }
 
         Ok(EventBatch {
             head_event_id,

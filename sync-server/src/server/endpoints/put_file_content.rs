@@ -4,7 +4,7 @@ use crate::{
         AppState,
         database::{
             Database,
-            models::{DocumentId, EventRecord, StoredDocumentVersion, VaultEvent},
+            models::{DocumentId, StoredDocumentVersion, VaultEvent},
         },
     },
     config::user_config::User,
@@ -122,18 +122,6 @@ pub async fn put_file_content(
         .map_err(server_error)?;
 
     let response = DocumentUpdateResponse::Accepted((&version).into());
-
-    let event = EventRecord {
-        event_id: version.vault_update_id,
-        request_id: push.request_id,
-        event: VaultEvent::Content {
-            document: version.into(),
-        },
-    };
-
-    Database::write_event(&mut tx, &event)
-        .await
-        .map_err(server_error)?;
 
     tx.commit()
         .await
@@ -494,7 +482,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn failed_event_commit_rolls_back_content_and_allows_retrying_the_request() {
+    async fn failed_normalized_event_write_rolls_back_and_allows_retrying_the_request() {
         let vault = TestVault::new().await;
         let mut tx = vault
             .state
@@ -502,7 +490,7 @@ mod tests {
             .create_write_transaction(&vault.vault)
             .await
             .unwrap();
-        sqlx::query("CREATE TRIGGER reject_event BEFORE UPDATE ON events BEGIN SELECT RAISE(ABORT, 'simulated event write failure'); END")
+        sqlx::query("CREATE TRIGGER reject_event BEFORE INSERT ON documents BEGIN SELECT RAISE(ABORT, 'simulated event write failure'); END")
             .execute(&mut *tx).await.unwrap();
         tx.commit().await.unwrap();
 

@@ -1,5 +1,5 @@
 use super::*;
-use models::{DocumentId, EventRecord, FileManifest, StoredDocumentVersion, VaultEvent};
+use models::{DocumentId, FileManifest, StoredDocumentVersion};
 
 fn config(directory: &tempfile::TempDir) -> DatabaseConfig {
     DatabaseConfig {
@@ -32,18 +32,6 @@ async fn insert_content(
     Database::insert_document_version(&mut tx, &version)
         .await
         .unwrap();
-    Database::write_event(
-        &mut tx,
-        &EventRecord {
-            event_id: version.vault_update_id,
-            request_id,
-            event: VaultEvent::Content {
-                document: (&version).into(),
-            },
-        },
-    )
-    .await
-    .unwrap();
     tx.commit().await.unwrap();
     version
 }
@@ -133,18 +121,6 @@ async fn snapshot_returns_latest_referenced_metadata_and_byte_lengths() {
     Database::insert_file_manifest(&mut tx, &manifest)
         .await
         .unwrap();
-    Database::write_event(
-        &mut tx,
-        &EventRecord {
-            event_id: manifest.file_manifest_id,
-            request_id,
-            event: VaultEvent::FileManifest {
-                file_manifest: manifest.clone(),
-            },
-        },
-    )
-    .await
-    .unwrap();
     tx.commit().await.unwrap();
 
     let snapshot = database.vault_snapshot(&vault).await.unwrap();

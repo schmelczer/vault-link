@@ -12,7 +12,7 @@ use crate::{
         AppState,
         database::{
             Database,
-            models::{EventRecord, FileManifest, VaultEvent},
+            models::{FileManifest, VaultEvent},
         },
     },
     errors::{SyncServerError, client_error, server_error},
@@ -90,16 +90,6 @@ pub async fn put_file_manifest(
     let response = FileManifestUpdateResponse::Accepted {
         file_manifest_id: file_manifest.file_manifest_id,
     };
-
-    let event = EventRecord {
-        event_id: file_manifest.file_manifest_id,
-        request_id: push.request_id,
-        event: VaultEvent::FileManifest { file_manifest },
-    };
-
-    Database::write_event(&mut tx, &event)
-        .await
-        .map_err(server_error)?;
 
     tx.commit()
         .await

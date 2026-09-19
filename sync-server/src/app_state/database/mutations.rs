@@ -1,6 +1,6 @@
 use super::{
     Database, Transaction,
-    models::{EventRecord, FileManifest, StoredDocumentVersion, VaultUpdateId},
+    models::{FileManifest, StoredDocumentVersion, VaultUpdateId},
 };
 use anyhow::Result;
 
@@ -57,15 +57,6 @@ impl Database {
             .await?;
         }
 
-        Ok(())
-    }
-
-    pub async fn write_event(tx: &mut Transaction<'_>, event: &EventRecord) -> Result<()> {
-        sqlx::query("UPDATE events SET event_json = ? WHERE event_id = ?")
-            .bind(serde_json::to_string(event)?)
-            .bind(event.event_id)
-            .execute(&mut **tx)
-            .await?;
         Ok(())
     }
 }
