@@ -1,17 +1,16 @@
 pub mod auth;
 mod device_id_header;
 mod endpoints;
-mod requests;
-mod responses;
+pub(crate) mod requests;
+pub(crate) mod responses;
 
-use anyhow::{Context as _, Result, anyhow};
+use anyhow::{Context as _, Result};
 use auth::auth_middleware;
 use axum::{
     Router,
     extract::{DefaultBodyLimit, Request},
     http::{self, HeaderValue, Method},
     middleware,
-    response::IntoResponse,
     routing::{IntoMakeService, get},
 };
 use device_id_header::DEVICE_ID_HEADER_NAME;
@@ -32,7 +31,6 @@ use tracing::{Level, info_span};
 use crate::{
     app_state::AppState,
     config::{Config, server_config::ServerConfig},
-    errors::{client_error, not_found_error},
 };
 
 pub async fn create_server(config: Config) -> Result<()> {
@@ -85,8 +83,8 @@ pub async fn create_server(config: Config) -> Result<()> {
                 .on_failure(DefaultOnFailure::new().level(Level::ERROR)),
         )
         .with_state(app_state)
-        .fallback(handle_404)
-        .fallback(handle_405)
+        .fallback(endpoints::not_found::not_found)
+        .method_not_allowed_fallback(endpoints::method_not_allowed::method_not_allowed)
         .into_make_service();
 
     start_server(app, &server_config).await
@@ -95,9 +93,14 @@ pub async fn create_server(config: Config) -> Result<()> {
 fn get_authed_routes(app_state: AppState) -> Router<AppState> {
     Router::new()
         .route(
-            "/vaults/:vault_id/documents",
-            get(endpoints::fetch_latest_documents::fetch_latest_documents),
+            "/vaults/:vault_id/manifest",
+            get(endpoints::get_manifest::get_manifest).put(endpoints::put_manifest::put_manifest),
         )
+        .route(
+            "/vaults/:vault_id/state",
+            get(endpoints::snapshot::snapshot),
+        )
+        .route("/vaults/:vault_id/events", get(endpoints::events::events))
         .route(
             "/vaults/:vault_id/documents/:document_id",
             get(endpoints::fetch_latest_document_version::fetch_latest_document_version)
@@ -152,12 +155,4 @@ async fn shutdown_signal() {
         () = ctrl_c => {},
         () = terminate => {},
     }
-}
-
-async fn handle_404() -> impl IntoResponse {
-    not_found_error(anyhow!("Page not found"))
-}
-
-async fn handle_405() -> impl IntoResponse {
-    client_error(anyhow!("Method not allowed"))
 }
