@@ -239,8 +239,7 @@ export class ServerControl {
     public isRunning(): boolean {
         const proc = this.process;
         return (
-            proc !== null &&
-            proc.pid !== undefined &&
+            proc?.pid !== undefined &&
             proc.exitCode === null &&
             proc.signalCode === null
         );

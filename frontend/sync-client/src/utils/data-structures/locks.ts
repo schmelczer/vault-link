@@ -1,4 +1,4 @@
-import { SyncResetError } from "../../services/sync-reset-error";
+import { SyncResetError } from "../../errors/errors";
 import type { Logger } from "../../tracing/logger";
 import { awaitAll } from "../await-all";
 

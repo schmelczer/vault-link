@@ -190,7 +190,7 @@ export class TestRunner {
                     (entry) =>
                         entry.details.type === step.syncType &&
                         entry.details.relativePath === step.path,
-                    () => this.serverControl.pause()
+                    () => { this.serverControl.pause(); }
                 );
                 this.serverControl.resume();
                 await historySeen;

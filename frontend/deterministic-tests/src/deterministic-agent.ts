@@ -304,7 +304,7 @@ export class DeterministicAgent extends debugging.InMemoryFileSystem {
             });
         }
 
-        const nextWriteRename = this.nextWriteRename;
+        const { nextWriteRename } = this;
         if (
             nextWriteRename !== undefined &&
             nextWriteRename.oldPath === path

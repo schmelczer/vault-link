@@ -12,43 +12,42 @@ fi
 
 echo "Running checks in sync-server"
 
-cd sync-server
-which sqlx || cargo install sqlx-cli
-sqlx database create --database-url sqlite://db.sqlite3
-sqlx migrate run --source src/app_state/database/migrations --database-url sqlite://db.sqlite3
+(
+    cd sync-server
+    which sqlx || cargo install sqlx-cli
+    sqlx database create --database-url sqlite://db.sqlite3
+    sqlx migrate run --source src/app_state/database/migrations --database-url sqlite://db.sqlite3
 
-cargo test --verbose
+    cargo test --verbose
 
-if [[ "$FIX_MODE" == true ]]; then
-    cargo clippy --all-targets --all-features --fix --allow-dirty --allow-staged
-    cargo fmt --all
-else
-    cargo clippy --all-targets --all-features
-    cargo fmt --all -- --check
-fi
+    if [[ "$FIX_MODE" == true ]]; then
+        cargo clippy --all-targets --all-features --fix --allow-dirty --allow-staged
+        cargo fmt --all
+    else
+        cargo clippy --all-targets --all-features
+        cargo fmt --all -- --check
+    fi
 
-which cargo-machete || cargo install cargo-machete
-cargo machete --with-metadata
+    which cargo-machete || cargo install cargo-machete
+    cargo machete --with-metadata
+)
 
-cd ..
 scripts/update-api-types.sh # this will dirty up the git state if not up-to-date
 
 echo "Running checks in frontend"
-cd frontend
+(
+    cd frontend
 
-if [[ "$FIX_MODE" == true ]]; then
-    npm install
-else
-    npm ci
-fi
+    if [[ "$FIX_MODE" == true ]]; then
+        npm install
+    else
+        npm ci
+    fi
 
-cd ..
-
-cd frontend
-npm run build
-npm run test
-npm run lint
-cd ..
+    npm run build
+    npm run test
+    npm run lint
+)
 
 # Format all files across the project (frontend and backend)
 # Prettier respects .gitignore by default

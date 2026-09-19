@@ -1,11 +1,11 @@
 import * as path from "path";
 import * as fs from "fs/promises";
 import * as fsSync from "fs";
-import type { NetworkConnectionStatus } from "sync-client";
+import type { NetworkConnectionStatus ,
+    Logger} from "sync-client";
 import {
     SyncClient,
     DEFAULT_SETTINGS,
-    Logger,
     LogLevel,
     LogLine,
     type SyncSettings,
@@ -41,7 +41,7 @@ const LOG_LEVEL_ORDER = {
 function createLogHandler(minLevel: LogLevel): (logLine: LogLine) => void {
     return (logLine: LogLine): void => {
         if (LOG_LEVEL_ORDER[logLine.level] >= LOG_LEVEL_ORDER[minLevel]) {
-            // eslint-disable-next-line no-console
+             
             console.log(formatLogLine(logLine));
         }
     };
@@ -279,7 +279,7 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
-    // eslint-disable-next-line no-console
+     
     console.error(
         `Unexpected error: ${error instanceof Error ? error.message : String(error)}`
     );

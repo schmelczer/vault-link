@@ -21,8 +21,10 @@ mkdir -p logs
 
 # Build and restart the server
 echo "Building server..."
-cd sync-server
-cargo build --release
+(
+    cd sync-server
+    cargo build --release
+)
 
 # Kill any existing server process
 echo "Stopping existing server..."
@@ -35,8 +37,12 @@ rm -rf /host/tmp/vaultlink-e2e-databases
 
 # Start the server in the background
 echo "Starting server..."
-./target/release/sync_server config-e2e.yml &
-server_pid=$!
+(
+    cd sync-server
+    ./target/release/sync_server config-e2e.yml &
+    echo $! > ../logs/server.pid
+)
+server_pid=$(cat logs/server.pid)
 echo "Server started with PID: $server_pid"
 
 # Ensure server is killed on script exit
@@ -52,21 +58,21 @@ trap cleanup_server EXIT
 
 cd ..
 
-cd frontend
-npm ci
-npm run build
+(
+    cd frontend
+    npm ci
+    npm run build
+)
 
-../scripts/utils/wait-for-server.sh
+./scripts/utils/wait-for-server.sh
 
 pids=()
 for i in $(seq 1 $process_count); do
-    node test-client/dist/cli.js > "../logs/log_${i}.log" 2>&1 &
+    node frontend/test-client/dist/cli.js > "logs/log_${i}.log" 2>&1 &
     pid=$!
     pids+=($pid)
     echo "Started process $i with PID: $pid (log: logs/log_${i}.log)"
 done
-
-cd ..
 
 print_failed_log() {
     for i in $(seq 1 $process_count); do

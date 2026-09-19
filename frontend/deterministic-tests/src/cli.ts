@@ -42,7 +42,7 @@ function testUsesPauseServer(test: TestDefinition): boolean {
  */
 function findProjectRoot(): string {
     let dir = path.dirname(__filename);
-    const root = path.parse(dir).root;
+    const {root} = path.parse(dir);
     while (dir !== root) {
         if (
             fs.existsSync(path.join(dir, "sync-server")) &&
