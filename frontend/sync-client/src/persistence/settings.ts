@@ -6,35 +6,34 @@ export interface SyncSettings {
     remoteUri: string;
     token: string;
     vaultName: string;
-    syncConcurrency: number;
     isSyncEnabled: boolean;
     maxFileSizeMB: number;
     ignorePatterns: string[];
     webSocketRetryIntervalMs: number;
-    diffCacheSizeMB: number;
     enableTelemetry: boolean;
     requestTimeoutMs: number;
     networkRetryIntervalMs: number;
     syncIntervalMs?: number;
-    minimumSaveIntervalMs: number;
 }
 
 export const DEFAULT_SETTINGS: SyncSettings = {
     remoteUri: "",
     token: "",
     vaultName: "default",
-    syncConcurrency: 1,
     isSyncEnabled: false,
     maxFileSizeMB: 10,
     ignorePatterns: [],
     webSocketRetryIntervalMs: 3500,
-    diffCacheSizeMB: 4,
     enableTelemetry: false,
     requestTimeoutMs: 30_000,
     networkRetryIntervalMs: 1000,
-    syncIntervalMs: undefined,
-    minimumSaveIntervalMs: 1000
+    syncIntervalMs: undefined
 };
+
+const redactSettings = (value: Partial<SyncSettings>): object => ({
+    ...value,
+    ...(value.token === undefined ? {} : { token: "[REDACTED]" })
+});
 
 export class Settings {
     public readonly onSettingsChanged = new EventListeners<
@@ -55,7 +54,7 @@ export class Settings {
         };
 
         this.logger.debug(
-            `Loaded settings: ${JSON.stringify(this.settings, null, 2)}`
+            `Loaded settings: ${JSON.stringify(redactSettings(this.settings), null, 2)}`
         );
     }
 
@@ -78,7 +77,7 @@ export class Settings {
     public async setSettings(value: Partial<SyncSettings>): Promise<void> {
         await this.lock.withLock(async () => {
             this.logger.debug(
-                `Updating settings with: ${JSON.stringify(value)}`
+                `Updating settings with: ${JSON.stringify(redactSettings(value))}`
             );
             const oldSettings = this.settings;
             const next = { ...this.settings, ...value };
