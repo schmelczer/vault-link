@@ -2,6 +2,4 @@
 import type { DocumentVersionWithoutContent } from "./DocumentVersionWithoutContent";
 import type { Manifest } from "./Manifest";
 
-export type VaultEvent =
-    | { type: "content"; document: DocumentVersionWithoutContent }
-    | { type: "manifest"; manifest: Manifest };
+export type VaultEvent = { "type": "content", document: DocumentVersionWithoutContent, } | { "type": "manifest", manifest: Manifest, };

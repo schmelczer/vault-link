@@ -2,8 +2,4 @@
 import type { DocumentVersionWithoutContent } from "./DocumentVersionWithoutContent";
 import type { Manifest } from "./Manifest";
 
-export interface VaultSnapshot {
-    headEventId: number;
-    manifest: Manifest;
-    documents: DocumentVersionWithoutContent[];
-}
+export type VaultSnapshot = { headEventId: number, manifest: Manifest, documents: Array<DocumentVersionWithoutContent>, };

@@ -2,6 +2,4 @@
 import type { CursorPositionFromServer } from "./CursorPositionFromServer";
 import type { EventBatch } from "./EventBatch";
 
-export type WebSocketServerMessage =
-    | ({ type: "vaultEvents" } & EventBatch)
-    | ({ type: "cursorPositions" } & CursorPositionFromServer);
+export type WebSocketServerMessage = { "type": "vaultEvents" } & EventBatch | { "type": "cursorPositions" } & CursorPositionFromServer;

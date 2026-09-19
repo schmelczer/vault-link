@@ -2,7 +2,4 @@
 import type { DocumentVersionWithoutContent } from "./DocumentVersionWithoutContent";
 import type { Manifest } from "./Manifest";
 
-export type EventRecord = { eventId: number; requestId: string } & (
-    | { type: "content"; document: DocumentVersionWithoutContent }
-    | { type: "manifest"; manifest: Manifest }
-);
+export type EventRecord = { eventId: number, requestId: string, } & ({ "type": "content", document: DocumentVersionWithoutContent, } | { "type": "manifest", manifest: Manifest, });

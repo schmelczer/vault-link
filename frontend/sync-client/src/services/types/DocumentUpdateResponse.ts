@@ -5,6 +5,4 @@ import type { DocumentVersionWithoutContent } from "./DocumentVersionWithoutCont
 /**
  * Response to an update document request.
  */
-export type DocumentUpdateResponse =
-    | ({ type: "Accepted" } & DocumentVersionWithoutContent)
-    | ({ type: "StaleBase" } & DocumentVersion);
+export type DocumentUpdateResponse = { "type": "Accepted" } & DocumentVersionWithoutContent | { "type": "StaleBase" } & DocumentVersion;
