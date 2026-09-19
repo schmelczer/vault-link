@@ -7,26 +7,15 @@ use axum_extra::{
     headers::{Authorization, authorization::Bearer},
 };
 use log::debug;
-use serde::Deserialize;
 
+use super::VaultPath;
 use crate::server::{auth::auth, responses::PingResponse};
-use crate::{
-    app_state::{AppState, database::models::VaultId},
-    consts::SUPPORTED_API_VERSION,
-    errors::SyncServerError,
-    utils::normalize_vault_id::normalize_vault_id,
-};
-
-#[derive(Deserialize)]
-pub struct PingPathParams {
-    #[serde(deserialize_with = "normalize_vault_id")]
-    vault_id: VaultId,
-}
+use crate::{app_state::AppState, consts::SUPPORTED_API_VERSION, errors::SyncServerError};
 
 #[axum::debug_handler]
 pub async fn ping(
     maybe_auth_header: Option<TypedHeader<Authorization<Bearer>>>,
-    Path(PingPathParams { vault_id }): Path<PingPathParams>,
+    Path(VaultPath(vault_id)): Path<VaultPath>,
     State(state): State<AppState>,
 ) -> Result<Json<PingResponse>, SyncServerError> {
     debug!("Pinging vault `{vault_id}`");

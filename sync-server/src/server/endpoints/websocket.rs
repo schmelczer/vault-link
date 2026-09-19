@@ -9,7 +9,6 @@ use crate::{
         },
     },
     errors::{SyncServerError, client_error, server_error},
-    utils::normalize_vault_id::normalize_vault_id,
 };
 use axum::{
     extract::{
@@ -20,29 +19,21 @@ use axum::{
 };
 use futures::StreamExt;
 use log::{debug, info};
-use serde::Deserialize;
 use std::time::Duration;
 use tokio::sync::broadcast::error::RecvError;
 
-#[derive(Deserialize)]
-pub struct WebSocketPathParams {
-    #[serde(deserialize_with = "normalize_vault_id")]
-    vault_id: VaultId,
-}
+use super::VaultPath;
 
 #[axum::debug_handler]
 pub async fn websocket_handler(
     ws: WebSocketUpgrade,
-    Path(path): Path<WebSocketPathParams>,
+    Path(VaultPath(vault_id)): Path<VaultPath>,
     State(state): State<AppState>,
 ) -> Result<Response, SyncServerError> {
-    debug!(
-        "Upgrading WebSocket connection for vault `{}`",
-        path.vault_id
-    );
+    debug!("Upgrading WebSocket connection for vault `{vault_id}`");
 
     Ok(ws.on_upgrade(move |socket| async move {
-        if let Err(error) = websocket(state, socket, path.vault_id).await {
+        if let Err(error) = websocket(state, socket, vault_id).await {
             debug!("WebSocket disconnected: {error}");
         }
     }))

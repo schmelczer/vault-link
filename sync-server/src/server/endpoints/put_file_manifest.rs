@@ -4,36 +4,28 @@ use axum::{
     extract::{Path, State},
 };
 use log::debug;
-use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
-use super::utils::find_already_processed_event;
+use super::{VaultPath, utils::find_already_processed_event};
 use crate::{
     app_state::{
         AppState,
         database::{
             Database,
-            models::{EventRecord, FileManifest, VaultEvent, VaultId},
+            models::{EventRecord, FileManifest, VaultEvent},
         },
     },
     errors::{SyncServerError, client_error, server_error},
     server::{requests::PushFileManifest, responses::FileManifestUpdateResponse},
-    utils::normalize_vault_id::normalize_vault_id,
 };
-
-#[derive(Deserialize)]
-pub struct PutFileManifestPath {
-    #[serde(deserialize_with = "normalize_vault_id")]
-    vault_id: VaultId,
-}
 
 #[axum::debug_handler]
 pub async fn put_file_manifest(
-    Path(path): Path<PutFileManifestPath>,
+    Path(VaultPath(vault_id)): Path<VaultPath>,
     State(state): State<AppState>,
     Json(push): Json<PushFileManifest>,
 ) -> Result<Json<FileManifestUpdateResponse>, SyncServerError> {
-    debug!("Pushing file manifest for vault `{}`", path.vault_id);
+    debug!("Pushing file manifest for vault `{vault_id}`");
 
     // BTreeMap canonicalizes file manifest entries for request fingerprinting.
     let fingerprint = Sha256::digest(
@@ -43,7 +35,7 @@ pub async fn put_file_manifest(
 
     let mut tx = state
         .database
-        .create_write_transaction(&path.vault_id)
+        .create_write_transaction(&vault_id)
         .await
         .map_err(server_error)?;
 
@@ -73,7 +65,7 @@ pub async fn put_file_manifest(
     for id in push.entries.keys() {
         if state
             .database
-            .get_latest_document_version(&path.vault_id, id, Some(&mut tx))
+            .get_latest_document_version(&vault_id, id, Some(&mut tx))
             .await
             .map_err(server_error)?
             .is_none()
@@ -113,10 +105,7 @@ pub async fn put_file_manifest(
         .await
         .map_err(|error| server_error(error.into()))?;
 
-    state
-        .broadcasts
-        .notify_about_vault_update(path.vault_id)
-        .await;
+    state.broadcasts.notify_about_vault_update(vault_id).await;
 
     Ok(Json(response))
 }

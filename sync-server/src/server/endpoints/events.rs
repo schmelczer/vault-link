@@ -5,20 +5,11 @@ use axum::{
 use log::debug;
 use serde::Deserialize;
 
+use super::VaultPath;
 use crate::{
-    app_state::{
-        AppState,
-        database::models::{EventBatch, VaultId},
-    },
+    app_state::{AppState, database::models::EventBatch},
     errors::{SyncServerError, client_error, server_error},
-    utils::normalize_vault_id::normalize_vault_id,
 };
-
-#[derive(Deserialize)]
-pub struct EventsPath {
-    #[serde(deserialize_with = "normalize_vault_id")]
-    vault_id: VaultId,
-}
 
 #[derive(Deserialize)]
 pub struct EventsQuery {
@@ -27,13 +18,13 @@ pub struct EventsQuery {
 
 #[axum::debug_handler]
 pub async fn events(
-    Path(path): Path<EventsPath>,
+    Path(VaultPath(vault_id)): Path<VaultPath>,
     Query(query): Query<EventsQuery>,
     State(state): State<AppState>,
 ) -> Result<Json<EventBatch>, SyncServerError> {
     debug!(
         "Fetching events after `{}` for vault `{}`",
-        query.after, path.vault_id
+        query.after, vault_id
     );
 
     if query.after < 0 {
@@ -42,7 +33,7 @@ pub async fn events(
 
     state
         .database
-        .events_after(&path.vault_id, query.after)
+        .events_after(&vault_id, query.after)
         .await
         .map(Json)
         .map_err(server_error)

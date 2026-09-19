@@ -1,4 +1,4 @@
-use super::utils::find_already_processed_event;
+use super::{VaultPath, utils::find_already_processed_event};
 use crate::{
     app_state::{
         AppState,
@@ -14,7 +14,6 @@ use crate::{
         requests::{PushContent, PutFileContent},
         responses::DocumentUpdateResponse,
     },
-    utils::normalize_vault_id::normalize_vault_id,
 };
 use anyhow::anyhow;
 use axum::{
@@ -25,37 +24,26 @@ use axum_extra::TypedHeader;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use log::debug;
 use reconcile_text::{BuiltinTokenizer, EditedText, NumberOrText};
-use serde::Deserialize;
 use sha2::{Digest, Sha256};
-
-#[derive(Deserialize)]
-pub struct PutFileContentPath {
-    #[serde(deserialize_with = "normalize_vault_id")]
-    vault_id: VaultId,
-    document_id: DocumentId,
-}
 
 #[axum::debug_handler]
 pub async fn put_file_content(
-    Path(path): Path<PutFileContentPath>,
+    Path((VaultPath(vault_id), document_id)): Path<(VaultPath, DocumentId)>,
     Extension(user): Extension<User>,
     TypedHeader(device): TypedHeader<DeviceIdHeader>,
     State(state): State<AppState>,
     Json(push): Json<PutFileContent>,
 ) -> Result<Json<DocumentUpdateResponse>, SyncServerError> {
-    debug!(
-        "Pushing document `{}` in vault `{}`",
-        path.document_id, path.vault_id
-    );
+    debug!("Pushing document `{}` in vault `{}`", document_id, vault_id);
 
     let fingerprint = Sha256::digest(
-        serde_json::to_vec(&("content", path.document_id, &push))
+        serde_json::to_vec(&("content", document_id, &push))
             .map_err(|error| server_error(error.into()))?,
     );
 
     let mut tx = state
         .database
-        .create_write_transaction(&path.vault_id)
+        .create_write_transaction(&vault_id)
         .await
         .map_err(server_error)?;
 
@@ -74,7 +62,7 @@ pub async fn put_file_content(
 
     let parent = state
         .database
-        .get_latest_document_version(&path.vault_id, &path.document_id, Some(&mut tx))
+        .get_latest_document_version(&vault_id, &document_id, Some(&mut tx))
         .await
         .map_err(server_error)?;
 
@@ -87,7 +75,7 @@ pub async fn put_file_content(
     } else if push.parent_version_id.is_some() {
         return Err(not_found_error(anyhow!(
             "Document {} does not exist",
-            path.document_id
+            document_id
         )));
     }
 
@@ -123,7 +111,7 @@ pub async fn put_file_content(
         vault_update_id: Database::allocate_event(&mut tx, push.request_id, &fingerprint)
             .await
             .map_err(server_error)?,
-        document_id: path.document_id,
+        document_id,
         content,
         updated_date: chrono::Utc::now(),
         user_id: user.name,
@@ -152,10 +140,7 @@ pub async fn put_file_content(
         .await
         .map_err(|error| server_error(error.into()))?;
 
-    state
-        .broadcasts
-        .notify_about_vault_update(path.vault_id)
-        .await;
+    state.broadcasts.notify_about_vault_update(vault_id).await;
 
     Ok(Json(response))
 }
@@ -185,10 +170,7 @@ mod tests {
         push: PutFileContent,
     ) -> Result<DocumentUpdateResponse, SyncServerError> {
         put_file_content(
-            Path(PutFileContentPath {
-                vault_id: vault.clone(),
-                document_id,
-            }),
+            Path((VaultPath(vault.clone()), document_id)),
             Extension(User {
                 name: user_id,
                 token: String::new(),

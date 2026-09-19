@@ -4,31 +4,19 @@ use axum::{
     extract::{Path, State},
 };
 use log::debug;
-use serde::Deserialize;
 
+use super::VaultPath;
 use crate::{
     app_state::{
         AppState,
-        database::models::{DocumentId, DocumentVersion, VaultId},
+        database::models::{DocumentId, DocumentVersion},
     },
     errors::{SyncServerError, not_found_error, server_error},
-    utils::normalize_vault_id::normalize_vault_id,
 };
-
-#[derive(Deserialize)]
-pub struct FetchLatestDocumentVersionPathParams {
-    #[serde(deserialize_with = "normalize_vault_id")]
-    vault_id: VaultId,
-
-    document_id: DocumentId,
-}
 
 #[axum::debug_handler]
 pub async fn fetch_latest_document_version(
-    Path(FetchLatestDocumentVersionPathParams {
-        vault_id,
-        document_id,
-    }): Path<FetchLatestDocumentVersionPathParams>,
+    Path((VaultPath(vault_id), document_id)): Path<(VaultPath, DocumentId)>,
     State(state): State<AppState>,
 ) -> Result<Json<DocumentVersion>, SyncServerError> {
     debug!("Fetching latest document version for document `{document_id}` in vault `{vault_id}`");
