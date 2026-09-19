@@ -10,14 +10,14 @@ impl Database {
         request_id: uuid::Uuid,
         fingerprint: &[u8],
     ) -> Result<VaultUpdateId> {
-        Ok(sqlx::query(
-            "INSERT INTO events(request_id, request_fingerprint, event_json) VALUES (?, ?, '')",
+        Ok(
+            sqlx::query("INSERT INTO events(request_id, request_fingerprint) VALUES (?, ?)")
+                .bind(request_id.to_string())
+                .bind(fingerprint)
+                .execute(&mut **tx)
+                .await?
+                .last_insert_rowid(),
         )
-        .bind(request_id.to_string())
-        .bind(fingerprint)
-        .execute(&mut **tx)
-        .await?
-        .last_insert_rowid())
     }
 
     pub async fn insert_document_version(
