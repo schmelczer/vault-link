@@ -20,7 +20,7 @@ pub struct AppState {
 impl AppState {
     pub async fn try_new(config: Config) -> Result<Self> {
         let broadcasts = Broadcasts::new(&config.server);
-        let database = Database::try_new(&config.database, &broadcasts).await?;
+        let database = Database::try_new(&config.database).await?;
         let cursors: Cursors = Cursors::new(&config.database, &broadcasts);
 
         Cursors::start_background_task(cursors.clone());

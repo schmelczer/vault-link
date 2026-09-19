@@ -93,18 +93,22 @@ pub async fn create_server(config: Config) -> Result<()> {
 fn get_authed_routes(app_state: AppState) -> Router<AppState> {
     Router::new()
         .route(
-            "/vaults/:vault_id/manifest",
-            get(endpoints::get_manifest::get_manifest).put(endpoints::put_manifest::put_manifest),
+            "/vaults/:vault_id/file_manifest",
+            get(endpoints::get_file_manifest::get_file_manifest)
+                .put(endpoints::put_file_manifest::put_file_manifest),
         )
         .route(
-            "/vaults/:vault_id/state",
-            get(endpoints::snapshot::snapshot),
+            "/vaults/:vault_id/vault_snapshot",
+            get(endpoints::vault_snapshot::vault_snapshot),
         )
-        .route("/vaults/:vault_id/events", get(endpoints::events::events))
+        .route(
+            "/vaults/:vault_id/events_since",
+            get(endpoints::events::events),
+        )
         .route(
             "/vaults/:vault_id/documents/:document_id",
             get(endpoints::fetch_latest_document_version::fetch_latest_document_version)
-                .put(endpoints::push_document::push_document),
+                .put(endpoints::put_file_content::put_file_content),
         )
         .route(
             "/vaults/:vault_id/documents/:document_id/versions/:vault_update_id/content",
