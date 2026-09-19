@@ -1,434 +1,150 @@
-import type {
-    DocumentId,
-    RelativePath,
-    VaultUpdateId
-} from "../persistence/database";
-
-import type { Logger } from "../tracing/logger";
 import type { Settings } from "../persistence/settings";
 import type { FetchController } from "./fetch-controller";
-import { sleep } from "../utils/sleep";
-import { SyncResetError } from "./sync-reset-error";
-import type { SerializedError } from "./types/SerializedError";
-import type { DocumentVersionWithoutContent } from "./types/DocumentVersionWithoutContent";
+import type { Logger } from "../tracing/logger";
 import type { DocumentUpdateResponse } from "./types/DocumentUpdateResponse";
 import type { DocumentVersion } from "./types/DocumentVersion";
-import type { FetchLatestDocumentsResponse } from "./types/FetchLatestDocumentsResponse";
+import type { EventBatch } from "./types/EventBatch";
+import type { FileManifest } from "./types/FileManifest";
+import type { FileManifestUpdateResponse } from "./types/FileManifestUpdateResponse";
+import type { PutFileContent } from "./types/PutFileContent";
+import type { PushFileManifest } from "./types/PushFileManifest";
+import type { VaultSnapshot } from "./types/VaultSnapshot";
 import type { PingResponse } from "./types/PingResponse";
-import type { DeleteDocumentVersion } from "./types/DeleteDocumentVersion";
-import type { UpdateTextDocumentVersion } from "./types/UpdateTextDocumentVersion";
+import { AuthenticationError, PermanentSyncError } from "../errors/errors";
 
 export class SyncService {
-    private readonly client: typeof globalThis.fetch;
-    private readonly pingClient: typeof globalThis.fetch;
+    private readonly client: typeof fetch;
+    private readonly rawFetch: typeof fetch;
 
     public constructor(
         private readonly deviceId: string,
-        private readonly fetchController: FetchController,
+        fetchController: FetchController,
         private readonly settings: Settings,
-        private readonly logger: Logger,
-        fetchImplementation: typeof globalThis.fetch = globalThis.fetch
+        logger: Logger,
+        fetchImplementation: typeof fetch = globalThis.fetch
     ) {
-        // ensure that if it's called a method, `this` won't be bound to the instance
-        const unboundFetch: typeof globalThis.fetch = async (...args) =>
-            fetchImplementation(...args);
-
-        this.client = this.fetchController.getControlledFetchImplementation(
-            this.logger,
-            unboundFetch
+        this.rawFetch = async (...args) => fetchImplementation(...args);
+        this.client = fetchController.getControlledFetchImplementation(
+            logger,
+            this.rawFetch
         );
-        this.pingClient = unboundFetch;
     }
 
-    private static async errorFromResponse(
-        response: Response
-    ): Promise<string> {
+    public getUrl(path: string): string {
+        const { remoteUri, vaultName } = this.settings.getSettings();
+        return `${remoteUri.replace(/\/$/u, "")}/vaults/${encodeURIComponent(vaultName)}${path}`;
+    }
+
+    private async request<T>(
+        path: string,
+        body?: unknown,
+        raw = false
+    ): Promise<T> {
+        const response = await (raw ? this.rawFetch : this.client)(
+            this.getUrl(path),
+            {
+                method: body === undefined ? "GET" : "PUT",
+                body: body === undefined ? undefined : JSON.stringify(body),
+                signal: AbortSignal.timeout(
+                    this.settings.getSettings().requestTimeoutMs
+                ),
+                headers: {
+                    Authorization: `Bearer ${this.settings.getSettings().token}`,
+                    "Device-Id": this.deviceId,
+                    "Content-Type": "application/json"
+                }
+            }
+        );
+
+        if (!response.ok) {
+            this.throwForErrorResponse(
+                response,
+                `HTTP ${response.status}: ${await response.text()}`
+            );
+        }
+
+        return (await response.json()) as T;
+    }
+
+    private throwForErrorResponse(
+        response: Response,
+        message: string
+    ): never {
+        if (response.status === 401 || response.status === 403) {
+            throw new AuthenticationError(message);
+        }
         if (
-            response.headers
-                .get("Content-Type")
-                ?.includes("application/json") == true
+            response.status >= 400 &&
+            response.status < 500 &&
+            response.status !== 408 &&
+            response.status !== 429
         ) {
-            const result: SerializedError =
-                (await response.json()) as SerializedError; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
-            return SyncService.formatError(result);
+            throw new PermanentSyncError(message);
         }
-        return `HTTP ${response.status}: ${response.statusText}`;
+        throw new Error(message);
     }
 
-    private static formatError(error: SerializedError): string {
-        let result = error.message;
-        if (error.causes.length > 0) {
-            const causes = error.causes.join(", ");
-            result += ` caused by: ${causes}`;
-        }
-
-        return result;
+    public async ping(): Promise<PingResponse> {
+        return this.request("/ping", undefined, true);
     }
 
-    public async create({
-        documentId,
-        relativePath,
-        contentBytes
-    }: {
-        documentId?: DocumentId;
-        relativePath: RelativePath;
-        contentBytes: Uint8Array;
-    }): Promise<DocumentVersionWithoutContent> {
-        return this.retryForever(async () => {
-            const formData = new FormData();
-            if (documentId !== undefined) {
-                formData.append("document_id", documentId);
-            }
-            formData.append("relative_path", relativePath);
-            formData.append(
-                "content",
-                new Blob([new Uint8Array(contentBytes)])
-            );
-
-            this.logger.debug(
-                `Creating document with id ${documentId} and relative path ${relativePath}`
-            );
-
-            const response = await this.client(this.getUrl("/documents"), {
-                method: "POST",
-                body: formData,
-                headers: this.getDefaultHeaders()
-            });
-
-            if (!response.ok) {
-                throw new Error(
-                    `Failed to create document: ${await SyncService.errorFromResponse(
-                        response
-                    )}`
-                );
-            }
-
-            const result: DocumentVersionWithoutContent =
-                (await response.json()) as DocumentVersionWithoutContent; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
-
-            this.logger.debug(`Created document ${JSON.stringify(result)}`);
-
-            return result;
-        });
+    public async vaultSnapshot(): Promise<VaultSnapshot> {
+        return this.request("/vault-snapshot");
     }
 
-    public async putText({
-        parentVersionId,
-        documentId,
-        relativePath,
-        content
-    }: {
-        parentVersionId: VaultUpdateId;
-        documentId: DocumentId;
-        relativePath: RelativePath;
-        content: (number | string)[];
-    }): Promise<DocumentUpdateResponse> {
-        return this.retryForever(async () => {
-            this.logger.debug(
-                `Updating text document ${documentId} with parent version ${parentVersionId} and relative path ${relativePath}, content [${content.join(", ")}]`
-            );
-
-            const request: UpdateTextDocumentVersion = {
-                parentVersionId,
-                relativePath,
-                content
-            };
-
-            const response = await this.client(
-                this.getUrl(`/documents/${documentId}/text`),
-                {
-                    method: "PUT",
-                    body: JSON.stringify(request),
-                    headers: this.getDefaultHeaders({ type: "json" })
-                }
-            );
-
-            if (!response.ok) {
-                throw new Error(
-                    `Failed to update document: ${await SyncService.errorFromResponse(
-                        response
-                    )}`
-                );
-            }
-
-            const result: DocumentUpdateResponse =
-                (await response.json()) as DocumentUpdateResponse; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
-
-            this.logger.debug(
-                `Updated document ${JSON.stringify(result)} with id ${
-                    result.documentId
-                }}`
-            );
-
-            return result;
-        });
+    public async events(after: number): Promise<EventBatch> {
+        return this.request(`/events-since?after=${after}`);
     }
 
-    public async putBinary({
-        parentVersionId,
-        documentId,
-        relativePath,
-        contentBytes
-    }: {
-        parentVersionId: VaultUpdateId;
-        documentId: DocumentId;
-        relativePath: RelativePath;
-        contentBytes: Uint8Array;
-    }): Promise<DocumentUpdateResponse> {
-        return this.retryForever(async () => {
-            this.logger.debug(
-                `Updating binary document ${documentId} with parent version ${parentVersionId} and relative path ${relativePath}`
-            );
-            const formData = new FormData();
-            formData.append("parent_version_id", parentVersionId.toString());
-            formData.append("relative_path", relativePath);
-            formData.append(
-                "content",
-                new Blob([new Uint8Array(contentBytes)])
-            );
-
-            const response = await this.client(
-                this.getUrl(`/documents/${documentId}/binary`),
-                {
-                    method: "PUT",
-                    body: formData,
-                    headers: this.getDefaultHeaders()
-                }
-            );
-
-            if (!response.ok) {
-                throw new Error(
-                    `Failed to update document: ${await SyncService.errorFromResponse(
-                        response
-                    )}`
-                );
-            }
-
-            const result: DocumentUpdateResponse =
-                (await response.json()) as DocumentUpdateResponse; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
-
-            this.logger.debug(
-                `Updated document ${JSON.stringify(result)} with id ${
-                    result.documentId
-                }}`
-            );
-
-            return result;
-        });
+    public async fileManifest(): Promise<FileManifest> {
+        return this.request("/file-manifest");
     }
 
-    public async delete({
-        documentId,
-        relativePath
-    }: {
-        documentId: DocumentId;
-        relativePath: RelativePath;
-    }): Promise<DocumentVersionWithoutContent> {
-        return this.retryForever(async () => {
-            const request: DeleteDocumentVersion = {
-                relativePath
-            };
-
-            this.logger.debug(
-                `Delete document with id ${documentId} and relative path ${relativePath}`
-            );
-
-            const response = await this.client(
-                this.getUrl(`/documents/${documentId}`),
-                {
-                    method: "DELETE",
-                    body: JSON.stringify(request),
-                    headers: this.getDefaultHeaders({ type: "json" })
-                }
-            );
-
-            if (!response.ok) {
-                throw new Error(
-                    `Failed to delete document: ${await SyncService.errorFromResponse(
-                        response
-                    )}`
-                );
-            }
-
-            const result: DocumentVersionWithoutContent =
-                (await response.json()) as DocumentVersionWithoutContent; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
-
-            this.logger.debug(
-                `Deleted document ${relativePath} with id ${documentId}`
-            );
-
-            return result;
-        });
+    public async pushFileManifest(
+        request: PushFileManifest
+    ): Promise<FileManifestUpdateResponse> {
+        return this.request("/file-manifest", request);
     }
 
-    public async get({
-        documentId
-    }: {
-        documentId: DocumentId;
-    }): Promise<DocumentVersion> {
-        return this.retryForever(async () => {
-            this.logger.debug(`Getting document with id ${documentId}`);
+    public async putFileContent(
+        id: string,
+        request: PutFileContent
+    ): Promise<DocumentUpdateResponse> {
+        return this.request(`/documents/${id}`, request);
+    }
 
-            const response = await this.client(
-                this.getUrl(`/documents/${documentId}`),
-                {
-                    headers: this.getDefaultHeaders()
-                }
-            );
-
-            if (!response.ok) {
-                throw new Error(
-                    `Failed to get document: ${await SyncService.errorFromResponse(
-                        response
-                    )}`
-                );
-            }
-
-            const result: DocumentVersion =
-                (await response.json()) as DocumentVersion; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
-
-            this.logger.debug(`Got document ${JSON.stringify(result)}`);
-
-            return result;
-        });
+    public async get(id: string): Promise<DocumentVersion> {
+        return this.request(`/documents/${id}`);
     }
 
     public async getDocumentVersionContent({
         documentId,
         vaultUpdateId
     }: {
-        documentId: DocumentId;
-        vaultUpdateId: VaultUpdateId;
+        documentId: string;
+        vaultUpdateId: number;
     }): Promise<Uint8Array> {
-        return this.retryForever(async () => {
-            this.logger.debug(
-                `Getting document with id ${documentId} and version ${vaultUpdateId}`
-            );
-
-            const response = await this.client(
-                this.getUrl(
-                    `/documents/${documentId}/versions/${vaultUpdateId}/content`
+        const response = await this.client(
+            this.getUrl(
+                `/documents/${documentId}/versions/${vaultUpdateId}/content`
+            ),
+            {
+                signal: AbortSignal.timeout(
+                    this.settings.getSettings().requestTimeoutMs
                 ),
-                {
-                    headers: this.getDefaultHeaders()
+                headers: {
+                    Authorization: `Bearer ${this.settings.getSettings().token}`
                 }
-            );
-
-            if (!response.ok) {
-                throw new Error(
-                    `Failed to get document: ${await SyncService.errorFromResponse(
-                        response
-                    )}`
-                );
             }
-
-            const result = await response.bytes();
-            this.logger.debug(
-                `Got document version content for document ${documentId} version ${vaultUpdateId}`
-            );
-            return result;
-        });
-    }
-
-    public async getAll(
-        since?: VaultUpdateId
-    ): Promise<FetchLatestDocumentsResponse> {
-        return this.retryForever(async () => {
-            this.logger.debug(
-                "Getting all documents" +
-                    (since != null ? ` since ${since}` : "")
-            );
-
-            const url = new URL(this.getUrl("/documents"));
-            if (since !== undefined) {
-                url.searchParams.append("since", since.toString());
-            }
-            const response = await this.client(url.toString(), {
-                headers: this.getDefaultHeaders()
-            });
-
-            if (!response.ok) {
-                throw new Error(
-                    `Failed to get documents: ${await SyncService.errorFromResponse(
-                        response
-                    )}`
-                );
-            }
-
-            const result: FetchLatestDocumentsResponse =
-                (await response.json()) as FetchLatestDocumentsResponse; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
-
-            this.logger.debug(
-                `Got ${result.latestDocuments.length} document metadata`
-            );
-
-            return result;
-        });
-    }
-
-    public async ping(): Promise<PingResponse> {
-        this.logger.debug("Pinging server");
-        const response = await this.pingClient(this.getUrl("/ping"), {
-            headers: this.getDefaultHeaders()
-        });
-
-        if (!response.ok) {
-            throw new Error(
-                `Failed to ping server: ${await SyncService.errorFromResponse(
-                    response
-                )}`
-            );
-        }
-
-        const result: PingResponse = (await response.json()) as PingResponse; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion
-
-        this.logger.debug(
-            `Pinged server, got response: ${JSON.stringify(result)}`
         );
 
-        return result;
-    }
-
-    private getUrl(path: string): string {
-        const { vaultName, remoteUri } = this.settings.getSettings();
-        const remoteUriWithoutTrailingSlash = remoteUri.replace(/\/+$/, "");
-        const encodedVaultName = encodeURIComponent(vaultName.trim());
-        return `${remoteUriWithoutTrailingSlash}/vaults/${encodedVaultName}${path}`;
-    }
-
-    private getDefaultHeaders(
-        { type }: { type?: "json" } = { type: undefined }
-    ): Record<string, string> {
-        const headers: Record<string, string> = {
-            "device-id": this.deviceId,
-            authorization: `Bearer ${this.settings.getSettings().token}`
-        };
-
-        if (type === "json") {
-            headers["Content-Type"] = "application/json";
+        if (!response.ok) {
+            this.throwForErrorResponse(
+                response,
+                `Cannot fetch version ${vaultUpdateId}: HTTP ${response.status}`
+            );
         }
 
-        return headers;
-    }
-
-    private async retryForever<T>(fn: () => Promise<T>): Promise<T> {
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-        while (true) {
-            try {
-                return await fn();
-            } catch (e) {
-                // We must not retry errors coming from reset
-                if (e instanceof SyncResetError) {
-                    throw e;
-                }
-
-                const retryInterval =
-                    this.settings.getSettings().networkRetryIntervalMs;
-                this.logger.error(
-                    `Failed network call (${e}), retrying in ${retryInterval}ms`
-                );
-                await sleep(retryInterval);
-            }
-        }
+        return new Uint8Array(await response.arrayBuffer());
     }
 }

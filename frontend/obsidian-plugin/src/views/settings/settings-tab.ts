@@ -435,6 +435,42 @@ export class SyncSettingsTab extends PluginSettingTab {
         containerEl.createEl("h3", { text: "Advanced" });
 
         new Setting(containerEl)
+            .setName("Request timeout (ms)")
+            .setDesc(
+                "The maximum time to wait for a server request, in milliseconds."
+            )
+            .addText((input) =>
+                input
+                    .setValue(
+                        this.syncClient
+                            .getSettings()
+                            .requestTimeoutMs.toString()
+                    )
+                    .onChange(async (value) => {
+                        if (value === "") {
+                            return;
+                        }
+                        let parsedValue = Number(value);
+                        if (
+                            !Number.isSafeInteger(parsedValue) ||
+                            parsedValue <= 0
+                        ) {
+                            parsedValue =
+                                this.syncClient.getSettings().requestTimeoutMs;
+                        }
+
+                        if (value !== parsedValue.toString()) {
+                            input.setValue(parsedValue.toString());
+                        }
+
+                        return this.syncClient.setSetting(
+                            "requestTimeoutMs",
+                            parsedValue
+                        );
+                    })
+            );
+
+        new Setting(containerEl)
             .setName("Network retry interval (ms)")
             .setDesc(
                 "The time to wait between retrying failed network requests, in milliseconds."
