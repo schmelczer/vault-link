@@ -1,30 +1,34 @@
-CREATE TABLE IF NOT EXISTS documents (
-    vault_update_id INTEGER NOT NULL PRIMARY KEY,
+CREATE TABLE events (
+    event_id INTEGER PRIMARY KEY AUTOINCREMENT CHECK(event_id <= 9007199254740991), -- JavaScript’s Number.MAX_SAFE_INTEGER
+    request_id TEXT NOT NULL UNIQUE,
+    request_fingerprint BLOB NOT NULL,
+    event_json TEXT NOT NULL
+);
+
+CREATE TABLE documents (
+    vault_update_id INTEGER PRIMARY KEY REFERENCES events(event_id),
     document_id TEXT NOT NULL,
-    relative_path TEXT NOT NULL,
-    updated_date TIMESTAMP NOT NULL,
+    updated_date TEXT NOT NULL,
     content BLOB NOT NULL,
-    is_deleted BOOLEAN NOT NULL,
     user_id TEXT NOT NULL,
     device_id TEXT NOT NULL
 );
 
-CREATE VIEW IF NOT EXISTS latest_document_versions AS
-SELECT d.*
-FROM documents d
-INNER JOIN (
-    SELECT MAX(vault_update_id) AS max_version_id
-    FROM documents
-    GROUP BY document_id
-) max_versions
-ON d.vault_update_id = max_versions.max_version_id;
+CREATE INDEX documents_by_id ON documents(document_id);
 
-CREATE INDEX IF NOT EXISTS idx_documents_vault_id_relative_path
-ON documents (relative_path);
+CREATE VIEW latest_document_versions AS
+    SELECT d.* FROM documents d JOIN (
+        SELECT document_id, MAX(vault_update_id) AS version FROM documents GROUP BY document_id
+    ) heads ON d.vault_update_id = heads.version;
 
--- The immutable version and its acknowledgement commit in one transaction.
-CREATE TABLE push_acknowledgements (
-    request_id TEXT NOT NULL PRIMARY KEY,
-    request_fingerprint BLOB NOT NULL,
-    vault_update_id INTEGER NOT NULL REFERENCES documents(vault_update_id)
+CREATE TABLE file_manifests (
+    file_manifest_id INTEGER PRIMARY KEY REFERENCES events(event_id)
+);
+
+CREATE TABLE file_manifest_entries (
+    file_manifest_id INTEGER NOT NULL REFERENCES file_manifests(file_manifest_id),
+    document_id TEXT NOT NULL,
+    path TEXT NOT NULL,
+    PRIMARY KEY (file_manifest_id, document_id),
+    UNIQUE (file_manifest_id, path)
 );
