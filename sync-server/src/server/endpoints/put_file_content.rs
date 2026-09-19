@@ -170,7 +170,10 @@ mod tests {
             Database,
             models::{DocumentVersionWithoutContent, StoredDocumentVersion, VaultUpdateId},
         },
-        config::{Config, database_config::DatabaseConfig, server_config::ServerConfig},
+        config::{
+            Config, database_config::DatabaseConfig, server_config::ServerConfig,
+            user_config::VaultAccess,
+        },
     };
 
     async fn send_document(
@@ -189,7 +192,7 @@ mod tests {
             Extension(User {
                 name: user_id,
                 token: String::new(),
-                vault_access: Default::default(),
+                vault_access: VaultAccess::default(),
             }),
             TypedHeader(DeviceIdHeader(device_id)),
             State(state.clone()),
