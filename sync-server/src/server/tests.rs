@@ -60,7 +60,7 @@ async fn http_rejects_encoded_traversal_and_accepts_normalized_allowlists() {
     ] {
         let (status, _) = request(
             app.clone(),
-            &format!("/vaults/{vault}/vault_snapshot"),
+            &format!("/vaults/{vault}/vault-snapshot"),
             "admin",
             None,
         )
@@ -71,7 +71,7 @@ async fn http_rejects_encoded_traversal_and_accepts_normalized_allowlists() {
     for vault in ["MyVault", "myvault", "%20MYVAULT%20"] {
         let (status, _) = request(
             app.clone(),
-            &format!("/vaults/{vault}/file_manifest"),
+            &format!("/vaults/{vault}/file-manifest"),
             "mixed",
             None,
         )
@@ -79,7 +79,7 @@ async fn http_rejects_encoded_traversal_and_accepts_normalized_allowlists() {
         assert_eq!(status, StatusCode::OK, "vault: {vault}");
     }
     assert_eq!(
-        request(app, "/vaults/other/file_manifest", "mixed", None)
+        request(app, "/vaults/other/file-manifest", "mixed", None)
             .await
             .0,
         StatusCode::FORBIDDEN
