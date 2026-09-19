@@ -1,7 +1,9 @@
-use serde::{self, Serialize};
+use serde::{self, Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::app_state::database::models::{DocumentVersion, DocumentVersionWithoutContent};
+use crate::app_state::database::models::{
+    DocumentVersion, DocumentVersionWithoutContent, FileManifest, VaultUpdateId,
+};
 
 /// Response to a ping request.
 #[derive(TS, Debug, Clone, Serialize)]
@@ -24,7 +26,7 @@ pub struct PingResponse {
 }
 
 /// Response to an update document request.
-#[derive(TS, Debug, Clone, Serialize)]
+#[derive(TS, Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 #[ts(export)]
 pub enum DocumentUpdateResponse {
@@ -33,4 +35,16 @@ pub enum DocumentUpdateResponse {
 
     /// Nothing was written. The client must incorporate this version before retrying.
     StaleBase(DocumentVersion),
+}
+
+#[derive(TS, Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+#[ts(export)]
+pub enum FileManifestUpdateResponse {
+    Accepted {
+        #[serde(rename = "fileManifestId")]
+        #[ts(as = "f64")]
+        file_manifest_id: VaultUpdateId,
+    },
+    StaleBase(FileManifest),
 }

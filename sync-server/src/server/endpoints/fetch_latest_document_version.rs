@@ -35,7 +35,7 @@ pub async fn fetch_latest_document_version(
 
     let latest_version = state
         .database
-        .get_latest_document(&vault_id, &document_id, None)
+        .get_latest_document_version(&vault_id, &document_id, None)
         .await
         .map_err(server_error)?
         .map_or_else(

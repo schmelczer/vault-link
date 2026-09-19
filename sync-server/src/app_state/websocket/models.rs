@@ -1,9 +1,7 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::app_state::database::models::{
-    DeviceId, DocumentId, DocumentVersionWithoutContent, VaultUpdateId,
-};
+use crate::app_state::database::models::{DeviceId, DocumentId, EventBatch, VaultUpdateId};
 
 #[derive(TS, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -57,13 +55,6 @@ pub struct CursorPositionFromServer {
     pub clients: Vec<ClientCursors>,
 }
 
-#[derive(TS, Serialize, Clone, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct WebSocketVaultUpdate {
-    pub documents: Vec<DocumentVersionWithoutContent>,
-    pub is_initial_sync: bool,
-}
-
 #[derive(TS, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase", tag = "type")]
 #[ts(export)]
@@ -76,28 +67,6 @@ pub enum WebSocketClientMessage {
 #[serde(rename_all = "camelCase", tag = "type")]
 #[ts(export)]
 pub enum WebSocketServerMessage {
-    VaultUpdate(WebSocketVaultUpdate),
+    VaultEvents(EventBatch),
     CursorPositions(CursorPositionFromServer),
-}
-
-#[derive(Clone, Debug)]
-pub struct WebSocketServerMessageWithOrigin {
-    pub origin_device_id: Option<DeviceId>,
-    pub message: WebSocketServerMessage,
-}
-
-impl WebSocketServerMessageWithOrigin {
-    pub fn new(message: WebSocketServerMessage) -> Self {
-        Self {
-            origin_device_id: None,
-            message,
-        }
-    }
-
-    pub fn with_origin(origin_device_id: DeviceId, message: WebSocketServerMessage) -> Self {
-        Self {
-            origin_device_id: Some(origin_device_id),
-            message,
-        }
-    }
 }

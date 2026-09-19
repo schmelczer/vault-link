@@ -4,10 +4,7 @@ use futures::{sink::SinkExt, stream::SplitSink};
 
 use super::models::{WebSocketClientMessage, WebSocketHandshake, WebSocketServerMessage};
 use crate::{
-    app_state::{
-        AppState,
-        database::models::{DocumentVersionWithoutContent, VaultId, VaultUpdateId},
-    },
+    app_state::{AppState, database::models::VaultId},
     config::user_config::User,
     errors::{SyncServerError, server_error, unauthenticated_error},
     server::auth::auth,
@@ -41,26 +38,6 @@ pub fn get_authenticated_handshake(
         Err(unauthenticated_error(anyhow::anyhow!(
             "Failed to authenticate due to invalid message"
         )))
-    }
-}
-
-pub async fn get_unseen_documents(
-    state: &AppState,
-    vault_id: &VaultId,
-    last_seen_vault_update_id: Option<VaultUpdateId>,
-) -> Result<Vec<DocumentVersionWithoutContent>, SyncServerError> {
-    if let Some(update_id) = last_seen_vault_update_id {
-        state
-            .database
-            .get_latest_documents_since(vault_id, update_id, None)
-            .await
-            .map_err(server_error)
-    } else {
-        state
-            .database
-            .get_latest_documents(vault_id, None)
-            .await
-            .map_err(server_error)
     }
 }
 

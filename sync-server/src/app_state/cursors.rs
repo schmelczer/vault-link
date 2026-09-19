@@ -6,11 +6,8 @@ use tokio::sync::Mutex;
 use super::{
     database::models::{DeviceId, VaultId},
     websocket::{
-        broadcasts::Broadcasts,
-        models::{
-            ClientCursors, CursorPositionFromServer, WebSocketServerMessage,
-            WebSocketServerMessageWithOrigin,
-        },
+        broadcasts::{Broadcasts, Notification},
+        models::{ClientCursors, CursorPositionFromServer},
     },
 };
 use crate::{
@@ -91,13 +88,11 @@ impl Cursors {
 
         for (vault_id, cursors) in vault_to_cursors.iter() {
             self.broadcasts
-                .send_document_update(
+                .send(
                     vault_id.clone(),
-                    WebSocketServerMessageWithOrigin::new(WebSocketServerMessage::CursorPositions(
-                        CursorPositionFromServer {
-                            clients: cursors.iter().map(|c| c.client_cursors.clone()).collect(),
-                        },
-                    )),
+                    Notification::Cursors(CursorPositionFromServer {
+                        clients: cursors.iter().map(|c| c.client_cursors.clone()).collect(),
+                    }),
                 )
                 .await;
         }

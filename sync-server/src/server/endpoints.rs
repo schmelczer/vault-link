@@ -1,7 +1,13 @@
+pub mod events;
 pub mod fetch_document_version_content;
 pub mod fetch_latest_document_version;
-pub mod fetch_latest_documents;
+pub mod get_file_manifest;
 pub mod index;
+pub mod method_not_allowed;
+pub mod not_found;
 pub mod ping;
-pub mod push_document;
+pub mod put_file_content;
+pub mod put_file_manifest;
+mod utils;
+pub mod vault_snapshot;
 pub mod websocket;

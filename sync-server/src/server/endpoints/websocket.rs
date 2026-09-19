@@ -1,4 +1,16 @@
-use anyhow::Context;
+use crate::{
+    app_state::{
+        AppState,
+        database::models::VaultId,
+        websocket::{
+            broadcasts::Notification,
+            models::{CursorPositionFromServer, WebSocketClientMessage, WebSocketServerMessage},
+            utils::{get_authenticated_handshake, send_update_over_websocket},
+        },
+    },
+    errors::{SyncServerError, client_error, server_error},
+    utils::normalize::normalize,
+};
 use axum::{
     extract::{
         Path, State,
@@ -6,27 +18,11 @@ use axum::{
     },
     response::Response,
 };
-use futures::stream::StreamExt;
+use futures::StreamExt;
 use log::{debug, info};
 use serde::Deserialize;
-
-use crate::{
-    app_state::{
-        AppState,
-        database::models::VaultId,
-        websocket::{
-            models::{
-                CursorPositionFromServer, WebSocketClientMessage, WebSocketServerMessage,
-                WebSocketVaultUpdate,
-            },
-            utils::{
-                get_authenticated_handshake, get_unseen_documents, send_update_over_websocket,
-            },
-        },
-    },
-    errors::{SyncServerError, client_error, server_error},
-    utils::normalize::normalize,
-};
+use std::time::Duration;
+use tokio::sync::broadcast::error::RecvError;
 
 #[derive(Deserialize)]
 pub struct WebSocketPathParams {
@@ -34,160 +30,96 @@ pub struct WebSocketPathParams {
     vault_id: VaultId,
 }
 
+#[axum::debug_handler]
 pub async fn websocket_handler(
     ws: WebSocketUpgrade,
-    Path(WebSocketPathParams { vault_id }): Path<WebSocketPathParams>,
+    Path(path): Path<WebSocketPathParams>,
     State(state): State<AppState>,
 ) -> Result<Response, SyncServerError> {
-    Ok(ws.on_upgrade(move |socket| websocket_wrapped(state, socket, vault_id)))
-}
-
-async fn websocket_wrapped(state: AppState, stream: WebSocket, vault_id: VaultId) {
-    info!("WebSocket connection opened on vault `{vault_id}`");
-
-    let result = websocket(state, stream, vault_id.clone()).await;
-
-    if let Err(err) = result {
-        debug!("WebSocket connection error on vault `{vault_id}`: {err}");
-    }
-}
-
-#[allow(clippy::too_many_lines)]
-async fn websocket(
-    state: AppState,
-    stream: WebSocket,
-    vault_id: VaultId,
-) -> Result<(), SyncServerError> {
-    let (mut sender, mut websocket_receiver) = stream.split();
-
-    let authed_handshake = get_authenticated_handshake(
-        &state,
-        &vault_id,
-        websocket_receiver
-            .next()
-            .await
-            .transpose()
-            .unwrap_or_default(),
-    )?;
-
-    info!(
-        "WebSocket handshake successful for vault `{vault_id}` for `{}`",
-        authed_handshake.handshake.device_id
+    debug!(
+        "Upgrading WebSocket connection for vault `{}`",
+        path.vault_id
     );
 
-    let mut broadcast_receiver = state.broadcasts.get_receiver(vault_id.clone()).await;
+    Ok(ws.on_upgrade(move |socket| async move {
+        if let Err(error) = websocket(state, socket, path.vault_id).await {
+            debug!("WebSocket disconnected: {error}");
+        }
+    }))
+}
 
-    send_update_over_websocket(
-        &WebSocketServerMessage::VaultUpdate(WebSocketVaultUpdate {
-            documents: get_unseen_documents(
-                &state,
-                &vault_id,
-                authed_handshake.handshake.last_seen_vault_update_id,
-            )
-            .await?,
-            is_initial_sync: true,
-        }),
-        &mut sender,
-    )
-    .await?;
+async fn websocket(
+    state: AppState,
+    socket: WebSocket,
+    vault: VaultId,
+) -> Result<(), SyncServerError> {
+    let (mut sender, mut receiver) = socket.split();
+    let authenticated = get_authenticated_handshake(
+        &state,
+        &vault,
+        receiver.next().await.transpose().unwrap_or_default(),
+    )?;
 
-    send_update_over_websocket(
-        &WebSocketServerMessage::CursorPositions(CursorPositionFromServer {
-            clients: state.cursors.get_cursors(&vault_id).await,
-        }),
-        &mut sender,
-    )
-    .await?;
+    let device = authenticated.handshake.device_id;
+    let mut after = authenticated
+        .handshake
+        .last_seen_vault_update_id
+        .unwrap_or(0);
+    let mut notifications = state.broadcasts.get_receiver(vault.clone()).await;
+    let mut timer = tokio::time::interval(Duration::from_secs(2));
+    timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
-    let device_id = authed_handshake.handshake.device_id.clone();
-    let mut send_task = tokio::spawn(async move {
-        while let Ok(update) = broadcast_receiver.recv().await {
-            if Some(&device_id) == update.origin_device_id.as_ref() {
-                continue;
+    info!("WebSocket connected to vault {vault}");
+
+    // Exactly one sender drains durable events in commit order. In-memory
+    // notifications are only wakeups, so lag and commit/notify crashes are safe.
+    let result = async {
+        loop {
+            let batch = state.database.events_after(&vault, after).await.map_err(|error| server_error(error.into()))?;
+
+            if !batch.events.is_empty() {
+                let head = batch.head_event_id;
+                send_update_over_websocket(&WebSocketServerMessage::VaultEvents(batch), &mut sender).await?;
+                after = head;
             }
 
-            let message = match update.message {
-                WebSocketServerMessage::CursorPositions(CursorPositionFromServer { clients }) => {
-                    WebSocketServerMessage::CursorPositions(CursorPositionFromServer {
-                        clients: clients
-                            .into_iter()
-                            .filter(|client| client.device_id != device_id)
-                            .collect(),
-                    })
-                }
-                WebSocketServerMessage::VaultUpdate(_) => update.message,
-            };
+            tokio::select! {
+                _ = timer.tick() => {},
+                notification = notifications.recv() => match notification {
+                    Ok(update) => if let Notification::Cursors(mut positions) = update {
+                        positions.clients.retain(|c| c.device_id != device);
+                        send_update_over_websocket(&WebSocketServerMessage::CursorPositions(positions), &mut sender).await?;
+                    },
 
-            send_update_over_websocket(&message, &mut sender).await?;
-        }
+                    Err(RecvError::Lagged(_)) => {}, // Drain the durable log on the next iteration.
+                    Err(RecvError::Closed) => break,
+                },
 
-        Ok::<(), SyncServerError>(())
-    });
-
-    let device_id = authed_handshake.handshake.device_id.clone();
-    let vault_id_clone = vault_id.clone();
-    let cursor_manager = state.cursors.clone();
-    let mut receive_task = tokio::spawn(async move {
-        while let Some(Ok(Message::Text(message))) = websocket_receiver.next().await {
-            let message: WebSocketClientMessage = serde_json::from_str(&message)
-                .context("Failed to parse WebSocket message from client")
-                .map_err(server_error)?;
-
-            match message {
-                WebSocketClientMessage::Handshake(_) => {
-                    return Err(client_error(anyhow::anyhow!(
-                        "Unexpected handshake message"
-                    )));
-                }
-                WebSocketClientMessage::CursorPositions(cursors) => {
-                    cursor_manager
-                        .update_cursors(
-                            vault_id_clone.clone(),
-                            authed_handshake.user.name.clone(),
-                            &device_id,
-                            cursors.documents_with_cursors,
-                        )
-                        .await;
+                incoming = receiver.next() => match incoming {
+                    Some(Ok(Message::Text(text))) => {
+                        let message: WebSocketClientMessage = serde_json::from_str(&text).map_err(|error| client_error(error.into()))?;
+                        match message {
+                            WebSocketClientMessage::Handshake(_) => return Err(client_error(anyhow::anyhow!("Unexpected handshake"))),
+                            WebSocketClientMessage::CursorPositions(positions) => {
+                                state.cursors.update_cursors(vault.clone(), authenticated.user.name.clone(), &device, positions.documents_with_cursors).await;
+                                let clients = state.cursors.get_cursors(&vault).await.into_iter().filter(|c| c.device_id != device).collect();
+                                send_update_over_websocket(&WebSocketServerMessage::CursorPositions(CursorPositionFromServer { clients }), &mut sender).await?;
+                            }
+                        }
+                    },
+                    Some(Ok(Message::Ping(_))) | Some(Ok(Message::Pong(_))) => {},
+                    _ => break,
                 }
             }
         }
-
-        Ok::<(), SyncServerError>(())
-    });
-
-    tokio::select! {
-        _ = &mut send_task => receive_task.abort(),
-        _ = &mut receive_task => send_task.abort(),
-    };
-
-    let result: Result<(), SyncServerError> = (async {
-        send_task
-            .await
-            .context("WebSocket send task failed")
-            .map_err(client_error)
-            .and_then(|err| err)?;
-
-        receive_task
-            .await
-            .context("WebSocket receive task failed")
-            .map_err(client_error)
-            .and_then(|err| err)?;
-
+        
         Ok(())
-    })
-    .await;
+    }.await;
 
     state
         .cursors
-        .remove_cursors_of_device(&vault_id, &authed_handshake.handshake.device_id)
+        .remove_cursors_of_device(&vault, &device)
         .await;
-
-    if result.is_err() {
-        info!(
-            "WebSocket disconnected on vault `{vault_id}` for `{}`",
-            authed_handshake.handshake.device_id
-        );
-    }
 
     result
 }

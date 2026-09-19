@@ -11,16 +11,9 @@ use tokio::time::Instant;
 
 pub mod models;
 
-mod get_document_version;
-mod get_latest_document;
-mod get_latest_document_by_path;
-mod get_latest_documents;
-mod get_latest_documents_since;
-mod get_max_update_id_in_vault;
-mod get_push_acknowledgement;
-mod insert_document_version;
+mod mutations;
+mod queries;
 
-use super::websocket::broadcasts::Broadcasts;
 use crate::config::database_config::DatabaseConfig;
 
 #[derive(Clone)]
@@ -41,14 +34,13 @@ impl std::fmt::Debug for PoolWithTimestamp {
 #[derive(Clone, Debug)]
 pub struct Database {
     config: DatabaseConfig,
-    broadcasts: Broadcasts,
     connection_pools: Arc<Mutex<HashMap<VaultId, PoolWithTimestamp>>>,
 }
 
 pub type Transaction<'a> = sqlx::Transaction<'a, Sqlite>;
 
 impl Database {
-    pub async fn try_new(config: &DatabaseConfig, broadcasts: &Broadcasts) -> Result<Self> {
+    pub async fn try_new(config: &DatabaseConfig) -> Result<Self> {
         tokio::fs::create_dir_all(&config.databases_directory_path)
             .await
             .with_context(|| {
@@ -86,7 +78,6 @@ impl Database {
         let database = Self {
             config: config.clone(),
             connection_pools: Arc::new(Mutex::new(connection_pools)),
-            broadcasts: broadcasts.clone(),
         };
 
         // Start background task to cleanup idle connection pools
@@ -109,6 +100,9 @@ impl Database {
             .auto_vacuum(sqlx::sqlite::SqliteAutoVacuum::Full)
             .busy_timeout(Duration::from_secs(3600))
             .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
+            .synchronous(sqlx::sqlite::SqliteSynchronous::Full)
+            .pragma("fullfsync", "ON")
+            .foreign_keys(true)
             .log_slow_statements(log::LevelFilter::Warn, Duration::from_secs(30));
 
         let pool = SqlitePoolOptions::new()
@@ -172,7 +166,7 @@ impl Database {
         let mut transaction = self.create_readonly_transaction(vault).await?;
 
         // sqlx doesn't support immediate transactions for sqlite: https://github.com/launchbadge/sqlx/issues/481
-        sqlx::query!("END; BEGIN IMMEDIATE;")
+        sqlx::query("END; BEGIN IMMEDIATE;")
             .execute(&mut *transaction)
             .await?;
 
