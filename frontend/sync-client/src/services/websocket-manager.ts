@@ -5,7 +5,7 @@ import type { WebSocketClientMessage } from "./types/WebSocketClientMessage";
 import type { CursorPositionFromClient } from "./types/CursorPositionFromClient";
 import type { ClientCursors } from "./types/ClientCursors";
 import { createPromise } from "../utils/create-promise";
-import type { WebSocketVaultUpdate } from "./types/WebSocketVaultUpdate";
+import type { EventBatch } from "./protocol";
 import { WEBSOCKET_DISCONNECT_TIMEOUT_IN_S } from "../consts";
 import { removeFromArray } from "../utils/remove-from-array";
 import { EventListeners } from "../utils/data-structures/event-listeners";
@@ -17,7 +17,7 @@ export class WebSocketManager {
     >();
 
     public readonly onRemoteVaultUpdateReceived = new EventListeners<
-        (update: WebSocketVaultUpdate) => Promise<void>
+        (update: EventBatch) => Promise<void>
     >();
 
     public readonly onRemoteCursorsUpdateReceived = new EventListeners<
@@ -252,7 +252,7 @@ export class WebSocketManager {
     private async handleWebSocketMessage(
         message: WebSocketServerMessage
     ): Promise<void> {
-        if (message.type === "vaultUpdate") {
+        if (message.type === "vaultEvents") {
             await this.onRemoteVaultUpdateReceived.triggerAsync(message);
 
             // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition

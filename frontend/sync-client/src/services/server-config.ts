@@ -1,6 +1,8 @@
 import { SUPPORTED_API_VERSION } from "../consts";
-import { AuthenticationError } from "./authentication-error";
-import { ServerVersionMismatchError } from "./server-version-mismatch-error";
+import {
+    AuthenticationError,
+    ServerVersionMismatchError
+} from "../errors/errors";
 import type { SyncService } from "./sync-service";
 import type { PingResponse } from "./types/PingResponse";
 
@@ -74,7 +76,12 @@ export class ServerConfig {
     public async getConfig(): Promise<ServerConfigData> {
         if (!this.config) {
             this.response ??= this.syncService.ping();
-            this.config = await this.response;
+            try {
+                this.config = await this.response;
+            } catch (error) {
+                this.response = undefined;
+                throw error;
+            }
         }
 
         ServerConfig.validateConfig(this.config);

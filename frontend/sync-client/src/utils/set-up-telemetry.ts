@@ -24,11 +24,13 @@ export const setUpTelemetry = (): (() => void) => {
             }
         });
     };
+
     window.addEventListener("error", onError);
 
     const onUnhandledRejection = (event: PromiseRejectionEvent): void => {
         Sentry.captureException(event.reason);
     };
+
     window.addEventListener("unhandledrejection", onUnhandledRejection);
 
     return (): void => {

@@ -1,6 +1,6 @@
 import type { Logger } from "../tracing/logger";
 import { createPromise } from "../utils/create-promise";
-import { SyncResetError } from "./sync-reset-error";
+import { SyncResetError } from "../errors/errors";
 
 /**
  * Offers a resettable fetch implementation that waits until syncing is enabled
