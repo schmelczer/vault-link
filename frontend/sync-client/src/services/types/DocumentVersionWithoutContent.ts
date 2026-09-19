@@ -3,9 +3,7 @@
 export interface DocumentVersionWithoutContent {
     vaultUpdateId: number;
     documentId: string;
-    relativePath: string;
     updatedDate: string;
-    isDeleted: boolean;
     userId: string;
     deviceId: string;
     contentSize: number;

@@ -2,21 +2,19 @@
 
 set -e
 
-rm -rf sync-server/bindings
-
-cd sync-server
-cargo test export_bindings
-cd -
-
-# Both target directories contain only generated bindings — wipe and copy
+# This directory contains only generated bindings. ts-rs writes here directly,
+# as configured in .cargo/config.toml.
 rm -f frontend/sync-client/src/services/types/*.ts
-rm -f frontend/history-ui/src/lib/types/*.ts
-cp -r sync-server/bindings/* frontend/sync-client/src/services/types/
-cp -r sync-server/bindings/* frontend/history-ui/src/lib/types/
 
-cd frontend
-npm run lint
-cd ..
+(
+    cd sync-server
+    cargo test export_bindings
+)
+
+(
+    cd frontend
+    npm run lint
+)
 
 # Format all files across the project (frontend and backend)
 npx -C frontend prettier --write "**/*.{ts,js,json,md,yml,yaml}"

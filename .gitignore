@@ -10,7 +10,6 @@ frontend/*/dist
 # Rust build folders
 sync-server/target
 sync-server/artifacts
-sync-server/bindings/*.ts
 
 # build folders
 sync-server/db.sqlite3*
