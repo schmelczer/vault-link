@@ -1,12 +1,13 @@
-// https://stackoverflow.com/questions/7616461/generate-a-hash-from-string-in-javascript
-export function hash(content: Uint8Array): string {
-    let result = 0;
-    // eslint-disable-next-line @typescript-eslint/prefer-for-of
-    for (let i = 0; i < content.length; i++) {
-        result = (result << 5) - result + content[i];
-        result |= 0; // Convert to 32bit integer
-    }
-    return Math.abs(result).toString(16).padStart(8, "0");
+export async function hash(content: Uint8Array): Promise<string> {
+    const digest = await globalThis.crypto.subtle.digest(
+        "SHA-256",
+        new Uint8Array(content)
+    );
+
+    return Array.from(new Uint8Array(digest), (byte) =>
+        byte.toString(16).padStart(2, "0")
+    ).join("");
 }
 
-export const EMPTY_HASH = hash(new Uint8Array(0));
+export const EMPTY_HASH =
+    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
