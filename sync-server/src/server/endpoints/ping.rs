@@ -14,12 +14,12 @@ use crate::{
     app_state::{AppState, database::models::VaultId},
     consts::SUPPORTED_API_VERSION,
     errors::SyncServerError,
-    utils::normalize::normalize,
+    utils::normalize_vault_id::normalize_vault_id,
 };
 
 #[derive(Deserialize)]
 pub struct PingPathParams {
-    #[serde(deserialize_with = "normalize")]
+    #[serde(deserialize_with = "normalize_vault_id")]
     vault_id: VaultId,
 }
 

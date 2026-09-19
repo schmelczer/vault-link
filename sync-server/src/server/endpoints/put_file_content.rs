@@ -14,7 +14,7 @@ use crate::{
         requests::{PushContent, PutFileContent},
         responses::DocumentUpdateResponse,
     },
-    utils::normalize::normalize,
+    utils::normalize_vault_id::normalize_vault_id,
 };
 use anyhow::anyhow;
 use axum::{
@@ -30,7 +30,7 @@ use sha2::{Digest, Sha256};
 
 #[derive(Deserialize)]
 pub struct PutFileContentPath {
-    #[serde(deserialize_with = "normalize")]
+    #[serde(deserialize_with = "normalize_vault_id")]
     vault_id: VaultId,
     document_id: DocumentId,
 }

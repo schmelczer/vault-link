@@ -12,12 +12,12 @@ use crate::{
         database::models::{DocumentId, VaultId, VaultUpdateId},
     },
     errors::{SyncServerError, not_found_error, server_error},
-    utils::normalize::normalize,
+    utils::normalize_vault_id::normalize_vault_id,
 };
 
 #[derive(Deserialize)]
 pub struct FetchDocumentVersionContentPathParams {
-    #[serde(deserialize_with = "normalize")]
+    #[serde(deserialize_with = "normalize_vault_id")]
     vault_id: VaultId,
 
     document_id: DocumentId,

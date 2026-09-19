@@ -14,12 +14,12 @@ use crate::{
         },
     },
     errors::{SyncServerError, server_error},
-    utils::normalize::normalize,
+    utils::normalize_vault_id::normalize_vault_id,
 };
 
 #[derive(Deserialize)]
 pub struct GetFileManifestPath {
-    #[serde(deserialize_with = "normalize")]
+    #[serde(deserialize_with = "normalize_vault_id")]
     vault_id: VaultId,
 }
 

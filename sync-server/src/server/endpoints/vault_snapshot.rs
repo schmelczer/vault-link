@@ -11,12 +11,12 @@ use crate::{
         database::models::{VaultId, VaultSnapshot},
     },
     errors::{SyncServerError, server_error},
-    utils::normalize::normalize,
+    utils::normalize_vault_id::normalize_vault_id,
 };
 
 #[derive(Deserialize)]
 pub struct VaultSnapshotPath {
-    #[serde(deserialize_with = "normalize")]
+    #[serde(deserialize_with = "normalize_vault_id")]
     vault_id: VaultId,
 }
 

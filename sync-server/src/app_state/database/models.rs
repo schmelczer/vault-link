@@ -22,16 +22,18 @@ pub struct StoredDocumentVersion {
     pub device_id: DeviceId,
 }
 
-#[derive(TS, Debug, Clone, Serialize, Deserialize)]
+#[derive(TS, Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct DocumentVersionWithoutContent {
     #[ts(as = "f64")]
     pub vault_update_id: VaultUpdateId,
+    #[sqlx(try_from = "uuid::fmt::Hyphenated")]
     pub document_id: DocumentId,
     pub updated_date: DateTime<Utc>,
     pub user_id: UserId,
     pub device_id: DeviceId,
+    #[sqlx(try_from = "i64")]
     pub content_size: usize,
 }
 

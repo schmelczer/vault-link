@@ -4,6 +4,9 @@ mod endpoints;
 pub(crate) mod requests;
 pub(crate) mod responses;
 
+#[cfg(test)]
+mod tests;
+
 use anyhow::{Context as _, Result};
 use auth::auth_middleware;
 use axum::{

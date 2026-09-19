@@ -93,6 +93,23 @@ endpoint uses the same history, so losing the final notification is recoverable.
 A fresh client reads `/vault_snapshot`, applies it durably, then replays after its
 watermark.
 Cursor notifications are ephemeral and do not consume event IDs.
+Cursor expiry and disconnect broadcast the remaining clients, including an empty
+list when the last client leaves.
+
+## Vault names and database files
+
+Vault names and configured allowlists are trimmed and lowercased consistently.
+Empty names, `.` and `..`, path separators, and control characters are rejected.
+Other Unicode spellings remain distinct identities, including composed and
+decomposed characters.
+
+Databases use `vaults/<sha256-of-normalized-vault-name>.sqlite` underneath the
+configured database directory. This prevents filesystem case and Unicode aliases
+from sharing a database. This is the only supported storage layout; top-level
+`<vault-name>.sqlite` files are not loaded or migrated. Back up the entire database
+directory, including the `vaults` subdirectory.
+
+Vault snapshots query metadata and byte lengths without loading document contents.
 
 SQLite uses WAL, `synchronous=FULL`, and `fullfsync` where supported. On Unix, startup also
 flushes database directory entries; the filesystem must support those durability

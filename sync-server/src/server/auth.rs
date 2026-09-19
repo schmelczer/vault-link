@@ -14,8 +14,8 @@ use log::info;
 use crate::{
     app_state::{AppState, database::models::VaultId},
     config::user_config::{AllowListedVaults, User, VaultAccess},
-    errors::{SyncServerError, permission_denied_error, unauthenticated_error},
-    utils::normalize::normalize_string,
+    errors::{SyncServerError, client_error, permission_denied_error, unauthenticated_error},
+    utils::normalize_vault_id::{normalize_string, validate_vault_id},
 };
 
 pub async fn auth_middleware(
@@ -40,6 +40,7 @@ pub async fn auth_middleware(
 }
 
 pub fn auth(state: &AppState, token: &str, vault_id: &VaultId) -> Result<User, SyncServerError> {
+    validate_vault_id(vault_id).map_err(client_error)?;
     let user = state
         .config
         .users

@@ -7,7 +7,7 @@ use crate::consts::{
     DEFAULT_MERGEABLE_FILE_EXTENSIONS, DEFAULT_PORT, DEFAULT_RESPONSE_TIMEOUT_SECONDS,
 };
 
-#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ServerConfig {
     #[serde(default = "default_host")]
     pub host: String,
@@ -26,6 +26,19 @@ pub struct ServerConfig {
 
     #[serde(default = "default_mergeable_file_extensions")]
     pub mergeable_file_extensions: Vec<String>,
+}
+
+impl Default for ServerConfig {
+    fn default() -> Self {
+        Self {
+            host: default_host(),
+            port: default_port(),
+            max_body_size_mb: default_max_body_size_mb(),
+            max_clients_per_vault: default_max_clients_per_vault(),
+            response_timeout: default_response_timeout(),
+            mergeable_file_extensions: default_mergeable_file_extensions(),
+        }
+    }
 }
 
 fn default_host() -> String {
@@ -59,4 +72,37 @@ fn default_mergeable_file_extensions() -> Vec<String> {
         .iter()
         .map(|s| (*s).to_owned())
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Config;
+
+    #[tokio::test]
+    async fn fresh_and_omitted_server_configs_use_the_documented_defaults() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.yml");
+        let fresh = Config::read_or_create(&path).await.unwrap();
+        let reread = Config::load_from_file(&path).await.unwrap();
+        let omitted: Config = serde_yaml::from_str("{}").unwrap();
+        let explicit: Config = serde_yaml::from_str("server: {}").unwrap();
+        for config in [fresh, reread, omitted, explicit] {
+            assert_eq!(config.server.host, DEFAULT_HOST);
+            assert_eq!(config.server.port, DEFAULT_PORT);
+            assert_eq!(config.server.max_body_size_mb, DEFAULT_MAX_BODY_SIZE_MB);
+            assert_eq!(
+                config.server.max_clients_per_vault,
+                DEFAULT_MAX_CLIENTS_PER_VAULT
+            );
+            assert_eq!(
+                config.server.response_timeout,
+                DEFAULT_RESPONSE_TIMEOUT_SECONDS
+            );
+            assert_eq!(
+                config.server.mergeable_file_extensions,
+                DEFAULT_MERGEABLE_FILE_EXTENSIONS
+            );
+        }
+    }
 }

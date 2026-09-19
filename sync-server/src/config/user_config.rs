@@ -2,7 +2,10 @@ use bimap::BiHashMap;
 use rand::{Rng, distr::Alphanumeric, rng};
 use serde::{Deserialize, Deserializer, Serialize, de::Error};
 
-use crate::app_state::database::models::VaultId;
+use crate::{
+    app_state::database::models::VaultId,
+    utils::normalize_vault_id::{normalize_string, validate_vault_id},
+};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct UserConfig {
@@ -71,7 +74,21 @@ pub enum VaultAccess {
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct AllowListedVaults {
+    #[serde(deserialize_with = "deserialize_allowed_vaults")]
     pub allowed: Vec<VaultId>,
+}
+
+fn deserialize_allowed_vaults<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Vec<VaultId>, D::Error> {
+    Vec::<String>::deserialize(deserializer)?
+        .into_iter()
+        .map(|name| {
+            let vault = normalize_string(&name);
+            validate_vault_id(&vault).map_err(D::Error::custom)?;
+            Ok(vault)
+        })
+        .collect()
 }
 
 fn default_users() -> Vec<User> {
@@ -94,6 +111,24 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    #[test]
+    fn allowlists_normalize_case_and_whitespace_but_preserve_unicode_identity() {
+        let list: AllowListedVaults = serde_json::from_value(json!({
+            "allowed": [" MyVault ", "CAFÉ", "CAFE\u{301}"]
+        }))
+        .unwrap();
+        assert_eq!(list.allowed, ["myvault", "café", "cafe\u{301}"]);
+    }
+
+    #[test]
+    fn allowlists_reject_invalid_vault_names() {
+        for name in ["", " ", ".", "..", "../escaped", "a/b", "a\\b", "a\0b"] {
+            assert!(
+                serde_json::from_value::<AllowListedVaults>(json!({"allowed": [name]})).is_err()
+            );
+        }
+    }
 
     #[test]
     fn test_validate_users_unique_names_and_tokens() {

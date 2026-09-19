@@ -1,8 +1,8 @@
 use super::{
     Database, Transaction,
     models::{
-        DocumentId, EventBatch, FileManifest, StoredDocumentVersion, VaultId, VaultSnapshot,
-        VaultUpdateId,
+        DocumentId, DocumentVersionWithoutContent, EventBatch, FileManifest, StoredDocumentVersion,
+        VaultId, VaultSnapshot, VaultUpdateId,
     },
 };
 use anyhow::{Result, ensure};
@@ -99,16 +99,16 @@ impl Database {
         let head_event_id = Self::latest_event_id(&mut tx).await?;
         let file_manifest = Self::current_file_manifest(&mut tx).await?;
 
-        let versions = sqlx::query_as::<_, StoredDocumentVersion>(
-            "SELECT d.* FROM latest_document_versions d
+        let documents = sqlx::query_as::<_, DocumentVersionWithoutContent>(
+            "SELECT d.vault_update_id, d.document_id, d.updated_date, d.user_id, d.device_id,
+                    length(d.content) AS content_size
+             FROM latest_document_versions d
              JOIN file_manifest_entries m ON m.document_id = d.document_id
              WHERE m.file_manifest_id = ? ORDER BY d.vault_update_id",
         )
         .bind(file_manifest.file_manifest_id)
         .fetch_all(&mut *tx)
         .await?;
-
-        let documents = versions.into_iter().map(Into::into).collect();
 
         Ok(VaultSnapshot {
             head_event_id,

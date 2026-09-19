@@ -36,6 +36,10 @@ ts-rs =  { version = "10.1", features = ["uuid-impl", "chrono-impl", "no-serde-w
 base64 = "0.22.1"
 reconcile-text = { version = "0.8.0", features = ["serde"] }
 
+[dev-dependencies]
+tempfile = "3"
+tower = { version = "0.5", features = ["util"] }
+
 [profile.release]
 codegen-units = 1
 lto = true

@@ -9,7 +9,7 @@ use crate::{
         },
     },
     errors::{SyncServerError, client_error, server_error},
-    utils::normalize::normalize,
+    utils::normalize_vault_id::normalize_vault_id,
 };
 use axum::{
     extract::{
@@ -26,7 +26,7 @@ use tokio::sync::broadcast::error::RecvError;
 
 #[derive(Deserialize)]
 pub struct WebSocketPathParams {
-    #[serde(deserialize_with = "normalize")]
+    #[serde(deserialize_with = "normalize_vault_id")]
     vault_id: VaultId,
 }
 

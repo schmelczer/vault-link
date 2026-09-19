@@ -11,12 +11,12 @@ use crate::{
         database::models::{EventBatch, VaultId},
     },
     errors::{SyncServerError, client_error, server_error},
-    utils::normalize::normalize,
+    utils::normalize_vault_id::normalize_vault_id,
 };
 
 #[derive(Deserialize)]
 pub struct EventsPath {
-    #[serde(deserialize_with = "normalize")]
+    #[serde(deserialize_with = "normalize_vault_id")]
     vault_id: VaultId,
 }
 
