@@ -179,9 +179,12 @@ export class WebSocketManager {
             }
         }
 
-        const wsUri = new URL(this.settings.getSettings().remoteUri);
-        wsUri.protocol = wsUri.protocol === "https" ? "wss" : "ws";
-        wsUri.pathname = `/vaults/${this.settings.getSettings().vaultName}/ws`;
+        const { remoteUri, vaultName } = this.settings.getSettings();
+        const wsUri = new URL(remoteUri);
+        wsUri.protocol = wsUri.protocol === "https:" ? "wss:" : "ws:";
+        wsUri.pathname = `${wsUri.pathname.replace(/\/$/u, "")}/vaults/${encodeURIComponent(vaultName)}/ws`;
+        wsUri.search = "";
+        wsUri.hash = "";
 
         this.logger.info(`Connecting to WebSocket at ${wsUri.toString()}`);
 
