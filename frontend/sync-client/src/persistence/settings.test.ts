@@ -20,4 +20,20 @@ describe("Settings logging", () => {
         assert.doesNotMatch(messages, /loaded-secret|updated-secret/u);
         assert.match(messages, /\[REDACTED\]/u);
     });
+
+    it("retains and persists the configured diff cache size", async () => {
+        let saved = 0;
+        const settings = new Settings(
+            new Logger(),
+            { diffCacheSizeMB: 7 },
+            async (value) => {
+                saved = value.diffCacheSizeMB;
+            }
+        );
+
+        assert.equal(settings.getSettings().diffCacheSizeMB, 7);
+        await settings.setSetting("diffCacheSizeMB", 9);
+        assert.equal(settings.getSettings().diffCacheSizeMB, 9);
+        assert.equal(saved, 9);
+    });
 });
