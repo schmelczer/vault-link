@@ -4,7 +4,7 @@ use crate::{
         AppState,
         database::{
             Database,
-            models::{DocumentId, EventRecord, StoredDocumentVersion, VaultEvent, VaultId},
+            models::{DocumentId, EventRecord, StoredDocumentVersion, VaultEvent},
         },
     },
     config::user_config::User,
@@ -34,7 +34,7 @@ pub async fn put_file_content(
     State(state): State<AppState>,
     Json(push): Json<PutFileContent>,
 ) -> Result<Json<DocumentUpdateResponse>, SyncServerError> {
-    debug!("Pushing document `{}` in vault `{}`", document_id, vault_id);
+    debug!("Pushing document `{document_id}` in vault `{vault_id}`");
 
     let fingerprint = Sha256::digest(
         serde_json::to_vec(&("content", document_id, &push))
@@ -74,8 +74,7 @@ pub async fn put_file_content(
         }
     } else if push.parent_version_id.is_some() {
         return Err(not_found_error(anyhow!(
-            "Document {} does not exist",
-            document_id
+            "Document {document_id} does not exist"
         )));
     }
 
@@ -153,7 +152,9 @@ mod tests {
     use crate::{
         app_state::database::{
             Database,
-            models::{DocumentVersionWithoutContent, StoredDocumentVersion, VaultUpdateId},
+            models::{
+                DocumentVersionWithoutContent, StoredDocumentVersion, VaultId, VaultUpdateId,
+            },
         },
         config::{
             Config, database_config::DatabaseConfig, server_config::ServerConfig,
