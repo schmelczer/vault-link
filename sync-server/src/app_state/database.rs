@@ -178,14 +178,11 @@ impl Database {
     }
 
     pub async fn create_write_transaction(&self, vault: &VaultId) -> Result<Transaction<'static>> {
-        let mut transaction = self.create_readonly_transaction(vault).await?;
-
-        // sqlx doesn't support immediate transactions for sqlite: https://github.com/launchbadge/sqlx/issues/481
-        sqlx::query("END; BEGIN IMMEDIATE;")
-            .execute(&mut *transaction)
-            .await?;
-
-        Ok(transaction)
+        self.get_connection_pool(vault)
+            .await?
+            .begin_with("BEGIN IMMEDIATE")
+            .await
+            .context("Cannot create write transaction")
     }
 
     /// Cleanup idle connection pools that haven't been accessed in more than 5 minutes
