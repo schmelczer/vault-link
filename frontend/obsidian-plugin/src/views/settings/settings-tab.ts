@@ -266,8 +266,9 @@ export class SyncSettingsTab extends PluginSettingTab {
 
                             new Notice("Checking connection to the server...");
                             new Notice(
-                                (await this.syncClient.checkConnection())
-                                    .serverMessage
+                                (
+                                    await this.syncClient.checkConnection()
+                                ).serverMessage
                             );
                             await this.statusDescription.updateConnectionState();
                         } else {
@@ -499,6 +500,47 @@ export class SyncSettingsTab extends PluginSettingTab {
 
                         return this.syncClient.setSetting(
                             "networkRetryIntervalMs",
+                            parsedValue
+                        );
+                    })
+            );
+
+        new Setting(containerEl)
+            .setName("Sync interval (ms)")
+            .setDesc(
+                "How often to reconcile when no changes are detected. Leave blank to rely on change notifications."
+            )
+            .addText((input) =>
+                input
+                    .setPlaceholder("Disabled")
+                    .setValue(
+                        this.syncClient
+                            .getSettings()
+                            .syncIntervalMs?.toString() ?? ""
+                    )
+                    .onChange(async (value) => {
+                        if (value === "") {
+                            return this.syncClient.setSetting(
+                                "syncIntervalMs",
+                                undefined
+                            );
+                        }
+
+                        const parsedValue = Number(value);
+                        if (
+                            !Number.isSafeInteger(parsedValue) ||
+                            parsedValue <= 0
+                        ) {
+                            input.setValue(
+                                this.syncClient
+                                    .getSettings()
+                                    .syncIntervalMs?.toString() ?? ""
+                            );
+                            return;
+                        }
+
+                        return this.syncClient.setSetting(
+                            "syncIntervalMs",
                             parsedValue
                         );
                     })

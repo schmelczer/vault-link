@@ -5,7 +5,7 @@ import type { WebSocketClientMessage } from "./types/WebSocketClientMessage";
 import type { CursorPositionFromClient } from "./types/CursorPositionFromClient";
 import type { ClientCursors } from "./types/ClientCursors";
 import { createPromise } from "../utils/create-promise";
-import type { EventBatch } from "./protocol";
+import type { EventBatch } from "./types/EventBatch";
 import { WEBSOCKET_DISCONNECT_TIMEOUT_IN_S } from "../consts";
 import { removeFromArray } from "../utils/remove-from-array";
 import { EventListeners } from "../utils/data-structures/event-listeners";

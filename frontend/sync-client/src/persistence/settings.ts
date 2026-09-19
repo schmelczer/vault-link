@@ -15,6 +15,7 @@ export interface SyncSettings {
     enableTelemetry: boolean;
     requestTimeoutMs: number;
     networkRetryIntervalMs: number;
+    syncIntervalMs?: number;
     minimumSaveIntervalMs: number;
 }
 
@@ -31,6 +32,7 @@ export const DEFAULT_SETTINGS: SyncSettings = {
     enableTelemetry: false,
     requestTimeoutMs: 30_000,
     networkRetryIntervalMs: 1000,
+    syncIntervalMs: undefined,
     minimumSaveIntervalMs: 1000
 };
 
