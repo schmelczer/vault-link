@@ -52,7 +52,7 @@ export class Settings {
     ) {
         this.settings = {
             ...DEFAULT_SETTINGS,
-            ...(initialState ?? {})
+            ...structuredClone(initialState ?? {})
         };
 
         this.logger.debug(
@@ -76,20 +76,27 @@ export class Settings {
         });
     }
 
-    public async setSettings(value: Partial<SyncSettings>): Promise<void> {
-        await this.lock.withLock(async () => {
+    public async setSettings(
+        value: Partial<SyncSettings>,
+        notify = true
+    ): Promise<void> {
+        const update = structuredClone(value);
+
+        const change = await this.lock.withLock(async () => {
             this.logger.debug(
-                `Updating settings with: ${JSON.stringify(redactSettings(value))}`
+                `Updating settings with: ${JSON.stringify(redactSettings(update))}`
             );
-            const oldSettings = this.settings;
-            const next = { ...this.settings, ...value };
+
+            const oldSettings = this.getSettings();
+            const next = { ...this.settings, ...update };
             await this.saveData(next);
             this.settings = next;
 
-            await this.onSettingsChanged.triggerAsync(
-                this.getSettings(),
-                oldSettings
-            );
+            return [this.getSettings(), oldSettings] as const;
         });
+
+        // Listeners can themselves update settings. Never await them while
+        // holding a lock needed by the operation they invoke.
+        if (notify) await this.onSettingsChanged.triggerAsync(...change);
     }
 }

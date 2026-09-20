@@ -37,3 +37,23 @@ describe("Settings logging", () => {
         assert.equal(saved, 9);
     });
 });
+
+it("owns settings arrays instead of sharing them with callers and listeners", async () => {
+    const original = ["original"];
+    const settings = new Settings(
+        new Logger(),
+        { ignorePatterns: original },
+        async () => {}
+    );
+    original.push("external mutation");
+    assert.deepEqual(settings.getSettings().ignorePatterns, ["original"]);
+    const update = ["updated"];
+    await settings.setSettings({ ignorePatterns: update });
+    update.push("external mutation");
+    assert.deepEqual(settings.getSettings().ignorePatterns, ["updated"]);
+    settings.onSettingsChanged.add((_, old) => {
+        old.ignorePatterns.push("listener mutation");
+    });
+    await settings.setSettings({ maxFileSizeMB: 12 });
+    assert.deepEqual(settings.getSettings().ignorePatterns, ["updated"]);
+});
