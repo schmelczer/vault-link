@@ -32,3 +32,6 @@ export class FileNotFoundError extends Error {
 export class PermanentSyncError extends Error { }
 
 export class LocalChangesDuringReconciliation extends Error { }
+
+/** The server rejected a checkpoint from a discarded/restored history. */
+export class ServerHistoryChangedError extends Error { }
