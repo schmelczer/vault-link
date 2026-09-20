@@ -6,5 +6,8 @@
         "**/node_modules": true,
         "**/.sqlx": true,
         "**/target": true
-    }
+    },
+    "cSpell.words": [
+        "Syncer"
+    ]
 }
