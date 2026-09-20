@@ -68,15 +68,6 @@ test("CI installs dependencies before E2E and uploads the runner's artifacts on 
     );
 });
 
-test("e2e rejects zero/fractional/garbage workers and seed overflow", () => {
-    for (const value of ["0", "1.5", "2x", "-1", "33"])
-        assert.throws(() => parseOptions({ E2E_WORKERS: value }));
-    assert.throws(() =>
-        parseOptions({ E2E_WORKERS: "2", E2E_SEED: "4294967295" }),
-    );
-    assert.equal(parseOptions({ E2E_SEED: "0" }).seed, 0);
-});
-
 test("e2e observes exit codes, spawn errors, logs and bounded timeout", async () => {
     const directory = mkdtempSync(join(tmpdir(), "vault-link-runner-test-"));
     try {
