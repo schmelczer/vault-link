@@ -71,3 +71,17 @@ describe("isFileTypeMergable", () => {
         );
     });
 });
+
+for (const path of [
+    "md",
+    "txt",
+    "nested/md",
+    "nested/txt",
+    "a.md/txt",
+    "a.txt/md",
+    "note."
+]) {
+    it(`does not merge an extensionless file: ${path}`, () => {
+        assert.equal(isFileTypeMergable(path, ["md", "txt"]), false);
+    });
+}
