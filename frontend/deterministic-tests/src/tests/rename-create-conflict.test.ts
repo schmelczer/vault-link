@@ -27,7 +27,7 @@ export const renameCreateConflictTest: TestDefinition = {
             verify: (s: AssertableState): void => {
                 s.assertFileCount(2)
                     .assertContent("B.md", "hi")
-                    .assertContent("B (1).md", "hi");
+                    .assertContent(s.conflictPath("B.md"), "hi");
             }
         }
     ]

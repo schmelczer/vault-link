@@ -29,9 +29,8 @@ export const offlineDeleteRemoteRenameTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertFileNotExists("A.md").assertFileNotExists(
-                    "A_renamed.md"
-                );
+                // Both membership/path changed from the base: remote wins.
+                s.assertFileCount(1).assertFileNotExists("A.md").assertContent("A_renamed.md", "content-a");
             }
         }
     ]

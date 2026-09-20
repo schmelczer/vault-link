@@ -26,8 +26,8 @@ export const onlineBothCreateSamePathDeconflictTest: TestDefinition = {
             type: "assert-consistent",
             verify: (state: AssertableState): void => {
                 state
-                    .assertFileCount(1)
-                    .assertContains("A.md", "updated-by-0", "from-client-1 ");
+                    .assertFileCount(2)
+                    .assertAnyFileContains("updated-by-0", "from-client-1 ");
             }
         }
     ]

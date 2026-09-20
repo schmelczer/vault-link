@@ -4,7 +4,7 @@ import type { TestDefinition } from "../test-definition";
 export const deleteRecreateDifferentContentTest: TestDefinition = {
     description:
         "Client 0 deletes and recreates A.md with new content offline while client 1 edits A.md offline. " +
-        "Both clients should converge with content from both sides merged.",
+        "Recreation gets a new UUID; an update to the deleted UUID must not edit the replacement.",
     clients: 2,
     steps: [
         {
@@ -43,11 +43,7 @@ export const deleteRecreateDifferentContentTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertFileCount(1).assertContains(
-                    "A.md",
-                    "brand new",
-                    "client 1"
-                );
+                s.assertFileCount(1).assertContent("A.md", "brand new content");
             }
         }
     ]

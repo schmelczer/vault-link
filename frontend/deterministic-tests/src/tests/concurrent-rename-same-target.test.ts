@@ -31,7 +31,7 @@ export const concurrentRenameSameTargetTest: TestDefinition = {
                     .assertFileNotExists("A.md")
                     .assertFileNotExists("B.md")
                     .assertFileExists("C.md")
-                    .assertFileExists("C (1).md")
+                    .assertFileExists(state.conflictPath("C.md"))
                     .assertAnyFileContains("content-a", "content-b");
             }
         }

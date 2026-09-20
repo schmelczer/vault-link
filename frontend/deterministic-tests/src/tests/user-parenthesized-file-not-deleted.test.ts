@@ -8,6 +8,9 @@ export const userParenthesizedFileNotDeletedTest: TestDefinition = {
     clients: 2,
     steps: [
         { type: "enable-sync", client: 0 },
+        { type: "enable-sync", client: 1 },
+        { type: "barrier" },
+        { type: "disable-sync", client: 1 },
 
         {
             type: "create",
@@ -40,7 +43,8 @@ export const userParenthesizedFileNotDeletedTest: TestDefinition = {
                     .assertFileCount(3)
                     .assertFileExists("Chapter.bin")
                     .assertFileExists("Chapter (1).bin")
-                    .assertFileExists("Chapter (2).bin");
+                    .assertContent("Chapter (1).bin", "chapter one notes")
+                    .assertContent(state.conflictPath("Chapter.bin"), "chapter one notes");
             }
         }
     ]

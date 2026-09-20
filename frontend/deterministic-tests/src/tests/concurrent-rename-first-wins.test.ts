@@ -52,9 +52,9 @@ export const concurrentRenameFirstWinsTest: TestDefinition = {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
                 s.assertFileNotExists("A.md")
-                    .assertFileCount(2)
-                    .assertContent("B.md", "edit from 0\nline 2\nline 3")
-                    .assertContent("C.md", "line 1\nline 2\nedit from 1");
+                    .assertFileCount(1)
+                    .assertFileNotExists("C.md")
+                    .assertContent("B.md", "edit from 0\nline 2\nedit from 1");
             }
         }
     ]

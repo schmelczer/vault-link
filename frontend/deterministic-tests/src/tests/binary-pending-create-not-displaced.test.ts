@@ -7,6 +7,12 @@ export const binaryPendingCreateNotDisplacedTest: TestDefinition = {
         "After syncing, both files should exist on both clients at separate paths.",
     clients: 2,
     steps: [
+        // Bootstrap both empty clients before making independent documents.
+        { type: "enable-sync", client: 0 },
+        { type: "enable-sync", client: 1 },
+        { type: "barrier" },
+        { type: "disable-sync", client: 0 },
+        { type: "disable-sync", client: 1 },
         {
             type: "create",
             client: 0,
@@ -29,7 +35,7 @@ export const binaryPendingCreateNotDisplacedTest: TestDefinition = {
             verify: (s: AssertableState): void => {
                 s.assertFileCount(2)
                     .assertFileExists("data.bin")
-                    .assertFileExists("data (1).bin")
+                    .assertFileExists(s.conflictPath("data.bin"))
                     .assertAnyFileContains(
                         "binary data from client 0",
                         "binary data from client 1"

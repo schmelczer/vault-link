@@ -3,7 +3,7 @@ import type { TestDefinition } from "../test-definition";
 
 export const renameCircularTest: TestDefinition = {
     description:
-        "Client 0 creates three files, syncs, then goes offline and performs a circular rename via a temp file (A->temp, C->A, B->C, temp->B). After reconnecting, all three contents should exist across three files but paths may be deconflicted.",
+        "Client 0 creates three files, syncs, then goes offline and performs a circular rename via a temp file (A->temp, C->A, B->C, temp->B). After reconnecting, all three UUIDs and exact contents must follow the requested cycle.",
     clients: 2,
     steps: [
         { type: "create", client: 0, path: "A.md", content: "content-a" },
@@ -21,6 +21,9 @@ export const renameCircularTest: TestDefinition = {
             }
         },
 
+        { type: "remember-identity", key: "A", path: "A.md" },
+        { type: "remember-identity", key: "B", path: "B.md" },
+        { type: "remember-identity", key: "C", path: "C.md" },
         { type: "disable-sync", client: 0 },
         { type: "rename", client: 0, oldPath: "A.md", newPath: "temp-a.md" },
         { type: "rename", client: 0, oldPath: "C.md", newPath: "A.md" },
@@ -29,15 +32,18 @@ export const renameCircularTest: TestDefinition = {
 
         { type: "enable-sync", client: 0 },
         { type: "barrier" },
+        { type: "assert-identity", key: "A", path: "B.md" },
+        { type: "assert-identity", key: "B", path: "C.md" },
+        { type: "assert-identity", key: "C", path: "A.md" },
 
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
                 s.assertFileNotExists("temp-a.md")
                     .assertFileCount(3)
-                    .assertAnyFileContains("content-c")
-                    .assertAnyFileContains("content-a")
-                    .assertAnyFileContains("content-b");
+                    .assertContent("A.md", "content-c")
+                    .assertContent("B.md", "content-a")
+                    .assertContent("C.md", "content-b");
             }
         }
     ]

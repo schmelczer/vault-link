@@ -41,7 +41,7 @@ export const concurrentRenameAndCreateAtTargetRenameFirstTest: TestDefinition = 
                 state
                     .assertFileNotExists("X.md")
                     .assertFileExists("Y.md")
-                    .assertFileExists("Y (1).md")
+                    .assertFileExists(state.conflictPath("Y.md"))
                     .assertAnyFileContains(
                         "original file X",
                         "brand new Y content"

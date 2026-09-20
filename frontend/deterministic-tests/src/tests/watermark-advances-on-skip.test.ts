@@ -28,7 +28,7 @@ export const watermarkAdvancesOnSkipTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertFileCount(1).assertFileExists("doc.md");
+                s.assertFileCount(2).assertFileExists("doc.md").assertAnyFileContains("from client 0", "from client 1");
             }
         }
     ]

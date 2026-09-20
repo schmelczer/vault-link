@@ -41,7 +41,7 @@ export const concurrentRenameAndCreateAtTargetCreateFirstTest: TestDefinition = 
             verify: (state: AssertableState): void => {
                 state
                     .assertFileCount(2)
-                    .assertContains("Y (1).md", "original file X")
+                    .assertContains(state.conflictPath("Y.md"), "original file X")
                     .assertContains("Y.md", "brand new Y content");
             }
         }

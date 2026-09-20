@@ -1,7 +1,7 @@
 import type { AssertableState } from "../utils/assertable-state";
 import type { TestDefinition } from "../test-definition";
 
-export const updateDoesNotSurvivesRemoteDeleteTest: TestDefinition = {
+export const updateDoesNotSurviveRemoteDeleteTest: TestDefinition = {
     description:
         "Client 0 deletes a file while client 1 edits it offline. Client 0 syncs the delete first, then client 1 reconnects. Deletes always win.",
     clients: 2,
