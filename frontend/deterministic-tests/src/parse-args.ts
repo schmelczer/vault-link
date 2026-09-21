@@ -7,8 +7,8 @@ export interface CliArgs {
 }
 
 function parsePositiveInt(value: string): number {
-    const n = parseInt(value, 10);
-    if (isNaN(n) || n <= 0) {
+    const n = Number(value);
+    if (!/^\d+$/.test(value) || !Number.isSafeInteger(n) || n <= 0) {
         throw new InvalidArgumentError("must be a positive integer");
     }
     return n;

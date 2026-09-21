@@ -8,6 +8,22 @@ use super::{
 use anyhow::{Context as _, Result, ensure};
 
 impl Database {
+    pub async fn missing_document(
+        tx: &mut Transaction<'_>,
+        ids: &[DocumentId],
+    ) -> Result<Option<String>> {
+        // A single covering-index lookup per requested identity; never load a
+        // content blob or decode a version while validating manifest references.
+        Ok(sqlx::query_scalar(
+            "SELECT value FROM json_each(?) AS requested
+             WHERE NOT EXISTS (SELECT 1 FROM documents WHERE document_id = requested.value)
+             LIMIT 1",
+        )
+        .bind(serde_json::to_string(ids)?)
+        .fetch_optional(&mut **tx)
+        .await?)
+    }
+
     pub async fn get_request_event(
         tx: &mut Transaction<'_>,
         request_id: uuid::Uuid,
@@ -168,24 +184,72 @@ impl Database {
         );
 
         let rows: Vec<(VaultUpdateId, String)> = sqlx::query_as(
-            "SELECT event_id, request_id FROM events WHERE event_id > ? ORDER BY event_id",
+            "SELECT event_id, request_id FROM events WHERE event_id > ? ORDER BY event_id LIMIT 64",
         )
         .bind(after)
         .fetch_all(&mut *tx)
         .await?;
 
         let mut events = Vec::with_capacity(rows.len());
+        let mut bytes = 0;
+        let mut end_event_id = after;
         for (event_id, request_id) in rows {
-            events.push(EventRecord {
+            let event = EventRecord {
                 event_id,
                 request_id: request_id.parse()?,
                 event: Self::event_by_id(&mut tx, event_id).await?,
-            });
+            };
+            let size = serde_json::to_vec(&event)?.len();
+            // One manifest is atomic and may exceed this budget. Always allow
+            // one event so even such a page advances; never accumulate history.
+            if !events.is_empty() && bytes + size > 1024 * 1024 {
+                break;
+            }
+            bytes += size;
+            end_event_id = event_id;
+            events.push(event);
         }
 
         Ok(EventBatch {
             head_event_id,
+            end_event_id: Some(end_event_id),
             events,
         })
+    }
+}
+
+impl Database {
+    pub async fn history_checkpoint(&self, vault: &VaultId) -> Result<String> {
+        let mut tx = self.create_readonly_transaction(vault).await?;
+        let row: Option<(i64, String)> = sqlx::query_as(
+            "SELECT event_id, event_token FROM events ORDER BY event_id DESC LIMIT 1",
+        )
+        .fetch_optional(&mut *tx)
+        .await?;
+        Ok(row.map_or_else(
+            || "0:empty".to_owned(),
+            |(id, token)| format!("{id}:{token}"),
+        ))
+    }
+
+    pub async fn contains_checkpoint(&self, vault: &VaultId, checkpoint: &str) -> Result<bool> {
+        if checkpoint == "0:empty" {
+            return Ok(true);
+        }
+        let Some((id, token)) = checkpoint.split_once(':') else {
+            return Ok(false);
+        };
+        let Ok(id) = id.parse::<i64>() else {
+            return Ok(false);
+        };
+        let mut tx = self.create_readonly_transaction(vault).await?;
+        let exists: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM events WHERE event_id = ? AND event_token = ?)",
+        )
+        .bind(id)
+        .bind(token)
+        .fetch_one(&mut *tx)
+        .await?;
+        Ok(exists)
     }
 }

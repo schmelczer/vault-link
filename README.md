@@ -69,7 +69,7 @@ scripts/bump-version.sh patch
 #### Run E2E tests
 
 ```sh
-scripts/e2e.sh 8
+E2E_WORKERS=8 scripts/e2e.sh
 ```
 
 And to clean up the logs & database files, run `scripts/clean-up.sh`

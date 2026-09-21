@@ -16,7 +16,9 @@ pub fn path_key(path: &str) -> String {
 }
 
 pub fn validate_file_manifest(entries: &FileManifestEntries) -> Result<()> {
-    let mut nodes: BTreeMap<String, (String, bool)> = BTreeMap::new();
+    // Store one component per node. Expanding every prefix makes a short,
+    // deeply nested path consume quadratic memory and CPU before any I/O.
+    let mut nodes: BTreeMap<(usize, String), (usize, &str, bool)> = BTreeMap::new();
 
     for path in entries.values() {
         ensure!(!path.is_empty(), "Path must not be empty");
@@ -33,6 +35,7 @@ pub fn validate_file_manifest(entries: &FileManifestEntries) -> Result<()> {
             "Reserved sync directory"
         );
 
+        let mut parent = 0;
         for (index, part) in parts.iter().enumerate() {
             ensure!(
                 !part.is_empty() && *part != "." && *part != "..",
@@ -73,15 +76,18 @@ pub fn validate_file_manifest(entries: &FileManifestEntries) -> Result<()> {
                 );
             }
 
-            let prefix = parts[..=index].join("/");
             let is_file = index == parts.len() - 1;
+            let key = (parent, path_key(part));
 
-            if let Some((spelling, previous_is_file)) = nodes.get(&path_key(&prefix)) {
-                if *spelling != prefix || *previous_is_file || is_file {
+            if let Some((node, spelling, previous_is_file)) = nodes.get(&key) {
+                if spelling != part || *previous_is_file || is_file {
                     bail!("Conflicting path: {path}");
                 }
+                parent = *node;
             } else {
-                nodes.insert(path_key(&prefix), (prefix, is_file));
+                let node = nodes.len() + 1;
+                nodes.insert(key, (node, part, is_file));
+                parent = node;
             }
         }
     }
@@ -137,6 +143,18 @@ mod tests {
         for path in ["a".repeat(300), "é".repeat(200)] {
             validate_file_manifest(&manifest(&[&path])).unwrap();
         }
+    }
+
+    #[test]
+    fn deep_paths_do_not_expand_every_prefix() {
+        let path = vec!["a"; 10_000].join("/");
+        let started = std::time::Instant::now();
+        validate_file_manifest(&manifest(&[&path])).unwrap();
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(2),
+            "A 20 KB path exhausted the validation work budget: {:?}",
+            started.elapsed()
+        );
     }
 
     #[test]

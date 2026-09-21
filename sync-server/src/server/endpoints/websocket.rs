@@ -15,7 +15,8 @@ use axum::{
         Path, State,
         ws::{Message, WebSocket, WebSocketUpgrade},
     },
-    response::Response,
+    http::StatusCode,
+    response::{IntoResponse, Response},
 };
 use futures::StreamExt;
 use log::{debug, info};
@@ -32,11 +33,22 @@ pub async fn websocket_handler(
 ) -> Result<Response, SyncServerError> {
     debug!("Upgrading WebSocket connection for vault `{vault_id}`");
 
-    Ok(ws.on_upgrade(move |socket| async move {
-        if let Err(error) = websocket(state, socket, vault_id).await {
-            debug!("WebSocket disconnected: {error}");
-        }
-    }))
+    let Some(permit) = state.broadcasts.try_admit(&vault_id) else {
+        return Ok((
+            StatusCode::TOO_MANY_REQUESTS,
+            "Vault connection limit reached",
+        )
+            .into_response());
+    };
+    Ok(ws
+        .max_message_size(1024 * 1024)
+        .max_frame_size(1024 * 1024)
+        .on_upgrade(move |socket| async move {
+            let _permit = permit;
+            if let Err(error) = websocket(state, socket, vault_id).await {
+                debug!("WebSocket disconnected: {error}");
+            }
+        }))
 }
 
 async fn websocket(
@@ -48,10 +60,15 @@ async fn websocket(
     let authenticated = get_authenticated_handshake(
         &state,
         &vault,
-        receiver.next().await.transpose().unwrap_or_default(),
+        tokio::time::timeout(Duration::from_secs(5), receiver.next())
+            .await
+            .map_err(|_| client_error(anyhow::anyhow!("WebSocket handshake deadline expired")))?
+            .transpose()
+            .unwrap_or_default(),
     )?;
 
     let device = authenticated.handshake.device_id;
+    let session = state.cursors.register_connection(&vault, &device).await;
     let mut after = authenticated
         .handshake
         .last_seen_vault_update_id
@@ -69,7 +86,7 @@ async fn websocket(
             let batch = state.database.events_after(&vault, after).await.map_err(server_error)?;
 
             if !batch.events.is_empty() {
-                let head = batch.head_event_id;
+                let head = batch.end_event_id.unwrap_or(batch.head_event_id);
                 send_update_over_websocket(&WebSocketServerMessage::VaultEvents(batch), &mut sender).await?;
                 after = head;
             }
@@ -92,7 +109,7 @@ async fn websocket(
                         match message {
                             WebSocketClientMessage::Handshake(_) => return Err(client_error(anyhow::anyhow!("Unexpected handshake"))),
                             WebSocketClientMessage::CursorPositions(positions) => {
-                                state.cursors.update_cursors(vault.clone(), authenticated.user.name.clone(), &device, positions.documents_with_cursors).await;
+                                state.cursors.update_cursors(vault.clone(), authenticated.user.name.clone(), &device, session, positions.documents_with_cursors).await;
                                 let clients = state.cursors.get_cursors(&vault).await.into_iter().filter(|c| c.device_id != device).collect();
                                 send_update_over_websocket(&WebSocketServerMessage::CursorPositions(CursorPositionFromServer { clients }), &mut sender).await?;
                             }
@@ -109,7 +126,7 @@ async fn websocket(
 
     state
         .cursors
-        .remove_cursors_of_device(&vault, &device)
+        .remove_cursors_of_device(&vault, &device, session)
         .await;
 
     result

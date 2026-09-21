@@ -63,6 +63,11 @@ pub async fn create_server(config: Config) -> Result<()> {
                     http::header::CONTENT_TYPE,
                     http::header::AUTHORIZATION,
                     DEVICE_ID_HEADER_NAME.clone(),
+                    http::header::HeaderName::from_static("x-vault-link-history"),
+                ])
+                .expose_headers([
+                    http::header::HeaderName::from_static("x-vault-link-history"),
+                    http::header::HeaderName::from_static("x-vault-link-history-mismatch"),
                 ])
                 .allow_methods([Method::GET, Method::PUT]),
         )
@@ -112,6 +117,10 @@ fn get_authed_routes(app_state: AppState) -> Router<AppState> {
             "/vaults/:vault_id/documents/:document_id",
             get(endpoints::fetch_latest_document_version::fetch_latest_document_version)
                 .put(endpoints::put_file_content::put_file_content),
+        )
+        .route(
+            "/vaults/:vault_id/documents/:document_id/metadata",
+            get(endpoints::fetch_latest_document_version::fetch_latest_document_metadata),
         )
         .route(
             "/vaults/:vault_id/documents/:document_id/versions/:vault_update_id/content",

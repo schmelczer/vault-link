@@ -1,0 +1,368 @@
+{
+  "version": 1,
+  "seed": 42,
+  "iterations": 3,
+  "steps": [
+    {
+      "type": "enable-sync",
+      "client": 0
+    },
+    {
+      "type": "enable-sync",
+      "client": 1
+    },
+    {
+      "type": "barrier"
+    },
+    {
+      "type": "disable-sync",
+      "client": 0
+    },
+    {
+      "type": "disable-sync",
+      "client": 1
+    },
+    {
+      "type": "delay-notifications",
+      "client": 0
+    },
+    {
+      "type": "delay-notifications",
+      "client": 1
+    },
+    {
+      "type": "create",
+      "client": 0,
+      "path": "round-0/café/a.md",
+      "content": "[seed-42-round-0-A]"
+    },
+    {
+      "type": "create",
+      "client": 0,
+      "path": "round-0/café/b.md",
+      "content": "[seed-42-round-0-B]"
+    },
+    {
+      "type": "flush-notifications",
+      "client": 0
+    },
+    {
+      "type": "flush-notifications",
+      "client": 1
+    },
+    {
+      "type": "enable-sync",
+      "client": 0
+    },
+    {
+      "type": "sync",
+      "client": 0
+    },
+    {
+      "type": "enable-sync",
+      "client": 1
+    },
+    {
+      "type": "barrier"
+    },
+    {
+      "type": "remember-identity",
+      "path": "round-0/café/a.md",
+      "key": "round-0/café/a.md"
+    },
+    {
+      "type": "remember-identity",
+      "path": "round-0/café/b.md",
+      "key": "round-0/café/b.md"
+    },
+    {
+      "type": "rename",
+      "client": 0,
+      "oldPath": "round-0/café/a.md",
+      "newPath": "round-0/café/c.md"
+    },
+    {
+      "type": "rename",
+      "client": 0,
+      "oldPath": "round-0/café/c.md",
+      "newPath": "round-0/café/a.md"
+    },
+    {
+      "type": "rename",
+      "client": 0,
+      "oldPath": "round-0/café/a.md",
+      "newPath": "round-0/café/c.md"
+    },
+    {
+      "type": "update",
+      "client": 0,
+      "path": "round-0/café/c.md",
+      "content": "[seed-42-round-0-A]\nrapid final edit"
+    },
+    {
+      "type": "barrier"
+    },
+    {
+      "type": "assert-identity",
+      "path": "round-0/café/c.md",
+      "key": "round-0/café/a.md"
+    },
+    {
+      "type": "assert-files",
+      "expected": {
+        "round-0/café/c.md": "[seed-42-round-0-A]\nrapid final edit",
+        "round-0/café/b.md": "[seed-42-round-0-B]"
+      },
+      "absent": [
+        "round-0/café/a.md"
+      ]
+    },
+    {
+      "type": "assert-markers",
+      "markers": [
+        "[seed-42-round-0-A]",
+        "[seed-42-round-0-B]"
+      ],
+      "removed": []
+    },
+    {
+      "type": "reset",
+      "client": 1
+    },
+    {
+      "type": "barrier"
+    },
+    {
+      "type": "disable-sync",
+      "client": 0
+    },
+    {
+      "type": "disable-sync",
+      "client": 1
+    },
+    {
+      "type": "create",
+      "client": 0,
+      "path": "round-1/日本語/a.md",
+      "content": "[seed-42-round-1-A]"
+    },
+    {
+      "type": "create",
+      "client": 0,
+      "path": "round-1/日本語/b.md",
+      "content": "[seed-42-round-1-B]"
+    },
+    {
+      "type": "enable-sync",
+      "client": 0
+    },
+    {
+      "type": "sync",
+      "client": 0
+    },
+    {
+      "type": "enable-sync",
+      "client": 1
+    },
+    {
+      "type": "barrier"
+    },
+    {
+      "type": "remember-identity",
+      "path": "round-1/日本語/a.md",
+      "key": "round-1/日本語/a.md"
+    },
+    {
+      "type": "remember-identity",
+      "path": "round-1/日本語/b.md",
+      "key": "round-1/日本語/b.md"
+    },
+    {
+      "type": "rename",
+      "client": 0,
+      "oldPath": "round-1/日本語/a.md",
+      "newPath": "round-1/日本語/c.md"
+    },
+    {
+      "type": "rename",
+      "client": 0,
+      "oldPath": "round-1/日本語/c.md",
+      "newPath": "round-1/日本語/a.md"
+    },
+    {
+      "type": "rename",
+      "client": 0,
+      "oldPath": "round-1/日本語/a.md",
+      "newPath": "round-1/日本語/c.md"
+    },
+    {
+      "type": "update",
+      "client": 0,
+      "path": "round-1/日本語/c.md",
+      "content": "[seed-42-round-1-A]\nrapid final edit"
+    },
+    {
+      "type": "barrier"
+    },
+    {
+      "type": "assert-identity",
+      "path": "round-1/日本語/c.md",
+      "key": "round-1/日本語/a.md"
+    },
+    {
+      "type": "assert-files",
+      "expected": {
+        "round-1/日本語/c.md": "[seed-42-round-1-A]\nrapid final edit",
+        "round-1/日本語/b.md": "[seed-42-round-1-B]"
+      },
+      "absent": [
+        "round-1/日本語/a.md"
+      ]
+    },
+    {
+      "type": "assert-markers",
+      "markers": [
+        "[seed-42-round-0-A]",
+        "[seed-42-round-0-B]",
+        "[seed-42-round-1-A]",
+        "[seed-42-round-1-B]"
+      ],
+      "removed": []
+    },
+    {
+      "type": "reset",
+      "client": 1
+    },
+    {
+      "type": "barrier"
+    },
+    {
+      "type": "disable-sync",
+      "client": 0
+    },
+    {
+      "type": "disable-sync",
+      "client": 1
+    },
+    {
+      "type": "delay-notifications",
+      "client": 0
+    },
+    {
+      "type": "delay-notifications",
+      "client": 1
+    },
+    {
+      "type": "create",
+      "client": 0,
+      "path": "round-2/café/a.md",
+      "content": "[seed-42-round-2-A]"
+    },
+    {
+      "type": "create",
+      "client": 0,
+      "path": "round-2/café/b.md",
+      "content": "[seed-42-round-2-B]"
+    },
+    {
+      "type": "flush-notifications",
+      "client": 0
+    },
+    {
+      "type": "flush-notifications",
+      "client": 1
+    },
+    {
+      "type": "enable-sync",
+      "client": 0
+    },
+    {
+      "type": "sync",
+      "client": 0
+    },
+    {
+      "type": "enable-sync",
+      "client": 1
+    },
+    {
+      "type": "barrier"
+    },
+    {
+      "type": "remember-identity",
+      "path": "round-2/café/a.md",
+      "key": "round-2/café/a.md"
+    },
+    {
+      "type": "remember-identity",
+      "path": "round-2/café/b.md",
+      "key": "round-2/café/b.md"
+    },
+    {
+      "type": "disable-sync",
+      "client": 0
+    },
+    {
+      "type": "rename",
+      "client": 0,
+      "oldPath": "round-2/café/a.md",
+      "newPath": "round-2/café/c.md"
+    },
+    {
+      "type": "rename",
+      "client": 0,
+      "oldPath": "round-2/café/b.md",
+      "newPath": "round-2/café/a.md"
+    },
+    {
+      "type": "rename",
+      "client": 0,
+      "oldPath": "round-2/café/c.md",
+      "newPath": "round-2/café/b.md"
+    },
+    {
+      "type": "update",
+      "client": 0,
+      "path": "round-2/café/b.md",
+      "content": "[seed-42-round-2-A]\nextra line\n"
+    },
+    {
+      "type": "enable-sync",
+      "client": 0
+    },
+    {
+      "type": "barrier"
+    },
+    {
+      "type": "assert-identity",
+      "path": "round-2/café/b.md",
+      "key": "round-2/café/a.md"
+    },
+    {
+      "type": "assert-identity",
+      "path": "round-2/café/a.md",
+      "key": "round-2/café/b.md"
+    },
+    {
+      "type": "assert-files",
+      "expected": {
+        "round-2/café/a.md": "[seed-42-round-2-B]",
+        "round-2/café/b.md": "[seed-42-round-2-A]\nextra line\n"
+      },
+      "absent": [
+        "round-2/café/c.md"
+      ]
+    },
+    {
+      "type": "assert-markers",
+      "markers": [
+        "[seed-42-round-0-A]",
+        "[seed-42-round-0-B]",
+        "[seed-42-round-1-A]",
+        "[seed-42-round-1-B]",
+        "[seed-42-round-2-A]",
+        "[seed-42-round-2-B]"
+      ],
+      "removed": []
+    }
+  ]
+}

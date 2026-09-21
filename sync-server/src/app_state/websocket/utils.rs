@@ -49,9 +49,13 @@ pub async fn send_update_over_websocket(
         .context("Failed to serialize update")
         .map_err(server_error)?;
 
-    sender
-        .send(Message::Text(serialized_update))
-        .await
-        .context("Failed to send message over websocket")
-        .map_err(server_error)
+    tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        sender.send(Message::Text(serialized_update)),
+    )
+    .await
+    .context("WebSocket send deadline expired")
+    .map_err(server_error)?
+    .context("Failed to send message over websocket")
+    .map_err(server_error)
 }

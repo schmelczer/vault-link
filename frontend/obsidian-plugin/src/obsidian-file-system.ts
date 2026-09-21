@@ -152,9 +152,20 @@ export class ObsidianFileSystemOperations implements FileSystemOperations {
     }
 
     public async delete(path: RelativePath): Promise<void> {
-        if (!(await this.vault.adapter.trashSystem(normalizePath(path)))) {
-            return this.vault.adapter.remove(normalizePath(path));
+        if (!path) {
+            throw new Error("Cannot delete the vault root");
         }
+        await this.deleteDirectoryTree(normalizePath(path));
+    }
+
+    public async deleteFile(path: RelativePath): Promise<void> {
+        path = normalizePath(path);
+        const entry = await this.vault.adapter.stat(path);
+        if (!entry) return;
+        if (entry.type !== "file") {
+            throw new Error(`Cannot delete non-file: ${path}`);
+        }
+        await this.vault.adapter.remove(path);
     }
 
     public async rename(
@@ -172,5 +183,22 @@ export class ObsidianFileSystemOperations implements FileSystemOperations {
         }
 
         return file;
+    }
+
+    private async deleteDirectoryTree(path: string): Promise<void> {
+        const entry = await this.vault.adapter.stat(path);
+        if (!entry) return;
+        if (entry.type !== "folder") {
+            throw new Error(`Cannot delete non-directory: ${path}`);
+        }
+
+        const children = await this.vault.adapter.list(path);
+        if (children.files.length > 0) {
+            throw new Error(`Cannot delete non-empty directory: ${path}`);
+        }
+        for (const folder of children.folders) {
+            await this.deleteDirectoryTree(folder);
+        }
+        await this.vault.adapter.rmdir(path, false);
     }
 }

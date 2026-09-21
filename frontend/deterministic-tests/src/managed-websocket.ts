@@ -209,8 +209,13 @@ export class ManagedWebSocketFactory {
     // WS before the agent reconnects would silently see the new socket
     // start un-paused and miss the messages it meant to buffer.
     private currentlyPaused = false;
+    private disposed = false;
 
     public get constructorFn(): typeof globalThis.WebSocket {
+        const ensureActive = () => {
+            if (this.disposed)
+                throw new Error("WebSocket created after harness cleanup");
+        };
         const trackInstance = (instance: ManagedWebSocket): void => {
             this.instances.push(instance);
             if (this.currentlyPaused) {
@@ -222,11 +227,27 @@ export class ManagedWebSocketFactory {
                 url: string | URL,
                 protocols?: string | string[]
             ) {
+                ensureActive();
                 super(url, protocols);
                 trackInstance(this);
             }
         }
         return TrackedManagedWebSocket;
+    }
+
+    public async finish(): Promise<void> {
+        this.disposed = true;
+        await Promise.all(
+            this.instances.map((socket) =>
+                socket.readyState === WebSocket.CLOSED
+                    ? Promise.resolve()
+                    : new Promise<void>((resolve) =>
+                          socket.addEventListener("close", () => resolve(), {
+                              once: true
+                          })
+                      )
+            )
+        );
     }
 
     public pause(): void {

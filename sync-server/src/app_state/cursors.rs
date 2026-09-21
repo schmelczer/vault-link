@@ -2,6 +2,7 @@ use core::time::Duration;
 use std::{collections::HashMap, sync::Arc};
 
 use tokio::sync::Mutex;
+use uuid::Uuid;
 
 use super::{
     database::models::{DeviceId, VaultId},
@@ -19,6 +20,7 @@ pub struct Cursors {
     config: DatabaseConfig,
     broadcasts: Broadcasts,
     vault_to_cursors: Arc<Mutex<HashMap<VaultId, Vec<ClientCursorsWithTimeToLive>>>>,
+    sessions: Arc<Mutex<HashMap<VaultId, HashMap<DeviceId, Uuid>>>>,
 }
 
 impl Cursors {
@@ -27,7 +29,19 @@ impl Cursors {
             config: config.clone(),
             broadcasts: broadcasts.clone(),
             vault_to_cursors: Arc::new(Mutex::new(HashMap::new())),
+            sessions: Arc::default(),
         }
+    }
+
+    pub async fn register_connection(&self, vault_id: &str, device_id: &str) -> Uuid {
+        let mut sessions = self.sessions.lock().await;
+        let session = Uuid::new_v4();
+        sessions
+            .entry(vault_id.to_owned())
+            .or_default()
+            .insert(device_id.to_owned(), session);
+        self.remove_device_cursors(vault_id, device_id).await;
+        session
     }
 
     pub async fn update_cursors(
@@ -35,8 +49,19 @@ impl Cursors {
         vault_id: VaultId,
         user_name: String,
         device_id: &DeviceId,
+        session: Uuid,
         document_to_cursors: Vec<DocumentWithCursors>,
     ) {
+        // A reconnect can overlap an old connection's buffered messages and
+        // cleanup. Only the most recently authenticated session owns presence.
+        let sessions = self.sessions.lock().await;
+        if sessions
+            .get(&vault_id)
+            .and_then(|devices| devices.get(device_id))
+            != Some(&session)
+        {
+            return;
+        }
         let mut vault_to_cursors = self.vault_to_cursors.lock().await;
 
         let all_device_cursors = vault_to_cursors
@@ -100,7 +125,22 @@ impl Cursors {
             .await;
     }
 
-    pub async fn remove_cursors_of_device(&self, vault_id: &str, device_id: &str) {
+    pub async fn remove_cursors_of_device(&self, vault_id: &str, device_id: &str, session: Uuid) {
+        let mut sessions = self.sessions.lock().await;
+        let Some(devices) = sessions.get_mut(vault_id) else {
+            return;
+        };
+        if devices.get(device_id) != Some(&session) {
+            return;
+        }
+        devices.remove(device_id);
+        if devices.is_empty() {
+            sessions.remove(vault_id);
+        }
+        self.remove_device_cursors(vault_id, device_id).await;
+    }
+
+    async fn remove_device_cursors(&self, vault_id: &str, device_id: &str) {
         let mut vault_to_cursors = self.vault_to_cursors.lock().await;
 
         if let Some(cursors) = vault_to_cursors.get_mut(vault_id) {
@@ -147,32 +187,42 @@ mod tests {
     async fn disconnect_broadcasts_remaining_clients_and_the_final_empty_state() {
         let broadcasts = Broadcasts::new(&ServerConfig::default());
         let cursors = Cursors::new(&DatabaseConfig::default(), &broadcasts);
+        let mut sessions = HashMap::new();
         for device in ["one", "two"] {
+            let session = cursors.register_connection("vault", device).await;
+            sessions.insert(device, session);
             cursors
                 .update_cursors(
                     "vault".to_owned(),
                     "user".to_owned(),
                     &device.to_owned(),
+                    session,
                     vec![],
                 )
                 .await;
         }
         let mut receiver = broadcasts.get_receiver("vault".to_owned()).await;
         let mut other = broadcasts.get_receiver("other".to_owned()).await;
-        cursors.remove_cursors_of_device("vault", "one").await;
+        cursors
+            .remove_cursors_of_device("vault", "one", sessions["one"])
+            .await;
         let Notification::Cursors(update) = receiver.try_recv().unwrap() else {
             panic!("expected cursors")
         };
         assert_eq!(update.clients.len(), 1);
         assert_eq!(update.clients[0].device_id, "two");
 
-        cursors.remove_cursors_of_device("vault", "two").await;
+        cursors
+            .remove_cursors_of_device("vault", "two", sessions["two"])
+            .await;
         let Notification::Cursors(update) = receiver.try_recv().unwrap() else {
             panic!("expected cursors")
         };
         assert!(update.clients.is_empty());
         assert!(other.try_recv().is_err());
-        cursors.remove_cursors_of_device("vault", "two").await;
+        cursors
+            .remove_cursors_of_device("vault", "two", sessions["two"])
+            .await;
         assert!(receiver.try_recv().is_err());
     }
 
@@ -182,11 +232,13 @@ mod tests {
         let config = DatabaseConfig::default();
         let cursors = Cursors::new(&config, &broadcasts);
         for (vault, device) in [("vault", "expired"), ("vault", "live"), ("other", "live")] {
+            let session = cursors.register_connection(vault, device).await;
             cursors
                 .update_cursors(
                     vault.to_owned(),
                     "user".to_owned(),
                     &device.to_owned(),
+                    session,
                     vec![],
                 )
                 .await;
@@ -228,5 +280,40 @@ mod tests {
         cursors.remove_expired_cursors().await;
         assert!(receiver.try_recv().is_err());
         assert!(other.try_recv().is_err());
+    }
+    #[tokio::test]
+    async fn replacement_session_fences_old_updates_and_disconnects() {
+        let broadcasts = Broadcasts::new(&ServerConfig::default());
+        let cursors = Cursors::new(&DatabaseConfig::default(), &broadcasts);
+        let vault = "vault".to_owned();
+        let device = "device".to_owned();
+        let old = cursors.register_connection(&vault, &device).await;
+        cursors
+            .update_cursors(vault.clone(), "old".to_owned(), &device, old, vec![])
+            .await;
+        let new = cursors.register_connection(&vault, &device).await;
+        cursors
+            .update_cursors(vault.clone(), "new".to_owned(), &device, new, vec![])
+            .await;
+        let mut receiver = broadcasts.get_receiver(vault.clone()).await;
+        cursors
+            .update_cursors(
+                vault.clone(),
+                "late old update".to_owned(),
+                &device,
+                old,
+                vec![],
+            )
+            .await;
+        cursors.remove_cursors_of_device(&vault, &device, old).await;
+        assert!(receiver.try_recv().is_err());
+        assert_eq!(cursors.get_cursors(&vault).await[0].user_name, "new");
+        cursors.remove_cursors_of_device(&vault, &device, new).await;
+        let Notification::Cursors(update) = receiver.try_recv().unwrap() else {
+            panic!("expected cursors")
+        };
+        assert!(update.clients.is_empty());
+        assert!(cursors.get_cursors(&vault).await.is_empty());
+        assert!(cursors.sessions.lock().await.is_empty());
     }
 }

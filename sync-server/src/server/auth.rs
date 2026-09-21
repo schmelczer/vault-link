@@ -2,8 +2,9 @@ use std::collections::HashMap;
 
 use axum::{
     extract::{Path, Request, State},
+    http::{HeaderValue, StatusCode},
     middleware::Next,
-    response::Response,
+    response::{IntoResponse, Response},
 };
 use axum_extra::{
     TypedHeader,
@@ -14,7 +15,9 @@ use log::info;
 use crate::{
     app_state::{AppState, database::models::VaultId},
     config::user_config::{AllowListedVaults, User, VaultAccess},
-    errors::{SyncServerError, client_error, permission_denied_error, unauthenticated_error},
+    errors::{
+        SyncServerError, client_error, permission_denied_error, server_error, unauthenticated_error,
+    },
     utils::normalize_vault_id::{normalize_string, validate_vault_id},
 };
 
@@ -34,9 +37,42 @@ pub async fn auth_middleware(
 
     let user = auth(&state, token, &vault_id)?;
 
+    // A restore happens while the server is stopped. Validate before executing
+    // any old request, including retries whose numeric parent IDs were reused.
+    if let Some(checkpoint) = req.headers().get("x-vault-link-history") {
+        let checkpoint = checkpoint
+            .to_str()
+            .map_err(|error| client_error(error.into()))?;
+        if !state
+            .database
+            .contains_checkpoint(&vault_id, checkpoint)
+            .await
+            .map_err(server_error)?
+        {
+            let mut response = (StatusCode::CONFLICT, "Server history changed").into_response();
+            response.headers_mut().insert(
+                "x-vault-link-history-mismatch",
+                HeaderValue::from_static("1"),
+            );
+            return Ok(response);
+        }
+    }
+
     req.extensions_mut().insert(user);
 
-    Ok(next.run(req).await)
+    let mut response = next.run(req).await;
+    if response.status().is_success() {
+        let checkpoint = state
+            .database
+            .history_checkpoint(&vault_id)
+            .await
+            .map_err(server_error)?;
+        response.headers_mut().insert(
+            "x-vault-link-history",
+            HeaderValue::from_str(&checkpoint).map_err(|error| server_error(error.into()))?,
+        );
+    }
+    Ok(response)
 }
 
 pub fn auth(state: &AppState, token: &str, vault_id: &VaultId) -> Result<User, SyncServerError> {

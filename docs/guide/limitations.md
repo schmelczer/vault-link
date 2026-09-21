@@ -8,14 +8,9 @@ VaultLink works well for most Obsidian vaults, but has some constraints you shou
 
 Only **`.md`** and **`.txt`** files get automatic conflict-free merging.
 
-Other file types (images, PDFs, etc.) use last-write-wins:
-
-```
-User A updates diagram.png → Server stores version 1
-User B updates diagram.png → Server stores version 2 (overwrites A's changes)
-```
-
-**Workaround**: Avoid editing the same non-text file simultaneously.
+For other file types, a one-sided change is retained. Concurrent unmergeable
+changes keep the server's version and archive displaced local bytes for recovery.
+Review recovery artifacts when both devices edit a binary file.
 
 ### Binary Detection
 
@@ -24,7 +19,7 @@ Files are treated as binary if they:
 - Contain NUL bytes (`0x00`)
 - Fail UTF-8 validation
 
-Binary files within `.md` or `.txt` extensions still get last-write-wins (no merge).
+Binary files within `.md` or `.txt` extensions follow the same unmergeable-content policy.
 
 ## Performance Constraints
 
@@ -61,11 +56,11 @@ Rough estimates (varies by vault size and activity):
 
 - All versions stored indefinitely (no automatic cleanup)
 - Each vault is a separate SQLite database
-- Deleted files marked as deleted (not purged)
+- Deletion removes file-manifest membership; content history remains readable
 
 **Growth**: Version history grows with every change. A 10 MB vault with frequent edits might grow to 100+ MB over months.
 
-**Cleanup**: Manual only (see [Advanced Configuration](/config/advanced#version-history-cleanup)).
+Active journals, immutable merge bases and request receipts must not be independently deleted. There is no automatic safe history-pruning protocol.
 
 ### Implications
 
@@ -92,7 +87,7 @@ Result: "The very quick red fox" ← Both changes preserved
 - Simultaneous edits to the same sentence
 - Large structural changes (moving sections around)
 
-**Result**: Merged file might need manual cleanup in ~1-5% of concurrent edits.
+Merged files may require manual review; there is no measured universal conflict-success rate.
 
 ## Scalability
 
@@ -140,6 +135,14 @@ Not currently supported. Running multiple servers requires manual vault partitio
 - Tokens configured in server config file
 - No runtime user management
 
+## Restored backups
+
+Restore server databases while the server is stopped. API v5 clients detect a
+changed history even when version numbers are reused. Clean files reconcile with
+the restored server; unsent edits are preserved as separate local documents.
+Clients and server must be upgraded together. This does not replace independent
+backups or protect against arbitrary physical-media corruption.
+
 ## Known Edge Cases
 
 ### Simultaneous Deletes and Edits
@@ -147,10 +150,10 @@ Not currently supported. Running multiple servers requires manual vault partitio
 ```
 User A deletes note.md
 User B edits note.md
-Result: Edit wins (file recreated with B's content)
+Result: Manifest deletion removes the file; unsent edited bytes are retained for recovery.
 ```
 
-Operational transformation prioritises content preservation.
+Content updates do not restore deleted membership. The client retains displaced bytes in its local recovery directory.
 
 ### Large File Uploads
 

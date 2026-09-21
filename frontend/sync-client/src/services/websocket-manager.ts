@@ -26,6 +26,7 @@ export class WebSocketManager {
 
     private isStopped = true;
     private resolveDisconnectingPromise: null | (() => unknown) = null;
+    private receiveTimeoutId: ReturnType<typeof setTimeout> | undefined;
     private reconnectTimeoutId: ReturnType<typeof setTimeout> | undefined;
 
     private readonly outstandingPromises: Promise<unknown>[] = [];
@@ -56,12 +57,14 @@ export class WebSocketManager {
 
     public get isWebSocketConnected(): boolean {
         return (
-            this.webSocket?.readyState ===
-            this.webSocketFactoryImplementation.OPEN
+            this.webSocket !== undefined &&
+            this.webSocket.readyState ===
+                this.webSocketFactoryImplementation.OPEN
         );
     }
 
     public start(): void {
+        if (!this.isStopped) return;
         this.isStopped = false;
         this.initializeWebSocket();
     }
@@ -71,13 +74,20 @@ export class WebSocketManager {
         this.resolveDisconnectingPromise = resolve;
 
         this.isStopped = true;
+        clearTimeout(this.receiveTimeoutId);
 
         if (this.reconnectTimeoutId !== undefined) {
             clearTimeout(this.reconnectTimeoutId);
             this.reconnectTimeoutId = undefined;
         }
 
-        this.webSocket?.close(1000, "WebSocketManager has been stopped");
+        const socket = this.webSocket;
+        try {
+            socket?.close(1000, "WebSocketManager has been stopped");
+        } catch (error) {
+            this.logger.warn(`Failed to close WebSocket: ${String(error)}`);
+            if (socket) this.reconnect(socket);
+        }
 
         // eslint-disable-next-line @typescript-eslint/init-declarations
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -107,6 +117,9 @@ export class WebSocketManager {
             if (timeoutId !== undefined) {
                 clearTimeout(timeoutId);
             }
+            // A throwing, silent or timed-out close must still fence callbacks
+            // before a stopped client can release its state or restart.
+            if (socket) this.reconnect(socket);
         }
 
         await this.waitUntilFinished();
@@ -132,6 +145,7 @@ export class WebSocketManager {
             this.logger.error(
                 `Failed to send handshake message: ${String(error)}`
             );
+            this.reconnect(webSocket);
             throw error;
         }
     }
@@ -162,7 +176,66 @@ export class WebSocketManager {
         }
     }
 
+    private expectResponse(socket: WebSocket): void {
+        clearTimeout(this.receiveTimeoutId);
+        // Cursor heartbeats are acknowledged every 15 seconds, including when
+        // there are no open editors. An OPEN TCP socket alone proves nothing.
+        this.receiveTimeoutId = setTimeout(() => {
+            if (this.webSocket !== socket || this.isStopped) return;
+            this.logger.warn("WebSocket receive deadline expired");
+            this.reconnect(socket);
+        }, 45_000);
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Browser timers have no unref method.
+        this.receiveTimeoutId.unref?.();
+    }
+
+    private reconnect(socket: WebSocket): void {
+        if (this.webSocket !== socket) return;
+        clearTimeout(this.receiveTimeoutId);
+        socket.onopen = null;
+        socket.onclose = null;
+        socket.onmessage = null;
+        socket.onerror = (): void => {
+            /* Retired transports may still emit errors. */
+        };
+        this.webSocket = undefined;
+        this.onWebSocketStatusChanged.trigger(false);
+        try {
+            socket.close();
+        } catch {
+            /* The transport may already be gone. */
+        }
+        if (this.isStopped) {
+            this.resolveDisconnectingPromise?.();
+            this.resolveDisconnectingPromise = null;
+        } else {
+            this.scheduleReconnect();
+        }
+    }
+
+    private scheduleReconnect(): void {
+        if (this.isStopped) return;
+        clearTimeout(this.reconnectTimeoutId);
+        this.reconnectTimeoutId = setTimeout(() => {
+            this.reconnectTimeoutId = undefined;
+            this.initializeWebSocket();
+        }, this.settings.getSettings().webSocketRetryIntervalMs);
+    }
+
     private initializeWebSocket(): void {
+        if (this.isStopped) return;
+        try {
+            this.openWebSocket();
+        } catch (error) {
+            this.logger.warn(`Cannot initialize WebSocket: ${String(error)}`);
+            this.webSocket = undefined;
+            clearTimeout(this.receiveTimeoutId);
+            this.onWebSocketStatusChanged.trigger(false);
+            this.scheduleReconnect();
+        }
+    }
+
+    private openWebSocket(): void {
         // Clean up old WebSocket handlers to prevent race conditions
         if (this.webSocket) {
             try {
@@ -170,7 +243,9 @@ export class WebSocketManager {
                 this.webSocket.onopen = null;
                 this.webSocket.onclose = null;
                 this.webSocket.onmessage = null;
-                this.webSocket.onerror = null;
+                this.webSocket.onerror = (): void => {
+                    /* Retired transports may still emit errors. */
+                };
                 this.webSocket.close();
             } catch (e) {
                 this.logger.error(
@@ -188,7 +263,14 @@ export class WebSocketManager {
 
         this.logger.info(`Connecting to WebSocket at ${wsUri.toString()}`);
 
-        this.webSocket = new this.webSocketFactoryImplementation(wsUri);
+        const socket = new this.webSocketFactoryImplementation(wsUri);
+        this.webSocket = socket;
+        this.expectResponse(socket);
+
+        this.webSocket.onerror = (): void => {
+            this.logger.warn("WebSocket transport error");
+            this.reconnect(socket);
+        };
 
         this.webSocket.onopen = (): void => {
             // Check if we've been stopped while connecting
@@ -200,7 +282,18 @@ export class WebSocketManager {
                 return;
             }
             this.logger.info("WebSocket connection opened");
-            this.onWebSocketStatusChanged.trigger(true);
+            try {
+                this.onWebSocketStatusChanged.trigger(true);
+                // A handshake failure can retire this socket from inside an
+                // observer. Finish delivery with its actual connection state.
+                if (this.webSocket !== socket)
+                    this.onWebSocketStatusChanged.trigger(false);
+            } catch (error) {
+                this.logger.warn(
+                    `WebSocket handshake failed: ${String(error)}`
+                );
+                this.reconnect(socket);
+            }
         };
 
         this.webSocket.onmessage = (event): void => {
@@ -210,6 +303,8 @@ export class WebSocketManager {
                     event.data
                 ) as WebSocketServerMessage;
 
+                if (["vaultEvents", "cursorPositions"].includes(message.type))
+                    this.expectResponse(socket);
                 // Track the message handling promise
                 const messageHandlingPromise = this.handleWebSocketMessage(
                     message
@@ -238,17 +333,7 @@ export class WebSocketManager {
             this.logger.warn(
                 `WebSocket closed with code ${event.code} (${event.reason == "" ? "unknown reason" : event.reason})`
             );
-            this.onWebSocketStatusChanged.trigger(false);
-
-            if (this.isStopped) {
-                this.resolveDisconnectingPromise?.();
-                this.resolveDisconnectingPromise = null;
-            } else {
-                this.reconnectTimeoutId = setTimeout(() => {
-                    this.reconnectTimeoutId = undefined;
-                    this.initializeWebSocket();
-                }, this.settings.getSettings().webSocketRetryIntervalMs);
-            }
+            this.reconnect(socket);
         };
     }
 

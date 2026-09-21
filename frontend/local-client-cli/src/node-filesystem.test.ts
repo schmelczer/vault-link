@@ -51,7 +51,7 @@ test("NodeFileSystemOperations - exists with forward slashes", async () => {
     }
 });
 
-test("NodeFileSystemOperations - delete with forward slashes", async () => {
+test("NodeFileSystemOperations - deleteFile with forward slashes", async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "vaultlink-test-"));
     const fsOps = new NodeFileSystemOperations(tempDir);
 
@@ -59,8 +59,10 @@ test("NodeFileSystemOperations - delete with forward slashes", async () => {
         await fsOps.write("test.txt", new TextEncoder().encode("test"));
         assert.equal(await fsOps.exists("test.txt"), true);
 
-        await fsOps.delete("test.txt");
+        await fsOps.deleteFile("test.txt");
         assert.equal(await fsOps.exists("test.txt"), false);
+
+        await fsOps.deleteFile("test.txt");
     } finally {
         await fs.rm(tempDir, { recursive: true, force: true });
     }
@@ -154,8 +156,45 @@ test("NodeFileSystemOperations - handles paths with forward slashes on all platf
         const readContent = await fsOps.read(testPath);
         assert.equal(new TextDecoder().decode(readContent), "test");
 
-        await fsOps.delete(testPath);
+        await fsOps.deleteFile(testPath);
         assert.equal(await fsOps.exists(testPath), false);
+    } finally {
+        await fs.rm(tempDir, { recursive: true, force: true });
+    }
+});
+
+test("NodeFileSystemOperations - delete prunes empty directory trees", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "vaultlink-test-"));
+    const fsOps = new NodeFileSystemOperations(tempDir);
+
+    try {
+        await fs.mkdir(path.join(tempDir, "parent", "child"), {
+            recursive: true
+        });
+
+        await fsOps.delete("parent");
+        assert.equal(await fsOps.exists("parent"), false);
+
+        await fsOps.delete("parent");
+    } finally {
+        await fs.rm(tempDir, { recursive: true, force: true });
+    }
+});
+
+test("NodeFileSystemOperations - delete does not remove files", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "vaultlink-test-"));
+    const fsOps = new NodeFileSystemOperations(tempDir);
+
+    try {
+        await fsOps.write(
+            "parent/file.txt",
+            new TextEncoder().encode("preserve me")
+        );
+
+        await assert.rejects(async () => fsOps.delete("parent"));
+        assert.equal(await fsOps.exists("parent/file.txt"), true);
+        await assert.rejects(async () => fsOps.delete("parent/file.txt"));
+        assert.equal(await fsOps.exists("parent/file.txt"), true);
     } finally {
         await fs.rm(tempDir, { recursive: true, force: true });
     }

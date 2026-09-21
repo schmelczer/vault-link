@@ -8,7 +8,7 @@
     "scripts": {
         "dev": "webpack watch --mode development",
         "build": "webpack --mode production",
-        "test": "npm run build && node dist/cli.js"
+        "test": "cargo build --release --manifest-path ../../sync-server/Cargo.toml && npm run build --workspace sync-client && npm run build && node dist/cli.js"
     },
     "devDependencies": {
         "commander": "^14.0.2",

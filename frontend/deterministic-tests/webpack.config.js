@@ -2,8 +2,9 @@ const path = require("path");
 const webpack = require("webpack");
 
 module.exports = {
-    entry: "./src/cli.ts",
+    entry: { cli: "./src/cli.ts", "crash-worker": "./src/crash-worker.ts" },
     target: "node",
+    externals: { "sync-client": "commonjs sync-client" },
     mode: "production",
     optimization: {
         minimize: false
@@ -21,7 +22,7 @@ module.exports = {
     },
     output: {
         globalObject: "this",
-        filename: "cli.js",
+        filename: "[name].js",
         path: path.resolve(__dirname, "dist")
     },
     plugins: [

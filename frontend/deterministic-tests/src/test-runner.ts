@@ -13,6 +13,8 @@ import {
     IS_SYNC_ENABLED_BY_DEFAULT
 } from "./consts";
 import { randomUUID } from "node:crypto";
+import { assertCanonical } from "../../test-support/canonical";
+import { ContentLedger } from "../../test-support/oracles";
 
 export class TestRunner {
     private agents: DeterministicAgent[] = [];
@@ -20,6 +22,8 @@ export class TestRunner {
     private readonly token: string;
     private readonly remoteUri: string;
     private readonly logger: Logger;
+    private vaultName = "";
+    private readonly identities = new Map<string, string>();
 
     public constructor(
         serverControl: ServerControl,
@@ -44,6 +48,8 @@ export class TestRunner {
         }
         this.logger.info(`Clients: ${test.clients}`);
         this.logger.info(`Steps: ${test.steps.length}`);
+        this.identities.clear();
+        let diagnostics: TestResult["diagnostics"];
 
         try {
             assert(
@@ -61,6 +67,11 @@ export class TestRunner {
                 await this.executeStep(step);
             }
 
+            assert(
+                this.serverControl.isRunning(),
+                "Server died before test completion"
+            );
+            diagnostics = this.captureDiagnostics();
             await this.cleanup();
 
             const duration = Date.now() - startTime;
@@ -71,25 +82,46 @@ export class TestRunner {
                 duration
             };
         } catch (error) {
+            diagnostics ??= this.captureDiagnostics();
             const duration = Date.now() - startTime;
             const errorMessage =
                 error instanceof Error ? error.message : String(error);
             this.logger.info(`\n✗ Test failed: ${name}`);
             this.logger.info(`Error: ${errorMessage}`);
 
-            await this.cleanup();
+            try {
+                await this.cleanup();
+            } catch (cleanupError) {
+                return {
+                    success: false,
+                    error: `${errorMessage}\nCleanup: ${String(cleanupError)}`,
+                    duration,
+                    diagnostics
+                };
+            }
 
             return {
                 success: false,
                 error: errorMessage,
+                diagnostics,
                 duration
             };
         }
     }
 
+    private captureDiagnostics(): unknown {
+        return this.agents.map((agent) => ({
+            client: agent.clientId,
+            database: agent.database(),
+            disk: agent.disk.image(),
+            requests: structuredClone(agent.network.requests)
+        }));
+    }
+
     private async initializeAgents(count: number): Promise<void> {
         assert(count > 0, `Client count must be positive, got ${count}`);
         const vaultName = `test-${randomUUID()}`;
+        this.vaultName = vaultName;
         this.logger.info(
             `Initializing ${count} agents with vault: ${vaultName}`
         );
@@ -129,6 +161,87 @@ export class TestRunner {
 
     private async executeStep(step: TestStep): Promise<void> {
         switch (step.type) {
+            case "pause-observation":
+                this.getAgent(step.client).pauseObservation();
+                break;
+            case "resume-observation":
+                this.getAgent(step.client).resumeObservation();
+                break;
+            case "wait-for-observation":
+                await this.getAgent(step.client).waitForObservation();
+                break;
+            case "create-bytes":
+                await this.getAgent(step.client).write(
+                    step.path,
+                    new Uint8Array(step.bytes)
+                );
+                break;
+            case "drop-response":
+                this.getAgent(step.client).dropNextResponse(
+                    step.kind,
+                    step.point
+                );
+                break;
+            case "wait-for-response-drop":
+                await this.getAgent(step.client).waitForDroppedCreateResponse();
+                break;
+            case "delay-notifications":
+                this.getAgent(step.client).delayNotifications();
+                break;
+            case "flush-notifications":
+                this.getAgent(step.client).flushNotifications();
+                break;
+            case "remember-identity":
+            case "assert-identity":
+                await this.assertConsistent((state) => {
+                    if (step.type === "remember-identity")
+                        this.identities.set(
+                            step.key,
+                            state.documentId(step.path)
+                        );
+                    else {
+                        const id = this.identities.get(step.key);
+                        assert(
+                            id !== undefined,
+                            `Identity ${step.key} was never recorded`
+                        );
+                        state.assertIdentity(step.path, id);
+                    }
+                });
+                break;
+            case "assert-files":
+                await this.assertConsistent((state) => {
+                    for (const [path, value] of Object.entries(step.expected))
+                        state.assertContent(path, value);
+                    for (const path of step.absent ?? [])
+                        state.assertFileNotExists(path);
+                    if (step.count !== undefined)
+                        state.assertFileCount(step.count);
+                });
+                break;
+            case "assert-documents":
+                await this.assertConsistent((state) =>
+                    state.assertDocuments(step.expected, this.identities)
+                );
+                break;
+            case "assert-markers": {
+                const ledger = new ContentLedger();
+                for (const marker of step.markers) ledger.add(marker);
+                for (const marker of step.removed ?? [])
+                    ledger.removedBy(
+                        marker,
+                        "trace records explicit deletion/overwrite"
+                    );
+                for (const agent of this.agents)
+                    ledger.assertPreserved(agent.files());
+                break;
+            }
+            case "crash-server":
+                await this.serverControl.crash();
+                break;
+            case "restart-server":
+                await this.serverControl.restart();
+                break;
             case "create":
             case "update":
                 await this.getAgent(step.client).write(
@@ -170,7 +283,9 @@ export class TestRunner {
                 break;
 
             case "enable-sync":
-                await this.getAgent(step.client).enableSync();
+                await this.getAgent(step.client).enableSync(
+                    !this.serverControl.isPaused
+                );
                 break;
 
             case "pause-server":
@@ -190,7 +305,9 @@ export class TestRunner {
                     (entry) =>
                         entry.details.type === step.syncType &&
                         entry.details.relativePath === step.path,
-                    () => { this.serverControl.pause(); }
+                    () => {
+                        this.serverControl.pause();
+                    }
                 );
                 this.serverControl.resume();
                 await historySeen;
@@ -305,6 +422,11 @@ export class TestRunner {
 
         // Snapshot all agents' file states upfront to minimize the window
         // where background sync could mutate state between reads.
+        const canonical = await assertCanonical(
+            this.agents,
+            `${this.remoteUri}/vaults/${encodeURIComponent(this.vaultName)}`,
+            this.token
+        );
         const clientFiles: Map<string, string>[] = [];
         for (const agent of this.agents) {
             const sortedFiles = (await agent.listFilesRecursively()).sort();
@@ -360,7 +482,12 @@ export class TestRunner {
                 verify(
                     new AssertableState({
                         files: clientFiles[0],
-                        clientFiles
+                        clientFiles,
+                        manifests: this.agents.map(
+                            (agent) => agent.database()!.local!
+                        ),
+                        canonical: canonical.fileManifest.entries,
+                        bytes: this.agents[0].files()
                     })
                 );
             } catch (error) {
@@ -384,10 +511,12 @@ export class TestRunner {
         }
 
         this.logger.info("\nCleaning up agents...");
-        for (const agent of this.agents) {
+        const errors: unknown[] = [];
+        for (const agent of this.agents.splice(0)) {
             try {
                 await agent.cleanup();
             } catch (error) {
+                errors.push(error);
                 this.logger.warn(
                     `Agent cleanup error: ${error instanceof Error ? error.message : String(error)}`
                 );
@@ -395,5 +524,10 @@ export class TestRunner {
         }
         this.agents = [];
         this.logger.info("Cleanup complete");
+        if (errors.length)
+            throw new AggregateError(
+                errors,
+                `Cleanup failed: ${errors.map(String).join("; ")}`
+            );
     }
 }

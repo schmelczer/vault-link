@@ -3,6 +3,7 @@ import type { FetchController } from "./fetch-controller";
 import type { Logger } from "../tracing/logger";
 import type { DocumentUpdateResponse } from "./types/DocumentUpdateResponse";
 import type { DocumentVersion } from "./types/DocumentVersion";
+import type { DocumentVersionWithoutContent } from "./types/DocumentVersionWithoutContent";
 import type { EventBatch } from "./types/EventBatch";
 import type { FileManifest } from "./types/FileManifest";
 import type { FileManifestUpdateResponse } from "./types/FileManifestUpdateResponse";
@@ -10,7 +11,11 @@ import type { PutFileContent } from "./types/PutFileContent";
 import type { PushFileManifest } from "./types/PushFileManifest";
 import type { VaultSnapshot } from "./types/VaultSnapshot";
 import type { PingResponse } from "./types/PingResponse";
-import { AuthenticationError, PermanentSyncError } from "../errors/errors";
+import {
+    AuthenticationError,
+    PermanentSyncError,
+    ServerHistoryChangedError
+} from "../errors/errors";
 
 export class SyncService {
     private readonly client: typeof fetch;
@@ -21,13 +26,53 @@ export class SyncService {
         fetchController: FetchController,
         private readonly settings: Settings,
         logger: Logger,
-        fetchImplementation: typeof fetch = globalThis.fetch
+        fetchImplementation: typeof fetch = globalThis.fetch,
+        private readonly history?: {
+            get: () => string | undefined;
+            save: (checkpoint: string | undefined) => Promise<void>;
+        }
     ) {
         this.rawFetch = async (...args) => fetchImplementation(...args);
         this.client = fetchController.getControlledFetchImplementation(
             logger,
             this.rawFetch
         );
+    }
+
+    public get verifiesHistory(): boolean {
+        return this.history !== undefined;
+    }
+    public get hasHistoryCheckpoint(): boolean {
+        return this.history?.get() !== undefined;
+    }
+
+    public async resetHistory(): Promise<void> {
+        await this.history?.save(undefined);
+    }
+
+    private historyHeaders(): Record<string, string> {
+        const checkpoint = this.history?.get();
+        return checkpoint ? { "X-Vault-Link-History": checkpoint } : {};
+    }
+
+    private async recordHistory(response: Response): Promise<void> {
+        const checkpoint = response.headers.get("x-vault-link-history");
+        if (checkpoint && this.history) {
+            const previous = this.history.get();
+            if (
+                !previous ||
+                Number(checkpoint.split(":")[0]) >=
+                    Number(previous.split(":")[0])
+            )
+                await this.history.save(checkpoint);
+        }
+    }
+
+    private checkHistory(response: Response): void {
+        if (response.headers.get("x-vault-link-history-mismatch") === "1")
+            throw new ServerHistoryChangedError(
+                "Server history changed; recovering local work"
+            );
     }
 
     public getUrl(path: string): string {
@@ -49,6 +94,7 @@ export class SyncService {
                     this.settings.getSettings().requestTimeoutMs
                 ),
                 headers: {
+                    ...(raw ? {} : this.historyHeaders()),
                     Authorization: `Bearer ${this.settings.getSettings().token}`,
                     "Device-Id": this.deviceId,
                     "Content-Type": "application/json"
@@ -56,6 +102,7 @@ export class SyncService {
             }
         );
 
+        this.checkHistory(response);
         if (!response.ok) {
             this.throwForErrorResponse(
                 response,
@@ -63,13 +110,11 @@ export class SyncService {
             );
         }
 
+        if (!raw) await this.recordHistory(response);
         return (await response.json()) as T;
     }
 
-    private throwForErrorResponse(
-        response: Response,
-        message: string
-    ): never {
+    private throwForErrorResponse(response: Response, message: string): never {
         if (response.status === 401 || response.status === 403) {
             throw new AuthenticationError(message);
         }
@@ -117,6 +162,10 @@ export class SyncService {
         return this.request(`/documents/${id}`);
     }
 
+    public async metadata(id: string): Promise<DocumentVersionWithoutContent> {
+        return this.request(`/documents/${id}/metadata`);
+    }
+
     public async getDocumentVersionContent({
         documentId,
         vaultUpdateId
@@ -133,11 +182,13 @@ export class SyncService {
                     this.settings.getSettings().requestTimeoutMs
                 ),
                 headers: {
+                    ...this.historyHeaders(),
                     Authorization: `Bearer ${this.settings.getSettings().token}`
                 }
             }
         );
 
+        this.checkHistory(response);
         if (!response.ok) {
             this.throwForErrorResponse(
                 response,
@@ -145,6 +196,7 @@ export class SyncService {
             );
         }
 
+        await this.recordHistory(response);
         return new Uint8Array(await response.arrayBuffer());
     }
 }

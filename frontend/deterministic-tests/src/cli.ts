@@ -9,10 +9,11 @@ import { runWithConcurrency } from "./run-with-concurrency";
 import { TOKEN, SERVER_BINARY_PATH, CONFIG_PATH } from "./consts";
 import * as path from "node:path";
 import * as fs from "node:fs";
-import { debugging, Logger } from "sync-client";
+import * as os from "node:os";
+import { Logger } from "sync-client";
 
 const logger = new Logger();
-debugging.logToConsole(logger, { useColors: true });
+logger.onLogEmitted.add((line) => console.log(line.message));
 
 process.on("unhandledRejection", (reason) => {
     logger.error(`Unhandled Rejection: ${reason}`);
@@ -32,6 +33,8 @@ function testUsesPauseServer(test: TestDefinition): boolean {
         (step) =>
             step.type === "pause-server" ||
             step.type === "resume-server" ||
+            step.type === "crash-server" ||
+            step.type === "restart-server" ||
             step.type === "resume-server-until-history-then-pause"
     );
 }
@@ -42,7 +45,7 @@ function testUsesPauseServer(test: TestDefinition): boolean {
  */
 function findProjectRoot(): string {
     let dir = path.dirname(__filename);
-    const {root} = path.parse(dir);
+    const { root } = path.parse(dir);
     while (dir !== root) {
         if (
             fs.existsSync(path.join(dir, "sync-server")) &&
@@ -114,11 +117,7 @@ async function runDedicatedServerTest(
         }
         return { name, result };
     } finally {
-        try {
-            await server.stop();
-        } catch {
-            // best-effort cleanup
-        }
+        await server.stop();
         serverManager.untrack(server);
     }
 }
@@ -138,6 +137,11 @@ async function main(): Promise<void> {
     }
 
     const { filter, concurrency } = parseArgs(process.argv);
+    const artifacts =
+        process.env.E2E_ARTIFACTS ??
+        fs.mkdtempSync(path.join(os.tmpdir(), "vault-link-deterministic-"));
+    fs.mkdirSync(artifacts, { recursive: true });
+    logger.info(`Artifacts: ${artifacts}`);
 
     const testsToRun: [string, TestDefinition][] = [];
     for (const [key, test] of Object.entries(TESTS)) {
@@ -193,13 +197,7 @@ async function main(): Promise<void> {
 
             allResults.push(...results);
         } finally {
-            try {
-                await sharedServer.stop();
-            } catch (error) {
-                logger.warn(
-                    `Error stopping shared server: ${error instanceof Error ? error.message : String(error)}`
-                );
-            }
+            await sharedServer.stop();
             serverManager.untrack(sharedServer);
         }
     }
@@ -221,6 +219,10 @@ async function main(): Promise<void> {
 
     const passed = allResults.filter((r) => r.result.success);
     const failed = allResults.filter((r) => !r.result.success);
+    fs.writeFileSync(
+        path.join(artifacts, "deterministic-results.json"),
+        JSON.stringify(allResults, null, 2)
+    );
 
     logger.info(
         `\n--- Results: ${passed.length}/${allResults.length} passed ---`

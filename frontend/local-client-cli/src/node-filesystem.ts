@@ -15,7 +15,7 @@ import { toUnixPath } from "./path-utils";
 export const VAULTLINK_DIR = ".vaultlink";
 
 export class NodeFileSystemOperations implements FileSystemOperations {
-    public constructor(private readonly basePath: string) { }
+    public constructor(private readonly basePath: string) {}
 
     public async listFilesRecursively(
         directory: RelativePath | undefined
@@ -105,9 +105,36 @@ export class NodeFileSystemOperations implements FileSystemOperations {
     }
 
     public async delete(relativePath: RelativePath): Promise<void> {
+        if (!relativePath) {
+            throw new Error("Cannot delete the vault root");
+        }
+
         const fullPath = path.join(this.basePath, relativePath);
         try {
-            await fs.unlink(fullPath);
+            await this.deleteDirectoryTree(fullPath);
+        } catch (error) {
+            throw new Error(
+                `Failed to delete directory ${fullPath}: ${error instanceof Error ? error.message : String(error)}`
+            );
+        }
+    }
+
+    public async deleteFile(relativePath: RelativePath): Promise<void> {
+        const fullPath = path.join(this.basePath, relativePath);
+        try {
+            const entry = await fs.lstat(fullPath).catch((error: unknown) => {
+                if (this.isMissing(error)) return undefined;
+                throw error;
+            });
+            if (!entry) return;
+            if (!entry.isFile() || entry.nlink !== 1) {
+                throw new Error("Cannot unlink a non-regular or linked file");
+            }
+
+            await fs.unlink(fullPath).catch((error: unknown) => {
+                if (!this.isMissing(error)) throw error;
+            });
+            await this.syncDirectory(path.dirname(fullPath));
         } catch (error) {
             throw new Error(
                 `Failed to delete file ${fullPath}: ${error instanceof Error ? error.message : String(error)}`
@@ -169,6 +196,40 @@ export class NodeFileSystemOperations implements FileSystemOperations {
         } finally {
             await fd.close();
         }
+    }
+
+    private async deleteDirectoryTree(fullPath: string): Promise<void> {
+        const entry = await fs.lstat(fullPath).catch((error: unknown) => {
+            if (this.isMissing(error)) return undefined;
+            throw error;
+        });
+        if (!entry) return;
+        if (!entry.isDirectory()) {
+            throw new Error("Cannot delete a regular file as a directory");
+        }
+
+        for (const child of await fs.readdir(fullPath, {
+            withFileTypes: true
+        })) {
+            if (!child.isDirectory()) {
+                throw new Error(
+                    `Directory contains a non-directory entry: ${path.join(fullPath, child.name)}`
+                );
+            }
+            await this.deleteDirectoryTree(path.join(fullPath, child.name));
+        }
+
+        await fs.rmdir(fullPath);
+        await this.syncDirectory(path.dirname(fullPath));
+    }
+
+    private isMissing(error: unknown): boolean {
+        return (
+            typeof error === "object" &&
+            error !== null &&
+            "code" in error &&
+            error.code === "ENOENT"
+        );
     }
 
     private async walkDirectory(

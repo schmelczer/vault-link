@@ -1,483 +1,340 @@
-import type {
-    HistoryEntry,
-    StoredDatabase,
-    SyncSettings,
-    RelativePath,
-    TextWithCursors
-} from "sync-client";
 import {
     SyncClient,
-    SyncResetError,
-    debugging,
     LogLevel,
-    utils
+    type HistoryEntry,
+    type SyncSettings
 } from "sync-client";
+import { MemoryDisk, MemoryPersistence } from "../../test-support/storage";
+import { NetworkFaults, type RequestKind } from "../../test-support/network";
 import { assert } from "./utils/assert";
 import { sleep } from "./utils/sleep";
 import { withTimeout } from "./utils/with-timeout";
-import {
-    IS_SYNC_ENABLED_BY_DEFAULT,
-    WAIT_TIMEOUT_MS,
-    WEBSOCKET_CONNECT_TIMEOUT_MS,
-    WEBSOCKET_POLL_INTERVAL_MS
-} from "./consts";
+import { WAIT_TIMEOUT_MS, WEBSOCKET_CONNECT_TIMEOUT_MS } from "./consts";
 import { ManagedWebSocketFactory } from "./managed-websocket";
 
-export class DeterministicAgent extends debugging.InMemoryFileSystem {
-    public readonly clientId: number;
-    private readonly logger: (msg: string) => void;
-    private client!: SyncClient;
-    private data: Partial<{
-        settings: Partial<SyncSettings>;
-        database: Partial<StoredDatabase>;
-    }> = {};
-    private isSyncEnabled = IS_SYNC_ENABLED_BY_DEFAULT;
-    private readonly syncErrors: Error[] = [];
-    private readonly pendingSyncOperations = new Set<Promise<void>>();
+/** User actions live here; the engine only receives disk.session(). */
+export class DeterministicAgent {
+    public readonly disk = new MemoryDisk();
+    public readonly persistence: MemoryPersistence;
+    public readonly network = new NetworkFaults();
+    private client?: SyncClient;
+    private readonly errors: Error[] = [];
+    private readonly pending = new Set<Promise<void>>();
     private readonly wsFactory = new ManagedWebSocketFactory();
-    private nextWriteRename:
-        | {
-            oldPath: RelativePath;
-            newPath: RelativePath;
-        }
-        | undefined;
-    private nextCreateResponseDrop:
-        | {
-            dropped: Promise<void>;
-            resolveDropped: () => void;
-        }
-        | undefined;
+    private nextWriteRename?: { oldPath: string; newPath: string };
+    private delayedNotifications = false;
+    private disposed = false;
+    private readonly notifications: (() => Promise<void>)[] = [];
 
     public constructor(
-        clientId: number,
-        initialSettings: Partial<SyncSettings>,
-        logger: (msg: string) => void
+        public readonly clientId: number,
+        settings: Partial<SyncSettings>,
+        private readonly logger: (msg: string) => void
     ) {
-        super();
-        this.clientId = clientId;
-        this.logger = logger;
-        this.data.settings = { ...initialSettings };
+        this.persistence = new MemoryPersistence({
+            settings: {
+                networkRetryIntervalMs: 25,
+                webSocketRetryIntervalMs: 50,
+                requestTimeoutMs: 5_000,
+                ...settings,
+                // Scripted and seeded scenarios must exercise notification delivery.
+                syncIntervalMs: 0
+            }
+        });
+        this.disk.boundary = async (label) => {
+            const rename = this.nextWriteRename;
+            // v4 installs through an exclusive rename, never write-in-place.
+            if (
+                rename &&
+                label.startsWith("durable:rename:") &&
+                label.endsWith(`->${rename.oldPath}`)
+            ) {
+                this.nextWriteRename = undefined;
+                await this.rename(rename.oldPath, rename.newPath);
+            }
+        };
     }
 
     public async init(
-        fetchImplementation: typeof globalThis.fetch
+        fetchImplementation: typeof globalThis.fetch = fetch
     ): Promise<void> {
         this.client = await SyncClient.create({
-            fs: this,
-            persistence: {
-                load: async () => this.data,
-                save: async (data) => void (this.data = data)
-            },
-            fetch: this.wrapFetch(fetchImplementation),
+            fs: this.disk.session(),
+            persistence: this.persistence,
+            fetch: this.network.wrap(fetchImplementation),
             webSocket: this.wsFactory.constructorFn
         });
-
-        this.client.logger.onLogEmitted.add((line) => {
-            const prefix = `[Client ${this.clientId}]`;
-            switch (line.level) {
-                case LogLevel.ERROR:
-                    this.logger(`${prefix} ERROR: ${line.message}`);
-                    break;
-                case LogLevel.WARNING:
-                    this.logger(`${prefix} WARN: ${line.message}`);
-                    break;
-                case LogLevel.INFO:
-                    this.logger(`${prefix} INFO: ${line.message}`);
-                    break;
-                case LogLevel.DEBUG:
-                    this.logger(`${prefix} DEBUG: ${line.message}`);
-                    break;
-            }
-        });
-
-        await this.client.start();
-
-        const connectionCheck = await this.client.checkConnection();
         assert(
-            connectionCheck.isSuccessful,
+            this.client.getSettings().syncIntervalMs === 0,
+            "Correctness scenarios must run with periodic polling disabled"
+        );
+        this.client.logger.onLogEmitted.add((line) => {
+            this.logger(
+                `[Client ${this.clientId}] ${line.level}: ${line.message}`
+            );
+            if (this.disposed && line.level === LogLevel.ERROR)
+                throw new Error(
+                    `Client ${this.clientId} error after cleanup: ${line.message}`
+                );
+            if (
+                line.level === LogLevel.ERROR &&
+                !this.isRetryableFailure(line.message)
+            )
+                this.errors.push(new Error(line.message));
+        });
+        await this.client.start();
+        assert(
+            (await this.client.checkConnection()).isSuccessful,
             `Client ${this.clientId} connection check failed`
         );
+    }
 
-        if (this.isSyncEnabled) {
-            await this.waitForWebSocket();
+    public database() {
+        return this.persistence.snapshot().database;
+    }
+    public files(): Map<string, Uint8Array> {
+        return this.disk.userFiles();
+    }
+    public async listFilesRecursively(): Promise<string[]> {
+        return [...this.files().keys()].sort();
+    }
+    public async getFileContent(path: string): Promise<string> {
+        const bytes = this.files().get(path);
+        assert(bytes !== undefined, `Missing file: ${path}`);
+        return new TextDecoder("utf-8", { ignoreBOM: true }).decode(bytes);
+    }
+    public async read(path: string): Promise<Uint8Array> {
+        const snapshot = await this.disk.readSnapshot(path);
+        assert(snapshot !== undefined, `Missing file: ${path}`);
+        return snapshot.content;
+    }
+    public async write(path: string, content: Uint8Array): Promise<void> {
+        const created = !(await this.disk.exists(path));
+        await this.disk.userWrite(path, content);
+        this.notify(() =>
+            created
+                ? this.client!.syncLocallyCreatedFile(path)
+                : this.client!.syncLocallyUpdatedFile({ relativePath: path })
+        );
+    }
+    public async rename(oldPath: string, relativePath: string): Promise<void> {
+        await this.disk.userRename(oldPath, relativePath);
+        this.notify(() =>
+            this.client!.syncLocallyUpdatedFile({ oldPath, relativePath })
+        );
+    }
+    public async delete(path: string): Promise<void> {
+        await this.disk.userDelete(path);
+        this.notify(() => this.client!.syncLocallyDeletedFile(path));
+    }
+    public delayNotifications(): void {
+        this.delayedNotifications = true;
+    }
+    public flushNotifications(): void {
+        this.delayedNotifications = false;
+        for (const notify of this.notifications.splice(0)) this.enqueue(notify);
+    }
+    private notify(operation: () => Promise<void>): void {
+        // Offline means transport disabled, not that editor identity events vanish.
+        if (this.delayedNotifications) this.notifications.push(operation);
+        else this.enqueue(operation);
+    }
+    private enqueue(operation: () => Promise<void>): void {
+        const promise = operation().catch((error: unknown) => {
+            if (!this.isRetryableFailure(String(error)))
+                this.errors.push(
+                    error instanceof Error ? error : new Error(String(error))
+                );
+        });
+        this.pending.add(promise);
+        void promise.then(() => this.pending.delete(promise));
+    }
+    private async drain(): Promise<void> {
+        while (this.pending.size) await Promise.all([...this.pending]);
+    }
+    private isRetryableFailure(message: string): boolean {
+        // A coherent scan rejecting an editor race is a required adapter
+        // behavior. It must subsequently converge; never blanket-ignore errors.
+        return (
+            this.network.isExpectedFailure(message) ||
+            /^(Sync paused for retry: )?Error: File changed during scan: .+$/.test(
+                message
+            )
+        );
+    }
+    private assertHealthy(): void {
+        if (this.errors.length) {
+            const errors = this.errors.splice(0);
+            throw new AggregateError(
+                errors,
+                `Client ${this.clientId}: ${errors.map(String).join("; ")}`
+            );
         }
     }
-
-    public pauseWebSocket(): void {
-        this.log("Pausing WebSocket message delivery");
-        this.wsFactory.pause();
-    }
-
-    public resumeWebSocket(): void {
-        this.log("Resuming WebSocket message delivery");
-        this.wsFactory.resume();
-    }
-
-    public dropNextCreateResponse(): void {
+    public async waitForSync(): Promise<void> {
         assert(
-            this.nextCreateResponseDrop === undefined,
-            `Client ${this.clientId} already has a create response drop armed`
-        );
-        let resolveDropped!: () => void;
-        const dropped = new Promise<void>((resolve) => {
-            resolveDropped = resolve;
-        });
-        this.nextCreateResponseDrop = {
-            dropped,
-            resolveDropped
-        };
-        this.log("Armed next create response drop");
-    }
-
-    public async waitForDroppedCreateResponse(): Promise<void> {
-        assert(
-            this.nextCreateResponseDrop !== undefined,
-            `Client ${this.clientId} has no create response drop armed`
+            this.client!.getSettings().syncIntervalMs === 0,
+            "Periodic polling was enabled during a correctness scenario"
         );
         await withTimeout(
-            this.nextCreateResponseDrop.dropped,
+            (async () => {
+                await this.drain();
+                const deadline = Date.now() + WAIT_TIMEOUT_MS;
+                for (;;) {
+                    try {
+                        await this.client!.waitUntilFinished();
+                        break;
+                    } catch (error) {
+                        if (
+                            !this.isRetryableFailure(String(error)) ||
+                            Date.now() >= deadline
+                        )
+                            throw error;
+                        await sleep(30);
+                    }
+                }
+                this.assertHealthy();
+            })(),
             WAIT_TIMEOUT_MS,
-            `Client ${this.clientId} timed out waiting for create response drop`
+            `Client ${this.clientId} sync timeout`
         );
-        this.log("Create response was dropped after server commit");
     }
-
+    public async disableSync(): Promise<void> {
+        await this.drain();
+        await this.client!.setSetting("isSyncEnabled", false);
+        this.assertHealthy();
+    }
+    public async enableSync(wait = true): Promise<void> {
+        // setSetting waits for a sync attempt in v4. Track it, but don't block
+        // the script from resuming a paused server or releasing a checkpoint.
+        this.enqueue(() => this.client!.setSetting("isSyncEnabled", true));
+        const deadline = Date.now() + WEBSOCKET_CONNECT_TIMEOUT_MS;
+        while (
+            !this.persistence.snapshot().settings?.isSyncEnabled &&
+            Date.now() < deadline
+        )
+            await sleep(1);
+        assert(
+            !!this.persistence.snapshot().settings?.isSyncEnabled,
+            "Enable did not persist"
+        );
+        if (wait) await this.waitForSync();
+    }
+    public async reset(): Promise<void> {
+        await this.drain();
+        await this.client!.reset();
+    }
+    public pauseWebSocket(): void {
+        this.wsFactory.pause();
+    }
+    public pauseObservation(): void {
+        this.pauseWebSocket();
+        this.network.pauseObservation();
+    }
+    public resumeObservation(): void {
+        this.network.resumeObservation();
+        this.resumeWebSocket();
+    }
+    public async waitForObservation(): Promise<void> {
+        await withTimeout(
+            this.network.waitForObservation(),
+            WAIT_TIMEOUT_MS,
+            "HTTP observation checkpoint never reached"
+        );
+    }
+    public resumeWebSocket(): void {
+        this.wsFactory.resume();
+    }
+    public dropNextCreateResponse(): void {
+        this.network.arm("create");
+    }
+    public dropNextResponse(
+        kind: RequestKind,
+        point: "before" | "after" = "after"
+    ): void {
+        this.network.arm(kind, point);
+    }
+    public async waitForDroppedCreateResponse(): Promise<void> {
+        await withTimeout(
+            this.network.wait(),
+            WAIT_TIMEOUT_MS,
+            "Armed response drop never fired"
+        );
+    }
+    public renameNextWrite(oldPath: string, newPath: string): void {
+        assert(
+            !this.nextWriteRename,
+            "Previous install/rename hook never fired"
+        );
+        this.nextWriteRename = { oldPath, newPath };
+    }
     public async waitForHistoryEntry(
         matches: (entry: HistoryEntry) => boolean,
         onMatch?: (entry: HistoryEntry) => void
     ): Promise<void> {
-        const existing = this.client.getHistoryEntries().find(matches);
-        if (existing !== undefined) {
-            onMatch?.(existing);
-            return;
-        }
-
-        await withTimeout(
-            new Promise<void>((resolve) => {
-                const unsubscribe = this.client.onSyncHistoryUpdated.add(() => {
-                    const entry = this.client
-                        .getHistoryEntries()
-                        .find(matches);
-                    if (entry === undefined) {
-                        return;
-                    }
-
-                    unsubscribe();
-                    onMatch?.(entry);
-                    resolve();
-                });
-            }),
-            WAIT_TIMEOUT_MS,
-            `Client ${this.clientId} timed out waiting for history entry`
-        );
-    }
-
-    public async waitForSync(): Promise<void> {
-        this.log("Waiting for sync to complete...");
-        // Drain agent-level sync operations first. These are the fire-and-forget
-        // promises from enqueueSync() that call into the SyncClient's methods.
-        // Without this, waitUntilFinished() might return before the SyncClient
-        // has even been told about the operation.
-        await this.drainPendingSyncOperations();
-        await withTimeout(
-            this.client.waitUntilFinished(),
-            WAIT_TIMEOUT_MS,
-            `Client ${this.clientId} waitForSync timed out after ${WAIT_TIMEOUT_MS}ms`
-        );
-        if (this.syncErrors.length > 0) {
-            const errors = this.syncErrors.splice(0);
-            throw new Error(
-                `Client ${this.clientId} had ${errors.length} sync error(s):\n${errors.map((e) => e.message).join("\n")}`
-            );
-        }
-        this.log("Sync complete");
-    }
-
-    public async reset(): Promise<void> {
-        this.log("Resetting client (clears tracked state, keeps disk files)");
-        await this.drainPendingSyncOperations();
-        await this.client.reset();
-        if (this.isSyncEnabled) {
-            await this.waitForWebSocket();
-        }
-    }
-
-    public async disableSync(): Promise<void> {
-        this.log("Disabling sync");
-        // Drain pending enqueued operations before disabling so the SyncClient
-        // knows about all operations that were enqueued while sync was enabled.
-        await this.drainPendingSyncOperations();
-        await this.client.setSetting("isSyncEnabled", false);
-        this.isSyncEnabled = false;
-        // Wait for in-flight operations to drain. Disabling sync triggers
-        // a reset, which aborts in-flight fetches with SyncResetError.
+        let unsubscribe = () => {};
         try {
             await withTimeout(
-                this.client.waitUntilFinished(),
+                new Promise<void>((resolve) => {
+                    const check = () => {
+                        const entry =
+                            this.client!.getHistoryEntries().find(matches);
+                        if (entry) {
+                            onMatch?.(entry);
+                            resolve();
+                        }
+                    };
+                    unsubscribe = this.client!.onSyncHistoryUpdated.add(check);
+                    check();
+                }),
                 WAIT_TIMEOUT_MS,
-                `Client ${this.clientId} disableSync drain timed out`
+                "History checkpoint not reached"
             );
-        } catch (error) {
-            if (error instanceof Error && error.name === "SyncResetError") {
-                this.log("Disable sync drain interrupted by reset (expected)");
-            } else {
-                throw error;
-            }
+        } finally {
+            unsubscribe();
         }
     }
-
-    public async enableSync(): Promise<void> {
-        this.log("Enabling sync");
-        await this.client.setSetting("isSyncEnabled", true);
-        this.isSyncEnabled = true;
-        await this.waitForWebSocket();
-    }
-
-    public async getFileContent(path: string): Promise<string> {
-        const bytes = await this.read(path);
-        return new TextDecoder().decode(bytes);
-    }
-
-    public renameNextWrite(oldPath: RelativePath, newPath: RelativePath): void {
-        assert(
-            this.nextWriteRename === undefined,
-            `Client ${this.clientId} already has a next-write rename armed`
-        );
-        this.nextWriteRename = { oldPath, newPath };
-        this.log(`Armed next write rename: ${oldPath} -> ${newPath}`);
-    }
-
     public async cleanup(): Promise<void> {
-        this.log("Cleaning up...");
-        // Guard against uninitialized client (init() failed partway).
-        // The class field uses `!:` so TS thinks this is always defined,
-        // but at runtime it can be undefined when init() throws partway.
-        const maybeClient = this.client as SyncClient | undefined;
-        if (maybeClient === undefined) {
-            this.log("Client not initialized, nothing to clean up");
-            return;
+        if (!this.client) return;
+        const errors: unknown[] = [];
+        this.resumeObservation();
+        this.flushNotifications();
+        try {
+            await this.waitForSync();
+        } catch (error) {
+            errors.push(error);
         }
         try {
-            await this.drainPendingSyncOperations();
+            this.network.assertConsumed();
+            assert(!this.nextWriteRename, "Install/rename hook never fired");
+        } catch (error) {
+            errors.push(error);
+        }
+        try {
             await withTimeout(
-                this.client.waitUntilFinished(),
+                this.client.destroy(),
                 WAIT_TIMEOUT_MS,
-                `Client ${this.clientId} cleanup waitUntilFinished timed out`
+                "Destroy timed out"
+            );
+            await withTimeout(
+                this.wsFactory.finish(),
+                WAIT_TIMEOUT_MS,
+                "WebSocket callbacks did not finish during cleanup"
             );
         } catch (error) {
-            if (error instanceof Error && error.name === "SyncResetError") {
-                this.log(`Cleanup interrupted by reset (expected): ${error}`);
-            } else {
-                this.log(`Cleanup waitUntilFinished failed: ${error}`);
-            }
+            errors.push(error);
         }
-        // Surface any background sync errors that arrived after the last
-        // waitForSync (e.g. between the final assert-consistent and here).
-        // Without this, regressions that fault the engine during the very
-        // last step of a test would be silently swallowed.
-        const pendingErrors = this.syncErrors.splice(0);
-        await this.client.destroy();
-        this.log("Cleanup complete");
-        if (pendingErrors.length > 0) {
-            throw new Error(
-                `Client ${this.clientId} had ${pendingErrors.length} background sync error(s) during cleanup:\n${pendingErrors.map((e) => e.message).join("\n")}`
-            );
-        }
-    }
-
-    public override async read(path: RelativePath): Promise<Uint8Array> {
-        await Promise.resolve();
-        return super.read(path);
-    }
-
-    public override async write(
-        path: RelativePath,
-        content: Uint8Array
-    ): Promise<void> {
-        await Promise.resolve();
-        const isNew = !this.files.has(path);
-        await super.write(path, content);
-
-        if (this.isSyncEnabled && isNew) {
-            this.enqueueSync(async () => {
-                this.client.syncLocallyCreatedFile(path);
-            });
-        }
-
-        const { nextWriteRename } = this;
-        if (
-            nextWriteRename !== undefined &&
-            nextWriteRename.oldPath === path
-        ) {
-            this.nextWriteRename = undefined;
-            await super.rename(
-                nextWriteRename.oldPath,
-                nextWriteRename.newPath
-            );
-            if (this.isSyncEnabled) {
-                this.enqueueSync(async () => {
-                    this.client.syncLocallyUpdatedFile({
-                        oldPath: nextWriteRename.oldPath,
-                        relativePath: nextWriteRename.newPath
-                    });
-                });
-            }
-            // The rename consumed `path`. Skip the post-update enqueue below
-            // — it would send a syncLocallyUpdatedFile for a path that no
-            // longer exists.
-            return;
-        }
-
-        if (!this.isSyncEnabled) {
-            return;
-        }
-
-        if (!isNew) {
-            this.enqueueSync(async () => {
-                this.client.syncLocallyUpdatedFile({ relativePath: path });
-            });
-        }
-    }
-
-    public override async atomicUpdateText(
-        path: RelativePath,
-        updater: (current: TextWithCursors) => TextWithCursors
-    ): Promise<string> {
-        const result = await super.atomicUpdateText(path, updater);
-        if (this.isSyncEnabled) {
-            this.enqueueSync(async () => {
-                this.client.syncLocallyUpdatedFile({ relativePath: path });
-            });
-        }
-        return result;
-    }
-
-    public override async delete(path: RelativePath): Promise<void> {
-        await super.delete(path);
-        if (this.isSyncEnabled) {
-            this.enqueueSync(async () => {
-                this.client.syncLocallyDeletedFile(path);
-            });
-        }
-    }
-
-    public override async rename(
-        oldPath: RelativePath,
-        newPath: RelativePath
-    ): Promise<void> {
-        await super.rename(oldPath, newPath);
-        if (this.isSyncEnabled) {
-            this.enqueueSync(async () => {
-                this.client.syncLocallyUpdatedFile({
-                    oldPath,
-                    relativePath: newPath
-                });
-            });
-        }
-    }
-
-    private async waitForWebSocket(): Promise<void> {
-        const deadline = Date.now() + WEBSOCKET_CONNECT_TIMEOUT_MS;
-        while (!this.client.isWebSocketConnected && Date.now() < deadline) {
-            await sleep(WEBSOCKET_POLL_INTERVAL_MS);
-        }
-        assert(
-            this.client.isWebSocketConnected,
-            `Client ${this.clientId} WebSocket failed to connect within ${WEBSOCKET_CONNECT_TIMEOUT_MS}ms`
-        );
-    }
-
-    /**
-     * Wait until all agent-level enqueued sync operations have completed.
-     * Uses a loop because completing one operation can trigger new enqueues.
-     */
-    private async drainPendingSyncOperations(): Promise<void> {
-        while (this.pendingSyncOperations.size > 0) {
-            await utils.awaitAll([...this.pendingSyncOperations]);
-        }
-    }
-
-    private enqueueSync(operation: () => Promise<void>): void {
-        const promise = this.executeSyncOperation(operation).catch(
-            (error: unknown) => {
-                const err =
-                    error instanceof Error ? error : new Error(String(error));
-                this.log(`Background sync failed: ${err.message}`);
-                this.syncErrors.push(err);
-            }
-        );
-        this.pendingSyncOperations.add(promise);
-        void promise.finally(() => {
-            this.pendingSyncOperations.delete(promise);
-        });
-    }
-
-    private async executeSyncOperation(
-        operation: () => Promise<void>
-    ): Promise<void> {
+        this.client = undefined;
+        this.disposed = true;
         try {
-            await operation();
+            this.assertHealthy();
         } catch (error) {
-            if (error instanceof Error && error.name === "SyncResetError") {
-                this.log(`Sync operation interrupted by reset: ${error}`);
-                return;
-            }
-            if (
-                error instanceof Error &&
-                error.message.includes("has been destroyed")
-            ) {
-                this.log(`Sync operation interrupted by destroy: ${error}`);
-                return;
-            }
-
-            throw error;
+            errors.push(error);
         }
-    }
-
-    private log(message: string): void {
-        this.logger(`[Client ${this.clientId}] ${message}`);
-    }
-
-    private wrapFetch(
-        fetchImplementation: typeof globalThis.fetch
-    ): typeof globalThis.fetch {
-        return async (input, init) => {
-            const response = await fetchImplementation(input, init);
-            const drop = this.nextCreateResponseDrop;
-            if (
-                drop !== undefined &&
-                DeterministicAgent.isCreateDocumentRequest(input, init)
-            ) {
-                this.nextCreateResponseDrop = undefined;
-                try {
-                    await response.body?.cancel();
-                } catch {
-                    // Best-effort — body may already be consumed/closed.
-                }
-                drop.resolveDropped();
-                throw new SyncResetError();
-            }
-            return response;
-        };
-    }
-
-    private static isCreateDocumentRequest(
-        input: RequestInfo | URL,
-        init: RequestInit | undefined
-    ): boolean {
-        const method =
-            init?.method ??
-            (typeof Request !== "undefined" && input instanceof Request
-                ? input.method
-                : "GET");
-        if (method.toUpperCase() !== "POST") {
-            return false;
-        }
-
-        const url =
-            input instanceof URL
-                ? input
-                : new URL(typeof input === "string" ? input : input.url);
-        return /\/documents\/?$/.test(url.pathname);
+        if (errors.length)
+            throw new AggregateError(
+                errors,
+                `Client ${this.clientId} cleanup failed: ${errors.map(String).join("; ")}`
+            );
     }
 }

@@ -1,4 +1,5 @@
 import type { TestDefinition } from "./test-definition";
+import { V4_TESTS } from "./v4-regressions";
 import { renameCreateConflictTest } from "./tests/rename-create-conflict.test";
 import { renameChainTest } from "./tests/rename-chain.test";
 import { renameUpdateConflictTest } from "./tests/rename-update-conflict.test";
@@ -106,6 +107,7 @@ import { remoteQuickWriteRenameBeforeRecordTest } from "./tests/remote-quick-wri
 import { selfMergePendingRenameAliasesSecondCreateTest } from "./tests/self-merge-pending-rename-aliases-second-create.test";
 
 export const TESTS: Partial<Record<string, TestDefinition>> = {
+    ...V4_TESTS,
     "rename-create-conflict": renameCreateConflictTest,
     "rename-chain": renameChainTest,
     "rename-update-conflict": renameUpdateConflictTest,

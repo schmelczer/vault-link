@@ -1,22 +1,23 @@
 # Sync server
 
-## API v4
+## API v5
 
 The server is a compare-and-swap store. Content versions do not contain paths or
 deletions. A separately versioned file manifest owns the namespace and membership.
 All routes below are under `/vaults/:vault_id` and require bearer authentication
 (except the WebSocket, which authenticates its first message).
 
-| Endpoint | Purpose |
-| --- | --- |
-| `PUT /documents/:document_id` | CAS an immutable content version. |
-| `GET /documents/:document_id` | Current content version, including base64 bytes. |
-| `GET /documents/:document_id/versions/:version_id/content` | Immutable raw bytes. |
-| `GET /file_manifest` | Current file manifest. |
-| `PUT /file_manifest` | CAS the complete file manifest. |
-| `GET /vault_snapshot` | File manifest, referenced content heads, and event watermark from one read transaction. |
-| `GET /events_since?after=N` | Every event after N, in order, with the current watermark. |
-| `GET /ws` | Ordered event delivery and ephemeral cursor positions. |
+| Endpoint                                                   | Purpose                                                                                 |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `PUT /documents/:document_id`                              | CAS an immutable content version.                                                       |
+| `GET /documents/:document_id/metadata`                     | Current version metadata and size without content bytes.                                |
+| `GET /documents/:document_id`                              | Current content version, including base64 bytes.                                        |
+| `GET /documents/:document_id/versions/:version_id/content` | Immutable raw bytes.                                                                    |
+| `GET /file-manifest`                                       | Current file manifest.                                                                  |
+| `PUT /file-manifest`                                       | CAS the complete file manifest.                                                         |
+| `GET /vault-snapshot`                                      | File manifest, referenced content heads, and event watermark from one read transaction. |
+| `GET /events-since?after=N`                                | Every event after N, in order, with the current watermark.                              |
+| `GET /ws`                                                  | Ordered event delivery and ephemeral cursor positions.                                  |
 
 A content push includes a `Device-Id` header and this JSON body:
 
@@ -54,13 +55,14 @@ UUID-to-path mapping in `file_manifest_entries`. Each version has a header row
 even when its entries are empty. Entries are unique by document ID and exact path
 within a version; portable path validation also rejects aliases and directory
 conflicts. Reads reconstruct the complete map, and vault snapshots join these
-rows to the latest content versions. The version, entries, and complete file
-manifest event in `events.event_json` commit atomically. Event replay and retry
-acknowledgements continue to use `event_json`.
+rows to the latest content versions. Event replay and retry acknowledgements are
+also reconstructed from normalized content/manifest rows, without storing a
+second complete map in the event table.
 
 Both pushes return a tagged `Accepted` or `StaleBase` response. An accepted file
 manifest response returns its assigned file manifest ID. A stale content response
-includes bytes; a stale file manifest response includes the complete map.
+includes metadata and byte length only; clients fetch immutable bytes after applying
+their size and exclusion policy. A stale file manifest response includes the complete map.
 Accepted requests store their unique request ID and fingerprint in the event row,
 atomically with the version. Retrying the exact request reconstructs the original
 `Accepted` response from that event before checking the current head, even after
@@ -70,8 +72,8 @@ identity is not part of the fingerprint.
 
 File manifest validation rejects duplicate UUID keys (including aliases), missing
 content, path aliases, inconsistent directory spelling, and file/ancestor
-conflicts. Paths use `/`, NFC normalization, at most 240 UTF-8 bytes, and portable
-Windows filename restrictions. Alias comparison is NFC → Unicode uppercase →
+conflicts. Paths use `/`, NFC normalization, and portable Windows filename
+restrictions without imposing a universal total-path byte limit. Alias comparison is NFC → Unicode uppercase →
 NFC. `.vault-link-sync` and its aliases are reserved. The server never sanitizes
 or allocates a replacement name.
 
@@ -87,11 +89,19 @@ determine event ordering.
 The WebSocket handshake retains `lastSeenVaultUpdateId`. The server sends
 `{type: "vaultEvents", headEventId, events}` in increasing order, including events
 originated by that client. Each connection drains the database through one sender.
-In-memory notifications only wake it; polling covers missed wakes and cancellation
-after commit. Reconnect with the last durably processed event ID. The HTTP replay
-endpoint uses the same history, so losing the final notification is recoverable.
-A fresh client reads `/vault_snapshot`, applies it durably, then replays after its
-watermark.
+In-memory notifications only wake it; polling covers missed wakes and requests
+interrupted after commit. Reconnect with the last durably processed event ID. The
+HTTP replay endpoint uses the same history, so losing the final notification is
+recoverable.
+A fresh client reads `/vault-snapshot`, applies it durably, then replays after its
+watermark. Successful HTTP responses include `X-Vault-Link-History`, containing
+an event ID and a random event-incarnation token. Clients persist and echo this
+checkpoint on later HTTP requests. The server returns HTTP 409 with
+`X-Vault-Link-History-Mismatch: 1` before executing a request whose checkpoint is
+absent from the current database. Restored backups retain their original prefix;
+new events get new tokens even when numeric IDs or request UUIDs are reused.
+Restore databases while the server is stopped. Live replacement of open SQLite
+files is not supported.
 Cursor notifications are ephemeral and do not consume event IDs.
 Cursor expiry and disconnect broadcast the remaining clients, including an empty
 list when the last client leaves.
@@ -116,8 +126,20 @@ flushes database directory entries; the filesystem must support those durability
 operations. Content, file manifests, and events (including request fingerprints)
 are retained indefinitely.
 
-API v4 requires fresh vault databases and upgraded clients. Existing database
-migration checksums intentionally reject earlier schemas; there is no automatic
-erasure or migration. Use a new database directory and preserve old data.
+Deploy API v5 clients and server together. The v4 database schema migrates by
+adding event-incarnation tokens without deleting content or receipts. Schemas
+from before v4 still require a separate database directory and explicit recovery.
+Vault databases open and migrate independently on first access; one corrupt or
+incompatible vault does not prevent healthy vaults from serving requests.
+
+Diffs are limited to 10,000 items and reconstructed in one pass over Unicode
+scalars on a blocking worker, before taking the SQLite writer transaction. The
+transaction rechecks request identity and the parent version before committing.
+Clients send a snapshot when an edit exceeds the diff-operation budget. Decoded
+content is bounded by `max_body_size_mb` as well as the encoded request limit.
+
+A missing configuration file is initialized with durably stored credentials.
+Existing configurations must explicitly supply `users.user_configs`; omitted
+credentials are rejected instead of generating an unpersisted token at startup.
 Base64 increases snapshot body size by about one third; request limits apply to
 the encoded JSON body.

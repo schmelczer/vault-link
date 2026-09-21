@@ -18,6 +18,9 @@
         "build": "npm run build --workspaces",
         "dev": "concurrently --kill-others \"npm run dev -w sync-client\" \"npm run dev -w obsidian-plugin\"",
         "test": "npm run test --workspaces",
+        "check:harness": "tsc --noEmit -p test-support/tsconfig.json && tsc --noEmit -p deterministic-tests/tsconfig.json && tsc --noEmit -p test-client/tsconfig.json",
+        "test:harness": "npm run check:harness && tsx --test 'test-support/harness.test.ts' 'test-support/oracle-regressions.test.ts' 'test-support/recovery.test.ts' 'test-support/journal-interleavings.test.ts' 'test-support/observer.test.ts' 'test-support/event-delivery.test.ts' 'test-support/polling.test.ts' 'test-support/engine-regressions.test.ts' 'test-support/sync-audit.test.ts' 'test-client/src/**/*.test.ts' '../scripts/e2e-runner.test.mjs'",
+        "test:protocol": "tsx --test 'test-support/protocol.test.ts' 'test-support/journal-protocol.test.ts' 'test-support/content-limits.test.ts' 'test-support/server-restore.test.ts' 'test-support/protocol-audit.test.ts' 'test-support/real-disk.test.ts'",
         "lint": "eslint --fix sync-client obsidian-plugin test-client deterministic-tests local-client-cli && prettier --write \"**/*.ts\"",
         "update": "ncu -u -ws"
     },

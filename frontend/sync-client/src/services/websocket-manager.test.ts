@@ -1,9 +1,10 @@
 /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert";
+import { createServer } from "node:net";
 import { WebSocketManager } from "./websocket-manager";
-import type { Logger } from "../tracing/logger";
-import type { Settings } from "../persistence/settings";
+import { Logger } from "../tracing/logger";
+import { Settings } from "../persistence/settings";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const WebSocket = require("ws") as typeof globalThis.WebSocket;
 
@@ -336,4 +337,180 @@ describe("WebSocketManager", () => {
         assert.strictEqual(outstandingPromises.length, 0);
         await manager.stop();
     });
+});
+
+it(
+    "refused WebSocket connections and replacing a connecting socket do not emit unhandled errors",
+    { timeout: 5_000 },
+    async () => {
+        const server = createServer();
+        await new Promise<void>((resolve) =>
+            server.listen(0, "127.0.0.1", resolve)
+        );
+        const address = server.address();
+        assert(address && typeof address !== "string");
+        await new Promise<void>((resolve, reject) =>
+            server.close((error) => (error ? reject(error) : resolve()))
+        );
+        const logger = new Logger();
+        const settings = new Settings(
+            logger,
+            {
+                remoteUri: `http://127.0.0.1:${address.port}`,
+                webSocketRetryIntervalMs: 10
+            },
+            async () => {}
+        );
+        const manager = new WebSocketManager(
+            "test",
+            logger,
+            settings,
+            WebSocket
+        );
+        let closes = 0;
+        const disconnected = Promise.withResolvers<void>();
+        manager.onWebSocketStatusChanged.add((connected) => {
+            if (!connected && ++closes >= 2) disconnected.resolve();
+        });
+        try {
+            manager.start();
+            manager.start();
+            await disconnected.promise;
+            assert.equal(manager.isWebSocketConnected, false);
+        } finally {
+            await manager.stop();
+        }
+    }
+);
+
+for (const failedAttempt of [1, 2]) {
+    it(`recovers from a WebSocket constructor failure on attempt ${failedAttempt}`, async (context) => {
+        context.mock.timers.enable({ apis: ["setTimeout"] });
+        let attempts = 0;
+        class FailingSocket extends MockWebSocket {
+            static OPEN = 1;
+            constructor(url: string) {
+                if (++attempts === failedAttempt)
+                    throw new Error("socket allocation failed");
+                super(url);
+            }
+        }
+        const logger = new Logger();
+        const settings = new Settings(
+            logger,
+            { remoteUri: "http://test", webSocketRetryIntervalMs: 1000 },
+            async () => {}
+        );
+        const manager = new WebSocketManager(
+            "test",
+            logger,
+            settings,
+            FailingSocket as unknown as typeof WebSocket
+        );
+        try {
+            assert.doesNotThrow(() => manager.start());
+            context.mock.timers.tick(0);
+            if (failedAttempt === 2) {
+                const socket = (
+                    manager as unknown as { webSocket: MockWebSocket }
+                ).webSocket;
+                socket.close();
+            }
+            assert.doesNotThrow(() => context.mock.timers.tick(1000));
+            context.mock.timers.tick(1000);
+            assert.equal(attempts, failedAttempt + 1);
+            assert.equal(manager.isWebSocketConnected, true);
+        } finally {
+            await manager.stop();
+        }
+    });
+}
+
+for (const closeBehavior of ["throws", "stays open"]) {
+    it(`stop retires a socket even when close ${closeBehavior}`, async (context) => {
+        context.mock.timers.enable({ apis: ["setTimeout"] });
+        class BrokenCloseSocket extends MockWebSocket {
+            static OPEN = 1;
+            close() {
+                if (closeBehavior === "throws") throw new Error("close failed");
+            }
+        }
+        const logger = new Logger();
+        const settings = new Settings(
+            logger,
+            { remoteUri: "http://test" },
+            async () => {}
+        );
+        const manager = new WebSocketManager(
+            "test",
+            logger,
+            settings,
+            BrokenCloseSocket as unknown as typeof WebSocket
+        );
+        let connected = false,
+            delivered = 0;
+        manager.onWebSocketStatusChanged.add((status) => {
+            connected = status;
+        });
+        manager.onRemoteVaultUpdateReceived.add(async () => {
+            delivered++;
+        });
+        manager.start();
+        context.mock.timers.tick(0);
+        const socket = (manager as unknown as { webSocket: MockWebSocket })
+            .webSocket;
+        const stopping = manager.stop();
+        context.mock.timers.tick(10_000);
+        await stopping;
+        assert.equal(manager.isWebSocketConnected, false);
+        assert.equal(connected, false);
+        socket.simulateMessage({
+            type: "vaultEvents",
+            headEventId: 0,
+            events: []
+        });
+        await manager.waitUntilFinished();
+        assert.equal(delivered, 0);
+    });
+}
+
+it("a handshake send failure retires the connection without escaping the open callback", async (context) => {
+    context.mock.timers.enable({ apis: ["setTimeout"] });
+    class BrokenSendSocket extends MockWebSocket {
+        static OPEN = 1;
+        send() {
+            throw new Error("transport closed during open");
+        }
+    }
+    const logger = new Logger();
+    const settings = new Settings(
+        logger,
+        { remoteUri: "http://test" },
+        async () => {}
+    );
+    const manager = new WebSocketManager(
+        "test",
+        logger,
+        settings,
+        BrokenSendSocket as unknown as typeof WebSocket
+    );
+    manager.onWebSocketStatusChanged.add((connected) => {
+        if (connected)
+            manager.sendHandshakeMessage({
+                type: "handshake",
+                token: "test",
+                deviceId: "test",
+                lastSeenVaultUpdateId: 0
+            });
+    });
+    const statuses: boolean[] = [];
+    manager.onWebSocketStatusChanged.add((status) => statuses.push(status));
+    try {
+        manager.start();
+        assert.doesNotThrow(() => context.mock.timers.tick(0));
+        assert.equal(manager.isWebSocketConnected, false);
+        assert.equal(statuses.at(-1), false);
+    } finally {
+        await manager.stop();
+    }
 });

@@ -62,18 +62,14 @@ pub async fn put_file_manifest(
         return Ok(Json(FileManifestUpdateResponse::StaleBase(latest)));
     }
 
-    for id in push.entries.keys() {
-        if state
-            .database
-            .get_latest_document_version(&vault_id, id, Some(&mut tx))
+    if let Some(id) =
+        Database::missing_document(&mut tx, &push.entries.keys().copied().collect::<Vec<_>>())
             .await
             .map_err(server_error)?
-            .is_none()
-        {
-            return Err(client_error(anyhow!(
-                "File manifest references missing content: {id}"
-            )));
-        }
+    {
+        return Err(client_error(anyhow!(
+            "File manifest references missing content: {id}"
+        )));
     }
 
     let file_manifest = FileManifest {

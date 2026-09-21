@@ -9,7 +9,7 @@ use crate::{
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct UserConfig {
-    #[serde(default = "default_users", deserialize_with = "validate_users")]
+    #[serde(deserialize_with = "validate_users")]
     pub user_configs: Vec<User>,
 }
 

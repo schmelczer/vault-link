@@ -1,374 +1,235 @@
+import type { CursorPosition } from "reconcile-text";
 import type { Logger } from "../tracing/logger";
-import { EMPTY_HASH } from "../utils/hash";
-import { CoveredValues } from "../utils/data-structures/min-covered";
-import { awaitAll } from "../utils/await-all";
-import { removeFromArray } from "../utils/remove-from-array";
+import type { DocumentUpdateResponse } from "../services/types/DocumentUpdateResponse";
+import type { DocumentVersionWithoutContent } from "../services/types/DocumentVersionWithoutContent";
+import type { FileManifest } from "../services/types/FileManifest";
+import type { FileManifestUpdateResponse } from "../services/types/FileManifestUpdateResponse";
+import type { PushFileManifest } from "../services/types/PushFileManifest";
+import type { PutFileContent } from "../services/types/PutFileContent";
+import type { VaultSnapshot } from "../services/types/VaultSnapshot";
+import type { EventRecord } from "../services/types/EventRecord";
+import type { FileManifestEntries } from "../types/file-manifest-entries";
 
 export type VaultUpdateId = number;
 export type DocumentId = string;
 export type RelativePath = string;
 
+export interface StoredSnapshot {
+    contentBase64: string;
+    hash: string;
+    cursors?: CursorPosition[];
+}
+
 export interface DocumentMetadata {
-    parentVersionId: VaultUpdateId;
+    parentVersionId: number;
     hash: string;
-    remoteRelativePath?: RelativePath;
+    remoteRelativePath?: string;
 }
 
-export interface StoredDocumentMetadata {
-    relativePath: RelativePath;
-    documentId: DocumentId;
-    parentVersionId: VaultUpdateId;
-    remoteRelativePath?: RelativePath;
-    hash: string;
+export interface DocumentState {
+    /** Local clean base retained while rebasing after a server restore. */
+    recoveryBase?: StoredSnapshot;
+    base?: DocumentVersionWithoutContent & { hash: string };
+    observedHash?: string;
+    materialized: boolean;
+    /** First contact with existing local content: there is no common ancestor. */
+    bootstrap?: boolean;
+    /** Do not resubmit an unchanged payload rejected by the server. */
+    rejected?: { hash: string; message: string };
 }
 
-export interface StoredDatabase {
-    documents: StoredDocumentMetadata[];
-    lastSeenUpdateId: VaultUpdateId | undefined;
-    hasInitialSyncCompleted: boolean;
+export type PendingRequest = { rejection?: string } & (
+    | {
+          type: "content";
+          documentId: string;
+          request: PutFileContent;
+          snapshot: StoredSnapshot;
+          response?: DocumentUpdateResponse;
+      }
+    | {
+          type: "fileManifest";
+          request: PushFileManifest;
+          response?: FileManifestUpdateResponse;
+      }
+);
+
+export interface EngineState {
+    /** Durable reset intent; clear the transport checkpoint before bootstrap. */
+    historyRecovery?: boolean;
+    vaultKey: string;
+    initialized: boolean;
+    fileManifest: FileManifest;
+    local: FileManifestEntries;
+    documents: Record<string, DocumentState>;
+    lastSeenUpdateId: number;
+    remoteHeads: Record<string, DocumentVersionWithoutContent>;
+    bootstrap?: VaultSnapshot;
+    /** Fold pages durably without applying intermediate remote snapshots. */
+    eventReplay?: {
+        after: number;
+        manifest: FileManifest;
+        heads: Record<string, DocumentVersionWithoutContent>;
+        receipts: EventRecord[];
+    };
+    pending?: PendingRequest;
+    /** A rejected retry does not prove an earlier attempt failed to commit. */
+    unconfirmed?: PendingRequest[];
+    /** Commits consumption of the durable notification queue with the identity map. */
+    lastAppliedLocalChangeId?: string;
+    /** Physical exclusions, including files with no sync identity. */
+    protectedPaths?: string[];
+    /** Original server paths while local files are excluded; null means absent. */
+    excluded?: Record<string, string | null>;
+    rejectedManifest?: { entries: FileManifestEntries; message: string };
 }
 
-/**
- * Represents a document in the database.
- *
- * It is mutable and its content should always represent the latest
- * state of the document on disk based on the update events we have seen.
- */
+export interface FileStep {
+    documentId: string;
+    from?: string;
+    to?: string;
+    expected?: StoredSnapshot;
+    replacement?: StoredSnapshot;
+    staged: string;
+    output: string;
+    /** A permanent destination error has already selected a root fallback. */
+    replanned?: boolean;
+    /** Retained input of a later step for this identity; never projected as live. */
+    superseded?: boolean;
+    phase: "planned" | "staged" | "prepared" | "installing" | "installed";
+}
+
+export interface ApplicationJournal {
+    id: string;
+    extensions: string[];
+    next: EngineState;
+    steps: FileStep[];
+}
+
+export interface StoredDatabase extends EngineState {
+    application?: ApplicationJournal;
+}
+
+// Read-only view used by cursor tracking and status reporting.
 export interface DocumentRecord {
-    relativePath: RelativePath;
-    documentId: DocumentId;
-    metadata: DocumentMetadata | undefined;
+    documentId: string;
+    relativePath: string;
+    metadata?: DocumentMetadata;
     isDeleted: boolean;
-    updates: Promise<unknown>[];
-    parallelVersion: number;
+}
+
+export function emptyState(vaultKey: string): StoredDatabase {
+    return {
+        vaultKey,
+        initialized: false,
+        fileManifest: { fileManifestId: 0, entries: {} },
+        local: {},
+        documents: {},
+        remoteHeads: {},
+        lastSeenUpdateId: 0
+    };
+}
+
+function canRebindEmpty(state: Partial<StoredDatabase> | undefined): boolean {
+    return (
+        state !== undefined &&
+        !state.initialized &&
+        !state.pending &&
+        !state.application &&
+        !state.bootstrap &&
+        !state.eventReplay &&
+        (state.unconfirmed?.length ?? 0) === 0 &&
+        Object.keys(state.local ?? {}).length === 0
+    );
 }
 
 export class Database {
-    private documents: DocumentRecord[];
-    private lastSeenUpdateIds: CoveredValues;
-    private hasInitialSyncCompleted: boolean;
-
+    public state: StoredDatabase;
+    private needsReload = false;
     public constructor(
         private readonly logger: Logger,
-        initialState: Partial<StoredDatabase> | undefined,
-        private readonly saveData: (data: StoredDatabase) => Promise<void>
+        initial: Partial<StoredDatabase> | undefined,
+        private readonly saveData: (data: StoredDatabase) => Promise<void>,
+        vaultKey: string,
+        private readonly loadData: () => Promise<StoredDatabase | undefined>
     ) {
-        initialState ??= {};
-
-        this.documents =
-            initialState.documents?.map(
-                ({ relativePath, documentId, ...metadata }) => ({
-                    relativePath,
-                    documentId,
-                    metadata,
-                    isDeleted: false,
-                    updates: [],
-                    parallelVersion: 0
-                })
-            ) ?? [];
-
-        this.ensureConsistency();
-        this.logger.debug(`Loaded ${this.documents.length} documents`);
-
-        const { lastSeenUpdateId } = initialState;
-        this.logger.debug(`Loaded last seen update id: ${lastSeenUpdateId}`);
-        this.lastSeenUpdateIds = new CoveredValues(
-            Math.max(0, lastSeenUpdateId ?? 0) // the first updateId will be 1 which is the first integer after -1
-        );
-
-        this.documents.forEach((doc) => {
-            this.lastSeenUpdateIds.add(doc.metadata?.parentVersionId);
-        });
-
-        this.hasInitialSyncCompleted =
-            initialState.hasInitialSyncCompleted ?? false;
-        this.logger.debug(
-            `Loaded hasInitialSyncCompleted: ${this.hasInitialSyncCompleted}`
-        );
-    }
-
-    public get length(): number {
-        return this.documents.length;
-    }
-
-    public get resolvedDocuments(): DocumentRecord[] {
-        const paths = new Map<string, DocumentRecord[]>();
-        this.documents
-            // eslint-disable-next-line no-restricted-syntax -- Type narrowing, not removing a specific item
-            .filter(({ metadata }) => metadata !== undefined)
-            .forEach((record) =>
-                paths.set(record.relativePath, [
-                    record,
-                    ...(paths.get(record.relativePath) ?? [])
-                ])
-            );
-
-        return Array.from(paths.values()).map((records) => {
-            records.sort(
-                (a, b) => b.parallelVersion - a.parallelVersion // descending
-            );
-
-            if (
-                records.length > 1 &&
-                records.some((current, i) =>
-                    i === 0
-                        ? false
-                        : records[i - 1].parallelVersion ===
-                        current.parallelVersion
-                )
-            ) {
-                throw new Error(
-                    `Multiple documents with the same parallel version and path at ${records[0].relativePath}`
-                );
-            }
-            return records[0];
-        });
-    }
-
-    public updateDocumentMetadata(
-        metadata: {
-            parentVersionId: VaultUpdateId;
-            hash: string;
-            remoteRelativePath: RelativePath;
-        },
-        toUpdate: DocumentRecord
-    ): void {
-        if (!this.documents.includes(toUpdate)) {
-            throw new Error("Document not found in database");
-        }
-
-        toUpdate.metadata = metadata;
-
-        this.saveInTheBackground();
-    }
-
-    public removeDocumentPromise(promise: Promise<unknown>): void {
-        const entry = this.documents.find(({ updates }) =>
-            updates.includes(promise)
-        );
-
-        if (entry === undefined) {
-            // This method should be idempotent and tolerant of
-            // stragglers calling it after the databse has been reset.
-            return;
-        }
-
-        removeFromArray(entry.updates, promise);
-        // No need to save as Promises don't get serialized
-    }
-
-    public removeDocument(find: DocumentRecord): void {
-        removeFromArray(this.documents, find);
-        this.saveInTheBackground();
-    }
-
-    public getLatestDocumentByRelativePath(
-        find: RelativePath
-    ): DocumentRecord | undefined {
-        const candidates = this.documents.filter(
-            ({ relativePath }) => relativePath === find
-        );
-        candidates.sort((a, b) => b.parallelVersion - a.parallelVersion); // descending
-        return candidates[0];
-    }
-
-    public async getResolvedDocumentByRelativePath(
-        relativePath: RelativePath,
-        promise: Promise<unknown>
-    ): Promise<DocumentRecord> {
-        const entry = this.getLatestDocumentByRelativePath(relativePath);
-
-        if (entry === undefined) {
+        const hasState = initial && Object.keys(initial).length > 0;
+        if (
+            hasState &&
+            initial.vaultKey !== vaultKey &&
+            !canRebindEmpty(initial)
+        ) {
             throw new Error(
-                `Document not found by relative path: ${relativePath}, ${JSON.stringify(
-                    this.documents,
-                    null,
-                    2
-                )}`
+                "Incompatible vault identity. Preserve it for recovery and initialize a separate state store."
             );
         }
-
-        const currentPromises = entry.updates;
-        entry.updates = [...currentPromises, promise];
-        await awaitAll(currentPromises);
-
-        return entry;
+        this.state = hasState
+            ? { ...(initial as StoredDatabase), vaultKey }
+            : emptyState(vaultKey);
     }
 
-    public createNewPendingDocument(
-        documentId: DocumentId,
-        relativePath: RelativePath,
-        promise: Promise<unknown>
-    ): DocumentRecord {
-        this.logger.debug(
-            `Creating new pending document: ${relativePath} (${documentId})`
-        );
-        const previousEntry =
-            this.getLatestDocumentByRelativePath(relativePath);
-
-        const entry = {
-            relativePath,
-            documentId,
-            metadata: undefined,
-            isDeleted: false,
-            updates: [promise],
-            parallelVersion:
-                previousEntry?.parallelVersion === undefined
-                    ? 0
-                    : previousEntry.parallelVersion + 1
-        };
-
-        this.documents.push(entry);
-        this.saveInTheBackground();
-
-        return entry;
-    }
-
-    public createNewEmptyDocument(
-        documentId: DocumentId,
-        parentVersionId: VaultUpdateId,
-        relativePath: RelativePath
-    ): DocumentRecord {
-        const entry = {
-            relativePath,
-            documentId,
-            metadata: {
-                parentVersionId,
-                hash: EMPTY_HASH,
-                remoteRelativePath: relativePath
-            },
-            isDeleted: false,
-            updates: [],
-            parallelVersion: 0
-        };
-
-        this.documents.push(entry);
-        this.saveInTheBackground();
-
-        return entry;
-    }
-
-    public getDocumentByDocumentId(
-        find: DocumentId
-    ): DocumentRecord | undefined {
-        return this.documents.find(({ documentId }) => documentId === find);
-    }
-
-    public move(
-        oldRelativePath: RelativePath,
-        newRelativePath: RelativePath
-    ): void {
-        const oldDocument =
-            this.getLatestDocumentByRelativePath(oldRelativePath);
-
-        if (oldDocument === undefined) {
-            return;
-        }
-
-        const newDocument =
-            this.getLatestDocumentByRelativePath(newRelativePath);
-        if (newDocument?.isDeleted === false) {
+    /** Bind an empty database to the configured vault. */
+    public async bindVault(vaultKey: string): Promise<void> {
+        if (this.state.vaultKey === vaultKey) return;
+        if (!canRebindEmpty(this.state))
             throw new Error(
-                `Document already exists at new location: ${newRelativePath}`
+                "Incompatible vault identity. Preserve it for recovery and initialize a separate state store."
             );
-        }
-
-        oldDocument.relativePath = newRelativePath;
-        // We're in a strange state where the target of the move has just got deleted,
-        // however, its metadata might already have a bunch of updates queued up for
-        // the document at the new location. We need to keep these updates.
-        oldDocument.parallelVersion =
-            newDocument !== undefined ? newDocument.parallelVersion + 1 : 0;
-
-        this.saveInTheBackground();
+        await this.commit({ ...this.state, vaultKey });
     }
 
-    public delete(relativePath: RelativePath): void {
-        const candidate = this.getLatestDocumentByRelativePath(relativePath);
-        if (candidate === undefined) {
+    public async commit(next: StoredDatabase): Promise<void> {
+        const snapshot = structuredClone(next);
+        if (this.needsReload)
             throw new Error(
-                `Document not found by relative path: ${relativePath}`
+                "Reload durable state before retrying an uncertain save"
             );
-        }
-        candidate.isDeleted = true;
+        this.needsReload = true;
+        await this.saveData(snapshot);
+        this.state = snapshot;
+        this.needsReload = false;
     }
 
-    public getHasInitialSyncCompleted(): boolean {
-        return this.hasInitialSyncCompleted;
-    }
-
-    public setHasInitialSyncCompleted(value: boolean): void {
-        this.hasInitialSyncCompleted = value;
-        this.saveInTheBackground();
-    }
-
-    public getLastSeenUpdateId(): VaultUpdateId {
-        return this.lastSeenUpdateIds.min;
-    }
-
-    public addSeenUpdateId(value: number): void {
-        const previousMin = this.lastSeenUpdateIds.min;
-        this.lastSeenUpdateIds.add(value);
-        if (previousMin !== this.lastSeenUpdateIds.min) {
-            this.saveInTheBackground();
-        }
-    }
-
-    public setLastSeenUpdateId(value: number): void {
-        this.lastSeenUpdateIds.min = value;
-        this.saveInTheBackground();
-    }
-
-    public reset(): void {
-        this.documents = [];
-        this.lastSeenUpdateIds = new CoveredValues(
-            0 // the first updateId will be 1 which is the first integer after -1
-        );
-        this.hasInitialSyncCompleted = false;
-        this.saveInTheBackground();
+    public async recoverPersistence(): Promise<void> {
+        if (!this.needsReload) return;
+        const saved = await this.loadData();
+        if (saved) this.state = saved;
+        this.needsReload = false;
     }
 
     public async save(): Promise<void> {
-        return this.saveData({
-            documents: this.resolvedDocuments.map(
-                ({ relativePath, documentId, metadata }) => ({
-                    documentId,
-                    relativePath,
-                    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-                    ...metadata! // `resolvedDocuments` only returns docs with metadata set
-                })
-            ),
-            lastSeenUpdateId: this.lastSeenUpdateIds.min,
-            hasInitialSyncCompleted: this.hasInitialSyncCompleted
-        });
+        await this.commit(this.state);
     }
 
-    private ensureConsistency(): void {
-        const idToPath = new Map<string, string[]>();
-
-        this.resolvedDocuments.forEach(({ relativePath, documentId }) => {
-            idToPath.set(documentId, [
-                ...(idToPath.get(documentId) ?? []),
-                relativePath
-            ]);
-        });
-
-        const duplicates = Array.from(idToPath.entries())
-            .filter(([_, paths]) => paths.length > 1)
-            .map(([id, paths]) => `${id} (${paths.join(", ")})`);
-
-        if (duplicates.length > 0) {
-            throw new Error(
-                "Document IDs are not unique, found duplicates: " +
-                    duplicates.join("; ")
-            );
-        }
+    public get length(): number {
+        return Object.keys(this.state.local).length;
     }
 
-    private saveInTheBackground(): void {
-        this.ensureConsistency();
-        void this.save().catch((error: unknown) => {
-            this.logger.error(`Error saving data: ${error}`);
-        });
+    public getLastSeenUpdateId(): number {
+        return this.state.lastSeenUpdateId;
+    }
+
+    public getDocumentByDocumentId(id: string): DocumentRecord | undefined {
+        const relativePath = this.state.local[id];
+        if (relativePath === undefined) return undefined;
+        const base = this.state.documents[id]?.base;
+        return {
+            documentId: id,
+            relativePath,
+            isDeleted: false,
+            metadata: base && {
+                parentVersionId: base.vaultUpdateId,
+                hash: base.hash,
+                remoteRelativePath: this.state.fileManifest.entries[id]
+            }
+        };
+    }
+
+    public getLatestDocumentByRelativePath(
+        path: string
+    ): DocumentRecord | undefined {
+        const id = Object.keys(this.state.local).find(
+            (id) => this.state.local[id] === path
+        );
+        return id === undefined ? undefined : this.getDocumentByDocumentId(id);
     }
 }

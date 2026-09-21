@@ -1,0 +1,404 @@
+{
+  "version": 1,
+  "seed": 43,
+  "iterations": 3,
+  "steps": [
+    {
+      "type": "enable-sync",
+      "client": 0
+    },
+    {
+      "type": "enable-sync",
+      "client": 1
+    },
+    {
+      "type": "barrier"
+    },
+    {
+      "type": "disable-sync",
+      "client": 0
+    },
+    {
+      "type": "disable-sync",
+      "client": 1
+    },
+    {
+      "type": "delay-notifications",
+      "client": 0
+    },
+    {
+      "type": "delay-notifications",
+      "client": 1
+    },
+    {
+      "type": "create",
+      "client": 0,
+      "path": "round-0/space folder/a.md",
+      "content": "[seed-43-round-0-A]"
+    },
+    {
+      "type": "create",
+      "client": 0,
+      "path": "round-0/space folder/b.md",
+      "content": "[seed-43-round-0-B]"
+    },
+    {
+      "type": "flush-notifications",
+      "client": 0
+    },
+    {
+      "type": "flush-notifications",
+      "client": 1
+    },
+    {
+      "type": "drop-response",
+      "client": 0,
+      "kind": "create",
+      "point": "after"
+    },
+    {
+      "type": "enable-sync",
+      "client": 0
+    },
+    {
+      "type": "sync",
+      "client": 0
+    },
+    {
+      "type": "enable-sync",
+      "client": 1
+    },
+    {
+      "type": "barrier"
+    },
+    {
+      "type": "remember-identity",
+      "path": "round-0/space folder/a.md",
+      "key": "round-0/space folder/a.md"
+    },
+    {
+      "type": "remember-identity",
+      "path": "round-0/space folder/b.md",
+      "key": "round-0/space folder/b.md"
+    },
+    {
+      "type": "disable-sync",
+      "client": 0
+    },
+    {
+      "type": "disable-sync",
+      "client": 1
+    },
+    {
+      "type": "rename",
+      "client": 0,
+      "oldPath": "round-0/space folder/a.md",
+      "newPath": "round-0/space folder/c.md"
+    },
+    {
+      "type": "update",
+      "client": 1,
+      "path": "round-0/space folder/a.md",
+      "content": "[seed-43-round-0-A]\nremote addition\n"
+    },
+    {
+      "type": "enable-sync",
+      "client": 0
+    },
+    {
+      "type": "sync",
+      "client": 0
+    },
+    {
+      "type": "enable-sync",
+      "client": 1
+    },
+    {
+      "type": "barrier"
+    },
+    {
+      "type": "assert-identity",
+      "path": "round-0/space folder/c.md",
+      "key": "round-0/space folder/a.md"
+    },
+    {
+      "type": "assert-files",
+      "expected": {
+        "round-0/space folder/c.md": "[seed-43-round-0-A]\nremote addition\n",
+        "round-0/space folder/b.md": "[seed-43-round-0-B]"
+      },
+      "absent": [
+        "round-0/space folder/a.md"
+      ]
+    },
+    {
+      "type": "assert-markers",
+      "markers": [
+        "[seed-43-round-0-A]",
+        "[seed-43-round-0-B]"
+      ],
+      "removed": []
+    },
+    {
+      "type": "reset",
+      "client": 0
+    },
+    {
+      "type": "barrier"
+    },
+    {
+      "type": "disable-sync",
+      "client": 0
+    },
+    {
+      "type": "disable-sync",
+      "client": 1
+    },
+    {
+      "type": "delay-notifications",
+      "client": 0
+    },
+    {
+      "type": "delay-notifications",
+      "client": 1
+    },
+    {
+      "type": "create",
+      "client": 0,
+      "path": "round-1/space folder/a.md",
+      "content": "[seed-43-round-1-A]"
+    },
+    {
+      "type": "create",
+      "client": 0,
+      "path": "round-1/space folder/b.md",
+      "content": "[seed-43-round-1-B]"
+    },
+    {
+      "type": "flush-notifications",
+      "client": 0
+    },
+    {
+      "type": "flush-notifications",
+      "client": 1
+    },
+    {
+      "type": "enable-sync",
+      "client": 0
+    },
+    {
+      "type": "sync",
+      "client": 0
+    },
+    {
+      "type": "enable-sync",
+      "client": 1
+    },
+    {
+      "type": "barrier"
+    },
+    {
+      "type": "remember-identity",
+      "path": "round-1/space folder/a.md",
+      "key": "round-1/space folder/a.md"
+    },
+    {
+      "type": "remember-identity",
+      "path": "round-1/space folder/b.md",
+      "key": "round-1/space folder/b.md"
+    },
+    {
+      "type": "disable-sync",
+      "client": 0
+    },
+    {
+      "type": "rename",
+      "client": 0,
+      "oldPath": "round-1/space folder/a.md",
+      "newPath": "round-1/space folder/c.md"
+    },
+    {
+      "type": "rename",
+      "client": 0,
+      "oldPath": "round-1/space folder/b.md",
+      "newPath": "round-1/space folder/a.md"
+    },
+    {
+      "type": "rename",
+      "client": 0,
+      "oldPath": "round-1/space folder/c.md",
+      "newPath": "round-1/space folder/b.md"
+    },
+    {
+      "type": "update",
+      "client": 0,
+      "path": "round-1/space folder/b.md",
+      "content": "[seed-43-round-1-A]\nextra line\n"
+    },
+    {
+      "type": "enable-sync",
+      "client": 0
+    },
+    {
+      "type": "barrier"
+    },
+    {
+      "type": "assert-identity",
+      "path": "round-1/space folder/b.md",
+      "key": "round-1/space folder/a.md"
+    },
+    {
+      "type": "assert-identity",
+      "path": "round-1/space folder/a.md",
+      "key": "round-1/space folder/b.md"
+    },
+    {
+      "type": "assert-files",
+      "expected": {
+        "round-1/space folder/a.md": "[seed-43-round-1-B]",
+        "round-1/space folder/b.md": "[seed-43-round-1-A]\nextra line\n"
+      },
+      "absent": [
+        "round-1/space folder/c.md"
+      ]
+    },
+    {
+      "type": "assert-markers",
+      "markers": [
+        "[seed-43-round-0-A]",
+        "[seed-43-round-0-B]",
+        "[seed-43-round-1-A]",
+        "[seed-43-round-1-B]"
+      ],
+      "removed": []
+    },
+    {
+      "type": "disable-sync",
+      "client": 0
+    },
+    {
+      "type": "disable-sync",
+      "client": 1
+    },
+    {
+      "type": "delay-notifications",
+      "client": 0
+    },
+    {
+      "type": "delay-notifications",
+      "client": 1
+    },
+    {
+      "type": "create",
+      "client": 0,
+      "path": "round-2/nested/a.md",
+      "content": "[seed-43-round-2-A]"
+    },
+    {
+      "type": "create",
+      "client": 0,
+      "path": "round-2/nested/b.md",
+      "content": "[seed-43-round-2-B]"
+    },
+    {
+      "type": "flush-notifications",
+      "client": 0
+    },
+    {
+      "type": "flush-notifications",
+      "client": 1
+    },
+    {
+      "type": "enable-sync",
+      "client": 0
+    },
+    {
+      "type": "sync",
+      "client": 0
+    },
+    {
+      "type": "enable-sync",
+      "client": 1
+    },
+    {
+      "type": "barrier"
+    },
+    {
+      "type": "remember-identity",
+      "path": "round-2/nested/a.md",
+      "key": "round-2/nested/a.md"
+    },
+    {
+      "type": "remember-identity",
+      "path": "round-2/nested/b.md",
+      "key": "round-2/nested/b.md"
+    },
+    {
+      "type": "disable-sync",
+      "client": 0
+    },
+    {
+      "type": "rename",
+      "client": 0,
+      "oldPath": "round-2/nested/a.md",
+      "newPath": "round-2/nested/c.md"
+    },
+    {
+      "type": "rename",
+      "client": 0,
+      "oldPath": "round-2/nested/b.md",
+      "newPath": "round-2/nested/a.md"
+    },
+    {
+      "type": "rename",
+      "client": 0,
+      "oldPath": "round-2/nested/c.md",
+      "newPath": "round-2/nested/b.md"
+    },
+    {
+      "type": "update",
+      "client": 0,
+      "path": "round-2/nested/b.md",
+      "content": "[seed-43-round-2-A]\nextra line\n"
+    },
+    {
+      "type": "enable-sync",
+      "client": 0
+    },
+    {
+      "type": "barrier"
+    },
+    {
+      "type": "assert-identity",
+      "path": "round-2/nested/b.md",
+      "key": "round-2/nested/a.md"
+    },
+    {
+      "type": "assert-identity",
+      "path": "round-2/nested/a.md",
+      "key": "round-2/nested/b.md"
+    },
+    {
+      "type": "assert-files",
+      "expected": {
+        "round-2/nested/a.md": "[seed-43-round-2-B]",
+        "round-2/nested/b.md": "[seed-43-round-2-A]\nextra line\n"
+      },
+      "absent": [
+        "round-2/nested/c.md"
+      ]
+    },
+    {
+      "type": "assert-markers",
+      "markers": [
+        "[seed-43-round-0-A]",
+        "[seed-43-round-0-B]",
+        "[seed-43-round-1-A]",
+        "[seed-43-round-1-B]",
+        "[seed-43-round-2-A]",
+        "[seed-43-round-2-B]"
+      ],
+      "removed": []
+    }
+  ]
+}

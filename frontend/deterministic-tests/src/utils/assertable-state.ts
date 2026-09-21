@@ -1,12 +1,103 @@
-import type { ClientState } from "../test-definition";
+import assert from "node:assert/strict";
+import type { ClientState, ExpectedDocument } from "../test-definition";
 
 export class AssertableState {
     public readonly files: Map<string, string>;
     public readonly clientFiles: Map<string, string>[];
+    public readonly manifests: Record<string, string>[];
+    public readonly canonical: Record<string, string>;
+    public readonly bytes: Map<string, Uint8Array>;
 
     public constructor(state: ClientState) {
         this.files = state.files;
         this.clientFiles = state.clientFiles;
+        this.manifests = state.manifests;
+        this.canonical = state.canonical;
+        this.bytes = state.bytes;
+    }
+
+    public documentId(path: string): string {
+        const id = Object.keys(this.canonical).find(
+            (id) => this.canonical[id] === path
+        );
+        if (!id) throw new Error(`No document identity for ${path}`);
+        return id;
+    }
+
+    public assertDocuments(
+        expected: readonly ExpectedDocument[],
+        identities: Map<string, string>
+    ): this {
+        this.assertFileCount(expected.length);
+        assert.equal(
+            new Set(expected.map((doc) => doc.key)).size,
+            expected.length,
+            "Duplicate expected identity key"
+        );
+        const next = new Map(identities);
+        const paths = new Set<string>();
+        for (const doc of expected) {
+            const path = doc.conflict ? this.conflictPath(doc.path) : doc.path;
+            assert(
+                !paths.has(path),
+                `Two expected documents resolved to ${path}`
+            );
+            paths.add(path);
+            this.assertBytes(
+                path,
+                typeof doc.content === "string"
+                    ? new TextEncoder().encode(doc.content)
+                    : new Uint8Array(doc.content)
+            );
+            const id = this.documentId(path);
+            const recorded = next.get(doc.key);
+            if (recorded !== undefined) this.assertIdentity(path, recorded);
+            else {
+                assert(
+                    ![...next.values()].includes(id),
+                    `New document ${doc.key} reused an existing or deleted UUID`
+                );
+                next.set(doc.key, id);
+            }
+        }
+        // A failed check must not establish a partial identity oracle.
+        for (const [key, id] of next) identities.set(key, id);
+        return this;
+    }
+
+    public conflictPath(original: string): string {
+        const dot = original.lastIndexOf(".");
+        const split =
+            dot > original.lastIndexOf("/") + 1 ? dot : original.length;
+        const matches = Object.entries(this.canonical).filter(
+            ([id, path]) =>
+                path ===
+                `${original.slice(0, split)} (conflict ${id})${original.slice(split)}`
+        );
+        if (matches.length !== 1)
+            throw new Error(
+                `Expected one UUID-derived conflict path for ${original}, found ${matches.length}`
+            );
+        return matches[0][1];
+    }
+
+    public assertIdentity(path: string, id: string): this {
+        if (this.documentId(path) !== id)
+            throw new Error(
+                `Document identity changed at ${path}: expected ${id}, got ${this.documentId(path)}`
+            );
+        return this;
+    }
+
+    public assertBytes(path: string, expected: Uint8Array): this {
+        const actual = this.bytes.get(path);
+        if (
+            !actual ||
+            actual.length !== expected.length ||
+            actual.some((byte, i) => byte !== expected[i])
+        )
+            throw new Error(`Byte mismatch at ${path}`);
+        return this;
     }
 
     public assertFileCount(expected: number): this {

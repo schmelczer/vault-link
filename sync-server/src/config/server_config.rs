@@ -85,8 +85,9 @@ mod tests {
         let path = directory.path().join("config.yml");
         let fresh = Config::read_or_create(&path).await.unwrap();
         let reread = Config::load_from_file(&path).await.unwrap();
-        let omitted: Config = serde_yaml::from_str("{}").unwrap();
-        let explicit: Config = serde_yaml::from_str("server: {}").unwrap();
+        let omitted: Config = serde_yaml::from_str("users: {user_configs: []}").unwrap();
+        let explicit: Config =
+            serde_yaml::from_str("server: {}\nusers: {user_configs: []}").unwrap();
         for config in [fresh, reread, omitted, explicit] {
             assert_eq!(config.server.host, DEFAULT_HOST);
             assert_eq!(config.server.port, DEFAULT_PORT);

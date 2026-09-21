@@ -23,7 +23,7 @@ use axum::{
 use axum_extra::TypedHeader;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use log::debug;
-use reconcile_text::{BuiltinTokenizer, EditedText, NumberOrText};
+use reconcile_text::NumberOrText;
 use sha2::{Digest, Sha256};
 
 #[axum::debug_handler]
@@ -40,6 +40,30 @@ pub async fn put_file_content(
         serde_json::to_vec(&("content", document_id, &push))
             .map_err(|error| server_error(error.into()))?,
     );
+
+    // Build bytes against an immutable parent off the async executor and before
+    // taking the writer lock. The transaction below rechecks CAS and receipts.
+    let initial_parent = state
+        .database
+        .get_latest_document_version(&vault_id, &document_id, None)
+        .await
+        .map_err(server_error)?;
+    let prepared = if initial_parent.as_ref().map(|p| p.vault_update_id) == push.parent_version_id {
+        let limit = state
+            .config
+            .server
+            .max_body_size_mb
+            .saturating_mul(1024 * 1024);
+        Some(
+            tokio::task::spawn_blocking(move || {
+                decode_content(initial_parent, push.content, limit)
+            })
+            .await
+            .map_err(|error| server_error(error.into()))?,
+        )
+    } else {
+        None
+    };
 
     let mut tx = state
         .database
@@ -78,33 +102,13 @@ pub async fn put_file_content(
         )));
     }
 
-    let content = match push.content {
-        PushContent::Snapshot(bytes) => STANDARD
-            .decode(bytes)
-            .map_err(|error| client_error(error.into()))?,
-
-        PushContent::Diff(diff) => {
-            if diff
-                .iter()
-                .any(|n| matches!(n, NumberOrText::Number(i64::MIN)))
-            {
-                return Err(client_error(anyhow!("Invalid diff length")));
-            }
-
-            let parent = parent
-                .as_ref()
-                .ok_or_else(|| client_error(anyhow!("Diff requires a parent")))?;
-
-            let text =
-                str::from_utf8(&parent.content).map_err(|error| client_error(error.into()))?;
-
-            EditedText::from_diff(text, diff, &*BuiltinTokenizer::Word)
-                .map_err(|error| client_error(error.into()))?
-                .apply()
-                .text()
-                .into_bytes()
-        }
-    };
+    let content = prepared
+        .ok_or_else(|| {
+            server_error(anyhow!(
+                "Document changed while preparing content; retry the request"
+            ))
+        })?
+        .map_err(client_error)?;
 
     let version = StoredDocumentVersion {
         vault_update_id: Database::allocate_event(&mut tx, push.request_id, &fingerprint)
@@ -132,8 +136,65 @@ pub async fn put_file_content(
     Ok(Json(response))
 }
 
+const MAX_DIFF_ITEMS: usize = 10_000;
+
+fn decode_content(
+    parent: Option<StoredDocumentVersion>,
+    content: PushContent,
+    limit: usize,
+) -> anyhow::Result<Vec<u8>> {
+    let bytes = match content {
+        PushContent::Snapshot(encoded) => STANDARD.decode(encoded)?,
+        PushContent::Diff(diff) => {
+            anyhow::ensure!(
+                diff.len() <= MAX_DIFF_ITEMS,
+                "Diff exceeds operation budget; send a snapshot"
+            );
+            let parent = parent.ok_or_else(|| anyhow!("Diff requires a parent"))?;
+            let text = str::from_utf8(&parent.content)?;
+            apply_diff(text, diff, limit)?
+        }
+    };
+    anyhow::ensure!(bytes.len() <= limit, "Content exceeds size limit");
+    Ok(bytes)
+}
+
+/// Each Unicode scalar in the parent is visited at most once. No tokenization
+/// or repeated scans of a prefix are needed to apply the wire diff.
+fn apply_diff(text: &str, diff: Vec<NumberOrText>, limit: usize) -> anyhow::Result<Vec<u8>> {
+    let mut source = text.chars();
+    let mut result = String::new();
+    for item in diff {
+        match item {
+            NumberOrText::Text(insert) => {
+                anyhow::ensure!(
+                    insert.len() <= limit.saturating_sub(result.len()),
+                    "Content exceeds size limit"
+                );
+                result.push_str(&insert);
+            }
+            NumberOrText::Number(length) => {
+                for _ in 0..length.unsigned_abs() {
+                    let ch = source
+                        .next()
+                        .ok_or_else(|| anyhow!("Diff exceeds parent length"))?;
+                    if length > 0 {
+                        anyhow::ensure!(
+                            ch.len_utf8() <= limit.saturating_sub(result.len()),
+                            "Content exceeds size limit"
+                        );
+                        result.push(ch);
+                    }
+                }
+            }
+        }
+    }
+    Ok(result.into_bytes())
+}
+
 #[cfg(test)]
 mod tests {
+    use reconcile_text::EditedText;
     use std::path::PathBuf;
 
     use super::*;
@@ -279,6 +340,29 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn fragmented_diff_budget_rejects_without_committing_an_event() {
+        let vault = TestVault::new().await;
+        let document = uuid::Uuid::new_v4();
+        let base = accepted(
+            vault
+                .send(snapshot(document, None, &"a".repeat(1024 * 1024)))
+                .await,
+        );
+        let mut push = snapshot(document, Some(base.vault_update_id), "");
+        let mut fragments = vec![NumberOrText::Number(0); 10_001];
+        fragments.push(NumberOrText::Number(1024 * 1024));
+        push.content = PushContent::Diff(fragments);
+        assert!(matches!(
+            push.send(&vault.state, &vault.vault).await,
+            Err(SyncServerError::ClientError(_))
+        ));
+        assert_eq!(
+            vault.latest(document).await.vault_update_id,
+            base.vault_update_id
+        );
+    }
+
+    #[tokio::test]
     async fn json_snapshot_preserves_bytes_and_rejects_invalid_base64_without_a_version() {
         let vault = TestVault::new().await;
         let document = uuid::Uuid::new_v4();
@@ -363,11 +447,8 @@ mod tests {
             outcomes => panic!("Expected one accepted push and one stale base: {outcomes:?}"),
         };
         let latest = vault.latest(document).await;
-        assert_eq!(winner.vault_update_id, rejected.metadata.vault_update_id);
-        assert_eq!(
-            STANDARD.decode(rejected.content_base64).unwrap(),
-            latest.content
-        );
+        assert_eq!(winner.vault_update_id, rejected.vault_update_id);
+        assert_eq!(rejected.content_size, latest.content.len());
         assert!(latest.content == b"left" || latest.content == b"right");
         let original = vault
             .state
@@ -577,7 +658,7 @@ mod tests {
         assert!(matches!(
             vault.send(foreign_base).await,
             DocumentUpdateResponse::StaleBase(version)
-                if version.metadata.vault_update_id == updated.vault_update_id
+                if version.vault_update_id == updated.vault_update_id
         ));
 
         let binary_document = uuid::Uuid::new_v4();

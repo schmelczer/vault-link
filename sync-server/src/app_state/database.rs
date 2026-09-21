@@ -2,7 +2,7 @@ use core::time::Duration;
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, Weak},
 };
 
 use anyhow::{Context as _, Result};
@@ -48,6 +48,7 @@ impl std::fmt::Debug for PoolWithTimestamp {
 pub struct Database {
     config: DatabaseConfig,
     connection_pools: Arc<Mutex<HashMap<VaultId, PoolWithTimestamp>>>,
+    opening_pools: Arc<Mutex<HashMap<VaultId, Weak<Mutex<()>>>>>,
 }
 
 pub type Transaction<'a> = sqlx::Transaction<'a, Sqlite>;
@@ -66,25 +67,16 @@ impl Database {
                 )
             })?;
 
-        info!("Applying pending database migrations");
+        // SQLite flushes its own files, not ancestors created by this process.
+        Self::flush_directory_ancestors(&vault_directory).await?;
 
-        // Filenames encode only a digest, so their vault names cannot be
-        // recovered here. Check migrations now and open pools lazily by name.
-        let mut entries = tokio::fs::read_dir(&vault_directory).await?;
-        while let Some(entry) = entries.next_entry().await? {
-            if entry.file_type().await?.is_file()
-                && entry.path().extension().is_some_and(|ext| ext == "sqlite")
-            {
-                Self::open_database(config, &entry.path())
-                    .await?
-                    .close()
-                    .await;
-            }
-        }
+        // Open and migrate each vault lazily under its own lock. A corrupt or
+        // incompatible database must fail that vault, not global startup.
 
         let database = Self {
             config: config.clone(),
             connection_pools: Arc::default(),
+            opening_pools: Arc::default(),
         };
 
         // Start background task to cleanup idle connection pools
@@ -127,7 +119,30 @@ impl Database {
 
         Self::run_migrations(&pool).await?;
 
+        if let Some(directory) = file_name.parent() {
+            Self::flush_directory_ancestors(directory).await?;
+        }
+
         Ok(pool)
+    }
+
+    async fn flush_directory_ancestors(directory: &Path) -> Result<()> {
+        #[cfg(unix)]
+        {
+            let directory = tokio::fs::canonicalize(directory).await?;
+            tokio::task::spawn_blocking(move || -> Result<()> {
+                for ancestor in directory.ancestors() {
+                    std::fs::File::open(ancestor)?.sync_all().with_context(|| {
+                        format!("Cannot flush directory {}", ancestor.display())
+                    })?;
+                }
+                Ok(())
+            })
+            .await??;
+        }
+        #[cfg(not(unix))]
+        let _ = directory;
+        Ok(())
     }
 
     async fn run_migrations(pool: &Pool<Sqlite>) -> Result<()> {
@@ -140,28 +155,49 @@ impl Database {
     async fn get_connection_pool(&self, vault: &VaultId) -> Result<Pool<Sqlite>> {
         let vault = normalize_string(vault);
         validate_vault_id(&vault)?;
-        let mut pools = self.connection_pools.lock().await;
-
-        if !pools.contains_key(&vault) {
-            let file_name = Self::database_path(&self.config, &vault);
-            let pool = Self::open_database(&self.config, &file_name).await?;
-            pools.insert(
-                vault.clone(),
-                PoolWithTimestamp {
-                    pool,
-                    last_accessed: Instant::now(),
-                },
-            );
+        if let Some(pool) = self.existing_pool(&vault).await {
+            return Ok(pool);
         }
 
-        let pool_with_timestamp = pools
-            .get_mut(&vault)
-            .expect("Pool was just inserted or already exists");
+        // Serialize initialization per vault. SQLite lock waits, migrations and
+        // directory flushes must never hold the registry for unrelated vaults.
+        // Weak entries also allow cancelled/failed opens to be retried safely.
+        let opening = {
+            let mut openings = self.opening_pools.lock().await;
+            openings.retain(|_, opening| opening.strong_count() > 0);
+            if let Some(opening) = openings.get(&vault).and_then(Weak::upgrade) {
+                opening
+            } else {
+                let opening = Arc::new(Mutex::new(()));
+                openings.insert(vault.clone(), Arc::downgrade(&opening));
+                opening
+            }
+        };
+        let _opening = opening.lock().await;
+        if let Some(pool) = self.existing_pool(&vault).await {
+            return Ok(pool);
+        }
+        let file_name = Self::database_path(&self.config, &vault);
+        let pool = Self::open_database(&self.config, &file_name).await?;
+        self.connection_pools.lock().await.insert(
+            vault,
+            PoolWithTimestamp {
+                pool: pool.clone(),
+                last_accessed: Instant::now(),
+            },
+        );
+        Ok(pool)
+    }
 
-        // Update last accessed time
-        pool_with_timestamp.last_accessed = Instant::now();
-
-        Ok(pool_with_timestamp.pool.clone())
+    async fn existing_pool(&self, vault: &VaultId) -> Option<Pool<Sqlite>> {
+        self.connection_pools
+            .lock()
+            .await
+            .get_mut(vault)
+            .map(|entry| {
+                entry.last_accessed = Instant::now();
+                entry.pool.clone()
+            })
     }
 
     /// Attempting to write from this transaction might result in a
@@ -196,16 +232,22 @@ impl Database {
             .iter()
             .filter(|(_, pool_with_timestamp)| {
                 now.duration_since(pool_with_timestamp.last_accessed) > idle_timeout
+                    && pool_with_timestamp.pool.num_idle()
+                        == pool_with_timestamp.pool.size() as usize
             })
             .map(|(vault_id, _)| vault_id.clone())
             .collect();
 
-        // Close and remove idle pools
-        for vault_id in &vaults_to_remove {
-            if let Some(pool_with_timestamp) = pools.remove(vault_id) {
-                info!("Closing idle database connection pool for vault `{vault_id}`");
-                pool_with_timestamp.pool.close().await;
-            }
+        let closing: Vec<_> = vaults_to_remove
+            .into_iter()
+            .filter_map(|vault| pools.remove(&vault).map(|entry| (vault, entry.pool)))
+            .collect();
+        drop(pools);
+        // A checkout racing cleanup can delay close. It must never retain the
+        // mutex used to access every other vault in the process.
+        for (vault, pool) in closing {
+            info!("Closing idle database connection pool for vault `{vault}`");
+            pool.close().await;
         }
     }
 

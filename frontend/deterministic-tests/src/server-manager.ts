@@ -59,9 +59,8 @@ export class ServerManager {
         // Last-resort synchronous cleanup. Runs even when the process is
         // exiting via process.exit() from unhandledRejection /
         // uncaughtException — paths where async stopAll() cannot complete.
-        // SIGSTOP'd servers MUST receive SIGCONT before SIGKILL or the
-        // kernel keeps them as zombies holding the test's tmpdir, and the
-        // next CI run can't reuse the port.
+        // Kill only the server processes owned by this runner. SIGKILL also
+        // terminates a SIGSTOP'd process; forceKillSync's SIGCONT is harmless.
         process.on("exit", () => {
             for (const server of this.activeServers) {
                 server.forceKillSync();

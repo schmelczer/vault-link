@@ -20,10 +20,13 @@ export class ServerControl {
     private _port: number | undefined;
     private tempDir: string | undefined;
     private _isPaused = false;
+    private preserveOnStop = false;
+    private expectedExit = false;
+    private unexpectedExit?: Error;
 
     public constructor(serverPath: string, configPath: string, logger: Logger) {
-        this.serverPath = serverPath;
-        this.baseConfigPath = configPath;
+        this.serverPath = path.resolve(serverPath);
+        this.baseConfigPath = path.resolve(configPath);
         this.logger = logger;
     }
 
@@ -36,6 +39,15 @@ export class ServerControl {
 
     public get remoteUri(): string {
         return `http://localhost:${this.port}`;
+    }
+
+    public get databaseDirectory(): string {
+        if (!this.tempDir) throw new Error("Server has no database directory");
+        return path.join(this.tempDir, "databases");
+    }
+
+    public get isPaused(): boolean {
+        return this._isPaused;
     }
 
     public async start(): Promise<void> {
@@ -66,14 +78,25 @@ export class ServerControl {
     }
 
     private async startOnce(): Promise<void> {
-        const reservation = await findFreePort();
-        this._port = reservation.port;
+        const reservation =
+            this._port === undefined ? await findFreePort() : undefined;
+        this._port ??= reservation!.port;
         const tmpBase = os.tmpdir();
-        this.tempDir = fs.mkdtempSync(path.join(tmpBase, "vault-link-test-"));
-        const tempConfigPath = path.join(this.tempDir, "config.yml");
-        const dbDir = path.join(this.tempDir, "databases");
-
-        this.writeConfigFile(tempConfigPath, dbDir);
+        let tempConfigPath: string;
+        try {
+            this.tempDir ??= fs.mkdtempSync(
+                path.join(tmpBase, "vault-link-test-")
+            );
+            tempConfigPath = path.join(this.tempDir, "config.yml");
+            this.writeConfigFile(
+                tempConfigPath,
+                path.join(this.tempDir, "databases")
+            );
+        } catch (error) {
+            reservation?.release();
+            this.cleanupTempDir();
+            throw error;
+        }
 
         this.logger.info(
             `Starting server: ${this.serverPath} (port ${this._port})`
@@ -81,12 +104,15 @@ export class ServerControl {
 
         // Release the port reservation right before spawning to minimize
         // the TOCTOU window between port discovery and server binding.
-        reservation.release();
+        reservation?.release();
 
         this.process = spawn(this.serverPath, [tempConfigPath], {
+            cwd: this.tempDir,
             stdio: ["ignore", "pipe", "pipe"],
             detached: false
         });
+        this.expectedExit = false;
+        this.unexpectedExit = undefined;
 
         this.process.stdout?.on("data", (data: Buffer) => {
             this.logger.info(`[SERVER] ${data.toString().trim()}`);
@@ -102,6 +128,10 @@ export class ServerControl {
 
         const currentProcess = this.process;
         currentProcess.on("exit", (code, signal) => {
+            if (!this.expectedExit)
+                this.unexpectedExit = new Error(
+                    `Owned server exited unexpectedly (code ${code}, signal ${signal})`
+                );
             this.logger.info(
                 `Server exited with code ${code}, signal ${signal}`
             );
@@ -139,7 +169,9 @@ export class ServerControl {
                 );
             }
             try {
-                const response = await fetch(pingUrl);
+                const response = await fetch(pingUrl, {
+                    signal: AbortSignal.timeout(1_000)
+                });
                 if (response.ok) {
                     this.logger.info("[SERVER] Ready");
                     return;
@@ -194,11 +226,13 @@ export class ServerControl {
     public async stop(): Promise<void> {
         const proc = this.process;
         if (proc?.pid === undefined) {
-            this.cleanupTempDir();
+            if (!this.preserveOnStop) this.cleanupTempDir();
+            if (this.unexpectedExit) throw this.unexpectedExit;
             return;
         }
+        this.expectedExit = true;
 
-        // Resume if paused — a SIGSTOP'd process ignores SIGKILL
+        // SIGKILL terminates even a stopped process; SIGCONT is harmless here.
         if (this._isPaused) {
             try {
                 process.kill(proc.pid, "SIGCONT");
@@ -212,7 +246,7 @@ export class ServerControl {
 
         // Set up a promise that resolves when the process actually exits.
         const exitPromise = new Promise<void>((resolve) => {
-            if (proc.exitCode !== null) {
+            if (proc.exitCode !== null || proc.signalCode !== null) {
                 resolve();
                 return;
             }
@@ -229,11 +263,49 @@ export class ServerControl {
 
         // Wait for the process to actually exit before cleaning up,
         // with a 5s safety timeout to avoid hanging forever.
-        await Promise.race([exitPromise, sleep(STOP_TIMEOUT_MS)]);
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+            await Promise.race([
+                exitPromise,
+                new Promise<never>((_, reject) => {
+                    timer = setTimeout(
+                        () =>
+                            reject(
+                                new Error(
+                                    "Owned server did not exit after SIGKILL"
+                                )
+                            ),
+                        STOP_TIMEOUT_MS
+                    );
+                })
+            ]);
+        } finally {
+            clearTimeout(timer);
+        }
 
         this.process = null;
         this._isPaused = false;
-        this.cleanupTempDir();
+        if (!this.preserveOnStop) this.cleanupTempDir();
+        if (this.unexpectedExit) throw this.unexpectedExit;
+    }
+
+    /** A real process death: retain the exact database and port for restart. */
+    public async crash(): Promise<void> {
+        if (!this.isRunning()) throw new Error("Cannot crash a stopped server");
+        this.preserveOnStop = true;
+        try {
+            await this.stop();
+        } finally {
+            this.preserveOnStop = false;
+        }
+    }
+
+    public async restart(): Promise<void> {
+        if (!this.tempDir || this.isRunning())
+            throw new Error(
+                "Restart requires a crashed server with retained storage"
+            );
+        await this.startOnce();
     }
 
     public isRunning(): boolean {
@@ -273,23 +345,27 @@ export class ServerControl {
         // one `databases_directory_path:` (under `server:` and `database:`
         // respectively)
         const baseConfig = fs.readFileSync(this.baseConfigPath, "utf-8");
+        for (const key of ["port", "databases_directory_path"]) {
+            if (
+                (baseConfig.match(new RegExp(`^  ${key}:`, "gm")) ?? [])
+                    .length !== 1
+            )
+                throw new Error(`Expected exactly one config key: ${key}`);
+        }
         const config = baseConfig
             .replace(/^\s*port:\s*\d+/m, `  port: ${this._port}`)
             .replace(
                 /^\s*databases_directory_path:\s*.+/m,
-                `  databases_directory_path: ${dbDir}`
+                `  databases_directory_path: ${JSON.stringify(dbDir)}`
             );
         fs.writeFileSync(destPath, config);
     }
 
     private cleanupTempDir(): void {
         if (this.tempDir !== undefined) {
-            try {
-                fs.rmSync(this.tempDir, { recursive: true, force: true });
-            } catch {
-                // Best-effort cleanup
-            }
+            fs.rmSync(this.tempDir, { recursive: true, force: true });
             this.tempDir = undefined;
+            this._port = undefined;
         }
     }
 }

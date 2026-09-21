@@ -12,15 +12,31 @@ pub enum Notification {
 #[derive(Debug, Clone)]
 pub struct Broadcasts {
     capacity: usize,
+    admission: Arc<std::sync::Mutex<HashMap<VaultId, std::sync::Weak<tokio::sync::Semaphore>>>>,
     senders: Arc<Mutex<HashMap<VaultId, broadcast::Sender<Notification>>>>,
 }
 
 impl Broadcasts {
     pub fn new(config: &ServerConfig) -> Self {
         Self {
-            capacity: config.max_clients_per_vault.max(1),
+            capacity: config.max_clients_per_vault,
+            admission: Arc::default(),
             senders: Arc::default(),
         }
+    }
+
+    pub fn try_admit(&self, vault: &VaultId) -> Option<tokio::sync::OwnedSemaphorePermit> {
+        let mut limits = self.admission.lock().unwrap();
+        limits.retain(|_, limit| limit.strong_count() > 0);
+        let limit = limits
+            .get(vault)
+            .and_then(std::sync::Weak::upgrade)
+            .unwrap_or_else(|| {
+                let limit = Arc::new(tokio::sync::Semaphore::new(self.capacity));
+                limits.insert(vault.clone(), Arc::downgrade(&limit));
+                limit
+            });
+        limit.try_acquire_owned().ok()
     }
 
     async fn sender(&self, vault: VaultId) -> broadcast::Sender<Notification> {
@@ -28,7 +44,7 @@ impl Broadcasts {
             .lock()
             .await
             .entry(vault)
-            .or_insert_with(|| broadcast::channel(self.capacity).0)
+            .or_insert_with(|| broadcast::channel(self.capacity.max(1)).0)
             .clone()
     }
 

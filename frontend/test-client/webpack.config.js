@@ -4,6 +4,7 @@ const webpack = require("webpack");
 module.exports = {
     entry: "./src/cli.ts",
     target: "node",
+    externals: { "sync-client": "commonjs sync-client" },
     mode: "production",
     optimization: {
         minimize: false

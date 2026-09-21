@@ -1,0 +1,111 @@
+{
+  "options": {
+    "workers": 2,
+    "seed": 42,
+    "iterations": 3,
+    "timeout": 180000
+  },
+  "results": [
+    {
+      "name": "build-server",
+      "command": "cargo",
+      "args": [
+        "build",
+        "--release"
+      ],
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "success": true
+    },
+    {
+      "name": "build-clients",
+      "command": "npm",
+      "args": [
+        "run",
+        "build",
+        "--workspace",
+        "sync-client",
+        "--workspace",
+        "deterministic-tests",
+        "--workspace",
+        "test-client"
+      ],
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "success": true
+    },
+    {
+      "name": "harness-self-tests",
+      "command": "npm",
+      "args": [
+        "run",
+        "test:harness"
+      ],
+      "code": 1,
+      "signal": null,
+      "timedOut": false,
+      "success": false
+    },
+    {
+      "name": "crash-and-protocol",
+      "command": "npm",
+      "args": [
+        "run",
+        "test:protocol"
+      ],
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "success": true
+    },
+    {
+      "name": "deterministic",
+      "command": "/Users/schmelczer/.nvm/versions/node/v25.2.1/bin/node",
+      "args": [
+        "/Users/schmelczer/Projects/vault-link/frontend/deterministic-tests/dist/cli.js",
+        "--concurrency",
+        "2"
+      ],
+      "code": 1,
+      "signal": null,
+      "timedOut": false,
+      "success": false
+    },
+    {
+      "name": "fuzz-42",
+      "command": "/Users/schmelczer/.nvm/versions/node/v25.2.1/bin/node",
+      "args": [
+        "/Users/schmelczer/Projects/vault-link/frontend/test-client/dist/cli.js",
+        "--seed",
+        "42",
+        "--iterations",
+        "3",
+        "--artifacts",
+        "/Users/schmelczer/Projects/vault-link/logs/harness-review"
+      ],
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "success": true
+    },
+    {
+      "name": "fuzz-43",
+      "command": "/Users/schmelczer/.nvm/versions/node/v25.2.1/bin/node",
+      "args": [
+        "/Users/schmelczer/Projects/vault-link/frontend/test-client/dist/cli.js",
+        "--seed",
+        "43",
+        "--iterations",
+        "3",
+        "--artifacts",
+        "/Users/schmelczer/Projects/vault-link/logs/harness-review"
+      ],
+      "code": 0,
+      "signal": null,
+      "timedOut": false,
+      "success": true
+    }
+  ]
+}

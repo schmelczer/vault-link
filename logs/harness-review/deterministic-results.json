@@ -1,0 +1,1121 @@
+[
+  {
+    "name": "v4-binary-bytes-and-independent-identities",
+    "result": {
+      "success": true,
+      "duration": 100
+    }
+  },
+  {
+    "name": "v4-three-file-cycle-preserves-identities",
+    "result": {
+      "success": true,
+      "duration": 170
+    }
+  },
+  {
+    "name": "v4-case-alias-and-file-directory-conflicts",
+    "result": {
+      "success": true,
+      "duration": 93
+    }
+  },
+  {
+    "name": "v4-create-before-commit-network-loss",
+    "result": {
+      "success": true,
+      "duration": 66
+    }
+  },
+  {
+    "name": "v4-create-after-commit-network-loss",
+    "result": {
+      "success": true,
+      "duration": 64
+    }
+  },
+  {
+    "name": "v4-content-before-commit-network-loss",
+    "result": {
+      "success": true,
+      "duration": 89
+    }
+  },
+  {
+    "name": "v4-content-after-commit-network-loss",
+    "result": {
+      "success": true,
+      "duration": 91
+    }
+  },
+  {
+    "name": "v4-manifest-before-commit-network-loss",
+    "result": {
+      "success": true,
+      "duration": 66
+    }
+  },
+  {
+    "name": "v4-manifest-after-commit-network-loss",
+    "result": {
+      "success": true,
+      "duration": 72
+    }
+  },
+  {
+    "name": "rename-create-conflict",
+    "result": {
+      "success": true,
+      "duration": 121
+    }
+  },
+  {
+    "name": "rename-chain",
+    "result": {
+      "success": true,
+      "duration": 52
+    }
+  },
+  {
+    "name": "rename-update-conflict",
+    "result": {
+      "success": true,
+      "duration": 88
+    }
+  },
+  {
+    "name": "delete-rename-conflict",
+    "result": {
+      "success": true,
+      "duration": 88
+    }
+  },
+  {
+    "name": "multi-file-operations",
+    "result": {
+      "success": true,
+      "duration": 129
+    }
+  },
+  {
+    "name": "delete-recreate-same-path",
+    "result": {
+      "success": true,
+      "duration": 63
+    }
+  },
+  {
+    "name": "offline-rename-and-edit",
+    "result": {
+      "success": true,
+      "duration": 79
+    }
+  },
+  {
+    "name": "simultaneous-create-delete-same-path",
+    "result": {
+      "success": true,
+      "duration": 54
+    }
+  },
+  {
+    "name": "sequential-create-duplicate-content",
+    "result": {
+      "success": true,
+      "duration": 81
+    }
+  },
+  {
+    "name": "mc-three-client-rename-offline-update",
+    "result": {
+      "success": true,
+      "duration": 102
+    }
+  },
+  {
+    "name": "mc-multi-delete-offline-rename",
+    "result": {
+      "success": true,
+      "duration": 115
+    }
+  },
+  {
+    "name": "mc-cross-create-rename-same-target",
+    "result": {
+      "success": true,
+      "duration": 93
+    }
+  },
+  {
+    "name": "mc-delete-then-offline-rename",
+    "result": {
+      "success": true,
+      "duration": 79
+    }
+  },
+  {
+    "name": "offline-mixed-operations",
+    "result": {
+      "success": true,
+      "duration": 117
+    }
+  },
+  {
+    "name": "offline-concurrent-renames",
+    "result": {
+      "success": true,
+      "duration": 76
+    }
+  },
+  {
+    "name": "offline-multiple-edits",
+    "result": {
+      "success": true,
+      "duration": 74
+    }
+  },
+  {
+    "name": "rename-swap",
+    "result": {
+      "success": true,
+      "duration": 93
+    }
+  },
+  {
+    "name": "rename-circular",
+    "result": {
+      "success": true,
+      "duration": 113
+    }
+  },
+  {
+    "name": "rename-roundtrip",
+    "result": {
+      "success": true,
+      "duration": 95
+    }
+  },
+  {
+    "name": "offline-rename-remote-create-old-path",
+    "result": {
+      "success": true,
+      "duration": 83
+    }
+  },
+  {
+    "name": "offline-edit-remote-rename",
+    "result": {
+      "success": true,
+      "duration": 78
+    }
+  },
+  {
+    "name": "rename-chain-then-delete",
+    "result": {
+      "success": true,
+      "duration": 86
+    }
+  },
+  {
+    "name": "offline-delete-remote-rename",
+    "result": {
+      "success": true,
+      "duration": 53
+    }
+  },
+  {
+    "name": "overlapping-edits-same-section",
+    "result": {
+      "success": true,
+      "duration": 89
+    }
+  },
+  {
+    "name": "rapid-updates-after-merge",
+    "result": {
+      "success": true,
+      "duration": 117
+    }
+  },
+  {
+    "name": "delete-recreate-concurrent-update",
+    "result": {
+      "success": true,
+      "duration": 90
+    }
+  },
+  {
+    "name": "move-and-concurrent-remote-update",
+    "result": {
+      "success": true,
+      "duration": 89
+    }
+  },
+  {
+    "name": "double-offline-cycle",
+    "result": {
+      "success": true,
+      "duration": 104
+    }
+  },
+  {
+    "name": "offline-update-both-then-delete-one",
+    "result": {
+      "success": true,
+      "duration": 100
+    }
+  },
+  {
+    "name": "offline-create-same-path-mergeable",
+    "result": {
+      "success": true,
+      "duration": 68
+    }
+  },
+  {
+    "name": "three-client-rename-create-delete",
+    "result": {
+      "success": true,
+      "duration": 106
+    }
+  },
+  {
+    "name": "rename-to-path-of-unconfirmed-delete",
+    "result": {
+      "success": true,
+      "duration": 94
+    }
+  },
+  {
+    "name": "offline-edit-then-move-same-content",
+    "result": {
+      "success": true,
+      "duration": 92
+    }
+  },
+  {
+    "name": "delete-recreate-different-content",
+    "result": {
+      "success": true,
+      "duration": 102
+    }
+  },
+  {
+    "name": "offline-move-then-remote-delete",
+    "result": {
+      "success": true,
+      "duration": 81
+    }
+  },
+  {
+    "name": "reset-clears-recently-deleted-resurrection",
+    "result": {
+      "success": true,
+      "duration": 75
+    }
+  },
+  {
+    "name": "move-then-delete-stale-path",
+    "result": {
+      "success": true,
+      "duration": 65
+    }
+  },
+  {
+    "name": "offline-delete-vs-remote-update",
+    "result": {
+      "success": true,
+      "duration": 89
+    }
+  },
+  {
+    "name": "update-does-not-survive-remote-delete",
+    "result": {
+      "success": true,
+      "duration": 64
+    }
+  },
+  {
+    "name": "move-preserves-remote-update",
+    "result": {
+      "success": true,
+      "duration": 87
+    }
+  },
+  {
+    "name": "recently-deleted-cleared-on-reconnect",
+    "result": {
+      "success": true,
+      "duration": 107
+    }
+  },
+  {
+    "name": "watermark-advances-on-skip",
+    "result": {
+      "success": true,
+      "duration": 87
+    }
+  },
+  {
+    "name": "watermark-gap-remote-update-not-recorded",
+    "result": {
+      "success": true,
+      "duration": 88
+    }
+  },
+  {
+    "name": "queue-reset-loses-coalesced-local-edit",
+    "result": {
+      "success": true,
+      "duration": 98
+    }
+  },
+  {
+    "name": "rename-to-pending-path-fallback",
+    "result": {
+      "success": true,
+      "duration": 55
+    }
+  },
+  {
+    "name": "move-remote-update-reverts-rename",
+    "result": {
+      "success": true,
+      "duration": 99
+    }
+  },
+  {
+    "name": "local-edit-lost-during-create-merge",
+    "result": {
+      "success": true,
+      "duration": 52
+    }
+  },
+  {
+    "name": "create-rename-response-skips-file",
+    "result": {
+      "success": true,
+      "duration": 73
+    }
+  },
+  {
+    "name": "online-create-rename-concurrent-create-orphan",
+    "result": {
+      "success": true,
+      "duration": 69
+    }
+  },
+  {
+    "name": "concurrent-rename-first-wins",
+    "result": {
+      "success": true,
+      "duration": 90
+    }
+  },
+  {
+    "name": "binary-to-text-transition",
+    "result": {
+      "success": true,
+      "duration": 151
+    }
+  },
+  {
+    "name": "text-pending-create-not-displaced",
+    "result": {
+      "success": true,
+      "duration": 53
+    }
+  },
+  {
+    "name": "binary-pending-create-not-displaced",
+    "result": {
+      "success": true,
+      "duration": 80
+    }
+  },
+  {
+    "name": "coalesce-update-remote-update-data-loss",
+    "result": {
+      "success": true,
+      "duration": 84
+    }
+  },
+  {
+    "name": "coalesced-remote-update-watermark-loss",
+    "result": {
+      "success": true,
+      "duration": 84
+    }
+  },
+  {
+    "name": "concurrent-delete-during-remote-update",
+    "result": {
+      "success": true,
+      "duration": 66
+    }
+  },
+  {
+    "name": "concurrent-edit-exact-same-position",
+    "result": {
+      "success": true,
+      "duration": 97
+    }
+  },
+  {
+    "name": "concurrent-rename-and-create-at-target-rename-first",
+    "result": {
+      "success": true,
+      "duration": 98
+    }
+  },
+  {
+    "name": "concurrent-rename-and-create-at-target-create-first",
+    "result": {
+      "success": true,
+      "duration": 109
+    }
+  },
+  {
+    "name": "concurrent-rename-same-target",
+    "result": {
+      "success": true,
+      "duration": 110
+    }
+  },
+  {
+    "name": "concurrent-update-diff-consistency",
+    "result": {
+      "success": true,
+      "duration": 81
+    }
+  },
+  {
+    "name": "user-parenthesized-file-not-deleted",
+    "result": {
+      "success": true,
+      "duration": 116
+    }
+  },
+  {
+    "name": "create-delete-noop",
+    "result": {
+      "success": true,
+      "duration": 30
+    }
+  },
+  {
+    "name": "create-merge-delete",
+    "result": {
+      "success": true,
+      "duration": 73
+    }
+  },
+  {
+    "name": "move-identical-content-ambiguity",
+    "result": {
+      "success": true,
+      "duration": 78
+    }
+  },
+  {
+    "name": "create-during-reconciliation",
+    "result": {
+      "success": true,
+      "duration": 84
+    }
+  },
+  {
+    "name": "create-merge-preserves-renamed-update",
+    "result": {
+      "success": true,
+      "duration": 106
+    }
+  },
+  {
+    "name": "create-rename-create-same-path",
+    "result": {
+      "success": true,
+      "duration": 87
+    }
+  },
+  {
+    "name": "move-chain-three-files",
+    "result": {
+      "success": true,
+      "duration": 116
+    }
+  },
+  {
+    "name": "delete-by-other-client-then-recreate",
+    "result": {
+      "success": true,
+      "duration": 81
+    }
+  },
+  {
+    "name": "online-delete-recreate-rapid-cycle",
+    "result": {
+      "success": true,
+      "duration": 169
+    }
+  },
+  {
+    "name": "online-edit-vs-delete-convergence",
+    "result": {
+      "success": true,
+      "duration": 84
+    }
+  },
+  {
+    "name": "rapid-edit-delete-online-convergence",
+    "result": {
+      "success": true,
+      "duration": 144
+    }
+  },
+  {
+    "name": "online-both-create-same-path-deconflict",
+    "result": {
+      "success": true,
+      "duration": 92
+    }
+  },
+  {
+    "name": "online-create-update-while-other-creates-same-path",
+    "result": {
+      "success": true,
+      "duration": 82
+    }
+  },
+  {
+    "name": "displaced-file-not-marked-deleted",
+    "result": {
+      "success": true,
+      "duration": 112
+    }
+  },
+  {
+    "name": "remote-update-resurrects-deleted-doc",
+    "result": {
+      "success": false,
+      "error": "Convergence timed out after 60000ms: Client 1 differs from client 0 (paths or bytes)\n+ actual - expected\n\n+ [\n+   [\n+     'P.md',\n+     Uint8Array(17) [\n+       118,\n+       50,\n+       49,\n+       32,\n+       99,\n+       111,\n+       110,\n+       116,\n+       101,\n+       110,\n+       116,\n+       32,\n+       40,\n+       68,\n+       50,\n+       41,\n+       10\n+     ]\n+   ]\n+ ]\n- []\n",
+      "diagnostics": [
+        {
+          "client": 0,
+          "database": {
+            "vaultKey": "[\"http://localhost:62272\",\"test-df2b81ab-03e9-432a-878a-d6aa1c6c9147\"]",
+            "initialized": true,
+            "fileManifest": {
+              "fileManifestId": 4,
+              "entries": {}
+            },
+            "local": {},
+            "documents": {
+              "1460ea0a-a39b-4a55-8772-02ffa0b0ffc6": {
+                "materialized": true,
+                "base": {
+                  "vaultUpdateId": 7,
+                  "documentId": "1460ea0a-a39b-4a55-8772-02ffa0b0ffc6",
+                  "updatedDate": "2026-09-19T21:30:07.925900Z",
+                  "userId": "admin",
+                  "deviceId": "vault-link/0.14.0 (f64bfac0-58b8-4ce3-8a1d-40f1f2df7011; MacIntel)",
+                  "contentSize": 40,
+                  "hash": "229b36522c531631df2139e070b94a0e1b8d8833ae49d4662cb0d7a8bd158e9b"
+                },
+                "bootstrap": false,
+                "observedHash": "229b36522c531631df2139e070b94a0e1b8d8833ae49d4662cb0d7a8bd158e9b"
+              }
+            },
+            "remoteHeads": {
+              "1460ea0a-a39b-4a55-8772-02ffa0b0ffc6": {
+                "vaultUpdateId": 7,
+                "documentId": "1460ea0a-a39b-4a55-8772-02ffa0b0ffc6",
+                "updatedDate": "2026-09-19T21:30:07.925900Z",
+                "userId": "admin",
+                "deviceId": "vault-link/0.14.0 (f64bfac0-58b8-4ce3-8a1d-40f1f2df7011; MacIntel)",
+                "contentSize": 40
+              },
+              "c6316ddf-539d-4604-8039-5ff6022efef2": {
+                "vaultUpdateId": 5,
+                "documentId": "c6316ddf-539d-4604-8039-5ff6022efef2",
+                "updatedDate": "2026-09-19T21:30:07.889537Z",
+                "userId": "admin",
+                "deviceId": "vault-link/0.14.0 (29416abc-2c3c-430c-bd21-f0c5b1aacdac; MacIntel)",
+                "contentSize": 17
+              }
+            },
+            "lastSeenUpdateId": 5
+          },
+          "disk": {
+            "visible": [
+              [
+                "",
+                null
+              ],
+              [
+                ".vault-link-sync",
+                null
+              ],
+              [
+                ".vault-link-sync/transactions",
+                null
+              ]
+            ],
+            "durable": [
+              [
+                "",
+                null
+              ],
+              [
+                ".vault-link-sync",
+                null
+              ],
+              [
+                ".vault-link-sync/transactions",
+                null
+              ]
+            ]
+          },
+          "requests": [
+            {
+              "kind": "content",
+              "method": "PUT",
+              "url": "http://localhost:62272/vaults/test-df2b81ab-03e9-432a-878a-d6aa1c6c9147/documents/1460ea0a-a39b-4a55-8772-02ffa0b0ffc6",
+              "body": {
+                "requestId": "d970973e-d042-4383-9edd-6be699df0c0f",
+                "parentVersionId": 3,
+                "content": {
+                  "type": "Diff",
+                  "value": [
+                    -11,
+                    "v17local edit by client 0",
+                    15
+                  ]
+                }
+              },
+              "status": 200
+            }
+          ]
+        },
+        {
+          "client": 1,
+          "database": {
+            "vaultKey": "[\"http://localhost:62272\",\"test-df2b81ab-03e9-432a-878a-d6aa1c6c9147\"]",
+            "initialized": true,
+            "fileManifest": {
+              "fileManifestId": 6,
+              "entries": {
+                "c6316ddf-539d-4604-8039-5ff6022efef2": "P.md"
+              }
+            },
+            "local": {
+              "c6316ddf-539d-4604-8039-5ff6022efef2": "P.md"
+            },
+            "documents": {
+              "1460ea0a-a39b-4a55-8772-02ffa0b0ffc6": {
+                "materialized": true,
+                "bootstrap": false,
+                "observedHash": "106554e74ef5b4dc8c8668c00ff9e822ebb2573232e6af3c71849bf200685e26",
+                "base": {
+                  "vaultUpdateId": 3,
+                  "documentId": "1460ea0a-a39b-4a55-8772-02ffa0b0ffc6",
+                  "updatedDate": "2026-09-19T21:30:07.876666Z",
+                  "userId": "admin",
+                  "deviceId": "vault-link/0.14.0 (29416abc-2c3c-430c-bd21-f0c5b1aacdac; MacIntel)",
+                  "contentSize": 26,
+                  "hash": "106554e74ef5b4dc8c8668c00ff9e822ebb2573232e6af3c71849bf200685e26"
+                }
+              },
+              "c6316ddf-539d-4604-8039-5ff6022efef2": {
+                "materialized": true,
+                "bootstrap": false,
+                "observedHash": "8dd4b135f5ee76639d62ae49fbfc7404962fc5a67f8f60ced508d5cb8ce5f4df",
+                "base": {
+                  "vaultUpdateId": 5,
+                  "documentId": "c6316ddf-539d-4604-8039-5ff6022efef2",
+                  "updatedDate": "2026-09-19T21:30:07.889537Z",
+                  "userId": "admin",
+                  "deviceId": "vault-link/0.14.0 (29416abc-2c3c-430c-bd21-f0c5b1aacdac; MacIntel)",
+                  "contentSize": 17,
+                  "hash": "8dd4b135f5ee76639d62ae49fbfc7404962fc5a67f8f60ced508d5cb8ce5f4df"
+                }
+              }
+            },
+            "remoteHeads": {
+              "1460ea0a-a39b-4a55-8772-02ffa0b0ffc6": {
+                "vaultUpdateId": 7,
+                "documentId": "1460ea0a-a39b-4a55-8772-02ffa0b0ffc6",
+                "updatedDate": "2026-09-19T21:30:07.925900Z",
+                "userId": "admin",
+                "deviceId": "vault-link/0.14.0 (f64bfac0-58b8-4ce3-8a1d-40f1f2df7011; MacIntel)",
+                "contentSize": 40
+              },
+              "c6316ddf-539d-4604-8039-5ff6022efef2": {
+                "vaultUpdateId": 5,
+                "documentId": "c6316ddf-539d-4604-8039-5ff6022efef2",
+                "updatedDate": "2026-09-19T21:30:07.889537Z",
+                "userId": "admin",
+                "deviceId": "vault-link/0.14.0 (29416abc-2c3c-430c-bd21-f0c5b1aacdac; MacIntel)",
+                "contentSize": 17
+              }
+            },
+            "lastSeenUpdateId": 7
+          },
+          "disk": {
+            "visible": [
+              [
+                "",
+                null
+              ],
+              [
+                "P.md",
+                {
+                  "content": {
+                    "0": 118,
+                    "1": 50,
+                    "2": 49,
+                    "3": 32,
+                    "4": 99,
+                    "5": 111,
+                    "6": 110,
+                    "7": 116,
+                    "8": 101,
+                    "9": 110,
+                    "10": 116,
+                    "11": 32,
+                    "12": 40,
+                    "13": 68,
+                    "14": 50,
+                    "15": 41,
+                    "16": 10
+                  }
+                }
+              ]
+            ],
+            "durable": [
+              [
+                "",
+                null
+              ],
+              [
+                "P.md",
+                {
+                  "content": {
+                    "0": 118,
+                    "1": 50,
+                    "2": 49,
+                    "3": 32,
+                    "4": 99,
+                    "5": 111,
+                    "6": 110,
+                    "7": 116,
+                    "8": 101,
+                    "9": 110,
+                    "10": 116,
+                    "11": 32,
+                    "12": 40,
+                    "13": 68,
+                    "14": 50,
+                    "15": 41,
+                    "16": 10
+                  }
+                }
+              ]
+            ]
+          },
+          "requests": [
+            {
+              "kind": "create",
+              "method": "PUT",
+              "url": "http://localhost:62272/vaults/test-df2b81ab-03e9-432a-878a-d6aa1c6c9147/documents/1460ea0a-a39b-4a55-8772-02ffa0b0ffc6",
+              "body": {
+                "requestId": "f2abf8a1-8c5d-49d7-8ca8-4d4df56a2aff",
+                "parentVersionId": null,
+                "content": {
+                  "type": "Snapshot",
+                  "value": "djggY29udGVudAo="
+                }
+              },
+              "status": 200
+            },
+            {
+              "kind": "manifest",
+              "method": "PUT",
+              "url": "http://localhost:62272/vaults/test-df2b81ab-03e9-432a-878a-d6aa1c6c9147/file-manifest",
+              "body": {
+                "requestId": "41f31b38-1edc-4f97-8519-6973e4a04f9f",
+                "parentFileManifestId": 0,
+                "entries": {
+                  "1460ea0a-a39b-4a55-8772-02ffa0b0ffc6": "P.md"
+                }
+              },
+              "status": 200
+            },
+            {
+              "kind": "content",
+              "method": "PUT",
+              "url": "http://localhost:62272/vaults/test-df2b81ab-03e9-432a-878a-d6aa1c6c9147/documents/1460ea0a-a39b-4a55-8772-02ffa0b0ffc6",
+              "body": {
+                "requestId": "4bd1dcf9-c5d2-42f4-aa96-f1b921362e55",
+                "parentVersionId": 1,
+                "content": {
+                  "type": "Diff",
+                  "value": [
+                    -2,
+                    "v17",
+                    8,
+                    " from client 1",
+                    1
+                  ]
+                }
+              },
+              "status": 200
+            },
+            {
+              "kind": "manifest",
+              "method": "PUT",
+              "url": "http://localhost:62272/vaults/test-df2b81ab-03e9-432a-878a-d6aa1c6c9147/file-manifest",
+              "body": {
+                "requestId": "3b0cc3a0-b288-47d0-998b-d608f885d4b0",
+                "parentFileManifestId": 2,
+                "entries": {}
+              },
+              "status": 200
+            },
+            {
+              "kind": "create",
+              "method": "PUT",
+              "url": "http://localhost:62272/vaults/test-df2b81ab-03e9-432a-878a-d6aa1c6c9147/documents/c6316ddf-539d-4604-8039-5ff6022efef2",
+              "body": {
+                "requestId": "edb11740-8c0c-4407-91d2-bd264e26281f",
+                "parentVersionId": null,
+                "content": {
+                  "type": "Snapshot",
+                  "value": "djIxIGNvbnRlbnQgKEQyKQo="
+                }
+              },
+              "status": 200
+            },
+            {
+              "kind": "manifest",
+              "method": "PUT",
+              "url": "http://localhost:62272/vaults/test-df2b81ab-03e9-432a-878a-d6aa1c6c9147/file-manifest",
+              "body": {
+                "requestId": "c9615094-e693-4b11-8a3d-5c415d3dcdd0",
+                "parentFileManifestId": 4,
+                "entries": {
+                  "c6316ddf-539d-4604-8039-5ff6022efef2": "P.md"
+                }
+              },
+              "status": 200
+            }
+          ]
+        }
+      ],
+      "duration": 60283
+    }
+  },
+  {
+    "name": "local-update-survives-remote-rename",
+    "result": {
+      "success": true,
+      "duration": 58
+    }
+  },
+  {
+    "name": "catchup-create-and-update-not-skipped",
+    "result": {
+      "success": true,
+      "duration": 55
+    }
+  },
+  {
+    "name": "remote-rename-collides-with-pending-local-create",
+    "result": {
+      "success": true,
+      "duration": 53
+    }
+  },
+  {
+    "name": "remote-quick-write-rename-before-record",
+    "result": {
+      "success": true,
+      "duration": 42
+    }
+  },
+  {
+    "name": "v4-server-sigkill-retains-acknowledged-state",
+    "result": {
+      "success": true,
+      "duration": 220
+    }
+  },
+  {
+    "name": "idempotency-after-server-pause",
+    "result": {
+      "success": true,
+      "duration": 87
+    }
+  },
+  {
+    "name": "server-pause-both-clients-create",
+    "result": {
+      "success": true,
+      "duration": 60
+    }
+  },
+  {
+    "name": "server-pause-update-and-create",
+    "result": {
+      "success": true,
+      "duration": 87
+    }
+  },
+  {
+    "name": "server-pause-rename-edit-resume",
+    "result": {
+      "success": true,
+      "duration": 70
+    }
+  },
+  {
+    "name": "delete-during-pending-create",
+    "result": {
+      "success": true,
+      "duration": 43
+    }
+  },
+  {
+    "name": "rapid-create-update-delete-cycle",
+    "result": {
+      "success": true,
+      "duration": 51
+    }
+  },
+  {
+    "name": "server-pause-both-edit-same-file",
+    "result": {
+      "success": true,
+      "duration": 98
+    }
+  },
+  {
+    "name": "update-during-create-processing",
+    "result": {
+      "success": true,
+      "duration": 65
+    }
+  },
+  {
+    "name": "interrupted-delete-retry",
+    "result": {
+      "success": true,
+      "duration": 67
+    }
+  },
+  {
+    "name": "rename-pending-create-before-response",
+    "result": {
+      "success": true,
+      "duration": 78
+    }
+  },
+  {
+    "name": "create-update-coalesce-server-pause",
+    "result": {
+      "success": true,
+      "duration": 67
+    }
+  },
+  {
+    "name": "server-pause-delete-recreate",
+    "result": {
+      "success": true,
+      "duration": 71
+    }
+  },
+  {
+    "name": "merging-update-response-survives-user-rename",
+    "result": {
+      "success": true,
+      "duration": 88
+    }
+  },
+  {
+    "name": "local-rename-survives-remote-rename",
+    "result": {
+      "success": true,
+      "duration": 82
+    }
+  },
+  {
+    "name": "rename-chain-during-pending-create",
+    "result": {
+      "success": true,
+      "duration": 57
+    }
+  },
+  {
+    "name": "remote-update-survives-user-rename",
+    "result": {
+      "success": true,
+      "duration": 111
+    }
+  },
+  {
+    "name": "same-doc-id-collapse-on-local-create-after-remote-create",
+    "result": {
+      "success": true,
+      "duration": 54
+    }
+  },
+  {
+    "name": "renamed-pending-create-reused-path-then-delete",
+    "result": {
+      "success": true,
+      "duration": 185
+    }
+  },
+  {
+    "name": "rename-pending-create-onto-pending-delete-path",
+    "result": {
+      "success": true,
+      "duration": 166
+    }
+  },
+  {
+    "name": "rename-overwrites-pending-create-then-delete",
+    "result": {
+      "success": true,
+      "duration": 80
+    }
+  },
+  {
+    "name": "same-doc-id-collapse-after-remote-quick-write-and-pending-rename",
+    "result": {
+      "success": true,
+      "duration": 220
+    }
+  },
+  {
+    "name": "delete-recreated-pending-create-with-stale-deleting-record",
+    "result": {
+      "success": true,
+      "duration": 234
+    }
+  },
+  {
+    "name": "queued-create-delete-does-not-hijack-reused-path",
+    "result": {
+      "success": true,
+      "duration": 173
+    }
+  },
+  {
+    "name": "self-merge-pending-rename-aliases-second-create",
+    "result": {
+      "success": true,
+      "duration": 186
+    }
+  }
+]
