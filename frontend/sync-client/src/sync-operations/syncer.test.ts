@@ -153,8 +153,7 @@ describe("Syncer per-file state and event delivery", () => {
                 path === "note.md"
                     ? {
                           documentId: "document",
-                          relativePath: path,
-                          isDeleted: false
+                          relativePath: path
                       }
                     : undefined
         } as unknown as Database;
@@ -166,10 +165,8 @@ describe("Syncer per-file state and event delivery", () => {
                 (batch: EventBatch) => Promise<void>
             >()
         } as unknown as WebSocketManager;
-        let httpEventsCalls = 0;
         const service = {
             events: async () => {
-                httpEventsCalls++;
                 return { headEventId: 0, events: [] };
             }
         } as unknown as SyncService;
@@ -191,8 +188,7 @@ describe("Syncer per-file state and event delivery", () => {
         return {
             database,
             websocket,
-            syncer,
-            httpEventsCalls: () => httpEventsCalls
+            syncer
         };
     }
 
@@ -209,28 +205,6 @@ describe("Syncer per-file state and event delivery", () => {
         assert.strictEqual(syncer.isDocumentUpToDate("note.md"), true);
         internals.unsyncablePaths.add("note.md");
         assert.strictEqual(syncer.isDocumentUpToDate("note.md"), false);
-    });
-
-    it("consumes a complete WebSocket event batch without fetching it again", async () => {
-        const { websocket, syncer, httpEventsCalls } = fixture();
-        const batch: EventBatch = {
-            headEventId: 1,
-            events: [
-                {
-                    eventId: 1,
-                    requestId: "00000000-0000-0000-0000-000000000001",
-                    type: "fileManifest",
-                    fileManifest: { fileManifestId: 1, entries: {} }
-                }
-            ]
-        };
-        await websocket.onRemoteVaultUpdateReceived.triggerAsync(batch);
-
-        const selected = await (
-            syncer as unknown as { nextEventBatch: () => Promise<EventBatch> }
-        ).nextEventBatch();
-        assert.deepEqual(selected, batch);
-        assert.strictEqual(httpEventsCalls(), 0);
     });
 
     it("projects content responses to metadata before persistence", () => {

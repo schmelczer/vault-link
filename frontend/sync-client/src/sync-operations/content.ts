@@ -47,8 +47,7 @@ export async function mergeContent(
         remote.contentBase64
     ].map(base64ToBytes);
 
-    // Concurrent unmergeable edits keep the server's content. The filesystem
-    // journal retains displaced local bytes for recovery.
+    // Concurrent unmergeable edits keep the server's content.
     if (!isFileTypeMergable(path, extensions) || inputs.some(isBinary))
         return remote;
 

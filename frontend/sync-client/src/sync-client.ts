@@ -25,12 +25,18 @@ import { isInternalPath } from "./utils/portable-path";
 import { FixedSizeDocumentCache } from "./utils/data-structures/fix-sized-cache";
 import { globsToRegexes } from "./utils/globs-to-regexes";
 import { Lock } from "./utils/data-structures/locks";
-import type { LocalChange } from "./sync-operations/local-changes";
+import {
+    unappliedChanges,
+    type LocalChange
+} from "./sync-operations/local-changes";
 
 type StoredClient = Partial<{
     settings: Partial<SyncSettings>;
     database: Partial<StoredDatabase>;
-    localChanges: LocalChange[];
+    localChanges: (
+        | LocalChange
+        | { type: "update"; path: string; changeId?: string }
+    )[];
     localChangesVaultKey: string;
     historyCheckpoint: { vaultKey: string; checkpoint?: string };
 }>;
@@ -96,7 +102,7 @@ export class SyncClient {
         let stored = (await persistence.load()) ?? {};
         let saving: Promise<void> = Promise.resolve();
         let reloadBeforeSave = false;
-        // Settings and engine state share a store. Serialize complete durable
+        // Settings and engine state share a store. Serialize complete metadata
         // replacements so one cannot overwrite a newer save from the other.
         const save = async (update: StoredClient): Promise<void> => {
             const operation = saving.then(async () => {
@@ -122,7 +128,6 @@ export class SyncClient {
             save({ settings: data })
         );
         const database = new Database(
-            logger,
             stored.database,
             async (data) => save({ database: data }),
             vaultKey(settings.getSettings()),
@@ -132,8 +137,15 @@ export class SyncClient {
                 return stored.database as StoredDatabase | undefined;
             }
         );
+        // Older stores also queued content updates. Trim the acknowledged prefix
+        // before discarding them, since its marker may belong to an update.
+        const localChanges = unappliedChanges(
+            database.state,
+            stored.localChanges ?? []
+            // eslint-disable-next-line no-restricted-syntax -- Migration needs a narrowed copy, not removal of a specific object.
+        ).filter((change) => change.type !== "update");
         if (
-            stored.localChanges?.length &&
+            localChanges.length &&
             stored.localChangesVaultKey !== vaultKey(settings.getSettings())
         ) {
             throw new Error(
@@ -168,7 +180,6 @@ export class SyncClient {
         );
         const serverConfig = new ServerConfig(service);
         const notifier = new FileChangeNotifier();
-        const localChanges = stored.localChanges ?? [];
         let syncer: Syncer;
         const files = new FileOperations(
             fs,
@@ -283,7 +294,7 @@ export class SyncClient {
             this.check();
             if (this.started)
                 throw new Error("SyncClient has already been started");
-            await this.syncer.recoverLocalState();
+            await this.syncer.reloadLocalState();
             await this.database.bindVault(
                 vaultKey(this.settings.getSettings())
             );
@@ -310,7 +321,7 @@ export class SyncClient {
         await stopped;
     }
 
-    /** Restart transports; never discard pending requests or filesystem journals. */
+    /** Restart transports; never discard pending requests. */
     public async reset(): Promise<void> {
         await this.lifecycle.withLock(async () => {
             this.check();
@@ -335,12 +346,11 @@ export class SyncClient {
                     this.database.state.initialized ||
                     this.database.state.bootstrap ||
                     this.database.state.pending ||
-                    this.database.state.application ||
                     this.syncer.hasLocalChanges ||
                     Object.keys(this.database.state.local).length)
             )
                 throw new Error(
-                    "Changing vaults requires a separate state store and client; pending recovery data must not be reset"
+                    "Changing vaults requires a separate state store and client; existing sync state must not be reset"
                 );
 
             try {

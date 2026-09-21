@@ -43,12 +43,8 @@ export class DeterministicAgent {
         });
         this.disk.boundary = async (label) => {
             const rename = this.nextWriteRename;
-            // v4 installs through an exclusive rename, never write-in-place.
-            if (
-                rename &&
-                label.startsWith("durable:rename:") &&
-                label.endsWith(`->${rename.oldPath}`)
-            ) {
+            // Inject after the content write, before the metadata save.
+            if (rename && label === `durable:write:${rename.oldPath}`) {
                 this.nextWriteRename = undefined;
                 await this.rename(rename.oldPath, rename.newPath);
             }

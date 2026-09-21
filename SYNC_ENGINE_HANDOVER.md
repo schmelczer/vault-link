@@ -1,3 +1,8 @@
+> Historical handover: its client journaling, recovery-archive and filesystem
+> durability descriptions are superseded by the direct-application model in
+> [the sync client README](frontend/sync-client/README.md). The current client
+> saves complete metadata and reconciles current disk contents after interruption.
+
 # Sync engine v4 handover
 
 Prepared on 2026-09-19. This records the implementation delivered in the preceding

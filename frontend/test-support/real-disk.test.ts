@@ -8,12 +8,11 @@ import { promisify } from "node:util";
 import { RealDisk } from "./real-disk";
 import { Database, emptyState } from "../sync-client/src/persistence/database";
 import { FileOperations } from "../sync-client/src/file-operations/file-operations";
-import { Logger } from "../sync-client/src/tracing/logger";
 import type { ServerConfig } from "../sync-client/src/services/server-config";
 import { toStoredSnapshot } from "../sync-client/src/sync-operations/content";
 
 test(
-    "real filesystem: exclusive operations, unsafe entries, and journal swaps",
+    "real filesystem: exclusive operations, unsafe entries, and file swaps",
     { timeout: 20_000 },
     async () => {
         const directory = await fs.mkdtemp(
@@ -53,11 +52,9 @@ test(
             );
             await disk.write("a.md", snapshot("A"));
             await disk.write("b.md", snapshot("B"));
-            // Recovery must flush the old source's ancestors even if another
-            // writer has replaced one of those directories with a file.
+            // A file in an ancestor position makes descendants absent.
             assert.equal(await disk.stat("a.md/absent.md"), undefined);
             assert.equal(await disk.readSnapshot("a.md/absent.md"), undefined);
-            await disk.flushPaths(["a.md/absent.md"]);
             await assert.rejects(disk.rename("a.md", "b.md"));
             await assert.rejects(disk.delete("a.md"), /regular file/);
             await fs.symlink("a.md", path.join(root, "symlink"));
@@ -105,7 +102,6 @@ test(
                     ).hash
                 };
             const database = new Database(
-                new Logger(),
                 initial,
                 async () => {},
                 "real",
@@ -129,7 +125,6 @@ test(
                 ).toString(),
                 "A"
             );
-            assert.equal(database.state.application, undefined);
         } finally {
             await fs.rm(directory, { recursive: true });
         }

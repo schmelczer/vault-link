@@ -18,7 +18,6 @@ it("retains future cursors and publishes them when content catches up", async ()
         getDocumentByDocumentId: () => ({
             documentId: "document",
             relativePath: "note.md",
-            isDeleted: false,
             metadata: { parentVersionId: 2, hash: contentHash }
         })
     } as unknown as Database;

@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { isDeepStrictEqual } from "node:util";
 import { MemoryDisk, MemoryPersistence } from "./storage";
 import {
     Database,
@@ -9,7 +8,6 @@ import {
 } from "../sync-client/src/persistence/database";
 import { FileOperations } from "../sync-client/src/file-operations/file-operations";
 import { toStoredSnapshot } from "../sync-client/src/sync-operations/content";
-import { Logger } from "../sync-client/src/tracing/logger";
 import type { ServerConfig } from "../sync-client/src/services/server-config";
 import { mergeFileManifests } from "../sync-client/src/sync-operations/file-manifest";
 import { assertManifest, pathDecision } from "./oracles";
@@ -45,7 +43,6 @@ async function fixture(
     const persistence = new MemoryPersistence({ database: initial });
     const restart = (changes: LocalChange[] = []) => {
         const database = new Database(
-            new Logger(),
             persistence.snapshot().database,
             async (next) => persistence.save({ database: next }),
             "recovery-test",
@@ -85,7 +82,25 @@ async function swapFixture() {
         ["b.md", bytes("A")],
         ["nested/c.md", bytes("C")]
     ]);
-    return { ...current, next, writes, expected, retained: [] as string[] };
+    return { ...current, next, writes, expected };
+}
+
+async function directoryCycleFixture() {
+    const current = await fixture({
+        a: { path: "a", text: "A" },
+        b: { path: "b/deep/child", text: "B" }
+    });
+    const next = structuredClone(current.initial);
+    next.local = { a: "b", b: "a/deep/child" };
+    return {
+        ...current,
+        next,
+        writes: {},
+        expected: new Map([
+            ["b", bytes("A")],
+            ["a/deep/child", bytes("B")]
+        ])
+    };
 }
 
 async function crossDirectoryFixture() {
@@ -101,7 +116,7 @@ async function crossDirectoryFixture() {
         ["dst/a.md", bytes("A")],
         ["src/keep.md", bytes("untouched sibling")]
     ]);
-    return { ...current, next, writes: {}, expected, retained: [] as string[] };
+    return { ...current, next, writes: {}, expected };
 }
 
 async function mergeFixture() {
@@ -123,8 +138,7 @@ async function mergeFixture() {
                 "note.md",
                 bytes("local first paragraph\n\nremote last paragraph\n")
             ]
-        ]),
-        retained: [local]
+        ])
     };
 }
 
@@ -145,8 +159,7 @@ async function deletionFixture() {
                 })
             }
         },
-        expected: new Map([["a.bin", bytes("remote binary\0")]]),
-        retained: ["private binary edit\0", "unsent deleted bytes"]
+        expected: new Map([["a.bin", bytes("remote binary\0")]])
     };
 }
 
@@ -175,19 +188,19 @@ async function permanentDestinationFixture() {
         expected: new Map([
             ["Recovered a.md", bytes("REMOTE")],
             ["good.md", bytes("B")]
-        ]),
-        retained: ["A"]
+        ])
     };
 }
 
 for (const [name, create] of [
     ["swap and create", swapFixture],
-    ["cross-directory move with surviving sibling", crossDirectoryFixture],
-    ["merge during recovery", mergeFixture],
-    ["binary replacement, deletion and retained bytes", deletionFixture],
-    ["permanent destination replan", permanentDestinationFixture]
+    ["file/directory cycle", directoryCycleFixture],
+    ["cross-directory move", crossDirectoryFixture],
+    ["content merge", mergeFixture],
+    ["binary replacement and deletion", deletionFixture],
+    ["permanent destination fallback", permanentDestinationFixture]
 ] as const) {
-    test(`${name}: interrupt every apply and replay boundary, then power-cycle again`, async (t) => {
+    test(`${name}: interrupted operations leave metadata usable by ordinary scans`, async (t) => {
         const baseline = await create();
         const labels: string[] = [];
         const trace = (label: string) => {
@@ -200,172 +213,90 @@ for (const [name, create] of [
         baseline.persistence.boundary = trace;
         await baseline.restart().files.apply(baseline.next, baseline.writes);
         assert.deepEqual(baseline.disk.userFiles(), baseline.expected);
-        assert(labels.some((label) => label.startsWith("visible:rename:")));
-        assert(labels.includes("durable:save"));
-        let replayCrashes = 0;
-        for (const powerLoss of [false, true]) {
-            for (let index = 0; index < labels.length; index++) {
+        assert.deepEqual(
+            baseline.persistence.snapshot().database!.local,
+            baseline.expectedLocal ?? baseline.next.local
+        );
+        assert(labels.length > 0);
+        for (const powerLoss of [false, true])
+            for (let cut = 0; cut < labels.length; cut++) {
                 await t.test(
-                    `${powerLoss ? "power" : "process"} crash #${index}: ${labels[index]}`,
+                    `${powerLoss ? "power" : "process"} interruption at ${labels[cut]}`,
                     async () => {
                         const current = await create();
-                        const clearFaults = () => {
-                            current.disk.boundary = current.permanentFault;
-                            current.persistence.boundary = () => {};
-                        };
-                        const interrupt = async (
-                            action: () => Promise<void>,
-                            at: number,
-                            power: boolean
-                        ) => {
-                            let position = 0,
-                                fired = false;
-                            const fault = (label: string) => {
-                                if (label.startsWith("read:")) return;
-                                if (position++ === at) {
-                                    fired = true;
-                                    current.disk.crash(power);
-                                    throw new Error("Injected interruption");
-                                }
-                            };
-                            current.disk.boundary = (label) => {
-                                current.permanentFault(label);
-                                fault(label);
-                            };
-                            current.persistence.boundary = fault;
-                            try {
-                                await assert.rejects(
-                                    action(),
-                                    /Injected interruption/
-                                );
-                                assert(fired, "Fault index did not occur");
-                            } finally {
-                                clearFaults();
+                        let seen = 0;
+                        let fired = false;
+                        const interrupt = (label: string) => {
+                            if (label.startsWith("read:")) return;
+                            if (seen++ === cut) {
+                                fired = true;
+                                current.disk.crash(powerLoss);
+                                throw new Error("interrupted");
                             }
-                        };
-                        const verify = (
-                            runtime: ReturnType<typeof current.restart>
-                        ) => {
-                            assert.equal(
-                                runtime.database.state.application,
-                                undefined
-                            );
-                            assert.deepEqual(
-                                runtime.database.state.local,
-                                current.expectedLocal ?? current.next.local
-                            );
-                            assert.deepEqual(
-                                current.disk.userFiles(),
-                                current.expected,
-                                "Exact files must survive interrupted replay"
-                            );
-                            const retained = current.disk
-                                .image()
-                                .visible.filter(
-                                    ([path, entry]) =>
-                                        entry &&
-                                        path.startsWith(
-                                            ".vault-link-sync/recovery/"
-                                        ) &&
-                                        path.endsWith(".content")
-                                )
-                                .map(([, entry]) =>
-                                    Buffer.from(entry!.content).toString()
-                                )
-                                .sort();
-                            assert.deepEqual(
-                                retained,
-                                [...current.retained].sort(),
-                                "Recovery archives lost or duplicated displaced bytes"
-                            );
-                            assert(
-                                !current.disk
-                                    .image()
-                                    .visible.some(
-                                        ([path, entry]) =>
-                                            entry &&
-                                            path.startsWith(
-                                                ".vault-link-sync/transactions/"
-                                            )
-                                    ),
-                                "Completed recovery left transaction artifacts"
-                            );
-                        };
-                        const finish = async (resubmit: boolean) => {
-                            let runtime = current.restart();
-                            await runtime.files.recover();
-                            if (resubmit)
-                                await runtime.files.apply(
-                                    current.next,
-                                    current.writes
-                                );
-                            await runtime.files.recover();
-                            verify(runtime);
-                            current.disk.crash(true);
-                            runtime = current.restart();
-                            await runtime.files.recover();
-                            verify(runtime);
-                        };
-                        await interrupt(
-                            () =>
-                                current
-                                    .restart()
-                                    .files.apply(current.next, current.writes),
-                            index,
-                            powerLoss
-                        );
-                        const saved = current.persistence.snapshot();
-                        const diskImage = current.disk.image();
-                        const intentWasNotSaved = isDeepStrictEqual(
-                            saved.database,
-                            current.initial
-                        );
-                        // Trace replay from the actual interrupted state, including
-                        // recovery-only branches such as already-visible installs.
-                        const replayLabels: string[] = [];
-                        const traceReplay = (label: string) => {
-                            if (!label.startsWith("read:"))
-                                replayLabels.push(label);
                         };
                         current.disk.boundary = (label) => {
                             current.permanentFault(label);
-                            traceReplay(label);
+                            interrupt(label);
                         };
-                        current.persistence.boundary = traceReplay;
-                        await current.restart().files.recover();
-                        clearFaults();
-                        await finish(intentWasNotSaved);
-                        for (const secondPowerLoss of [false, true]) {
-                            for (
-                                let replay = 0;
-                                replay < replayLabels.length;
-                                replay++
-                            ) {
-                                current.disk.crash();
-                                current.disk.restore(diskImage);
-                                await current.persistence.save(saved);
-                                try {
-                                    await interrupt(
-                                        () => current.restart().files.recover(),
-                                        replay,
-                                        secondPowerLoss
-                                    );
-                                    await finish(false);
-                                    replayCrashes++;
-                                } catch (error) {
-                                    throw new Error(
-                                        `Second ${secondPowerLoss ? "power" : "process"} crash #${replay}: ${replayLabels[replay]}`,
-                                        { cause: error }
-                                    );
-                                }
-                            }
+                        current.persistence.boundary = interrupt;
+                        await assert.rejects(
+                            current
+                                .restart()
+                                .files.apply(current.next, current.writes),
+                            /interrupted/
+                        );
+                        assert(fired);
+                        current.disk.boundary = () => {};
+                        current.persistence.boundary = () => {};
+                        // The user may edit after the interruption, including a partial
+                        // write or a file whose metadata was never saved.
+                        await current.disk.userWrite(
+                            "after-restart.md",
+                            bytes("user edit")
+                        );
+                        const runtime = current.restart();
+                        const observed = current.disk.userFiles();
+                        await scanChanges(runtime, []);
+                        assert.deepEqual(
+                            current.disk.userFiles(),
+                            observed,
+                            "A scan must not replay old filesystem intentions"
+                        );
+                        assertManifest(runtime.database.state.local);
+                        assert.deepEqual(
+                            new Set(
+                                Object.values(runtime.database.state.local)
+                            ),
+                            new Set(observed.keys())
+                        );
+                        for (const [id, path] of Object.entries(
+                            runtime.database.state.local
+                        )) {
+                            assert(
+                                runtime.database.state.documents[id]
+                                    .materialized
+                            );
+                            assert.equal(
+                                runtime.database.state.documents[id]
+                                    .observedHash,
+                                (await runtime.files.snapshot(path))!.hash
+                            );
                         }
+                        assert(
+                            (await runtime.files.listFilesRecursively()).every(
+                                (path) => !path.startsWith(".vault-link-sync/")
+                            )
+                        );
+                        const state = structuredClone(runtime.database.state);
+                        await scanChanges(current.restart(), []);
+                        assert.deepEqual(
+                            current.persistence.snapshot().database,
+                            state,
+                            "Second startup must be stable"
+                        );
                     }
                 );
             }
-        }
-        assert(replayCrashes > 0, "No interrupted recovery was exercised");
-        t.diagnostic(`${replayCrashes} second crashes during journal replay`);
     });
 }
 
@@ -645,51 +576,5 @@ test("normalization-sensitive disk does not lose a distinct decomposed filename"
         Object.keys(runtime.database.state.local).length,
         4,
         "Distinct Unicode file vanished from the scan"
-    );
-});
-
-test("notified editor move during a remote swap keeps the moved document's UUID", async () => {
-    const current = await fixture();
-    const changes: LocalChange[] = [];
-    const runtime = current.restart(changes);
-    let fired = false;
-    current.persistence.boundary = async (label) => {
-        if (
-            !fired &&
-            label === "durable:save" &&
-            current.persistence.snapshot().database?.application
-        ) {
-            fired = true;
-            await current.disk.userRename("b.md", "editor.md");
-            changes.push({
-                type: "move",
-                oldPath: "b.md",
-                relativePath: "editor.md"
-            });
-        }
-    };
-    const next = structuredClone(runtime.database.state);
-    next.local = { a: "b.md", b: "a.md" };
-    await runtime.files.apply(next);
-    assert(fired);
-    await scanLocalFiles({
-        next: structuredClone(runtime.database.state),
-        changes,
-        files: runtime.files,
-        guard: () => {},
-        ignored: () => false,
-        oversized: () => false,
-        commit: (next) => runtime.database.commit(next)
-    });
-    assert.equal(
-        runtime.database.state.local.b,
-        "editor.md",
-        "Editor move was attributed to the wrong document"
-    );
-    assert.equal(
-        Buffer.from(
-            current.disk.userFiles().get(runtime.database.state.local.b)!
-        ).toString(),
-        "B"
     );
 });

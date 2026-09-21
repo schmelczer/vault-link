@@ -1,170 +1,144 @@
 import assert from "node:assert/strict";
 import { PermanentSyncError } from "../sync-client/src/errors/errors";
 import { test } from "node:test";
-import {
-    Database,
-    emptyState,
-    type StoredDatabase
-} from "../sync-client/src/persistence/database";
-import { Settings } from "../sync-client/src/persistence/settings";
-import { FileOperations } from "../sync-client/src/file-operations/file-operations";
+import { Database, emptyState } from "../sync-client/src/persistence/database";
 import { Syncer } from "../sync-client/src/sync-operations/syncer";
 import { SyncClient } from "../sync-client/src/sync-client";
 import { toStoredSnapshot } from "../sync-client/src/sync-operations/content";
-import { Logger } from "../sync-client/src/tracing/logger";
-import { SyncHistory } from "../sync-client/src/tracing/sync-history";
-import { FixedSizeDocumentCache } from "../sync-client/src/utils/data-structures/fix-sized-cache";
-import { EventListeners } from "../sync-client/src/utils/data-structures/event-listeners";
 import { allocatePortablePath } from "../sync-client/src/utils/portable-path";
-import type { ServerConfig } from "../sync-client/src/services/server-config";
-import type { SyncService } from "../sync-client/src/services/sync-service";
-import type { WebSocketManager } from "../sync-client/src/services/websocket-manager";
 import { MemoryDisk, MemoryPersistence } from "./storage";
-import type { LocalChange } from "../sync-client/src/sync-operations/local-changes";
 
-const bytes = (text: string) => new TextEncoder().encode(text);
-const head = (id: string, version: number, content: string) => ({
-    documentId: id,
-    vaultUpdateId: version,
-    contentSize: bytes(content).length,
-    updatedDate: "2026-09-19T00:00:00Z",
-    userId: "user",
-    deviceId: "device"
+import { bytes, head, fixture } from "./sync-fixture";
+
+test("offline content notifications need no saves and restart reads the current bytes", async () => {
+    const disk = new MemoryDisk();
+    await disk.userWrite("a.md", bytes("original"));
+    const initial = emptyState(JSON.stringify(["http://offline.test", "test"]));
+    initial.initialized = true;
+    initial.local = { a: "a.md" };
+    initial.documents.a = {
+        materialized: true,
+        observedHash: (await toStoredSnapshot({ content: bytes("original") }))
+            .hash
+    };
+    const store = new MemoryPersistence({
+        database: initial,
+        settings: { remoteUri: "http://offline.test", vaultName: "test" }
+    });
+    let client = await SyncClient.create({ fs: disk, persistence: store });
+    try {
+        const saved = store.snapshot();
+        store.boundary = () => {
+            throw new Error("content notifications must not save");
+        };
+        for (let edit = 0; edit < 20; edit++) {
+            await disk.userWrite("a.md", bytes(`edit ${edit}`));
+            await client.syncLocallyUpdatedFile({ relativePath: "a.md" });
+        }
+        await client.destroy();
+        assert.deepEqual(store.snapshot(), saved);
+        store.boundary = () => {};
+        // A final edit has no notification at all.
+        await disk.userWrite("a.md", bytes("latest offline bytes"));
+        client = await SyncClient.create({ fs: disk, persistence: store });
+        const internals = client as unknown as {
+            database: Database;
+            syncer: {
+                stopped: boolean;
+                scan(): Promise<void>;
+                preparePush(): Promise<boolean>;
+            };
+        };
+        await internals.syncer.scan();
+        internals.syncer.stopped = false;
+        assert.equal(await internals.syncer.preparePush(), true);
+        const pending = internals.database.state.pending;
+        assert(pending?.type === "content");
+        assert.equal(pending.documentId, "a");
+        assert.equal(
+            Buffer.from(pending.snapshot.contentBase64, "base64").toString(),
+            "latest offline bytes"
+        );
+    } finally {
+        store.boundary = () => {};
+        await client.destroy();
+    }
 });
 
-async function fixture(
-    contents: Record<string, string> = { "a.md": "local" },
-    service: Partial<SyncService> = {}
-) {
+test("legacy content notifications preserve the acknowledged namespace prefix on restart", async () => {
     const disk = new MemoryDisk();
-    const initial = emptyState("test");
+    await disk.userWrite("d.md", bytes("A"));
+    await disk.userWrite("b.md", bytes("B"));
+    const initial = emptyState(JSON.stringify(["http://offline.test", "test"]));
     initial.initialized = true;
-    for (const [path, content] of Object.entries(contents)) {
-        await disk.userWrite(path, bytes(content));
-        const id = path.split(".")[0];
-        initial.local[id] = path;
+    initial.local = { a: "c.md", b: "b.md" };
+    initial.fileManifest.entries = { ...initial.local };
+    for (const [id, content] of [
+        ["a", "A"],
+        ["b", "B"]
+    ])
         initial.documents[id] = {
             materialized: true,
             observedHash: (await toStoredSnapshot({ content: bytes(content) }))
                 .hash
         };
+    initial.lastAppliedLocalChangeId = "consumed-update";
+    const saved = {
+        database: initial,
+        settings: { remoteUri: "http://offline.test", vaultName: "test" },
+        localChangesVaultKey: initial.vaultKey,
+        localChanges: [
+            {
+                type: "move",
+                oldPath: "a.md",
+                relativePath: "b.md",
+                identities: { a: "a.md" },
+                changeId: "consumed-move"
+            },
+            { type: "update", path: "c.md", changeId: "consumed-update" },
+            { type: "update", path: "b.md", changeId: "new-update" },
+            {
+                type: "move",
+                oldPath: "c.md",
+                relativePath: "d.md",
+                identities: { a: "c.md" },
+                changeId: "new-move"
+            }
+        ]
+    };
+    const store = new MemoryPersistence(saved);
+    const client = await SyncClient.create({ fs: disk, persistence: store });
+    try {
+        const internals = client as unknown as {
+            database: Database;
+            syncer: { scan(): Promise<void> };
+        };
+        await internals.syncer.scan();
+        assert.deepEqual(internals.database.state.local, {
+            a: "d.md",
+            b: "b.md"
+        });
+        assert.equal(
+            internals.database.state.lastAppliedLocalChangeId,
+            "new-move"
+        );
+    } finally {
+        await client.destroy();
     }
-    initial.fileManifest = { fileManifestId: 1, entries: { ...initial.local } };
-    const persistence = new MemoryPersistence({ database: initial });
-    const logger = new Logger();
-    const database = new Database(
-        logger,
-        initial,
-        async (next) => persistence.save({ database: next }),
-        "test",
-        async () => (await persistence.load()).database as StoredDatabase
-    );
-    const config = {
-        initialize: async () => {},
-        getConfig: async () => ({ mergeableFileExtensions: ["md"] }),
-        reset: () => {}
-    } as unknown as ServerConfig;
-    const settings = new Settings(
-        logger,
-        { syncIntervalMs: 0 },
-        async () => {}
-    );
-    const changes: LocalChange[] = [];
-    const files = new FileOperations(
-        disk.session(),
-        database,
-        config,
-        undefined,
-        { entries: () => changes, flush: async () => {} }
-    );
-    const websocket = {
-        onWebSocketStatusChanged: new EventListeners(),
-        onRemoteVaultUpdateReceived: new EventListeners()
-    } as unknown as WebSocketManager;
-    const syncer = new Syncer(
-        "device",
-        logger,
-        database,
-        settings,
-        service as SyncService,
-        websocket,
-        files,
-        config,
-        new SyncHistory(logger),
-        new FixedSizeDocumentCache(1024),
-        { entries: changes, save: async () => {} }
-    );
-    const internals = syncer as unknown as {
-        finishPending(): Promise<void>;
-        preparePush(): Promise<boolean>;
-        scan(): Promise<void>;
-        incorporateEventBatch(
-            batch: import("../sync-client/src/services/types/EventBatch").EventBatch
-        ): Promise<void>;
-        stopped: boolean;
-        incorporateFileManifest(remote: {
-            fileManifestId: number;
-            entries: Record<string, string>;
-        }): Promise<void>;
-        incorporateContent(remote: ReturnType<typeof head>): Promise<void>;
-    };
-    return {
-        disk,
-        database,
-        files,
-        settings,
-        syncer,
-        internals,
-        persistence,
-        changes
-    };
-}
-
-test("remote binary replacement retains displaced bytes outside the visible namespace", async () => {
-    const f = await fixture({ "a.bin": "private edit" });
-    const next = structuredClone(f.database.state);
-    await f.files.apply(next, {
-        a: {
-            expected: await f.files.snapshot("a.bin"),
-            replacement: await toStoredSnapshot({ content: bytes("remote") })
-        }
-    });
-    assert.deepEqual(f.disk.userFiles(), new Map([["a.bin", bytes("remote")]]));
-    const retained = (await f.disk.listFilesRecursively()).filter((path) =>
-        path.startsWith(".vault-link-sync/recovery/")
-    );
-    assert(
-        (
-            await Promise.all(retained.map((path) => f.disk.readSnapshot(path)))
-        ).some(
-            (value) =>
-                value &&
-                Buffer.from(value.content).toString() === "private edit"
-        )
-    );
-    await f.files.recover();
-    assert.deepEqual(
-        await f.disk.listFilesRecursively(),
-        ["a.bin", ...retained].sort()
-    );
 });
 
-test("remote deletion retains unsent bytes for recovery", async () => {
-    const f = await fixture();
+test("remote binary replacement and deletion do not create backup artifacts", async () => {
+    const f = await fixture({ "a.bin": "private edit" });
+    await f.files.apply(structuredClone(f.database.state), {
+        a: { replacement: await toStoredSnapshot({ content: bytes("remote") }) }
+    });
+    assert.deepEqual(await f.disk.listFilesRecursively(), ["a.bin"]);
+    assert.deepEqual(f.disk.userFiles(), new Map([["a.bin", bytes("remote")]]));
     await f.internals.incorporateFileManifest({
         fileManifestId: 2,
         entries: {}
     });
-    assert.equal(f.disk.userFiles().size, 0);
-    const retained = await f.disk.listFilesRecursively();
-    assert(
-        (
-            await Promise.all(retained.map((path) => f.disk.readSnapshot(path)))
-        ).some(
-            (value) =>
-                value && Buffer.from(value.content).toString() === "local"
-        )
-    );
+    assert.deepEqual(await f.disk.listFilesRecursively(), []);
 });
 
 test("rejected content recovery remains idempotent across a rename and network failure", async () => {
@@ -281,45 +255,6 @@ test("unfinished bootstrap cannot be rebound to another vault", async () => {
     }
 });
 
-test("local swap arriving after a remote journal is saved preserves both identities and contents", async () => {
-    const f = await fixture({ "a.md": "A", "b.md": "B" });
-    let fired = false;
-    f.persistence.boundary = async (label) => {
-        if (
-            fired ||
-            label !== "durable:save" ||
-            !f.persistence.snapshot().database?.application
-        )
-            return;
-        fired = true;
-        for (const [oldPath, relativePath] of [
-            ["a.md", "tmp.md"],
-            ["b.md", "a.md"],
-            ["tmp.md", "b.md"]
-        ]) {
-            await f.disk.userRename(oldPath, relativePath);
-            await f.syncer.syncLocallyUpdatedFile({ oldPath, relativePath });
-        }
-    };
-    const next = structuredClone(f.database.state);
-    next.local = { a: "remote-a.md", b: "remote-b.md" };
-    await f.files.apply(next);
-    assert(fired);
-    assert.equal(
-        Buffer.from(
-            f.disk.userFiles().get(f.database.state.local.a)!
-        ).toString(),
-        "A"
-    );
-    assert.equal(
-        Buffer.from(
-            f.disk.userFiles().get(f.database.state.local.b)!
-        ).toString(),
-        "B"
-    );
-    assert.deepEqual(f.database.state.local, { a: "b.md", b: "a.md" });
-});
-
 test("a rejected upload is retained locally and does not block another file or a corrected snapshot", async () => {
     let reject = true;
     const sent: string[] = [];
@@ -375,7 +310,7 @@ test("a transient upload failure retries the exact request and recovers its ackn
     assert.equal(f.database.state.pending, undefined);
 });
 
-test("a persisted upload rejection finishes locally after a recovery write fails", async () => {
+test("a persisted upload rejection finishes without filesystem writes", async () => {
     let uploads = 0;
     const f = await fixture(undefined, {
         putFileContent: async () => {
@@ -385,29 +320,14 @@ test("a persisted upload rejection finishes locally after a recovery write fails
     });
     f.internals.stopped = false;
     await f.internals.preparePush();
-    const { pending } = f.database.state;
-    assert(pending);
-    const { requestId } = pending.request;
-    const retained = `.vault-link-sync/requests/${requestId}.content`;
-    const { boundary } = f.disk;
-    f.disk.boundary = (label): void => {
-        if (label === `before:write:${retained}`)
-            throw new Error("recovery write failed");
+    f.disk.boundary = (label) => {
+        if (!label.startsWith("read:"))
+            throw new Error("Unexpected filesystem mutation");
     };
-    await assert.rejects(f.internals.finishPending(), /recovery write failed/);
-    assert.equal(
-        f.persistence.snapshot().database?.pending?.rejection,
-        "HTTP 413"
-    );
-    f.disk.boundary = boundary;
     await f.internals.finishPending();
     assert.equal(uploads, 1);
     assert.equal(f.database.state.pending, undefined);
     assert.equal(f.database.state.documents.a.rejected?.message, "HTTP 413");
-    assert.deepEqual(
-        (await f.disk.readSnapshot(retained))?.content,
-        bytes("local")
-    );
     assert.deepEqual(f.disk.userFiles(), new Map([["a.md", bytes("local")]]));
 });
 
@@ -748,79 +668,6 @@ test("an incoming ignored document cannot force an existing ignored file to move
         Object.keys(f.database.state.local).length
     );
 });
-
-for (const boundary of ["visible", "durable"] as const) {
-    for (const action of [
-        "move-installed",
-        "recreate-staged-source"
-    ] as const) {
-        test(`${action} at a ${boundary} filesystem boundary keeps original identities and all bytes`, async () => {
-            const f = await fixture({ "a.md": "A", "b.md": "B" });
-            let changed = false;
-            f.disk.boundary = async (label) => {
-                if (changed || !label.startsWith(`${boundary}:rename:`)) return;
-                if (action === "move-installed" && label.endsWith("->b.md")) {
-                    changed = true;
-                    await f.disk.userRename("b.md", "later.md");
-                    await f.syncer.syncLocallyUpdatedFile({
-                        oldPath: "b.md",
-                        relativePath: "later.md"
-                    });
-                } else if (
-                    action === "recreate-staged-source" &&
-                    label.includes("rename:a.md->")
-                ) {
-                    changed = true;
-                    await f.disk.userWrite("a.md", bytes("new"));
-                    await f.syncer.syncLocallyCreatedFile("a.md");
-                }
-            };
-            const next = structuredClone(f.database.state);
-            next.local = { a: "b.md", b: "a.md" };
-            next.fileManifest = {
-                fileManifestId: 2,
-                entries: { ...next.local }
-            };
-            await f.files.apply(next);
-            assert(changed);
-            assert.equal(
-                Buffer.from(
-                    (await f.disk.readSnapshot(f.database.state.local.a))!
-                        .content
-                ).toString(),
-                "A"
-            );
-            assert.equal(
-                Buffer.from(
-                    (await f.disk.readSnapshot(f.database.state.local.b))!
-                        .content
-                ).toString(),
-                "B"
-            );
-            assert.deepEqual(
-                [...f.disk.userFiles().values()]
-                    .map((value) => Buffer.from(value).toString())
-                    .sort(),
-                action === "move-installed" ? ["A", "B"] : ["A", "B", "new"]
-            );
-            f.disk.crash(true);
-            assert.equal(
-                Buffer.from(
-                    (await f.disk.readSnapshot(f.database.state.local.a))!
-                        .content
-                ).toString(),
-                "A"
-            );
-            assert.equal(
-                Buffer.from(
-                    (await f.disk.readSnapshot(f.database.state.local.b))!
-                        .content
-                ).toString(),
-                "B"
-            );
-        });
-    }
-}
 
 test("rejected content is reported to callers and an explicit retry clears the rejection", async () => {
     const f = await fixture(undefined, {

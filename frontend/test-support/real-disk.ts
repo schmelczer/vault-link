@@ -4,7 +4,6 @@ import * as path from "node:path";
 import { constants } from "node:fs";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { randomUUID } from "node:crypto";
 import type { FileSystemOperations, FileSnapshot } from "sync-client";
 
 const exec = promisify(execFile);
@@ -50,17 +49,6 @@ export class RealDisk implements FileSystemOperations {
             )
                 return undefined;
             throw error;
-        }
-    }
-    private async flush(absolute: string): Promise<void> {
-        const handle = await fs.open(
-            absolute,
-            constants.O_RDONLY | constants.O_NOFOLLOW
-        );
-        try {
-            await handle.sync();
-        } finally {
-            await handle.close();
         }
     }
     public async stat(relative: string) {
@@ -140,8 +128,6 @@ export class RealDisk implements FileSystemOperations {
                     throw error;
             }
             assert((await fs.lstat(next)).isDirectory());
-            await this.flush(next);
-            await this.flush(current);
             current = next;
         }
     }
@@ -154,44 +140,16 @@ export class RealDisk implements FileSystemOperations {
             "This disk-only fixture has no editor selections"
         );
         const destination = await this.resolve(relative);
-        const staging = ".vault-link-sync/adapter-staging";
-        await this.createDirectory(staging);
-        const source = path.join(this.root, staging, randomUUID());
-        const handle = await fs.open(source, "wx", 0o600);
-        try {
-            await handle.writeFile(snapshot.content);
-            await handle.sync();
-        } finally {
-            await handle.close();
-        }
-        try {
-            await exec(this.helper, ["rename", source, destination]);
-            await this.flush(path.dirname(source));
-            await this.flush(path.dirname(destination));
-        } finally {
-            await fs.unlink(source).catch((error: NodeJS.ErrnoException) => {
-                if (error.code !== "ENOENT") throw error;
-            });
-        }
+        await fs.writeFile(destination, snapshot.content, {
+            flag: "wx",
+            mode: 0o600
+        });
     }
     public async rename(from: string, to: string): Promise<void> {
         const source = await this.resolve(from),
             destination = await this.resolve(to);
         assert((await this.info(source))?.isFile());
-        await this.flush(source);
         await exec(this.helper, ["rename", source, destination]);
-        await this.flush(path.dirname(source));
-        await this.flush(path.dirname(destination));
-    }
-    public async flushPaths(paths: readonly string[]): Promise<void> {
-        for (const relative of paths) {
-            let absolute = await this.resolve(relative);
-            for (;;) {
-                if (await this.info(absolute)) await this.flush(absolute);
-                if (absolute === this.root) break;
-                absolute = path.dirname(absolute);
-            }
-        }
     }
     public async delete(relative: string): Promise<void> {
         assert(relative, "Cannot prune root");
@@ -202,7 +160,6 @@ export class RealDisk implements FileSystemOperations {
         for (const child of await fs.readdir(absolute))
             await this.delete(`${relative}/${child}`);
         await fs.rmdir(absolute);
-        await this.flush(path.dirname(absolute));
     }
     public async deleteFile(relative: string): Promise<void> {
         const absolute = await this.resolve(relative);
@@ -210,6 +167,5 @@ export class RealDisk implements FileSystemOperations {
         if (!entry) return;
         assert(entry.isFile() && entry.nlink === 1, "Cannot unlink non-file");
         await fs.unlink(absolute);
-        await this.flush(path.dirname(absolute));
     }
 }

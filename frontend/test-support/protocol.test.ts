@@ -248,7 +248,6 @@ for (const [kind, format, originalPath] of [
                     "Restart changed the persisted request"
                 );
                 assert.equal(restarted.stored.database!.pending, undefined);
-                assert.equal(restarted.stored.database!.application, undefined);
                 const recovered = new MemoryDisk();
                 recovered.restore(restarted.disk);
                 assert.deepEqual(

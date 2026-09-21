@@ -9,8 +9,7 @@ VaultLink works well for most Obsidian vaults, but has some constraints you shou
 Only **`.md`** and **`.txt`** files get automatic conflict-free merging.
 
 For other file types, a one-sided change is retained. Concurrent unmergeable
-changes keep the server's version and archive displaced local bytes for recovery.
-Review recovery artifacts when both devices edit a binary file.
+changes keep the server's version. The client does not archive displaced bytes.
 
 ### Binary Detection
 
@@ -60,7 +59,7 @@ Rough estimates (varies by vault size and activity):
 
 **Growth**: Version history grows with every change. A 10 MB vault with frequent edits might grow to 100+ MB over months.
 
-Active journals, immutable merge bases and request receipts must not be independently deleted. There is no automatic safe history-pruning protocol.
+Immutable merge bases and request receipts must not be independently deleted. There is no automatic safe history-pruning protocol.
 
 ### Implications
 
@@ -143,6 +142,14 @@ the restored server; unsent edits are preserved as separate local documents.
 Clients and server must be upgraded together. This does not replace independent
 backups or protect against arbitrary physical-media corruption.
 
+## Interrupted sync
+
+The client has no filesystem journal or power-loss durability protocol. Interrupted
+writes may leave missing, partial or moved files. On restart, normal scans reconcile
+the current files, including edits made while the client was stopped. Metadata
+saves must remain complete and readable, so the client can continue syncing; exact
+pre-interruption file contents and identities are not guaranteed.
+
 ## Known Edge Cases
 
 ### Simultaneous Deletes and Edits
@@ -150,10 +157,10 @@ backups or protect against arbitrary physical-media corruption.
 ```
 User A deletes note.md
 User B edits note.md
-Result: Manifest deletion removes the file; unsent edited bytes are retained for recovery.
+Result: Manifest deletion removes the file, including unsent local edits.
 ```
 
-Content updates do not restore deleted membership. The client retains displaced bytes in its local recovery directory.
+Content updates do not restore deleted membership. There is no local recovery archive.
 
 ### Large File Uploads
 

@@ -4,28 +4,30 @@ The engine uses one serialized loop per vault and requires Web Crypto (SHA-256).
 messages wake it; complete disk scans and the durable server event log are the
 sources of truth. Periodic reconciliation is opt-in: set `syncIntervalMs` to a
 positive interval to repair missed notifications. Unset or `0` disables polling.
-`syncLocallyCreatedFile`, `syncLocallyUpdatedFile`, and `syncLocallyDeletedFile`
-durably record logical file changes before resolving, including while offline.
-Shutdown waits for those saves. Notifications describe logical external changes: adapters suppress
+Create, delete and move notifications persist logical identity changes before
+resolving, including while offline. Shutdown waits for those saves. Content-update
+notifications only wake reconciliation; scans read the latest bytes, including after
+restart. Notifications describe logical external changes: adapters suppress
 self-generated create/delete/move notifications, and report atomic editor saves
 as content updates. This distinguishes a deliberate delete/recreate from an edit.
 Use `waitUntilFinished()` to await the active attempt; errors leave
-pending work durable and are reported to the caller. Transient failures retry;
+pending requests saved and are reported to the caller. Transient failures retry;
 authentication and protocol errors wait for an explicit wake or settings change.
 
 ## State and policy
 
 The persisted state contains the incorporated server file manifest, the current
 local identity map, and the exact pending submission. A received server file
-manifest is not a merge base until its local application is durable. Successful
+manifest becomes the merge base when its application metadata is saved. Successful
 submissions advance the base to the submitted content snapshot, preserving later
 local edits. Unknown outcomes are retried unchanged before incorporating newer
-remote state. Each contiguous event batch is folded into its final manifest and
-content heads before merging. Intermediate changes that the server has already
-reverted must not overwrite local edits.
+remote state. HTTP is the sole source of remote events; WebSocket messages only
+wake the loop. Contiguous event pages are folded in memory into their final manifest
+and content heads before merging. An interrupted fetch restarts from the last
+incorporated cursor; pagination progress is not persisted. Intermediate changes
+that the server has already reverted must not overwrite local edits.
 
-A permanent upload rejection is recorded locally, with content retained for
-recovery. An unchanged rejected payload is skipped so other files can sync; the
+A permanent upload rejection is recorded in metadata. An unchanged rejected payload is skipped so other files can sync; the
 failure remains visible in history and `waitUntilFinished()`. Editing it, resetting
 the client, or changing settings permits a fresh attempt. Earlier attempts that
 committed despite a lost reply are incorporated through normal event replay.
@@ -44,10 +46,9 @@ are implicit; empty directories are not synced.
 - Content is uploaded before new membership; the client chooses and persists UUIDs.
 - Text uses three-way `reconcile`. First contact at a matching path adopts the
   remote ID and reconciles differing text with an empty parent.
-- Concurrent binary/unmergeable edits keep the server version and retain
-  displaced local bytes in recovery. If only one side changed, keep that side.
-- Deletion follows the file manifest decision. Displaced edited bytes are retained
-  locally, without automatically restoring membership.
+- Concurrent binary/unmergeable edits keep the server version. If only one side
+  changed, keep that side. No local backup archive is created.
+- Deletion follows the file manifest decision, including when the file has local edits.
 - Notified moves preserve IDs. Offline inference requires a unique nonempty hash
   match on both sides; uncertain cases become delete/create.
 - Ignored and oversized files preserve their disk paths and remote membership.
@@ -65,9 +66,8 @@ writes. WebSocket events wake HTTP replay, which validates that checkpoint. A
 restored database cannot silently reuse a version number: a missing or different
 event incarnation returns a history mismatch before executing the request.
 
-On mismatch the client first recovers its filesystem journal and scans local
-work. It durably records a reset before clearing the old checkpoint, archives
-pending content requests, and clears old receipts, cursors, bases and diff-cache
+On mismatch the client scans local work and records a reset before clearing the
+old checkpoint. It clears old requests, receipts, cursors, bases and diff-cache
 entries. Clean files reconcile against the restored snapshot. Unsent edits with
 an old base become separate local documents; path conflicts preserve them under
 conflict names instead of applying a diff to an unrelated restored version.
@@ -79,59 +79,37 @@ Their failures are reported, and remaining observers continue receiving updates.
 
 ## Required adapter contract
 
-`FileSystemOperations` and `PersistenceProvider` define the adapter operations
-needed by the recovery model. The Obsidian and CLI adapters have intentionally
-not been updated in this rewrite.
+`FileSystemOperations` and `PersistenceProvider` define the adapter operations.
+The Obsidian and CLI adapters still need to adopt the current core interface.
+The sync client does not coordinate separate processes accessing the same vault.
 
-The sync client does not coordinate separate processes accessing the same local
-vault.
+The filesystem adapter must provide complete scans, coherent snapshots, recursive
+directory creation, exclusive file creation, no-replace renames, and deletion of
+individual regular files. Directory pruning uses only `rmdir`, never recursive
+file removal. Reject links, special files and paths escaping the vault. An unreadable
+file or directory must fail the scan rather than look like a deletion. Optional
+editor cursor metadata is applied with file content.
 
-The filesystem adapter must provide:
+User-file writes have no power-loss durability requirement. There is no filesystem
+journal, hidden staging area, replay, backup archive, or flush protocol. Swaps and
+cycles temporarily move occupied files to visible conflict names; a fresh scan
+can discover them if application stops partway through. Partial writes and edits
+made before, during or after an interruption are treated as current disk content.
+The next sync reconciles that content; it does not finish a saved filesystem plan.
+Power loss may lose bytes or rename identity and may cause a merge to run again.
 
-- Complete scans and coherent content snapshots. Missing and unreadable must
-  be distinguished; reject read races rather than return a partial snapshot.
-- Vault-relative operations that reject symlinks, hardlinks, special files, and
-  ancestor symlink traversal. Staging and visible files share one filesystem.
-- Atomic, complete, exclusive file creation (a crash leaves absent or complete
-  bytes, never a partial file) and atomic renames that **never replace** destinations.
-  Writes apply optional cursor metadata.
-- `flushPaths` flushes existing files and ancestor directories, including parents
-  of absent paths. Recovery uses it to complete interrupted rename durability.
-- Durable recursive directory creation, and directory pruning using only `rmdir`
-  operations (never unlink descendant files). All affected data/directory entries
-  must be flushed before a mutation resolves, including intermediate ancestors.
+Metadata is the one atomic boundary: persistence `save` replaces a complete value
+and an interrupted/failed save leaves an old or new complete value, never a torn
+object. A failed save is reloaded before retrying. No ordering between metadata and
+user-file durability is required. Settings and engine saves are serialized.
+Keep metadata outside the user-file namespace or in `.vault-link-sync`, which is
+excluded from scans. Changing a client's vault once it holds identities, offline
+notifications, pending requests or bootstrap state requires a separate state store.
 
-Keep the persistence store outside the user file namespace or inside the reserved
-`.vault-link-sync` directory, so writing sync state cannot generate user edits.
-
-Persistence `save` atomically replaces the complete state and resolves only after
-its data and directory entry are durable. A failed save may leave either complete
-value; the engine reloads before retrying. Settings saves are assumed to succeed
-and do not reload after errors. Settings and engine saves are serialized.
-Changing a client's vault once it holds identities, offline notifications,
-pending requests, or bootstrap/application state requires a separate state store
-and client. Lifecycle operations are serialized.
-
-Before changing visible files, the engine persists an application journal. It
-stages every affected source before installing destinations, so swaps and cycles
-work. Recovery runs before scanning, including while the server is unavailable.
-Prepared content is persisted before installation, preventing repeated merges
-following a crash. Unexpected occupants are preserved and given conflict names.
-Notifications received while staging rebind the actual source identity before
-content is merged. Editor saves to a temporarily staged path continue the original
-document's journal, including saves racing preparation and installation. Ignored
-or oversized occupants are reserved before conflict allocation.
-
-`.vault-link-sync/transactions` contains only active recovery artifacts. Staged
-sources and prepared output are removed after every install is durably recorded;
-completed journals are not archived. `.vault-link-sync/recovery` retains displaced
-original bytes and their document/path metadata before staging files are deleted.
-`.vault-link-sync/requests` retains rejected submission snapshots for explicit
-recovery. These directories are never scanned
-as user files. Pending requests and active recovery journals must not be
-independently discarded.
-
-These guarantees assume the adapters/storage honor their durability contracts.
-Arbitrary external writers can change a file between observations; detected races
-are preserved/reconciled, but unobserved writes and offline identity cannot be
-reconstructed perfectly. There is no automated v2/v3 persisted-state migration.
+Filesystem application saves metadata once when it finishes. Namespace changes detected
+before mutations invalidate the plan. Changes during application are incorporated
+between files using their document identities; the next scan rereads content. Content is reread before
+replacement. Unexpected eligible occupants receive visible conflict names;
+ignored and oversized occupants stay in place. External writers can still change
+files between observations, so these checks do not promise transactional file
+contents or perfect identity reconstruction. There is no automated v2/v3 state migration.

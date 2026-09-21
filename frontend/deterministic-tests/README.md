@@ -74,7 +74,7 @@ Network retry timers remain enabled. Separate fake-clock tests in
 A barrier checks byte-for-byte replica equality **and** the server's canonical
 UUID/path map, file bytes, independently computed base/observed hashes, content
 and manifest CAS parents, event watermark,
-contiguous event log, and absence of pending requests/application journals.
+contiguous event log, and absence of pending requests.
 Internal recovery files are excluded from the user-visible file list, but are
 present in failure disk images. Scenario assertions separately check intended
 content, document identity, or preservation markers; equality alone is not an
@@ -106,8 +106,8 @@ distinct UUIDs at one path.
 - `wait-for-response-drop`: explicit checkpoint; every armed fault must fire.
   Every interrupted request must be retried with an identical request ID, target
   and body before a different CAS is sent. Fault kinds match exactly.
-- `rename-next-write`: inject an editor rename after the engine's durable install
-  rename. The historical name is retained for fixtures; v4 never writes in place.
+- `rename-next-write`: inject an editor rename after the engine's content write,
+  before its metadata save.
 - `pause-server`, `resume-server`: SIGSTOP/SIGCONT, not a crash.
 - `crash-server`, `restart-server`: SIGKILL and restart with the same database/port.
   Server-control scenarios have dedicated processes.

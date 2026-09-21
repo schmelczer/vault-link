@@ -13,10 +13,8 @@ export const sameDocIdCollapseAfterRemoteQuickWriteAndPendingRenameTest: TestDef
         steps: [
             { type: "enable-sync", client: 0 },
 
-            // Create a deleted latest version before client 1 joins.
-            // Catch-up will advance MinCovered with a non-contiguous id,
-            // keeping client 1's create lastSeen low enough to exercise
-            // the server's same-doc merge path from the e2e failure.
+            // Seed a deleted document before client 1 bootstraps. Later creates
+            // at the reused path must still receive separate identities.
             {
                 type: "create",
                 client: 0,

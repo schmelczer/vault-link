@@ -1,5 +1,4 @@
 import type { CursorPosition } from "reconcile-text";
-import type { Logger } from "../tracing/logger";
 import type { DocumentUpdateResponse } from "../services/types/DocumentUpdateResponse";
 import type { DocumentVersionWithoutContent } from "../services/types/DocumentVersionWithoutContent";
 import type { FileManifest } from "../services/types/FileManifest";
@@ -7,7 +6,6 @@ import type { FileManifestUpdateResponse } from "../services/types/FileManifestU
 import type { PushFileManifest } from "../services/types/PushFileManifest";
 import type { PutFileContent } from "../services/types/PutFileContent";
 import type { VaultSnapshot } from "../services/types/VaultSnapshot";
-import type { EventRecord } from "../services/types/EventRecord";
 import type { FileManifestEntries } from "../types/file-manifest-entries";
 
 export type VaultUpdateId = number;
@@ -23,7 +21,6 @@ export interface StoredSnapshot {
 export interface DocumentMetadata {
     parentVersionId: number;
     hash: string;
-    remoteRelativePath?: string;
 }
 
 export interface DocumentState {
@@ -54,7 +51,7 @@ export type PendingRequest = { rejection?: string } & (
 );
 
 export interface EngineState {
-    /** Durable reset intent; clear the transport checkpoint before bootstrap. */
+    /** Persisted reset intent; clear the transport checkpoint before bootstrap. */
     historyRecovery?: boolean;
     vaultKey: string;
     initialized: boolean;
@@ -64,17 +61,10 @@ export interface EngineState {
     lastSeenUpdateId: number;
     remoteHeads: Record<string, DocumentVersionWithoutContent>;
     bootstrap?: VaultSnapshot;
-    /** Fold pages durably without applying intermediate remote snapshots. */
-    eventReplay?: {
-        after: number;
-        manifest: FileManifest;
-        heads: Record<string, DocumentVersionWithoutContent>;
-        receipts: EventRecord[];
-    };
     pending?: PendingRequest;
     /** A rejected retry does not prove an earlier attempt failed to commit. */
     unconfirmed?: PendingRequest[];
-    /** Commits consumption of the durable notification queue with the identity map. */
+    /** Commits consumption of the saved notification queue with the identity map. */
     lastAppliedLocalChangeId?: string;
     /** Physical exclusions, including files with no sync identity. */
     protectedPaths?: string[];
@@ -83,38 +73,13 @@ export interface EngineState {
     rejectedManifest?: { entries: FileManifestEntries; message: string };
 }
 
-export interface FileStep {
-    documentId: string;
-    from?: string;
-    to?: string;
-    expected?: StoredSnapshot;
-    replacement?: StoredSnapshot;
-    staged: string;
-    output: string;
-    /** A permanent destination error has already selected a root fallback. */
-    replanned?: boolean;
-    /** Retained input of a later step for this identity; never projected as live. */
-    superseded?: boolean;
-    phase: "planned" | "staged" | "prepared" | "installing" | "installed";
-}
-
-export interface ApplicationJournal {
-    id: string;
-    extensions: string[];
-    next: EngineState;
-    steps: FileStep[];
-}
-
-export interface StoredDatabase extends EngineState {
-    application?: ApplicationJournal;
-}
+export type StoredDatabase = EngineState;
 
 // Read-only view used by cursor tracking and status reporting.
 export interface DocumentRecord {
     documentId: string;
     relativePath: string;
     metadata?: DocumentMetadata;
-    isDeleted: boolean;
 }
 
 export function emptyState(vaultKey: string): StoredDatabase {
@@ -134,9 +99,7 @@ function canRebindEmpty(state: Partial<StoredDatabase> | undefined): boolean {
         state !== undefined &&
         !state.initialized &&
         !state.pending &&
-        !state.application &&
         !state.bootstrap &&
-        !state.eventReplay &&
         (state.unconfirmed?.length ?? 0) === 0 &&
         Object.keys(state.local ?? {}).length === 0
     );
@@ -146,7 +109,6 @@ export class Database {
     public state: StoredDatabase;
     private needsReload = false;
     public constructor(
-        private readonly logger: Logger,
         initial: Partial<StoredDatabase> | undefined,
         private readonly saveData: (data: StoredDatabase) => Promise<void>,
         vaultKey: string,
@@ -181,7 +143,7 @@ export class Database {
         const snapshot = structuredClone(next);
         if (this.needsReload)
             throw new Error(
-                "Reload durable state before retrying an uncertain save"
+                "Reload saved state before retrying an uncertain save"
             );
         this.needsReload = true;
         await this.saveData(snapshot);
@@ -204,10 +166,6 @@ export class Database {
         return Object.keys(this.state.local).length;
     }
 
-    public getLastSeenUpdateId(): number {
-        return this.state.lastSeenUpdateId;
-    }
-
     public getDocumentByDocumentId(id: string): DocumentRecord | undefined {
         const relativePath = this.state.local[id];
         if (relativePath === undefined) return undefined;
@@ -215,11 +173,9 @@ export class Database {
         return {
             documentId: id,
             relativePath,
-            isDeleted: false,
             metadata: base && {
                 parentVersionId: base.vaultUpdateId,
-                hash: base.hash,
-                remoteRelativePath: this.state.fileManifest.entries[id]
+                hash: base.hash
             }
         };
     }

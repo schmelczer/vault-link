@@ -6,10 +6,9 @@ export interface FileSnapshot {
     cursors?: CursorPosition[];
 }
 
-/** Required adapter contract for API v4; there is deliberately no weak fallback.
+/** Filesystem operations act on the current user-owned namespace.
  * Paths are vault-relative. Never follow symlinks (including ancestor symlinks).
  * Only independent regular files are supported; reject hardlinks/special files.
- * Every mutation must flush file data and affected directories before resolving.
  * A successful scan is complete: unreadable directories must reject, not vanish.
  */
 export interface FileSystemOperations {
@@ -22,24 +21,15 @@ export interface FileSystemOperations {
     ) => Promise<{ kind: "file" | "directory"; size: number } | undefined>;
     /** Includes directories. */
     exists: (path: string) => Promise<boolean>;
-    /** Recursive, idempotent, durable directory creation. */
+    /** Recursive, idempotent directory creation. */
     createDirectory: (path: string) => Promise<void>;
-    /** Atomically create a complete file: never replace an existing object.
-     * A crash leaves the path absent or complete, never a partial file.
-     * Flush data and directory entries before resolving. */
+    /** Create a file exclusively; never overwrite a raced destination.
+     * Writes apply optional editor cursor metadata. No durability guarantee. */
     write: (path: string, snapshot: FileSnapshot) => Promise<void>;
-    /** Atomic, durable rename on the same filesystem; fail if destination exists.
-     * Flush the source's data and both affected directories before resolving. */
+    /** Move a file without replacing an existing destination. */
     rename: (from: string, to: string) => Promise<void>;
-    /** Flush existing files and all affected ancestor directories, even when a
-     * named file is absent. Recovery uses this after a mutation became visible
-     * before its caller learned that it was durable. */
-    flushPaths: (paths: readonly string[]) => Promise<void>;
-    /** Idempotently unlink one regular file and flush its parent directory.
-     * The sync engine uses this only for its own internal recovery artifacts. */
+    /** Idempotently unlink one regular file. */
     deleteFile: (path: string) => Promise<void>;
-    /** Prune an implicit directory tree using rmdir only, durably. Reject
-     * regular files and never unlink descendant files; reject if files remain.
-     * Partial removal of empty child directories on failure is harmless. */
+    /** Prune directories using rmdir only. Reject files and nonempty directories. */
     delete: (path: string) => Promise<void>;
 }

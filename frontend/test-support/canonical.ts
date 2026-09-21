@@ -26,7 +26,7 @@ export async function getJson<T>(url: string, token: string): Promise<T> {
 }
 
 /** Equality alone can pass when every replica loses the same bytes. Check the
- * canonical UUIDs, content heads, receipts, journals and event cursor as well.
+ * canonical UUIDs, content heads, receipts and event cursor as well.
  * Scenario-specific content/identity oracles still run separately.
  */
 export async function assertCanonical(

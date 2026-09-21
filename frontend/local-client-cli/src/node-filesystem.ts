@@ -134,7 +134,6 @@ export class NodeFileSystemOperations implements FileSystemOperations {
             await fs.unlink(fullPath).catch((error: unknown) => {
                 if (!this.isMissing(error)) throw error;
             });
-            await this.syncDirectory(path.dirname(fullPath));
         } catch (error) {
             throw new Error(
                 `Failed to delete file ${fullPath}: ${error instanceof Error ? error.message : String(error)}`
@@ -170,31 +169,10 @@ export class NodeFileSystemOperations implements FileSystemOperations {
         const tmpPath = path.join(tmpDir, `atomic-write-${randomUUID()}.tmp`);
         try {
             await fs.writeFile(tmpPath, content, encoding);
-            const fd = await fs.open(tmpPath, "r");
-            try {
-                await fd.datasync();
-            } finally {
-                await fd.close();
-            }
             await fs.rename(tmpPath, fullPath);
-            await this.syncDirectory(path.dirname(fullPath));
         } catch (error) {
             await fs.unlink(tmpPath).catch(() => undefined);
             throw error;
-        }
-    }
-
-    // Make the rename durable by fsync'ing the destination's parent directory.
-    // Skipped on Windows: fsync on a directory handle isn't supported there
-    private async syncDirectory(dir: string): Promise<void> {
-        if (process.platform === "win32") {
-            return;
-        }
-        const fd = await fs.open(dir, "r");
-        try {
-            await fd.sync();
-        } finally {
-            await fd.close();
         }
     }
 
@@ -220,7 +198,6 @@ export class NodeFileSystemOperations implements FileSystemOperations {
         }
 
         await fs.rmdir(fullPath);
-        await this.syncDirectory(path.dirname(fullPath));
     }
 
     private isMissing(error: unknown): boolean {

@@ -21,11 +21,11 @@ import { MemoryDisk, MemoryPersistence } from "./storage";
 
 for (const [count, delivery] of [
     [1, "before the loop"],
-    [3, "before the loop"],
+    [9, "before the loop"],
     [3, "during the first batch"]
 ] as const) {
     test(
-        `${count} WS batches delivered ${delivery} drain without polling or another notification`,
+        `${count} WS hints delivered ${delivery} catch up through HTTP without polling`,
         { timeout: 5_000 },
         async () => {
             const logger = new Logger();
@@ -33,7 +33,6 @@ for (const [count, delivery] of [
             initial.initialized = true;
             const persistence = new MemoryPersistence({ database: initial });
             const database = new Database(
-                logger,
                 initial,
                 async (next) => persistence.save({ database: next }),
                 initial.vaultKey,
@@ -85,13 +84,20 @@ for (const [count, delivery] of [
                     fileManifest: { fileManifestId: index + 1, entries: {} }
                 })
             );
+            let available: number = delivery === "before the loop" ? count : 1;
+            const fetchedAfter: number[] = [];
             const service = {
-                // A correct client may drain the queue or catch up over HTTP. Either
-                // must reach the same head without the test manually waking it.
-                events: async (after: number): Promise<EventBatch> => ({
-                    headEventId: count,
-                    events: events.filter((event) => event.eventId > after)
-                })
+                events: async (after: number): Promise<EventBatch> => {
+                    fetchedAfter.push(after);
+                    return {
+                        headEventId: available,
+                        events: events.filter(
+                            (event) =>
+                                event.eventId > after &&
+                                event.eventId <= available
+                        )
+                    };
+                }
             } as unknown as SyncService;
             const websocket = {
                 onWebSocketStatusChanged: new EventListeners<
@@ -116,7 +122,15 @@ for (const [count, delivery] of [
             const deliver = async (event: EventRecord) => {
                 await websocket.onRemoteVaultUpdateReceived.triggerAsync({
                     headEventId: event.eventId,
-                    events: [event]
+                    // Payloads are deliberately inconsistent with HTTP. The socket
+                    // only wakes the loop; it cannot supply reconciliation state.
+                    events: [
+                        {
+                            ...event,
+                            type: "fileManifest",
+                            fileManifest: { fileManifestId: 999, entries: {} }
+                        }
+                    ]
                 });
             };
             try {
@@ -129,6 +143,7 @@ for (const [count, delivery] of [
                     await deliver(events[0]);
                     initialized.resolve();
                     await firstBatch.promise;
+                    available = count;
                     for (const event of events.slice(1)) await deliver(event);
                     continueBatch.resolve();
                 }
@@ -140,11 +155,14 @@ for (const [count, delivery] of [
                 );
                 assert.deepEqual(
                     applied,
-                    events.map((event) => event.eventId),
-                    "Every event must be committed in order"
+                    delivery === "before the loop" ? [count] : [1, count],
+                    "Each HTTP catchup commits its final cursor"
+                );
+                assert.deepEqual(
+                    fetchedAfter,
+                    delivery === "before the loop" ? [0] : [0, 1]
                 );
                 assert.equal(database.state.fileManifest.fileManifestId, count);
-                assert.equal(database.state.application, undefined);
                 assert.equal(database.state.pending, undefined);
                 assert.equal(syncer.isBusy, false);
             } finally {

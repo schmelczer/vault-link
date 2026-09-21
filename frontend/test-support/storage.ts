@@ -216,13 +216,6 @@ export class MemoryDisk implements FileSystemOperations {
         });
     }
 
-    public async flushPaths(paths: readonly string[]): Promise<void> {
-        const affected = new Set(paths);
-        for (const path of paths)
-            for (let p = parent(path); p; p = parent(p)) affected.add(p);
-        await this.change(`flush:${paths.join(",")}`, [...affected], () => {});
-    }
-
     public async delete(path: string): Promise<void> {
         this.check(path);
         assert(path !== "", "Cannot remove vault root");

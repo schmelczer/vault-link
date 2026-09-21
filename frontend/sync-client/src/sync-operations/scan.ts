@@ -38,7 +38,7 @@ export async function scanLocalFiles(
     }: ScanOptions,
     initial?: VaultSnapshot
 ): Promise<Set<string>> {
-    // Leave the prefix queued until its resulting state is durably committed.
+    // Leave the prefix queued until its resulting state is saved.
     // A persisted change ID makes replay safe after an uncertain save.
     const changes = [...queuedChanges];
     const unsyncablePaths = new Set<string>();

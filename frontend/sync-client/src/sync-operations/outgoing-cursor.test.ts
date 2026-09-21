@@ -17,7 +17,6 @@ for (const change of ["version", "identity", "path", "delete"] as const)
         let current: DocumentRecord | undefined = {
             documentId: "a",
             relativePath: "a.md",
-            isDeleted: false,
             metadata: { parentVersionId: 1, hash: digest }
         };
         const sent: { documentsWithCursors: DocumentWithCursors[] }[] = [];

@@ -11,13 +11,12 @@ export type LocalChange = {
     | { type: "move"; oldPath: string; relativePath: string }
     | { type: "create"; path: string; documentId?: string }
     | { type: "delete"; path: string }
-    | { type: "update"; path: string }
 );
 
-export function unappliedChanges(
+export function unappliedChanges<T extends { changeId?: string }>(
     state: EngineState,
-    changes: readonly LocalChange[]
-): LocalChange[] {
+    changes: readonly T[]
+): T[] {
     for (const change of changes) change.changeId ??= uuid();
     const applied = changes.findIndex(
         (change) => change.changeId === state.lastAppliedLocalChangeId
@@ -63,7 +62,6 @@ export function applyLocalChange(
                 (path === from || path.startsWith(from + "/"))
         )
     );
-    if (change.type === "update") return;
     for (const [id, path] of Object.entries(change.identities)) {
         if (change.type === "delete") {
             if (ignored(path)) {

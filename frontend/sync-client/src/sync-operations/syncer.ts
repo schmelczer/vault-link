@@ -20,6 +20,7 @@ import type { WebSocketManager } from "../services/websocket-manager";
 import type { DocumentVersion } from "../services/types/DocumentVersion";
 import type { DocumentVersionWithoutContent } from "../services/types/DocumentVersionWithoutContent";
 import type { EventBatch } from "../services/types/EventBatch";
+import type { EventRecord } from "../services/types/EventRecord";
 import type { FileManifest } from "../services/types/FileManifest";
 import type { VaultSnapshot } from "../services/types/VaultSnapshot";
 import type { PushContent } from "../services/types/PushContent";
@@ -66,7 +67,6 @@ export class Syncer {
     private notificationSaveFailed = false;
     private readonly pendingPaths = new Set<string>();
     private unsyncablePaths = new Set<string>();
-    private eventBatches: EventBatch[] = [];
     private hasScanned = false;
 
     public constructor(
@@ -99,10 +99,7 @@ export class Syncer {
             // including when the optional polling interval is disabled.
             this.wake();
         });
-        websocket.onRemoteVaultUpdateReceived.add(async (batch) => {
-            this.eventBatches.push(batch);
-            // Notifications are only hints; HTTP replay recovers discarded pages.
-            if (this.eventBatches.length > 4) this.eventBatches.shift();
+        websocket.onRemoteVaultUpdateReceived.add(async () => {
             this.wake();
         });
     }
@@ -120,7 +117,6 @@ export class Syncer {
             !!this.running ||
             this.dirty ||
             !!this.database.state.pending ||
-            !!this.database.state.application ||
             !!this.failure ||
             !!this.rejectionMessage
         );
@@ -169,11 +165,7 @@ export class Syncer {
             return false;
         }
 
-        return !this.database.state.application?.steps.some(
-            (step) =>
-                step.documentId === record.documentId &&
-                step.phase !== "installed"
-        );
+        return true;
     }
 
     public start(): void {
@@ -273,7 +265,7 @@ export class Syncer {
         oldPath?: string;
         relativePath: string;
     }): Promise<void> {
-        // Content snapshots are re-read during journal staging. Only namespace
+        // Content snapshots are re-read before writing. Only namespace
         // notifications invalidate an identity plan; keystrokes must not starve
         // a complete scan of unrelated documents.
         if (oldPath !== undefined && oldPath !== "") this.localGeneration++;
@@ -289,23 +281,14 @@ export class Syncer {
                 oldPath,
                 relativePath
             });
-        } else if (!isInternalPath(relativePath)) {
-            await this.recordLocalChange({
-                type: "update",
-                path: relativePath
-            });
         }
         this.wake();
     }
 
-    /** Local recovery must run even when network sync is disabled. Caller stops
-     * the engine first and holds the client's lifecycle lock. */
-    public async recoverLocalState(): Promise<void> {
+    /** Reload an uncertain metadata save before starting another attempt. */
+    public async reloadLocalState(): Promise<void> {
         await this.flushLocalChanges();
         await this.database.recoverPersistence();
-        const { application } = this.database.state;
-        await this.files.recover();
-        if (application) this.recordRecoveredApplication(application.steps);
     }
 
     private async recordLocalChange(change: LocalChange): Promise<void> {
@@ -339,7 +322,7 @@ export class Syncer {
         this.onRemainingOperationsCountChanged.trigger(1);
         this.failure = undefined;
         try {
-            await this.recoverLocalState();
+            await this.reloadLocalState();
             if (
                 this.database.state.historyRecovery ||
                 (this.database.state.initialized &&
@@ -360,15 +343,13 @@ export class Syncer {
                     await this.finishPending();
                 }
                 await this.scan();
-                const batch = await this.nextEventBatch();
+                const batch = await this.service.events(
+                    this.database.state.lastSeenUpdateId
+                );
                 await this.incorporateEventBatch(batch);
-                if (this.database.state.eventReplay) {
-                    this.dirty = true;
-                    continue;
-                }
                 await this.scan();
                 // Previously excluded content becomes eligible after a setting
-                // change. Its durable obligation survives advancing the cursor.
+                // change. Its saved obligation survives advancing the cursor.
                 if (Object.keys(this.database.state.excluded ?? {}).length)
                     await this.incorporateFileManifest(
                         this.database.state.fileManifest
@@ -392,14 +373,6 @@ export class Syncer {
                     await this.finishPending();
                     this.dirty = true;
                 }
-                if (
-                    this.eventBatches.some(
-                        (batch) =>
-                            batch.headEventId >
-                            this.database.state.lastSeenUpdateId
-                    )
-                )
-                    this.dirty = true;
             } while (this.dirty && !this.stopped);
             if (!this.dirty && !this.database.state.pending)
                 this.pendingPaths.clear();
@@ -428,24 +401,11 @@ export class Syncer {
     private async recoverServerHistory(): Promise<void> {
         this.onServerHistoryChanged.trigger();
         this.contentCache.reset();
-        this.eventBatches = [];
         this.hasScanned = false;
         if (!this.database.state.historyRecovery) {
             await this.scan();
             const guard = this.localGuard();
             const previous = this.database.state;
-            for (const pending of [
-                previous.pending,
-                ...(previous.unconfirmed ?? [])
-            ]) {
-                if (pending?.type === "content")
-                    await this.files.retainSnapshot(
-                        pending.request.requestId,
-                        pending.documentId,
-                        previous.local[pending.documentId],
-                        pending.snapshot
-                    );
-            }
             const next = emptyState(previous.vaultKey);
             next.historyRecovery = true;
             next.lastAppliedLocalChangeId = previous.lastAppliedLocalChangeId;
@@ -561,10 +521,7 @@ export class Syncer {
     }
 
     private next(): EngineState {
-        const { application: _, ...next } = structuredClone(
-            this.database.state
-        );
-        return next;
+        return structuredClone(this.database.state);
     }
 
     private async bootstrap(): Promise<void> {
@@ -604,56 +561,53 @@ export class Syncer {
     }
 
     private async incorporateEventBatch(batch: EventBatch): Promise<void> {
-        const replay = this.database.state.eventReplay;
-        const after = replay?.after ?? this.database.state.lastSeenUpdateId;
-        let cursor = after;
-        let manifest = replay?.manifest ?? this.database.state.fileManifest;
-        const heads = { ...(replay?.heads ?? this.database.state.remoteHeads) };
-        const receipts = [...(replay?.receipts ?? [])];
-        for (const event of batch.events) {
-            if (event.eventId <= cursor) continue;
-            if (event.eventId !== cursor + 1)
-                throw new PermanentSyncError(
-                    "Non-contiguous event history; refusing to skip changes"
-                );
-            cursor = event.eventId;
-            if (
-                this.database.state.unconfirmed?.some(
-                    (pending) => pending.request.requestId === event.requestId
-                ) === true
-            )
-                receipts.push(event);
-            if (event.type === "fileManifest") {
-                if (event.fileManifest.fileManifestId > manifest.fileManifestId)
-                    manifest = event.fileManifest;
-            } else if (
-                !heads[event.document.documentId] ||
-                heads[event.document.documentId].vaultUpdateId <
-                    event.document.vaultUpdateId
-            ) {
-                heads[event.document.documentId] = this.documentHead(
-                    event.document
-                );
-            }
-        }
-        const end = batch.endEventId ?? batch.headEventId;
-        if (
-            end !== cursor ||
-            end > batch.headEventId ||
-            (end === after && end < batch.headEventId)
-        )
-            throw new PermanentSyncError("Incomplete event batch");
-        if (end < batch.headEventId) {
-            await this.database.commit({
-                ...this.next(),
-                eventReplay: {
-                    after: end,
-                    manifest,
-                    heads,
-                    receipts
+        let cursor = this.database.state.lastSeenUpdateId;
+        let manifest = this.database.state.fileManifest;
+        const heads = { ...this.database.state.remoteHeads };
+        const receipts: EventRecord[] = [];
+        // Fold every page before touching local files. If fetching is interrupted,
+        // discard this work and retry from the last committed cursor.
+        for (;;) {
+            const after = cursor;
+            for (const event of batch.events) {
+                if (event.eventId <= cursor) continue;
+                if (event.eventId !== cursor + 1)
+                    throw new PermanentSyncError(
+                        "Non-contiguous event history; refusing to skip changes"
+                    );
+                cursor = event.eventId;
+                if (
+                    this.database.state.unconfirmed?.some(
+                        (pending) =>
+                            pending.request.requestId === event.requestId
+                    ) === true
+                )
+                    receipts.push(event);
+                if (event.type === "fileManifest") {
+                    if (
+                        event.fileManifest.fileManifestId >
+                        manifest.fileManifestId
+                    )
+                        manifest = event.fileManifest;
+                } else if (
+                    !heads[event.document.documentId] ||
+                    heads[event.document.documentId].vaultUpdateId <
+                        event.document.vaultUpdateId
+                ) {
+                    heads[event.document.documentId] = this.documentHead(
+                        event.document
+                    );
                 }
-            });
-            return;
+            }
+            const end = batch.endEventId ?? batch.headEventId;
+            if (
+                end !== cursor ||
+                end > batch.headEventId ||
+                (end === after && end < batch.headEventId)
+            )
+                throw new PermanentSyncError("Incomplete event batch");
+            if (end === batch.headEventId) break;
+            batch = await this.service.events(cursor);
         }
         if (cursor === this.database.state.lastSeenUpdateId) return;
         // Recover our submitted bases before folding later remote edits. A
@@ -707,24 +661,6 @@ export class Syncer {
         );
     }
 
-    private async nextEventBatch(): Promise<EventBatch> {
-        const after =
-            this.database.state.eventReplay?.after ??
-            this.database.state.lastSeenUpdateId;
-        if (this.service.verifiesHistory) {
-            this.eventBatches = [];
-            return this.service.events(after);
-        }
-        this.eventBatches = this.eventBatches.filter(
-            (batch) => (batch.endEventId ?? batch.headEventId) > after
-        );
-        const queued = this.eventBatches.findIndex((batch) =>
-            batch.events.some((event) => event.eventId === after + 1)
-        );
-        if (queued !== -1) return this.eventBatches.splice(queued, 1)[0];
-        return this.service.events(after);
-    }
-
     private documentHead(
         version: DocumentVersionWithoutContent
     ): DocumentVersionWithoutContent {
@@ -736,42 +672,6 @@ export class Syncer {
             deviceId: version.deviceId,
             contentSize: version.contentSize
         };
-    }
-
-    private recordRecoveredApplication(
-        steps: readonly {
-            documentId: string;
-            from?: string;
-            to?: string;
-            replacement?: unknown;
-        }[]
-    ): void {
-        for (const step of steps) {
-            const to = this.database.state.local[step.documentId];
-            if (!step.from && !to) continue;
-            this.history.addHistoryEntry({
-                status: SyncStatus.SUCCESS,
-                message: "Filesystem application recovered",
-                details:
-                    step.from && to && step.from !== to
-                        ? {
-                              type: SyncType.MOVE,
-                              relativePath: to,
-                              movedFrom: step.from
-                          }
-                        : !step.from && to
-                          ? { type: SyncType.CREATE, relativePath: to }
-                          : step.from && !to
-                            ? {
-                                  type: SyncType.DELETE,
-                                  relativePath: step.from
-                              }
-                            : {
-                                  type: SyncType.UPDATE,
-                                  relativePath: to ?? step.from!
-                              }
-            });
-        }
     }
 
     private recordManifestApplication(
@@ -948,7 +848,6 @@ export class Syncer {
         const next = this.next();
         if (cursor !== undefined) {
             next.lastSeenUpdateId = cursor;
-            delete next.eventReplay;
         }
         if (clearPending) {
             delete next.pending;
@@ -1037,7 +936,7 @@ export class Syncer {
     }
 
     private async preparePush(): Promise<boolean> {
-        if (this.stopped || this.database.state.eventReplay) {
+        if (this.stopped) {
             return false;
         }
 
@@ -1214,17 +1113,14 @@ export class Syncer {
         await this.database.recoverPersistence();
         const next = structuredClone(this.database.state);
         let changed = false;
-        for (const state of [next, next.application?.next]) {
-            if (!state) continue;
-            if (state.rejectedManifest) {
-                delete state.rejectedManifest;
+        if (next.rejectedManifest) {
+            delete next.rejectedManifest;
+            changed = true;
+        }
+        for (const doc of Object.values(next.documents)) {
+            if (doc.rejected) {
+                delete doc.rejected;
                 changed = true;
-            }
-            for (const doc of Object.values(state.documents)) {
-                if (doc.rejected) {
-                    delete doc.rejected;
-                    changed = true;
-                }
             }
         }
         if (changed) await this.database.commit(next);
@@ -1260,12 +1156,6 @@ export class Syncer {
         if (pending.rejection && !pending.response) {
             const next = this.next();
             if (pending.type === "content") {
-                await this.files.retainSnapshot(
-                    pending.request.requestId,
-                    pending.documentId,
-                    next.local[pending.documentId],
-                    pending.snapshot
-                );
                 next.documents[pending.documentId].rejected = {
                     hash: pending.snapshot.hash,
                     message: pending.rejection
@@ -1346,12 +1236,6 @@ export class Syncer {
         } else {
             const response = pending.response!;
             if (response.type === "StaleBase") {
-                await this.files.retainSnapshot(
-                    pending.request.requestId,
-                    pending.documentId,
-                    this.database.state.local[pending.documentId],
-                    pending.snapshot
-                );
                 await this.incorporateContent(
                     response,
                     undefined,

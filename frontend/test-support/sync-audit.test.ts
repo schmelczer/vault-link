@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { SUPPORTED_API_VERSION } from "../sync-client/src/consts";
 import { PermanentSyncError } from "../sync-client/src/errors/errors";
 import { test } from "node:test";
 import type { Database } from "../sync-client/src/persistence/database";
@@ -221,52 +222,6 @@ test("local undo of accepted-but-rejected manifest must survive replay", async (
     assert.equal(f.database.state.local.a, "a.md");
 });
 
-test("disabled startup should recover an active journal before returning", async () => {
-    const disk = new MemoryDisk();
-    const key = JSON.stringify(["http://offline.test", "test"]);
-    const state = emptyState(key);
-    state.initialized = true;
-    state.local = { a: "a.md" };
-    state.documents = { a: { materialized: true } };
-    const next = structuredClone(state);
-    next.local = { a: "b.md" };
-    const prefix = ".vault-link-sync/transactions/active/a";
-    await disk.userWrite(prefix + ".source", bytes("ONLY COPY"));
-    state.application = {
-        id: "active",
-        extensions: ["md"],
-        next,
-        steps: [
-            {
-                documentId: "a",
-                from: "a.md",
-                to: "b.md",
-                staged: prefix + ".source",
-                output: prefix + ".output",
-                phase: "staged"
-            }
-        ]
-    };
-    const store = new MemoryPersistence({
-        settings: {
-            remoteUri: "http://offline.test",
-            vaultName: "test",
-            isSyncEnabled: false
-        },
-        database: state
-    });
-    const client = await SyncClient.create({ fs: disk, persistence: store });
-    try {
-        await client.start();
-        assert.deepEqual(
-            (await disk.readSnapshot("b.md"))?.content,
-            bytes("ONLY COPY")
-        );
-    } finally {
-        await client.destroy();
-    }
-});
-
 test("a settings update resumes the enabled engine", async () => {
     const f = await settingsLifecycleFixture();
     try {
@@ -381,7 +336,7 @@ test("silent open WebSocket must eventually trigger catchup or reconnect", async
             const path = String(input);
             if (path.endsWith("/ping"))
                 return Response.json({
-                    supportedApiVersion: 5,
+                    supportedApiVersion: SUPPORTED_API_VERSION,
                     isAuthenticated: true,
                     mergeableFileExtensions: ["md"],
                     serverVersion: "test"
@@ -436,7 +391,6 @@ test("permanent destination failure replans the affected file and finishes the b
     next.fileManifest = { fileManifestId: 2, entries: { ...next.local } };
     await f.files.apply(next);
     await f.settings.setSettings({ ignorePatterns: ["unsupported/**"] });
-    await f.files.recover();
     assert.deepEqual(
         [...f.disk.userFiles().values()]
             .map((b) => Buffer.from(b).toString())
@@ -469,63 +423,85 @@ test("conflict allocation terminates when a truncated extension ends in a space"
     assert.equal(result.status, 0, String(result.error ?? result.stderr));
 });
 
-test("paged catchup folds remote edits and reversions before touching local bytes", async () => {
-    const f = await fixture(
-        { "a.md": "base LOCAL" },
-        { getDocumentVersionContent: async () => bytes("base") }
-    );
-    f.database.state.documents.a.base = {
-        ...head("a", 1, "base"),
-        hash: (await toStoredSnapshot({ content: bytes("base") })).hash
-    };
-    f.database.state.remoteHeads.a = head("a", 1, "base");
-    f.database.state.lastSeenUpdateId = 1;
-    const first = {
-        headEventId: 3,
-        endEventId: 2,
-        events: [
-            {
-                eventId: 2,
-                requestId: "remote-1",
-                type: "content" as const,
-                document: head("a", 2, "base REMOTE")
+for (const interrupted of [false, true]) {
+    test(`paged catchup folds edits and reversions${interrupted ? " again after an interrupted fetch" : ""}`, async () => {
+        const first = {
+            headEventId: 3,
+            endEventId: 2,
+            events: [
+                {
+                    eventId: 2,
+                    requestId: "remote-1",
+                    type: "content" as const,
+                    document: head("a", 2, "base REMOTE")
+                }
+            ]
+        };
+        const last = {
+            headEventId: 3,
+            endEventId: 3,
+            events: [
+                {
+                    eventId: 3,
+                    requestId: "remote-2",
+                    type: "content" as const,
+                    document: head("a", 3, "base")
+                }
+            ]
+        };
+        let fail = interrupted;
+        let f: Awaited<ReturnType<typeof fixture>>;
+        const fetchedAfter: number[] = [];
+        const service: Partial<SyncService> = {
+            getDocumentVersionContent: async () => bytes("base"),
+            events: async (after) => {
+                fetchedAfter.push(after);
+                if (after === 1) return first;
+                assert.equal(after, 2);
+                assert.equal(f.database.state.lastSeenUpdateId, 1);
+                assert.deepEqual(
+                    f.persistence.snapshot(),
+                    saved,
+                    "partial pages must not save metadata"
+                );
+                assert.deepEqual(
+                    (await f.disk.readSnapshot("a.md"))?.content,
+                    bytes("base LOCAL")
+                );
+                if (fail) {
+                    fail = false;
+                    throw new Error("interrupted page fetch");
+                }
+                return last;
             }
-        ]
-    };
-    await f.internals.incorporateEventBatch(first);
-    assert.equal(
-        f.database.state.lastSeenUpdateId,
-        1,
-        "partial history must not become an incorporated base"
-    );
-    assert.deepEqual(
-        (await f.disk.readSnapshot("a.md"))?.content,
-        bytes("base LOCAL")
-    );
-    assert.equal(
-        await f.internals.preparePush(),
-        false,
-        "do not submit against a partially replayed history"
-    );
-    const last = {
-        headEventId: 3,
-        endEventId: 3,
-        events: [
-            {
-                eventId: 3,
-                requestId: "remote-2",
-                type: "content" as const,
-                document: head("a", 3, "base")
-            }
-        ]
-    };
-    await f.internals.incorporateEventBatch(last);
-    assert.equal(f.database.state.lastSeenUpdateId, 3);
-    assert.deepEqual(
-        (await f.disk.readSnapshot("a.md"))?.content,
-        bytes("base LOCAL")
-    );
-});
+        };
+        f = await fixture({ "a.md": "base LOCAL" }, service);
+        f.database.state.documents.a.base = {
+            ...head("a", 1, "base"),
+            hash: (await toStoredSnapshot({ content: bytes("base") })).hash
+        };
+        f.database.state.remoteHeads.a = head("a", 1, "base");
+        f.database.state.lastSeenUpdateId = 1;
+        await f.database.save();
+        const saved = f.persistence.snapshot();
+        const catchUp = async () =>
+            f.internals.incorporateEventBatch(
+                await service.events!(f.database.state.lastSeenUpdateId)
+            );
+        if (interrupted) {
+            await assert.rejects(catchUp(), /interrupted page fetch/);
+            f.disk.crash(true);
+            f = await fixture({}, service, f);
+        }
+        await catchUp();
+        assert.deepEqual(fetchedAfter, interrupted ? [1, 2, 1, 2] : [1, 2]);
+        assert.equal(f.database.state.lastSeenUpdateId, 3);
+        assert.deepEqual(
+            (await f.disk.readSnapshot("a.md"))?.content,
+            bytes("base LOCAL")
+        );
+    });
+}
 
 test("an ignored occupant arriving after the scan keeps its path and privacy", async () => {
     let f: Awaited<ReturnType<typeof fixture>>;
@@ -580,6 +556,10 @@ test("content notifications during every snapshot do not starve a complete names
 for (const boundary of ["before:save", "durable:save"]) {
     test(`receipt incorporation after paged replay survives ${boundary} and process replacement`, async () => {
         const service: Partial<SyncService> = {
+            events: async (after) => {
+                assert.equal(after, 2);
+                return page;
+            },
             putFileContent: async () => {
                 throw new PermanentSyncError("HTTP 413");
             },
@@ -604,18 +584,18 @@ for (const boundary of ["before:save", "durable:save"]) {
         const { requestId } = f.database.state.pending!.request;
         await f.internals.finishPending();
         await f.disk.userWrite("a.md", bytes("base"));
-        await f.internals.incorporateEventBatch({
+        const first = {
             headEventId: 3,
             endEventId: 2,
             events: [
                 {
                     eventId: 2,
                     requestId,
-                    type: "content",
+                    type: "content" as const,
                     document: head("a", 2, "base A")
                 }
             ]
-        });
+        };
         const page = {
             headEventId: 3,
             endEventId: 3,
@@ -632,16 +612,14 @@ for (const boundary of ["before:save", "durable:save"]) {
             if (label === boundary) throw new Error("injected crash");
         };
         await assert.rejects(
-            f.internals.incorporateEventBatch(page),
+            f.internals.incorporateEventBatch(first),
             /injected crash/
         );
         f.persistence.boundary = () => {};
         f.disk.crash(true);
         f = await fixture({}, service, f);
-        await f.files.recover();
-        assert.equal(f.database.state.eventReplay?.after, 2);
-        await f.internals.incorporateEventBatch(page);
-        assert.equal(f.database.state.eventReplay, undefined);
+        assert.equal(f.database.state.lastSeenUpdateId, 1);
+        await f.internals.incorporateEventBatch(first);
         assert.equal(f.database.state.lastSeenUpdateId, 3);
         assert.deepEqual(
             (await f.disk.readSnapshot("a.md"))?.content,
@@ -676,7 +654,7 @@ test("initial vault settings bind the engine and survive restart", async () => {
         fetch: async (input: RequestInfo | URL) => {
             if (String(input).endsWith("/ping"))
                 return Response.json({
-                    supportedApiVersion: 5,
+                    supportedApiVersion: SUPPORTED_API_VERSION,
                     isAuthenticated: true,
                     mergeableFileExtensions: ["md"],
                     serverVersion: "test"
@@ -804,7 +782,7 @@ async function settingsLifecycleFixture() {
             const path = String(input);
             if (path.endsWith("/ping"))
                 return Response.json({
-                    supportedApiVersion: 5,
+                    supportedApiVersion: SUPPORTED_API_VERSION,
                     isAuthenticated: true,
                     mergeableFileExtensions: ["md"],
                     serverVersion: "test"

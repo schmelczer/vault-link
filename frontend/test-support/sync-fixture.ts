@@ -59,7 +59,6 @@ export async function fixture(
         recovered?.persistence ?? new MemoryPersistence({ database: initial });
     const logger = new Logger();
     const database = new Database(
-        logger,
         initial,
         async (next) => persistence.save({ database: next }),
         "test",

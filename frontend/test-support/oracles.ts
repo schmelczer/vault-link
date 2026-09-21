@@ -111,16 +111,6 @@ export function assertQuiescent(
         undefined,
         "Pending CAS request at convergence"
     );
-    assert.equal(
-        state.eventReplay,
-        undefined,
-        "Unfinished event replay at convergence"
-    );
-    assert.equal(
-        state.application,
-        undefined,
-        "Unfinished filesystem journal at convergence"
-    );
     assert.deepEqual(
         state.local,
         entries,

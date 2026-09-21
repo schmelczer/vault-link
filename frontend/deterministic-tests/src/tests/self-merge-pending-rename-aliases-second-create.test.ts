@@ -33,11 +33,8 @@ export const selfMergePendingRenameAliasesSecondCreateTest: TestDefinition = {
         { type: "enable-sync", client: 1 },
         { type: "barrier" },
 
-        // Pause client 0's WS so its MinCovered watermark stays at 0
-        // through the whole bug sequence. The merge condition the
-        // server is going to fire is `creation_vuid > last_seen`; with
-        // a non-zero gap the same-device second create gets merged
-        // into the same-device first create.
+        // Delay socket notifications while client 0 continues local work.
+        // HTTP catchup must preserve the two generations at the reused path.
         { type: "pause-websocket", client: 0 },
 
         // Client 1 commits a doc to push the server's vuid above 0.
