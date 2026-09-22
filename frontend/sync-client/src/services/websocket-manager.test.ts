@@ -136,19 +136,13 @@ describe("WebSocketManager", () => {
             .webSocket;
 
         mockWs.simulateMessage({
-            type: "vaultEvents",
-            headEventId: 0,
-            events: []
+            type: "vaultChanged"
         });
         mockWs.simulateMessage({
-            type: "vaultEvents",
-            headEventId: 0,
-            events: []
+            type: "vaultChanged"
         });
         mockWs.simulateMessage({
-            type: "vaultEvents",
-            headEventId: 0,
-            events: []
+            type: "vaultChanged"
         });
 
         await new Promise((resolve) => setTimeout(resolve, 100));
@@ -208,8 +202,7 @@ describe("WebSocketManager", () => {
             manager.sendHandshakeMessage({
                 type: "handshake",
                 token: "test",
-                deviceId: "test",
-                lastSeenVaultUpdateId: null
+                deviceId: "test"
             });
         });
 
@@ -317,9 +310,7 @@ describe("WebSocketManager", () => {
         const mockWs = (manager as unknown as { webSocket: MockWebSocket })
             .webSocket;
         mockWs.simulateMessage({
-            type: "vaultEvents",
-            headEventId: 0,
-            events: []
+            type: "vaultChanged"
         });
 
         await new Promise((resolve) => setTimeout(resolve, 10));
@@ -465,9 +456,7 @@ for (const closeBehavior of ["throws", "stays open"]) {
         assert.equal(manager.isWebSocketConnected, false);
         assert.equal(connected, false);
         socket.simulateMessage({
-            type: "vaultEvents",
-            headEventId: 0,
-            events: []
+            type: "vaultChanged"
         });
         await manager.waitUntilFinished();
         assert.equal(delivered, 0);
@@ -499,8 +488,7 @@ it("a handshake send failure retires the connection without escaping the open ca
             manager.sendHandshakeMessage({
                 type: "handshake",
                 token: "test",
-                deviceId: "test",
-                lastSeenVaultUpdateId: 0
+                deviceId: "test"
             });
     });
     const statuses: boolean[] = [];

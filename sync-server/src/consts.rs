@@ -20,4 +20,4 @@ pub const DEFAULT_LOG_LEVEL: LogLevel = LogLevel::Info;
 
 pub const DEFAULT_MERGEABLE_FILE_EXTENSIONS: &[&str] = &["md", "txt"];
 
-pub const SUPPORTED_API_VERSION: u32 = 4;
+pub const SUPPORTED_API_VERSION: u32 = 5;

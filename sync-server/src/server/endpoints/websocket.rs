@@ -69,26 +69,21 @@ async fn websocket(
 
     let device = authenticated.handshake.device_id;
     let session = state.cursors.register_connection(&vault, &device).await;
-    let mut after = authenticated
-        .handshake
-        .last_seen_vault_update_id
-        .unwrap_or(0);
+    let mut last_checkpoint = None;
     let mut notifications = state.broadcasts.get_receiver(vault.clone()).await;
     let mut timer = tokio::time::interval(Duration::from_secs(2));
     timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
     info!("WebSocket connected to vault {vault}");
 
-    // Exactly one sender drains durable events in commit order. In-memory
-    // notifications are only wakeups, so lag and commit/notify crashes are safe.
+    // HTTP owns event replay. Poll the cheap checkpoint to recover missed
+    // broadcasts, including a commit followed by an interrupted notification.
     let result = async {
         loop {
-            let batch = state.database.events_after(&vault, after).await.map_err(server_error)?;
-
-            if !batch.events.is_empty() {
-                let head = batch.end_event_id.unwrap_or(batch.head_event_id);
-                send_update_over_websocket(&WebSocketServerMessage::VaultEvents(batch), &mut sender).await?;
-                after = head;
+            let checkpoint = state.database.history_checkpoint(&vault).await.map_err(server_error)?;
+            if last_checkpoint.as_ref() != Some(&checkpoint) {
+                send_update_over_websocket(&WebSocketServerMessage::VaultChanged, &mut sender).await?;
+                last_checkpoint = Some(checkpoint);
             }
 
             tokio::select! {
@@ -99,7 +94,7 @@ async fn websocket(
                         send_update_over_websocket(&WebSocketServerMessage::CursorPositions(positions), &mut sender).await?;
                     },
 
-                    Err(RecvError::Lagged(_)) => {}, // Drain the durable log on the next iteration.
+                    Err(RecvError::Lagged(_)) => {}, // Check the durable head on the next iteration.
                     Err(RecvError::Closed) => break,
                 },
 

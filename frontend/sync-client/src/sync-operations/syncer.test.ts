@@ -4,16 +4,15 @@ import { afterEach, beforeEach, describe, it, mock } from "node:test";
 import type { Database } from "../persistence/database";
 import {
     DEFAULT_SETTINGS,
-    type Settings,
+    Settings,
     type SyncSettings
 } from "../persistence/settings";
 import type { FileOperations } from "../file-operations/file-operations";
 import type { SyncService } from "../services/sync-service";
 import type { ServerConfig } from "../services/server-config";
 import type { WebSocketManager } from "../services/websocket-manager";
-import type { Logger } from "../tracing/logger";
+import { Logger } from "../tracing/logger";
 import type { SyncHistory } from "../tracing/sync-history";
-import type { EventBatch } from "../services/types/EventBatch";
 import { EventListeners } from "../utils/data-structures/event-listeners";
 import { Syncer } from "./syncer";
 import { FixedSizeDocumentCache } from "../utils/data-structures/fix-sized-cache";
@@ -24,12 +23,11 @@ function createSyncer(overrides: Partial<SyncSettings> = {}): {
     syncer: Syncer;
     runCount: () => number;
 } {
-    const settings = {
-        getSettings: () => ({
-            ...DEFAULT_SETTINGS,
-            ...overrides
-        })
-    } as unknown as Settings;
+    const settings = new Settings(
+        new Logger(),
+        overrides,
+        async () => undefined
+    );
     const database = {
         state: {}
     } as unknown as Database;
@@ -162,7 +160,7 @@ describe("Syncer per-file state and event delivery", () => {
                 (connected: boolean) => unknown
             >(),
             onRemoteVaultUpdateReceived: new EventListeners<
-                (batch: EventBatch) => Promise<void>
+                () => Promise<void>
             >()
         } as unknown as WebSocketManager;
         const service = {
@@ -174,9 +172,11 @@ describe("Syncer per-file state and event delivery", () => {
             "device",
             {} as Logger,
             database,
-            {
-                getSettings: () => ({ ...DEFAULT_SETTINGS, syncIntervalMs: 0 })
-            } as Settings,
+            new Settings(
+                new Logger(),
+                { syncIntervalMs: 0 },
+                async () => undefined
+            ),
             service,
             websocket,
             {} as FileOperations,
@@ -238,9 +238,11 @@ describe("Syncer diff uploads", () => {
             "device",
             {} as Logger,
             { state: {} } as Database,
-            {
-                getSettings: () => ({ ...DEFAULT_SETTINGS, syncIntervalMs: 0 })
-            } as Settings,
+            new Settings(
+                new Logger(),
+                { syncIntervalMs: 0 },
+                async () => undefined
+            ),
             {
                 getDocumentVersionContent: async () => parent
             } as unknown as SyncService,

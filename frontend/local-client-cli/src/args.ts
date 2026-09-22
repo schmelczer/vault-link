@@ -2,9 +2,6 @@ import { Command, Option } from "commander";
 import packageJson from "../package.json";
 import { LogLevel } from "sync-client";
 
-export const LINE_ENDING_MODES = ["auto", "lf", "crlf"] as const;
-export type LineEndingMode = (typeof LINE_ENDING_MODES)[number];
-
 interface CliArgs {
     remoteUri: string;
     token: string;
@@ -17,7 +14,6 @@ interface CliArgs {
     health?: string;
     enableTelemetry?: boolean;
     quiet: boolean;
-    lineEndings: LineEndingMode;
 }
 
 const VALID_PROTOCOLS = ["http://", "https://", "ws://", "wss://"];
@@ -131,15 +127,6 @@ export function parseArgs(argv: string[]): CliArgs {
                 "[OPTIONAL] Suppress startup banner for non-interactive use"
             ).env("VAULTLINK_QUIET")
         )
-        .addOption(
-            new Option(
-                "--line-endings <mode>",
-                "[OPTIONAL] Line ending style: auto (platform default), lf, crlf"
-            )
-                .default("auto")
-                .choices([...LINE_ENDING_MODES])
-                .env("VAULTLINK_LINE_ENDINGS")
-        )
         .addHelpText(
             "after",
             `
@@ -173,7 +160,6 @@ Environment variables:
     const health = opts.health as string | undefined;
     const enableTelemetry = opts.enableTelemetry as boolean | undefined;
     const quiet = (opts.quiet as boolean | undefined) ?? false;
-    const lineEndingsStr = (opts.lineEndings as string | undefined) ?? "auto";
     /* eslint-enable @typescript-eslint/no-unsafe-type-assertion */
 
     const requiredLocalPath = requireOption(localPath, "localPath");
@@ -203,15 +189,6 @@ Environment variables:
     }
     const logLevel = logLevelUpper;
 
-    const isLineEndingMode = (value: string): value is LineEndingMode =>
-        (LINE_ENDING_MODES as readonly string[]).includes(value);
-    if (!isLineEndingMode(lineEndingsStr)) {
-        throw new Error(
-            `Invalid line endings mode '${lineEndingsStr}'. Valid values are: ${LINE_ENDING_MODES.join(", ")}`
-        );
-    }
-    const lineEndings = lineEndingsStr;
-
     return {
         localPath: requiredLocalPath,
         remoteUri: requiredRemoteUri,
@@ -223,7 +200,6 @@ Environment variables:
         logLevel,
         health,
         enableTelemetry,
-        quiet,
-        lineEndings
+        quiet
     };
 }

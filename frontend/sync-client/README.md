@@ -1,7 +1,7 @@
 # Sync client (API v5)
 
 The engine uses one serialized loop per vault and requires Web Crypto (SHA-256). Local notifications and WebSocket
-messages wake it; complete disk scans and the durable server event log are the
+`vaultChanged` hints wake it; complete disk scans and the durable server event log are the
 sources of truth. Periodic reconciliation is opt-in: set `syncIntervalMs` to a
 positive interval to repair missed notifications. Unset or `0` disables polling.
 Create, delete and move notifications persist logical identity changes before
@@ -13,6 +13,8 @@ as content updates. This distinguishes a deliberate delete/recreate from an edit
 Use `waitUntilFinished()` to await the active attempt; errors leave
 pending requests saved and are reported to the caller. Transient failures retry;
 authentication and protocol errors wait for an explicit wake or settings change.
+Pausing or destroying the client aborts its HTTP session, including body reads;
+resuming starts a fresh session. Connection checks can run while sync is disabled.
 
 ## State and policy
 

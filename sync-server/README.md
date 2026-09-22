@@ -86,13 +86,11 @@ content/file-manifest version IDs are the event IDs that created them. Rejected
 requests and retries of accepted requests append no events. Timestamps never
 determine event ordering.
 
-The WebSocket handshake retains `lastSeenVaultUpdateId`. The server sends
-`{type: "vaultEvents", headEventId, events}` in increasing order, including events
-originated by that client. Each connection drains the database through one sender.
-In-memory notifications only wake it; polling covers missed wakes and requests
-interrupted after commit. Reconnect with the last durably processed event ID. The
-HTTP replay endpoint uses the same history, so losing the final notification is
-recoverable.
+WebSocket messages are `{type: "vaultChanged"}` hints. Clients fetch ordered
+history through HTTP from their last incorporated event ID. The server compares
+its current history checkpoint after broadcasts and periodically, so missed wakes
+and requests interrupted after commit still trigger catchup. Reconnecting sends a
+fresh hint without replaying events over the socket. Cursor messages are unchanged.
 A fresh client reads `/vault-snapshot`, applies it durably, then replays after its
 watermark. Successful HTTP responses include `X-Vault-Link-History`, containing
 an event ID and a random event-incarnation token. Clients persist and echo this

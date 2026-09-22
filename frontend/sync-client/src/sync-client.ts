@@ -11,7 +11,6 @@ import type { FileSystemOperations } from "./file-operations/filesystem-operatio
 import { FileOperations } from "./file-operations/file-operations";
 import { Logger, LogLevel } from "./tracing/logger";
 import { SyncHistory } from "./tracing/sync-history";
-import { FetchController } from "./services/fetch-controller";
 import { SyncService } from "./services/sync-service";
 import { ServerConfig } from "./services/server-config";
 import { WebSocketManager } from "./services/websocket-manager";
@@ -23,7 +22,6 @@ import { DocumentSyncStatus } from "./types/document-sync-status";
 import type { CursorSpan } from "./services/types/CursorSpan";
 import { isInternalPath } from "./utils/portable-path";
 import { FixedSizeDocumentCache } from "./utils/data-structures/fix-sized-cache";
-import { globsToRegexes } from "./utils/globs-to-regexes";
 import { Lock } from "./utils/data-structures/locks";
 import {
     unappliedChanges,
@@ -61,7 +59,7 @@ export class SyncClient {
         private readonly database: Database,
         private readonly syncer: Syncer,
         private readonly webSocketManager: WebSocketManager,
-        private readonly fetchController: FetchController,
+        private readonly service: SyncService,
         private readonly serverConfig: ServerConfig,
         private readonly cursorTracker: CursorTracker,
         private readonly fileChangeNotifier: FileChangeNotifier,
@@ -95,8 +93,6 @@ export class SyncClient {
         persistence: PersistenceProvider<StoredClient>;
         fetch?: typeof globalThis.fetch;
         webSocket?: typeof globalThis.WebSocket;
-        /** V4 preserves bytes and line endings as stored, on every platform. */
-        nativeLineEndings?: string;
     }): Promise<SyncClient> {
         const logger = new Logger();
         let stored = (await persistence.load()) ?? {};
@@ -152,32 +148,21 @@ export class SyncClient {
                 "Offline notifications belong to another vault; use a separate state store"
             );
         }
-        const fetchController = new FetchController(
-            settings.getSettings().isSyncEnabled,
-            logger
-        );
         const deviceId = createClientId();
-        const service = new SyncService(
-            deviceId,
-            fetchController,
-            settings,
-            logger,
-            fetch,
-            {
-                get: () =>
-                    stored.historyCheckpoint?.vaultKey ===
-                    vaultKey(settings.getSettings())
-                        ? stored.historyCheckpoint.checkpoint
-                        : undefined,
-                save: async (checkpoint) =>
-                    save({
-                        historyCheckpoint: {
-                            vaultKey: vaultKey(settings.getSettings()),
-                            checkpoint
-                        }
-                    })
-            }
-        );
+        const service = new SyncService(deviceId, settings, fetch, {
+            get: () =>
+                stored.historyCheckpoint?.vaultKey ===
+                vaultKey(settings.getSettings())
+                    ? stored.historyCheckpoint.checkpoint
+                    : undefined,
+            save: async (checkpoint) =>
+                save({
+                    historyCheckpoint: {
+                        vaultKey: vaultKey(settings.getSettings()),
+                        checkpoint
+                    }
+                })
+        });
         const serverConfig = new ServerConfig(service);
         const notifier = new FileChangeNotifier();
         let syncer: Syncer;
@@ -192,15 +177,8 @@ export class SyncClient {
                 entries: () => localChanges,
                 flush: async () => syncer?.flushLocalChanges()
             },
-            (path, size) => {
-                const current = settings.getSettings();
-                return (
-                    size > current.maxFileSizeMB * 1024 * 1024 ||
-                    globsToRegexes(current.ignorePatterns, logger).some(
-                        (pattern) => pattern.test(path)
-                    )
-                );
-            }
+            (path, size) =>
+                settings.isIgnored(path) || settings.isOversized(size)
         );
         const websocket = new WebSocketManager(
             deviceId,
@@ -240,7 +218,7 @@ export class SyncClient {
             database,
             syncer,
             websocket,
-            fetchController,
+            service,
             serverConfig,
             cursors,
             notifier,
@@ -308,15 +286,14 @@ export class SyncClient {
         if (this.destroyed) return;
         if (!this.settings.getSettings().isSyncEnabled) return;
         await this.database.bindVault(vaultKey(this.settings.getSettings()));
-        this.fetchController.finishReset();
-        this.fetchController.canFetch = true;
+        this.service.resume();
         this.syncer.start();
         await this.syncer.waitUntilFinished();
     }
 
     private async pause(): Promise<void> {
         const stopped = this.syncer.stop();
-        this.fetchController.startReset();
+        this.service.pause();
         await this.webSocketManager.stop();
         await stopped;
     }
@@ -470,7 +447,7 @@ export class SyncClient {
         this.destroyed = true;
         // Interrupt a start/reset awaiting network progress before waiting for
         // its lifecycle operation to finish.
-        this.fetchController.startReset();
+        this.service.pause();
         const stopped = this.syncer.stop();
         this.destroying = this.lifecycle.withLock(async () => {
             try {

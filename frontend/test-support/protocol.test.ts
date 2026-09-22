@@ -282,7 +282,7 @@ for (const [kind, format, originalPath] of [
 }
 
 test(
-    "concurrent CAS commits have identical HTTP/event-log/WebSocket total order and reconnect catchup",
+    "WebSocket hints trigger HTTP catchup in commit order, including after reconnect",
     { timeout: 20_000 },
     async () => {
         const server = makeServer();
@@ -291,17 +291,29 @@ test(
             await server.start();
             const url = `${server.remoteUri}/vaults/order-${randomUUID()}`;
             const received: number[] = [];
-            const connect = async (after: number) => {
+            let catchup = Promise.resolve();
+            let catchupError: unknown;
+            const connect = async () => {
                 ws = new WebSocket(`${url.replace(/^http/, "ws")}/ws`);
                 ws.addEventListener("message", (message) => {
-                    const batch = JSON.parse(String(message.data)) as {
-                        type: string;
-                        events: { eventId: number }[];
-                    };
-                    if (batch.type === "vaultEvents")
-                        received.push(
-                            ...batch.events.map((event) => event.eventId)
-                        );
+                    const hint = JSON.parse(String(message.data));
+                    if (hint.type !== "vaultChanged") return;
+                    catchup = catchup
+                        .then(async () => {
+                            assert.deepEqual(hint, { type: "vaultChanged" });
+                            const batch = await getJson<{
+                                events: { eventId: number }[];
+                            }>(
+                                `${url}/events-since?after=${received.at(-1) ?? 0}`,
+                                token
+                            );
+                            received.push(
+                                ...batch.events.map((event) => event.eventId)
+                            );
+                        })
+                        .catch((error) => {
+                            catchupError = error;
+                        });
                 });
                 await new Promise<void>((resolve, reject) => {
                     ws!.onopen = () => resolve();
@@ -311,12 +323,11 @@ test(
                     JSON.stringify({
                         type: "handshake",
                         token,
-                        deviceId: "order-observer",
-                        lastSeenVaultUpdateId: after
+                        deviceId: "order-observer"
                     })
                 );
             };
-            await connect(0);
+            await connect();
             const ids = Array.from({ length: 12 }, () => randomUUID());
             const requests = ids.map((id, i) => ({
                 id,
@@ -360,10 +371,11 @@ test(
                 const deadline = Date.now() + 5_000;
                 while (received.length < head && Date.now() < deadline)
                     await new Promise((resolve) => setTimeout(resolve, 10));
+                if (catchupError) throw catchupError;
                 assert.deepEqual(
                     received,
                     Array.from({ length: head }, (_, i) => i + 1),
-                    "WebSocket reordered, lost or duplicated an event"
+                    "HTTP catchup after WebSocket hints lost or duplicated an event"
                 );
             };
             await waitForEvents(13);
@@ -375,7 +387,7 @@ test(
                 `${url}/documents/${ids[0]}`,
                 content("next", replies[0].vaultUpdateId)
             );
-            await connect(13);
+            await connect();
             await waitForEvents(14);
             const log = await getJson<{ events: { eventId: number }[] }>(
                 `${url}/events-since?after=0`,

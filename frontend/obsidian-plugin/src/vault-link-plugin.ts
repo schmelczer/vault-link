@@ -5,7 +5,7 @@ import type {
     TAbstractFile,
     WorkspaceLeaf
 } from "obsidian";
-import { Notice, Platform, Plugin, TFile } from "obsidian";
+import { Notice, Plugin, TFile } from "obsidian";
 import "../manifest.json";
 import { HistoryView } from "./views/history/history-view";
 import { StatusBar } from "./views/status-bar/status-bar";
@@ -132,7 +132,6 @@ export default class VaultLinkPlugin extends Plugin {
                 load: this.loadData.bind(this),
                 save: this.saveData.bind(this)
             },
-            nativeLineEndings: Platform.isWin ? "\r\n" : "\n",
             ...(IS_DEBUG_BUILD
                 ? {
                       fetch: debugging.slowFetchFactory(1),

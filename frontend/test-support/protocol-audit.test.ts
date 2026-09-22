@@ -63,8 +63,7 @@ test(
                             JSON.stringify({
                                 type: "handshake",
                                 token,
-                                deviceId: randomUUID(),
-                                lastSeenVaultUpdateId: 0
+                                deviceId: randomUUID()
                             })
                         );
                     ws.onmessage = () => resolve(true);
@@ -302,8 +301,7 @@ test(
                             JSON.stringify({
                                 type: "handshake",
                                 token,
-                                deviceId,
-                                lastSeenVaultUpdateId: 0
+                                deviceId
                             })
                         );
                     ws.onmessage = () => resolve();

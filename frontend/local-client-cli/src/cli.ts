@@ -1,8 +1,7 @@
 import * as path from "path";
 import * as fs from "fs/promises";
 import * as fsSync from "fs";
-import type { NetworkConnectionStatus ,
-    Logger} from "sync-client";
+import type { NetworkConnectionStatus, Logger } from "sync-client";
 import {
     SyncClient,
     DEFAULT_SETTINGS,
@@ -11,7 +10,7 @@ import {
     type SyncSettings,
     type StoredDatabase
 } from "sync-client";
-import { parseArgs, type LineEndingMode } from "./args";
+import { parseArgs } from "./args";
 import { NodeFileSystemOperations, VAULTLINK_DIR } from "./node-filesystem";
 import { FileWatcher } from "./file-watcher";
 import { formatLogLine } from "./logger-formatter";
@@ -41,7 +40,6 @@ const LOG_LEVEL_ORDER = {
 function createLogHandler(minLevel: LogLevel): (logLine: LogLine) => void {
     return (logLine: LogLine): void => {
         if (LOG_LEVEL_ORDER[logLine.level] >= LOG_LEVEL_ORDER[minLevel]) {
-             
             console.log(formatLogLine(logLine));
         }
     };
@@ -49,17 +47,6 @@ function createLogHandler(minLevel: LogLevel): (logLine: LogLine) => void {
 
 const HEALTH_CHECK_INTERVAL_MS = 30 * 1000;
 const PROGRESS_LOG_INTERVAL_MS = 2000;
-
-function resolveLineEndings(mode: LineEndingMode): string {
-    switch (mode) {
-        case "lf":
-            return "\n";
-        case "crlf":
-            return "\r\n";
-        case "auto":
-            return process.platform === "win32" ? "\r\n" : "\n";
-    }
-}
 
 async function main(): Promise<void> {
     const args = parseArgs(process.argv);
@@ -96,12 +83,6 @@ async function main(): Promise<void> {
         emitBoot(LogLevel.INFO, `Local path: ${absolutePath}`);
         emitBoot(LogLevel.INFO, `Remote URI: ${args.remoteUri}`);
         emitBoot(LogLevel.INFO, `Vault name: ${args.vaultName}`);
-        if (args.lineEndings !== "auto") {
-            emitBoot(
-                LogLevel.INFO,
-                `Line endings: ${args.lineEndings.toUpperCase()}`
-            );
-        }
     }
 
     const dataDir = path.join(absolutePath, VAULTLINK_DIR);
@@ -158,8 +139,7 @@ async function main(): Promise<void> {
                     JSON.stringify(persistedDatabase, null, 2)
                 );
             }
-        },
-        nativeLineEndings: resolveLineEndings(args.lineEndings)
+        }
     });
 
     if (args.health !== undefined) {
@@ -279,7 +259,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
-     
     console.error(
         `Unexpected error: ${error instanceof Error ? error.message : String(error)}`
     );

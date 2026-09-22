@@ -76,8 +76,9 @@ old base are preserved as separate local documents, with conflict names if neede
 Interrupted recovery saves are replayable. Backups must be restored with the server
 stopped.
 
-WebSocket messages wake HTTP replay; missed notifications are recovered by replay
-and transport liveness checks. Authentication and permanent errors remain visible;
+WebSocket `vaultChanged` hints wake HTTP replay. The server periodically compares
+its history checkpoint to detect missed broadcasts; transport liveness checks
+recover disconnected clients. Authentication and permanent errors remain visible;
 transient errors retry according to client settings. Observer callback failures
 are isolated from the background sync loop.
 

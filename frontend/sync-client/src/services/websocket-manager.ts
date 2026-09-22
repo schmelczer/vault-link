@@ -5,7 +5,6 @@ import type { WebSocketClientMessage } from "./types/WebSocketClientMessage";
 import type { CursorPositionFromClient } from "./types/CursorPositionFromClient";
 import type { ClientCursors } from "./types/ClientCursors";
 import { createPromise } from "../utils/create-promise";
-import type { EventBatch } from "./types/EventBatch";
 import { WEBSOCKET_DISCONNECT_TIMEOUT_IN_S } from "../consts";
 import { removeFromArray } from "../utils/remove-from-array";
 import { EventListeners } from "../utils/data-structures/event-listeners";
@@ -17,7 +16,7 @@ export class WebSocketManager {
     >();
 
     public readonly onRemoteVaultUpdateReceived = new EventListeners<
-        (update: EventBatch) => Promise<void>
+        () => Promise<void>
     >();
 
     public readonly onRemoteCursorsUpdateReceived = new EventListeners<
@@ -303,7 +302,7 @@ export class WebSocketManager {
                     event.data
                 ) as WebSocketServerMessage;
 
-                if (["vaultEvents", "cursorPositions"].includes(message.type))
+                if (["vaultChanged", "cursorPositions"].includes(message.type))
                     this.expectResponse(socket);
                 // Track the message handling promise
                 const messageHandlingPromise = this.handleWebSocketMessage(
@@ -340,8 +339,8 @@ export class WebSocketManager {
     private async handleWebSocketMessage(
         message: WebSocketServerMessage
     ): Promise<void> {
-        if (message.type === "vaultEvents") {
-            await this.onRemoteVaultUpdateReceived.triggerAsync(message);
+        if (message.type === "vaultChanged") {
+            await this.onRemoteVaultUpdateReceived.triggerAsync();
 
             // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
         } else if (message.type === "cursorPositions") {

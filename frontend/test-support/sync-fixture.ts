@@ -11,7 +11,6 @@ import { Logger } from "../sync-client/src/tracing/logger";
 import { SyncHistory } from "../sync-client/src/tracing/sync-history";
 import { FixedSizeDocumentCache } from "../sync-client/src/utils/data-structures/fix-sized-cache";
 import { EventListeners } from "../sync-client/src/utils/data-structures/event-listeners";
-import { globsToRegexes } from "../sync-client/src/utils/globs-to-regexes";
 import type { ServerConfig } from "../sync-client/src/services/server-config";
 import type { SyncService } from "../sync-client/src/services/sync-service";
 import type { WebSocketManager } from "../sync-client/src/services/websocket-manager";
@@ -81,11 +80,7 @@ export async function fixture(
         config,
         undefined,
         { entries: () => changes, flush: async () => {} },
-        (path, size) =>
-            size > settings.getSettings().maxFileSizeMB * 1024 * 1024 ||
-            globsToRegexes(settings.getSettings().ignorePatterns, logger).some(
-                (pattern) => pattern.test(path)
-            )
+        (path, size) => settings.isIgnored(path) || settings.isOversized(size)
     );
     const websocket = {
         onWebSocketStatusChanged: new EventListeners(),

@@ -1,4 +1,6 @@
 import type { Logger } from "../tracing/logger";
+import { globsToRegexes } from "../utils/globs-to-regexes";
+import { isInternalPath } from "../utils/portable-path";
 import { Lock } from "../utils/data-structures/locks";
 import { EventListeners } from "../utils/data-structures/event-listeners";
 
@@ -43,6 +45,7 @@ export class Settings {
     >();
 
     private settings: SyncSettings;
+    private ignorePatterns: RegExp[];
     private readonly lock: Lock = new Lock();
 
     public constructor(
@@ -55,9 +58,25 @@ export class Settings {
             ...structuredClone(initialState ?? {})
         };
 
+        this.ignorePatterns = globsToRegexes(
+            this.settings.ignorePatterns,
+            logger
+        );
+
         this.logger.debug(
             `Loaded settings: ${JSON.stringify(redactSettings(this.settings), null, 2)}`
         );
+    }
+
+    public isIgnored(path: string): boolean {
+        return (
+            isInternalPath(path) ||
+            this.ignorePatterns.some((pattern) => pattern.test(path))
+        );
+    }
+
+    public isOversized(size: number): boolean {
+        return size > this.settings.maxFileSizeMB * 1024 * 1024;
     }
 
     public getSettings(): SyncSettings {
@@ -91,6 +110,11 @@ export class Settings {
             const next = { ...this.settings, ...update };
             await this.saveData(next);
             this.settings = next;
+            if (update.ignorePatterns !== undefined)
+                this.ignorePatterns = globsToRegexes(
+                    next.ignorePatterns,
+                    this.logger
+                );
 
             return [this.getSettings(), oldSettings] as const;
         });

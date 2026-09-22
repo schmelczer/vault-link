@@ -26,7 +26,6 @@ import type { VaultSnapshot } from "../services/types/VaultSnapshot";
 import type { PushContent } from "../services/types/PushContent";
 import type { Logger } from "../tracing/logger";
 import { EventListeners } from "../utils/data-structures/event-listeners";
-import { globsToRegexes } from "../utils/globs-to-regexes";
 import { mergeContent, toStoredSnapshot } from "./content";
 import { scanLocalFiles, type LocalChange } from "./scan";
 import {
@@ -91,8 +90,7 @@ export class Syncer {
                 websocket.sendHandshakeMessage({
                     type: "handshake",
                     token: settings.getSettings().token,
-                    deviceId,
-                    lastSeenVaultUpdateId: database.state.lastSeenUpdateId
+                    deviceId
                 });
             }
             // Failed upgrades and lost transports still need HTTP catchup,
@@ -128,7 +126,7 @@ export class Syncer {
             !this.hasScanned ||
             this.pendingPaths.has(path) ||
             this.unsyncablePaths.has(path) ||
-            this.ignored(path)
+            this.settings.isIgnored(path)
         ) {
             return false;
         }
@@ -414,7 +412,10 @@ export class Syncer {
                 const info = await this.files.fs.stat(path);
                 if (info?.kind !== "file") continue;
                 const doc = previous.documents[id];
-                if (this.ignored(path) || this.oversized(info.size)) {
+                if (
+                    this.settings.isIgnored(path) ||
+                    this.settings.isOversized(info.size)
+                ) {
                     next.local[id] = path;
                     next.documents[id] = {
                         materialized: true,
@@ -455,20 +456,6 @@ export class Syncer {
                 throw new LocalChangesDuringReconciliation();
             }
         };
-    }
-
-    private ignored(path: string): boolean {
-        return (
-            isInternalPath(path) ||
-            globsToRegexes(
-                this.settings.getSettings().ignorePatterns,
-                this.logger
-            ).some((pattern) => pattern.test(path))
-        );
-    }
-
-    private oversized(size: number): boolean {
-        return size > this.settings.getSettings().maxFileSizeMB * 1024 * 1024;
     }
 
     private async cacheContent(
@@ -550,8 +537,8 @@ export class Syncer {
                 guard: this.localGuard(),
                 changes: this.changes,
                 files: this.files,
-                ignored: (path) => this.ignored(path),
-                oversized: (size) => this.oversized(size),
+                ignored: (path) => this.settings.isIgnored(path),
+                oversized: (size) => this.settings.isOversized(size),
                 commit: async (next) => this.database.commit(next)
             },
             initial
@@ -735,8 +722,8 @@ export class Syncer {
         });
         if (
             next.excluded?.[head.documentId] !== undefined ||
-            this.ignored(path) ||
-            this.oversized(head.contentSize)
+            this.settings.isIgnored(path) ||
+            this.settings.isOversized(head.contentSize)
         ) {
             return undefined;
         }
@@ -748,7 +735,7 @@ export class Syncer {
                 : undefined;
         if (
             local !== undefined &&
-            this.oversized(base64ToBytes(local.contentBase64).length)
+            this.settings.isOversized(base64ToBytes(local.contentBase64).length)
         ) {
             return undefined;
         }
@@ -869,9 +856,9 @@ export class Syncer {
         for (const [id, oldPath] of Object.entries(before)) {
             const path = next.local[id];
             if (
-                this.ignored(oldPath) ||
+                this.settings.isIgnored(oldPath) ||
                 this.unsyncablePaths.has(oldPath) ||
-                (path !== undefined && this.ignored(path))
+                (path !== undefined && this.settings.isIgnored(path))
             ) {
                 next.excluded ??= {};
                 if (next.excluded[id] === undefined)
@@ -882,7 +869,7 @@ export class Syncer {
         for (const [id, path] of Object.entries(next.excluded ?? {})) {
             if (
                 before[id] === undefined &&
-                (path === null || !this.ignored(path))
+                (path === null || !this.settings.isIgnored(path))
             )
                 delete next.excluded![id];
         }
@@ -906,7 +893,7 @@ export class Syncer {
                 next.documents[id].materialized = false;
             if (
                 next.excluded?.[id] === undefined &&
-                !this.ignored(path) &&
+                !this.settings.isIgnored(path) &&
                 remote.entries[id] !== undefined &&
                 (!this.database.state.local[id] ||
                     !next.documents[id].base ||
@@ -971,11 +958,11 @@ export class Syncer {
         }
         for (const [id, path] of Object.entries(this.database.state.local)) {
             if (
-                this.ignored(path) ||
+                this.settings.isIgnored(path) ||
                 this.database.state.excluded?.[id] !== undefined ||
                 !this.database.state.documents[id]?.materialized ||
                 this.unsyncablePaths.has(path) ||
-                this.oversized(
+                this.settings.isOversized(
                     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Document heads are a sparse ID map at runtime.
                     this.database.state.remoteHeads[id]?.contentSize ?? 0
                 )
@@ -985,7 +972,9 @@ export class Syncer {
             const snapshot = await this.files.snapshot(path);
             if (
                 !snapshot ||
-                this.oversized(base64ToBytes(snapshot.contentBase64).length)
+                this.settings.isOversized(
+                    base64ToBytes(snapshot.contentBase64).length
+                )
             ) {
                 continue;
             }
@@ -1088,7 +1077,7 @@ export class Syncer {
                 doc?.rejected &&
                 doc.observedHash === doc.rejected.hash &&
                 doc.base?.hash !== doc.rejected.hash &&
-                !this.ignored(path) &&
+                !this.settings.isIgnored(path) &&
                 state.excluded?.[id] === undefined
             )
                 return doc.rejected.message;

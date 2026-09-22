@@ -62,7 +62,6 @@ vaultlink \
 | `--ignore-pattern <pattern>`         | -       | Glob pattern to ignore (repeatable)             |
 | `--websocket-retry-interval-ms <ms>` | `3500`  | WebSocket reconnection interval                 |
 | `--log-level <level>`                | `INFO`  | Log level: DEBUG, INFO, WARNING, ERROR          |
-| `--line-endings <mode>`              | `auto`  | Line ending style: auto, lf, crlf               |
 | `-q, --quiet`                        | -       | Suppress startup banner for non-interactive use |
 | `-h, --help`                         | -       | Show help                                       |
 | `-V, --version`                      | -       | Show version                                    |
@@ -96,12 +95,7 @@ vaultlink -l ./vault -r wss://sync.example.com -t token123 -v default \
   --log-level DEBUG --quiet
 ```
 
-Force LF line endings (useful for cross-platform vaults):
-
-```bash
-vaultlink -l ./vault -r wss://sync.example.com -t token123 -v default \
-  --line-endings lf
-```
+File bytes, including line endings, are preserved on every platform.
 
 ## Docker Deployment
 

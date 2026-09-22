@@ -57,3 +57,33 @@ it("owns settings arrays instead of sharing them with callers and listeners", as
     await settings.setSettings({ maxFileSizeMB: 12 });
     assert.deepEqual(settings.getSettings().ignorePatterns, ["updated"]);
 });
+
+it("file eligibility follows successfully saved settings", async () => {
+    let fail = false;
+    const settings = new Settings(
+        new Logger(),
+        {
+            ignorePatterns: ["private/**"],
+            maxFileSizeMB: 1
+        },
+        async () => {
+            if (fail) throw new Error("save failed");
+        }
+    );
+    assert(settings.isIgnored("private/note.md"));
+    assert(settings.isIgnored(".vault-link-sync/state.json"));
+    assert(!settings.isIgnored("public/note.md"));
+    assert(!settings.isOversized(1024 * 1024));
+    assert(settings.isOversized(1024 * 1024 + 1));
+    fail = true;
+    await assert.rejects(
+        settings.setSettings({ ignorePatterns: [], maxFileSizeMB: 2 }),
+        /save failed/
+    );
+    assert(settings.isIgnored("private/note.md"));
+    assert(settings.isOversized(1024 * 1024 + 1));
+    fail = false;
+    await settings.setSettings({ ignorePatterns: [], maxFileSizeMB: 2 });
+    assert(!settings.isIgnored("private/note.md"));
+    assert(!settings.isOversized(1024 * 1024 + 1));
+});
