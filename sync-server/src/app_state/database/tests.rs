@@ -116,7 +116,12 @@ async fn migrations_can_be_reapplied_without_losing_requests_or_content() {
         b"only copy"
     );
     assert_eq!(
-        reopened.events_after(&vault, 0, DEFAULT_EVENTS_PAGE_SIZE).await.unwrap().events.len(),
+        reopened
+            .events_after(&vault, 0, DEFAULT_EVENTS_PAGE_SIZE)
+            .await
+            .unwrap()
+            .events
+            .len(),
         1
     );
 }
@@ -173,7 +178,10 @@ async fn replay_pages_are_bounded_and_cover_every_event_in_order() {
     }
     let mut after = 0;
     while after < 150 {
-        let batch = database.events_after(&vault, after, DEFAULT_EVENTS_PAGE_SIZE).await.unwrap();
+        let batch = database
+            .events_after(&vault, after, DEFAULT_EVENTS_PAGE_SIZE)
+            .await
+            .unwrap();
         assert!(batch.events.len() <= 64, "catchup must bound each page");
         assert!(!batch.events.is_empty());
         assert_eq!(batch.head_event_id, 150);
@@ -242,7 +250,9 @@ async fn manifest_existence_checks_are_independent_of_payload_decoding() {
         .await
         .unwrap();
     assert_eq!(
-        Database::get_missing_document(&mut tx, &[id]).await.unwrap(),
+        Database::get_missing_document(&mut tx, &[id])
+            .await
+            .unwrap(),
         None
     );
     let missing = uuid::Uuid::new_v4();
@@ -288,7 +298,10 @@ async fn replay_byte_budget_prevents_accumulating_large_historical_manifests() {
         .unwrap();
     }
     tx.commit().await.unwrap();
-    let batch = database.events_after(&vault, 0, DEFAULT_EVENTS_PAGE_SIZE).await.unwrap();
+    let batch = database
+        .events_after(&vault, 0, DEFAULT_EVENTS_PAGE_SIZE)
+        .await
+        .unwrap();
     assert!(!batch.events.is_empty());
     assert!(batch.events.len() < 8);
     assert!(serde_json::to_vec(&batch).unwrap().len() < MAX_EVENTS_PAGE_BYTES + 1024);

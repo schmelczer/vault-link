@@ -3,13 +3,13 @@ use axum::extract::ws::{Message, WebSocket};
 use futures::{sink::SinkExt, stream::SplitSink};
 
 use super::models::{WebSocketClientMessage, WebSocketHandshake, WebSocketServerMessage};
+use crate::consts::WEBSOCKET_SEND_TIMEOUT;
 use crate::{
     app_state::{AppState, database::models::VaultId},
     config::user_config::User,
     errors::{SyncServerError, server_error, unauthenticated_error},
     server::auth::auth,
 };
-use crate::consts::WEBSOCKET_SEND_TIMEOUT;
 
 pub struct AuthenticatedWebSocketHandshake {
     pub handshake: WebSocketHandshake,

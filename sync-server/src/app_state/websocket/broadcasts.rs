@@ -1,9 +1,6 @@
 use super::models::CursorPositionFromServer;
 use crate::{
-    app_state::{
-        database::models::VaultId,
-        weak_slots::get_or_create,
-    },
+    app_state::{database::models::VaultId, weak_slots::get_or_create},
     config::server_config::ServerConfig,
 };
 use std::{collections::HashMap, sync::Arc};
