@@ -2,7 +2,7 @@ use core::time::Duration;
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, Weak},
 };
 
 use anyhow::{Context as _, Result};
@@ -48,6 +48,7 @@ impl std::fmt::Debug for PoolWithTimestamp {
 pub struct Database {
     config: DatabaseConfig,
     connection_pools: Arc<Mutex<HashMap<VaultId, PoolWithTimestamp>>>,
+    opening_pools: Arc<Mutex<HashMap<VaultId, Weak<Mutex<()>>>>>,
 }
 
 pub type Transaction<'a> = sqlx::Transaction<'a, Sqlite>;
@@ -66,25 +67,13 @@ impl Database {
                 )
             })?;
 
-        info!("Applying pending database migrations");
-
-        // Filenames encode only a digest, so their vault names cannot be
-        // recovered here. Check migrations now and open pools lazily by name.
-        let mut entries = tokio::fs::read_dir(&vault_directory).await?;
-        while let Some(entry) = entries.next_entry().await? {
-            if entry.file_type().await?.is_file()
-                && entry.path().extension().is_some_and(|ext| ext == "sqlite")
-            {
-                Self::open_database(config, &entry.path())
-                    .await?
-                    .close()
-                    .await;
-            }
-        }
+        // SQLite flushes its own files, not ancestors created by this process
+        Self::flush_directory_ancestors(&vault_directory).await?;
 
         let database = Self {
             config: config.clone(),
             connection_pools: Arc::default(),
+            opening_pools: Arc::default(),
         };
 
         // Start background task to cleanup idle connection pools
@@ -127,7 +116,25 @@ impl Database {
 
         Self::run_migrations(&pool).await?;
 
+        if let Some(directory) = file_name.parent() {
+            #[cfg(unix)]
+            Self::flush_directory_ancestors(directory).await?;
+        }
+
         Ok(pool)
+    }
+
+    async fn flush_directory_ancestors(directory: &Path) -> Result<()> {
+        let directory = tokio::fs::canonicalize(directory).await?;
+        for ancestor in directory.ancestors() {
+            tokio::fs::File::open(ancestor)
+                .await?
+                .sync_all()
+                .await
+                .with_context(|| format!("Cannot flush directory {}", ancestor.display()))?;
+        }
+
+        Ok(())
     }
 
     async fn run_migrations(pool: &Pool<Sqlite>) -> Result<()> {
