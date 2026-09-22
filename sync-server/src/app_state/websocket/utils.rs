@@ -9,6 +9,7 @@ use crate::{
     errors::{SyncServerError, server_error, unauthenticated_error},
     server::auth::auth,
 };
+use crate::consts::WEBSOCKET_SEND_TIMEOUT;
 
 pub struct AuthenticatedWebSocketHandshake {
     pub handshake: WebSocketHandshake,
@@ -49,9 +50,13 @@ pub async fn send_update_over_websocket(
         .context("Failed to serialize update")
         .map_err(server_error)?;
 
-    sender
-        .send(Message::Text(serialized_update))
-        .await
-        .context("Failed to send message over websocket")
-        .map_err(server_error)
+    tokio::time::timeout(
+        WEBSOCKET_SEND_TIMEOUT,
+        sender.send(Message::Text(serialized_update)),
+    )
+    .await
+    .context("WebSocket send deadline expired")
+    .map_err(server_error)?
+    .context("Failed to send message over websocket")
+    .map_err(server_error)
 }
