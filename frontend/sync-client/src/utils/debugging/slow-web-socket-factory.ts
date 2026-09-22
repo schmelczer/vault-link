@@ -1,5 +1,5 @@
 import { sleep } from "../sleep";
-import { Locks } from "../data-structures/locks";
+import { Lock } from "../data-structures/locks";
 import type { Logger } from "../../tracing/logger";
 
 export function slowWebSocketFactory(
@@ -8,10 +8,8 @@ export function slowWebSocketFactory(
 ): typeof WebSocket {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     return class FlakyWebSocket extends WebSocket {
-        private static readonly RECEIVE_KEY = "websocket-receive";
-        private static readonly SEND_KEY = "websocket-send";
-
-        private readonly locks = new Locks(logger);
+        private readonly receiving = new Lock();
+        private readonly sending = new Lock();
 
         public set onopen(callback: ((event: Event) => void) | null) {
             super.onopen = async (event: Event): Promise<void> => {
@@ -25,18 +23,15 @@ export function slowWebSocketFactory(
 
         public set onmessage(callback: ((event: MessageEvent) => void) | null) {
             super.onmessage = async (event: MessageEvent): Promise<void> => {
-                await this.locks.withLock(
-                    FlakyWebSocket.RECEIVE_KEY,
-                    async () => {
-                        if (jitterScaleInSeconds > 0) {
-                            await sleep(
-                                Math.random() * jitterScaleInSeconds * 1000
-                            );
-                        }
-
-                        callback?.(event);
+                await this.receiving.withLock(async () => {
+                    if (jitterScaleInSeconds > 0) {
+                        await sleep(
+                            Math.random() * jitterScaleInSeconds * 1000
+                        );
                     }
-                );
+
+                    callback?.(event);
+                });
             };
         }
 
@@ -70,7 +65,7 @@ export function slowWebSocketFactory(
             data: string | ArrayBufferLike | Blob | ArrayBufferView
         ): Promise<void> {
             // maintain message order
-            await this.locks.withLock(FlakyWebSocket.SEND_KEY, async () => {
+            await this.sending.withLock(async () => {
                 if (jitterScaleInSeconds > 0) {
                     await sleep(Math.random() * jitterScaleInSeconds * 1000);
                 }

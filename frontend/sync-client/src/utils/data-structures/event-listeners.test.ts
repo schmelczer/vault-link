@@ -3,6 +3,30 @@ import assert from "node:assert";
 import { EventListeners } from "./event-listeners";
 
 describe("EventListeners", () => {
+    it("isolates throwing and rejecting observers and still notifies later listeners", async () => {
+        const failures: unknown[] = [];
+        const listeners = new EventListeners<() => unknown>((error) =>
+            failures.push(error)
+        );
+        const syncError = new Error("sync observer");
+        const asyncError = new Error("async observer");
+        let called = 0;
+        listeners.add(() => {
+            throw syncError;
+        });
+        listeners.add(async () => {
+            throw asyncError;
+        });
+        listeners.add(() => {
+            called++;
+        });
+        assert.doesNotThrow(() => {
+            listeners.trigger();
+        });
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        assert.equal(called, 1);
+        assert.deepEqual(failures, [syncError, asyncError]);
+    });
     it("should add & remove listeners", () => {
         const listeners = new EventListeners<() => void>();
         // eslint-disable-next-line @typescript-eslint/no-empty-function
