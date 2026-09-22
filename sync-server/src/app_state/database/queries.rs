@@ -61,6 +61,19 @@ impl Database {
         })
     }
 
+    pub async fn get_latest_document_metadata(
+        tx: &mut Transaction<'_>,
+        id: &DocumentId,
+    ) -> Result<Option<DocumentVersionWithoutContent>> {
+        Ok(sqlx::query_as::<_, DocumentVersionWithoutContent>(
+            "SELECT vault_update_id, document_id, updated_date, user_id, device_id, length(content) AS content_size
+             FROM documents WHERE document_id = ? ORDER BY vault_update_id DESC LIMIT 1",
+        )
+        .bind(id.hyphenated())
+        .fetch_optional(&mut **tx)
+        .await?)
+    }
+
     pub async fn get_document_version(
         &self,
         vault: &VaultId,
