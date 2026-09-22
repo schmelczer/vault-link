@@ -8,7 +8,7 @@ use crate::{
             utils::{get_authenticated_handshake, send_update_over_websocket},
         },
     },
-    consts::WEBSOCKET_SEND_TIMEOUT,
+    consts::WEBSOCKET_HANDSHAKE_TIMEOUT,
     errors::{SyncServerError, client_error, server_error},
 };
 use axum::{
@@ -59,7 +59,7 @@ async fn websocket(
     let authenticated = get_authenticated_handshake(
         &state,
         &vault,
-        tokio::time::timeout(WEBSOCKET_SEND_TIMEOUT, receiver.next())
+        tokio::time::timeout(WEBSOCKET_HANDSHAKE_TIMEOUT, receiver.next())
             .await
             .map_err(|_| client_error(anyhow::anyhow!("WebSocket handshake deadline expired")))?
             .transpose()

@@ -17,7 +17,9 @@ pub const DEFAULT_MAX_CLIENTS_PER_VAULT: usize = 256;
 pub const DEFAULT_LOG_DIRECTORY: &str = "logs";
 pub const DEFAULT_LOG_ROTATION_INTERVAL: Duration = Duration::from_secs(60 * 60 * 24); // 1 day
 pub const DEFAULT_LOG_LEVEL: LogLevel = LogLevel::Info;
+
 pub const WEBSOCKET_SEND_TIMEOUT: Duration = Duration::from_secs(10);
+pub const WEBSOCKET_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub const DEFAULT_MERGEABLE_FILE_EXTENSIONS: &[&str] = &["md", "txt"];
 
