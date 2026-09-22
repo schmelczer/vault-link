@@ -176,7 +176,6 @@ async function main() {
     };
     const frontend = join(root, "frontend");
 
-    // Build only packages in scope and always rebuild the protocol peers.
     if (
         !(await run(
             "build-server",
@@ -195,12 +194,6 @@ async function main() {
             [
                 "run",
                 "build",
-                "--workspace",
-                "sync-client",
-                "--workspace",
-                "deterministic-tests",
-                "--workspace",
-                "test-client",
             ],
             frontend,
         ))
@@ -222,6 +215,7 @@ async function main() {
         ["run", "test", "--workspace", "sync-client"],
         frontend,
     );
+    await run("adapter-unit-tests", "npm", ["run", "test"], frontend);
     await run("harness-self-tests", "npm", ["run", "test:harness"], frontend);
     await run("crash-and-protocol", "npm", ["run", "test:protocol"], frontend);
 
