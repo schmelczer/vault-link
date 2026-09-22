@@ -1,7 +1,8 @@
 pub mod auth;
 mod device_id_header;
 mod endpoints;
-pub(crate) mod requests;
+pub(crate) mod history;
+mod requests;
 pub(crate) mod responses;
 
 #[cfg(test)]
@@ -17,6 +18,7 @@ use axum::{
     routing::{IntoMakeService, get},
 };
 use device_id_header::DEVICE_ID_HEADER_NAME;
+use history::history_middleware;
 use log::info;
 use tokio::signal;
 use tower_http::{
@@ -63,6 +65,11 @@ pub async fn create_server(config: Config) -> Result<()> {
                     http::header::CONTENT_TYPE,
                     http::header::AUTHORIZATION,
                     DEVICE_ID_HEADER_NAME.clone(),
+                    http::header::HeaderName::from_static("x-vault-link-history"),
+                ])
+                .expose_headers([
+                    http::header::HeaderName::from_static("x-vault-link-history"),
+                    http::header::HeaderName::from_static("x-vault-link-history-mismatch"),
                 ])
                 .allow_methods([Method::GET, Method::PUT]),
         )
@@ -114,9 +121,17 @@ fn get_authed_routes(app_state: AppState) -> Router<AppState> {
                 .put(endpoints::put_file_content::put_file_content),
         )
         .route(
+            "/vaults/:vault_id/documents/:document_id/metadata",
+            get(endpoints::fetch_latest_document_metadata::fetch_latest_document_metadata),
+        )
+        .route(
             "/vaults/:vault_id/documents/:document_id/versions/:vault_update_id/content",
             get(endpoints::fetch_document_version_content::fetch_document_version_content),
         )
+        .layer(middleware::from_fn_with_state(
+            app_state.clone(),
+            history_middleware,
+        ))
         .layer(middleware::from_fn_with_state(app_state, auth_middleware))
 }
 

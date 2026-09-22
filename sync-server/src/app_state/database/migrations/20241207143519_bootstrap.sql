@@ -1,5 +1,6 @@
 CREATE TABLE events (
     event_id INTEGER PRIMARY KEY AUTOINCREMENT CHECK(event_id <= 9007199254740991), -- JavaScript’s Number.MAX_SAFE_INTEGER
+    event_token TEXT,
     request_id TEXT NOT NULL UNIQUE,
     request_fingerprint BLOB NOT NULL
 );

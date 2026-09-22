@@ -1,5 +1,6 @@
 pub mod events;
 pub mod fetch_document_version_content;
+pub mod fetch_latest_document_metadata;
 pub mod fetch_latest_document_version;
 pub mod get_file_manifest;
 pub mod index;
