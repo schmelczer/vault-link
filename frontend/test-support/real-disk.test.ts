@@ -3,9 +3,7 @@ import { test } from "node:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { tmpdir } from "node:os";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-import { RealDisk } from "./real-disk";
+import { NodeFileSystemOperations } from "../local-client-cli/src/node-filesystem";
 import { Database, emptyState } from "../sync-client/src/persistence/database";
 import { FileOperations } from "../sync-client/src/file-operations/file-operations";
 import type { ServerConfig } from "../sync-client/src/services/server-config";
@@ -21,16 +19,7 @@ test(
         try {
             const root = path.join(directory, "vault");
             await fs.mkdir(root);
-            const helper = path.join(directory, "native-fs");
-            await promisify(execFile)("cc", [
-                "-Wall",
-                "-Wextra",
-                "-O2",
-                path.join(__dirname, "native-fs.c"),
-                "-o",
-                helper
-            ]);
-            const disk = new RealDisk(root, helper);
+            const disk = new NodeFileSystemOperations(root);
             const snapshot = (text: string) => ({
                 content: new TextEncoder().encode(text)
             });
@@ -50,6 +39,32 @@ test(
                     ).toString()
                 )
             );
+            for (const unsafe of [
+                "../outside",
+                "/absolute",
+                "folder/../outside"
+            ]) {
+                await assert.rejects(
+                    disk.write(unsafe, snapshot("blocked")),
+                    /Unsafe path/
+                );
+                await assert.rejects(disk.readSnapshot(unsafe), /Unsafe path/);
+            }
+            // POSIX filenames can contain colons. The engine, not the adapter,
+            // allocates their portable names for sync.
+            if (process.platform !== "win32") {
+                await fs.writeFile(
+                    path.join(root, "local:name.md"),
+                    "local name"
+                );
+                assert.equal(
+                    Buffer.from(
+                        (await disk.readSnapshot("local:name.md"))!.content
+                    ).toString(),
+                    "local name"
+                );
+                await disk.rename("local:name.md", "portable-name.md");
+            }
             await disk.write("a.md", snapshot("A"));
             await disk.write("b.md", snapshot("B"));
             // A file in an ancestor position makes descendants absent.

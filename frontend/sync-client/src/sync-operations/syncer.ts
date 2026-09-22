@@ -340,18 +340,17 @@ export class Syncer {
                 if (this.database.state.pending) {
                     await this.finishPending();
                 }
-                await this.scan();
                 const batch = await this.service.events(
                     this.database.state.lastSeenUpdateId
                 );
                 await this.incorporateEventBatch(batch);
-                await this.scan();
                 // Previously excluded content becomes eligible after a setting
                 // change. Its saved obligation survives advancing the cursor.
                 if (Object.keys(this.database.state.excluded ?? {}).length)
                     await this.incorporateFileManifest(
                         this.database.state.fileManifest
                     );
+                else await this.scan();
                 for (const head of Object.values(
                     this.database.state.remoteHeads
                 )) {
@@ -521,7 +520,6 @@ export class Syncer {
                 bootstrap: vaultSnapshot
             });
         }
-        await this.scan(vaultSnapshot);
         await this.incorporateFileManifest(
             vaultSnapshot.fileManifest,
             vaultSnapshot.headEventId,
@@ -531,6 +529,7 @@ export class Syncer {
 
     private async scan(initial?: VaultSnapshot): Promise<void> {
         await this.flushLocalChanges();
+        const hadChanges = this.changes.length > 0;
         this.unsyncablePaths = await scanLocalFiles(
             {
                 next: this.next(),
@@ -544,7 +543,8 @@ export class Syncer {
             initial
         );
         this.hasScanned = true;
-        await this.localChangeStorage.save(structuredClone(this.changes));
+        if (hadChanges)
+            await this.localChangeStorage.save(structuredClone(this.changes));
     }
 
     private async incorporateEventBatch(batch: EventBatch): Promise<void> {

@@ -54,7 +54,12 @@ updates only wake the loop to reread current bytes. Namespace changes detected
 before mutations invalidate the plan. Notifications during application are incorporated
 between files using their document identities; the next scan rereads content. Content is reread
 before replacement. Ignored and oversized occupants stay in place. Adapters
-report atomic editor saves as updates and suppress engine-generated notifications.
+use raw filesystem events only to wake a scan. These include engine writes and
+atomic editor replacements, so they must not be reported as logical create/delete
+notifications. Integrations with reliable user-action events can persist those
+explicit notifications to preserve rename identities, as Obsidian does for
+`Vault.rename`. Raw watchers infer a move
+only when the missing and new files have a unique matching, nonempty content hash.
 
 Metadata persistence must replace a complete value atomically, leaving a readable
 old/new value after interruption. Metadata and user files need not describe the
@@ -83,5 +88,10 @@ transient errors retry according to client settings. Observer callback failures
 are isolated from the background sync loop.
 
 API v5 clients and servers must be deployed together. V4 databases migrate without
-removing history. The old Obsidian and CLI adapters still require the filesystem
-and persistence contract required by the core engine.
+removing history. CLI and desktop Obsidian share the Node filesystem adapter and
+complete-record metadata persistence. Node file moves use exclusive creation
+followed by unlink, so interruption may leave two ordinary files. Metadata alone
+is flushed before an atomic rename; there is no user-file durability protocol.
+Obsidian mobile uses the host storage API. Its exclusive-copy API requires a
+scratch input file in the ignored internal directory; leftovers are never replayed
+or used for recovery. Mobile metadata persistence uses Obsidian's data store.

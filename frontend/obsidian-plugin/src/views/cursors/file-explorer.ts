@@ -36,7 +36,7 @@ export function renderCursorsInFileExplorer(
             (parent) => {
                 cursors.forEach((cursor) => {
                     cursor.documentsWithCursors.forEach((document) => {
-                        if (document.relativePath.startsWith(key)) {
+                        if (document.relative_path.startsWith(key)) {
                             parent.appendChild(
                                 createSpan({
                                     text: cursor.userName,

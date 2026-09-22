@@ -1,204 +1,105 @@
-import type { Stat, Vault, Workspace } from "obsidian";
-import { MarkdownView, normalizePath } from "obsidian";
-import type { CursorPosition, TextWithCursors } from "sync-client";
+import type { Editor } from "obsidian";
 import {
     utils,
     type FileSystemOperations,
-    type RelativePath
+    type FileSnapshot
 } from "sync-client";
 import { getSelectionsFromEditor } from "./views/cursors/get-selections-from-editor";
 
+/** Editor contents and selections are one synchronous snapshot. Disk namespace
+ * operations remain the responsibility of the platform adapter. */
 export class ObsidianFileSystemOperations implements FileSystemOperations {
     public constructor(
-        private readonly vault: Vault,
-        private readonly workspace: Workspace
+        private readonly disk: FileSystemOperations,
+        private readonly activeEditor: () =>
+            | { path: string; editor: Editor }
+            | undefined
     ) {}
 
-    public async listFilesRecursively(
-        root: RelativePath | undefined
-    ): Promise<RelativePath[]> {
-        // Let's implement this by hand because vault.adapter.listAllFiles doesn't always return all files.
-        const allFiles = [];
-        const remainingFolders = [root ?? this.vault.getRoot().path];
-
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-        while (true) {
-            const folder = remainingFolders.pop();
-            if (folder == undefined) {
-                break;
-            }
-
-            // This would be a very bad idea to sync as it would mess with
-            // the integrity of the sync database.
-            if (folder.endsWith(".obsidian/plugins/vault-link/data.json")) {
-                continue;
-            }
-
-            const files = await this.vault.adapter.list(normalizePath(folder));
-            allFiles.push(...files.files);
-            remainingFolders.push(...files.folders);
-        }
-
-        return allFiles;
+    public async listFilesRecursively(root?: string): Promise<string[]> {
+        return this.disk.listFilesRecursively(root);
+    }
+    public async exists(path: string): Promise<boolean> {
+        return this.disk.exists(path);
+    }
+    public async createDirectory(path: string): Promise<void> {
+        return this.disk.createDirectory(path);
+    }
+    public async delete(path: string): Promise<void> {
+        return this.disk.delete(path);
+    }
+    public async deleteFile(path: string): Promise<void> {
+        return this.disk.deleteFile(path);
+    }
+    public async rename(from: string, to: string): Promise<void> {
+        const snapshot = await this.readSnapshot(from);
+        if (!snapshot) throw new Error(`Missing source: ${from}`);
+        await this.write(to, snapshot);
+        const current = await this.readSnapshot(from);
+        if (
+            !current ||
+            current.content.length !== snapshot.content.length ||
+            current.content.some((byte, i) => byte !== snapshot.content[i])
+        )
+            throw new Error(`Source changed during move: ${from}`);
+        await this.deleteFile(from);
     }
 
-    public async read(path: RelativePath): Promise<Uint8Array> {
-        path = normalizePath(path);
-        const view = this.workspace.getActiveViewOfType(MarkdownView);
-        if (view?.file?.path === path) {
-            return new TextEncoder().encode(view.editor.getValue());
-        }
-
-        return new Uint8Array(await this.vault.adapter.readBinary(path));
+    public async stat(path: string): ReturnType<FileSystemOperations["stat"]> {
+        const entry = await this.disk.stat(path);
+        const view = this.activeEditor();
+        if (entry?.kind === "file" && view?.path === path)
+            return {
+                ...entry,
+                size: new TextEncoder().encode(view.editor.getValue())
+                    .byteLength
+            };
+        return entry;
     }
 
-    public async write(path: RelativePath, content: Uint8Array): Promise<void> {
-        path = normalizePath(path);
-
-        const view = this.workspace.getActiveViewOfType(MarkdownView);
-        if (view?.file?.path === path) {
-            const position = view.editor.getCursor();
-            view.editor.setValue(new TextDecoder().decode(content));
-            view.editor.setCursor(position);
-            return;
+    public async readSnapshot(path: string): Promise<FileSnapshot | undefined> {
+        // Validate the disk path even when an editor is open.
+        const entry = await this.disk.stat(path);
+        if (!entry) return undefined;
+        const view = this.activeEditor();
+        if (entry.kind === "file" && view?.path === path) {
+            return {
+                content: new TextEncoder().encode(view.editor.getValue()),
+                cursors: getSelectionsFromEditor(view.editor).flatMap(
+                    ({ id, start, end }) => [
+                        { id: 2 * id, position: start },
+                        { id: 2 * id + 1, position: end }
+                    ]
+                )
+            };
         }
+        return this.disk.readSnapshot(path);
+    }
 
-        return this.vault.adapter.writeBinary(
-            path,
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-            content.buffer as ArrayBuffer
+    public async write(path: string, snapshot: FileSnapshot): Promise<void> {
+        await this.disk.write(path, snapshot);
+        const view = this.activeEditor();
+        if (view?.path !== path) return;
+        const text = new TextDecoder().decode(snapshot.content);
+        view.editor.setValue(text);
+        const cursors = [...(snapshot.cursors ?? [])].sort(
+            (a, b) => a.id - b.id
         );
-    }
-
-    public async atomicUpdateText(
-        path: RelativePath,
-        updater: (current: TextWithCursors) => TextWithCursors
-    ): Promise<string> {
-        path = normalizePath(path);
-
-        const view = this.workspace.getActiveViewOfType(MarkdownView);
-
-        if (view?.file?.path === path) {
-            const text = view.editor.getValue();
-
-            const cursors: CursorPosition[] = getSelectionsFromEditor(
-                view.editor
-            ).flatMap(({ id, start: anchor, end: head }) => [
-                {
-                    id: 2 * id,
-                    position: anchor
-                },
-                {
-                    id: 2 * id + 1,
-                    position: head
-                }
-            ]);
-
-            const result = updater({
+        const selections = [];
+        for (let i = 0; i + 1 < cursors.length; i += 2) {
+            const anchor = utils.positionToLineAndColumn(
                 text,
-                cursors
+                cursors[i].position
+            );
+            const head = utils.positionToLineAndColumn(
+                text,
+                cursors[i + 1].position
+            );
+            selections.push({
+                anchor: { line: anchor.line, ch: anchor.column },
+                head: { line: head.line, ch: head.column }
             });
-
-            if (result.text === text) {
-                return text;
-            }
-
-            view.editor.setValue(result.text);
-
-            const selections = [];
-            for (let i = 0; i < result.cursors.length / 2; i++) {
-                const from = result.cursors[2 * i];
-                const to = result.cursors[2 * i + 1];
-                const { line: fromLine, column: fromColumn } =
-                    utils.positionToLineAndColumn(result.text, from.position);
-
-                const { line: toLine, column: toColumn } =
-                    utils.positionToLineAndColumn(result.text, to.position);
-
-                selections.push({
-                    anchor: { line: fromLine, ch: fromColumn },
-                    head: { line: toLine, ch: toColumn }
-                });
-            }
-            view.editor.setSelections(selections);
-
-            return result.text;
         }
-
-        return this.vault.adapter.process(
-            path,
-            (text) =>
-                updater({
-                    text,
-                    cursors: []
-                }).text
-        );
-    }
-
-    public async getFileSize(path: RelativePath): Promise<number> {
-        return (await this.statFile(path)).size;
-    }
-
-    public async getModificationTime(path: RelativePath): Promise<Date> {
-        return new Date((await this.statFile(path)).mtime);
-    }
-
-    public async exists(path: RelativePath): Promise<boolean> {
-        return this.vault.adapter.exists(normalizePath(path));
-    }
-
-    public async createDirectory(path: RelativePath): Promise<void> {
-        return this.vault.adapter.mkdir(normalizePath(path));
-    }
-
-    public async delete(path: RelativePath): Promise<void> {
-        if (!path) {
-            throw new Error("Cannot delete the vault root");
-        }
-        await this.deleteDirectoryTree(normalizePath(path));
-    }
-
-    public async deleteFile(path: RelativePath): Promise<void> {
-        path = normalizePath(path);
-        const entry = await this.vault.adapter.stat(path);
-        if (!entry) return;
-        if (entry.type !== "file") {
-            throw new Error(`Cannot delete non-file: ${path}`);
-        }
-        await this.vault.adapter.remove(path);
-    }
-
-    public async rename(
-        oldPath: RelativePath,
-        newPath: RelativePath
-    ): Promise<void> {
-        return this.vault.adapter.rename(oldPath, newPath);
-    }
-
-    private async statFile(path: string): Promise<Stat> {
-        const file = await this.vault.adapter.stat(normalizePath(path));
-
-        if (!file) {
-            throw new Error(`File not found: ${path}`);
-        }
-
-        return file;
-    }
-
-    private async deleteDirectoryTree(path: string): Promise<void> {
-        const entry = await this.vault.adapter.stat(path);
-        if (!entry) return;
-        if (entry.type !== "folder") {
-            throw new Error(`Cannot delete non-directory: ${path}`);
-        }
-
-        const children = await this.vault.adapter.list(path);
-        if (children.files.length > 0) {
-            throw new Error(`Cannot delete non-empty directory: ${path}`);
-        }
-        for (const folder of children.folders) {
-            await this.deleteDirectoryTree(folder);
-        }
-        await this.vault.adapter.rmdir(path, false);
+        if (selections.length) view.editor.setSelections(selections);
     }
 }

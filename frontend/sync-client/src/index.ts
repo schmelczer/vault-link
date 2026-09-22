@@ -36,7 +36,7 @@ export type {
 } from "./errors/errors";
 export type { MaybeOutdatedClientCursors } from "./types/maybe-outdated-client-cursors";
 export { DocumentSyncStatus } from "./types/document-sync-status";
-export { SyncClient } from "./sync-client";
+export { SyncClient, type StoredClient } from "./sync-client";
 export type { TextWithCursors, CursorPosition } from "reconcile-text";
 
 export const debugging = {

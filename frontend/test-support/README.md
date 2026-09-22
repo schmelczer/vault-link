@@ -13,7 +13,8 @@ Test-only code shared by the deterministic and seeded clients.
 | `restart-reconciliation.test.ts` | Interrupted file application followed by user edits, two-client/server convergence and a second restart |
 | `server-restore.test.ts` | History checkpoints, server backup restores and interrupted metadata resets |
 | `content-limits.test.ts`, `protocol-audit.test.ts` | Content validation and API invariants |
-| `real-disk.test.ts` | Host filesystem exclusive create/rename, unsafe links, and rename cycles |
+| `real-disk.test.ts` | Production Node adapter exclusive create/move, unsafe links, and rename cycles |
+| `production-adapters.test.ts` | Actual CLI processes, raw watchers, Obsidian adapter, complete metadata and restart after SIGKILL |
 
 The filesystem interruption tests assert the supported contract: complete metadata
 remains usable, scans observe the current files, and a second scan is stable.
@@ -30,9 +31,12 @@ after replacement. Abandoned filesystem sessions are fenced against later writes
 
 `crash-worker.ts` runs a complete client in a worker, which the parent terminates
 at accepted-response checkpoints without graceful shutdown. A new runtime receives
-the saved disk and metadata. The separate real-disk fixture uses a test-only native
-exclusive-rename helper and ordinary writes without flushes. It is not a production
-adapter or a sandbox against hostile concurrent changes to ancestor directories.
+the saved disk and metadata. Real-disk tests exercise the production Node adapter.
+The production integration suite launches built CLI processes and an Obsidian
+filesystem adapter against a real server. Obsidian unit tests exercise unsaved editor
+text, selections and mobile storage contracts; they do not launch the Obsidian app.
+Filesystem path checks are not a sandbox against hostile concurrent changes to
+ancestor directories.
 
 Scripted and seeded suites run multiple clients against real servers. They check
 visible bytes, UUID mappings, canonical server state, content heads and event cursors.
@@ -46,7 +50,8 @@ Run from the repository root:
 E2E_WORKERS=32 E2E_SEED=12 E2E_TIMEOUT_SECONDS=9000 E2E_ITERATIONS=100 scripts/e2e.sh
 ```
 
-The command rebuilds peers, runs unit/harness/protocol/scripted suites, and then
+The command rebuilds peers and both production integrations, runs core and adapter
+unit tests plus harness/protocol/scripted suites, and then
 runs seeds 12 through 43. `E2E_ARTIFACTS` optionally selects the artifact directory.
 The runner tests also verify subprocess exit codes, log errors, spawn failures,
 timeouts, workspace dependency consistency and CI artifact wiring.

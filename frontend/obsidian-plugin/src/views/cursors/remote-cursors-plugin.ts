@@ -61,7 +61,7 @@ export class RemoteCursorsPluginValue implements PluginValue {
                     return clientCursors.flatMap((cursor) =>
                         cursor.cursors.map((span) => ({
                             name: client.userName,
-                            path: cursor.relativePath,
+                            path: cursor.relative_path,
                             deviceId: client.deviceId,
                             isOutdated: client.isOutdated,
                             span: { ...span }

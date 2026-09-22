@@ -1,239 +1,188 @@
-import * as fs from "fs/promises";
-import type { Dirent } from "fs";
-import * as path from "path";
-import { randomUUID } from "crypto";
-import type {
-    FileSystemOperations,
-    RelativePath,
-    TextWithCursors
-} from "sync-client";
-import { toUnixPath } from "./path-utils";
+import assert from "node:assert/strict";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import { constants, type Stats } from "node:fs";
+import type { FileSystemOperations, FileSnapshot } from "sync-client";
 
-// VaultLink's per-vault metadata directory. Holds the persisted sync database
-// and the tmp files atomicWrite renames into place; the matching `${VAULTLINK_DIR}/**`
-// ignore pattern keeps everything in here invisible to the file watcher.
+function hasCode(error: unknown, ...codes: string[]): boolean {
+    return (
+        error instanceof Error &&
+        "code" in error &&
+        typeof error.code === "string" &&
+        codes.includes(error.code)
+    );
+}
+
 export const VAULTLINK_DIR = ".vaultlink";
 
+/** Preflights reject unsafe paths and links. This is not a sandbox against a
+ * hostile process concurrently replacing ancestor directories. */
 export class NodeFileSystemOperations implements FileSystemOperations {
-    public constructor(private readonly basePath: string) {}
-
-    public async listFilesRecursively(
-        directory: RelativePath | undefined
-    ): Promise<RelativePath[]> {
-        const files: RelativePath[] = [];
-        await this.walkDirectory(directory ?? "", files);
-        return files;
+    public constructor(private readonly root: string) {}
+    public async stat(
+        relative: string
+    ): ReturnType<FileSystemOperations["stat"]> {
+        const info = await this.info(await this.resolve(relative));
+        return info
+            ? {
+                  kind: info.isFile()
+                      ? ("file" as const)
+                      : ("directory" as const),
+                  size: info.size
+              }
+            : undefined;
     }
-
-    public async read(relativePath: RelativePath): Promise<Uint8Array> {
-        const fullPath = path.join(this.basePath, relativePath);
-        try {
-            return await fs.readFile(fullPath);
-        } catch (error) {
-            throw new Error(
-                `Failed to read file ${fullPath}: ${error instanceof Error ? error.message : String(error)}`
-            );
-        }
+    public async exists(relative: string): Promise<boolean> {
+        return (await this.stat(relative)) !== undefined;
     }
-
-    public async write(
-        relativePath: RelativePath,
-        content: Uint8Array
-    ): Promise<void> {
-        const fullPath = path.join(this.basePath, relativePath);
-        const dir = path.dirname(fullPath);
-
-        try {
-            await fs.mkdir(dir, { recursive: true });
-            await this.atomicWrite(fullPath, content);
-        } catch (error) {
-            throw new Error(
-                `Failed to write file ${fullPath}: ${error instanceof Error ? error.message : String(error)}`
-            );
-        }
-    }
-
-    public async atomicUpdateText(
-        relativePath: RelativePath,
-        updater: (current: TextWithCursors) => TextWithCursors
-    ): Promise<string> {
-        const fullPath = path.join(this.basePath, relativePath);
-
-        try {
-            const currentContent = await fs.readFile(fullPath, "utf-8");
-            const result = updater({ text: currentContent, cursors: [] });
-            await this.atomicWrite(fullPath, result.text, "utf-8");
-            return result.text;
-        } catch (error) {
-            throw new Error(
-                `Failed to atomically update file ${fullPath}: ${error instanceof Error ? error.message : String(error)}`
-            );
-        }
-    }
-
-    public async getFileSize(relativePath: RelativePath): Promise<number> {
-        const fullPath = path.join(this.basePath, relativePath);
-        try {
-            const stats = await fs.stat(fullPath);
-            return stats.size;
-        } catch (error) {
-            throw new Error(
-                `Failed to get file size for ${fullPath}: ${error instanceof Error ? error.message : String(error)}`
-            );
-        }
-    }
-
-    public async exists(relativePath: RelativePath): Promise<boolean> {
-        const fullPath = path.join(this.basePath, relativePath);
-        try {
-            await fs.access(fullPath);
-            return true;
-        } catch {
-            return false;
-        }
-    }
-
-    public async createDirectory(relativePath: RelativePath): Promise<void> {
-        const fullPath = path.join(this.basePath, relativePath);
-        try {
-            await fs.mkdir(fullPath, { recursive: false });
-        } catch (error) {
-            throw new Error(
-                `Failed to create directory ${fullPath}: ${error instanceof Error ? error.message : String(error)}`
-            );
-        }
-    }
-
-    public async delete(relativePath: RelativePath): Promise<void> {
-        if (!relativePath) {
-            throw new Error("Cannot delete the vault root");
-        }
-
-        const fullPath = path.join(this.basePath, relativePath);
-        try {
-            await this.deleteDirectoryTree(fullPath);
-        } catch (error) {
-            throw new Error(
-                `Failed to delete directory ${fullPath}: ${error instanceof Error ? error.message : String(error)}`
-            );
-        }
-    }
-
-    public async deleteFile(relativePath: RelativePath): Promise<void> {
-        const fullPath = path.join(this.basePath, relativePath);
-        try {
-            const entry = await fs.lstat(fullPath).catch((error: unknown) => {
-                if (this.isMissing(error)) return undefined;
+    public async readSnapshot(
+        relative: string
+    ): Promise<FileSnapshot | undefined> {
+        const absolute = await this.resolve(relative);
+        const handle = await fs
+            .open(absolute, constants.O_RDONLY | constants.O_NOFOLLOW)
+            .catch((error: unknown) => {
+                if (hasCode(error, "ENOENT", "ENOTDIR")) return undefined;
                 throw error;
             });
-            if (!entry) return;
-            if (!entry.isFile() || entry.nlink !== 1) {
-                throw new Error("Cannot unlink a non-regular or linked file");
-            }
-
-            await fs.unlink(fullPath).catch((error: unknown) => {
-                if (!this.isMissing(error)) throw error;
-            });
-        } catch (error) {
-            throw new Error(
-                `Failed to delete file ${fullPath}: ${error instanceof Error ? error.message : String(error)}`
-            );
-        }
-    }
-
-    public async rename(
-        oldPath: RelativePath,
-        newPath: RelativePath
-    ): Promise<void> {
-        const oldFullPath = path.join(this.basePath, oldPath);
-        const newFullPath = path.join(this.basePath, newPath);
-        const newDir = path.dirname(newFullPath);
-
+        if (!handle) return undefined;
         try {
-            await fs.mkdir(newDir, { recursive: true });
-            await fs.rename(oldFullPath, newFullPath);
-        } catch (error) {
-            throw new Error(
-                `Failed to rename file from ${oldFullPath} to ${newFullPath}: ${error instanceof Error ? error.message : String(error)}`
+            const before = await handle.stat({ bigint: true });
+            assert(
+                before.isFile() && before.nlink === 1n,
+                "Not an independent regular file"
             );
+            const content = new Uint8Array(await handle.readFile());
+            const after = await handle.stat({ bigint: true });
+            const atPath = await fs.lstat(absolute, { bigint: true });
+            assert(
+                before.ino === after.ino &&
+                    after.ino === atPath.ino &&
+                    before.size === after.size &&
+                    before.mtimeNs === after.mtimeNs &&
+                    before.ctimeNs === after.ctimeNs,
+                "File changed during read"
+            );
+            return { content };
+        } finally {
+            await handle.close();
         }
     }
-
-    private async atomicWrite(
-        fullPath: string,
-        content: Uint8Array | string,
-        encoding?: BufferEncoding
-    ): Promise<void> {
-        const tmpDir = path.join(this.basePath, VAULTLINK_DIR);
-        await fs.mkdir(tmpDir, { recursive: true });
-        const tmpPath = path.join(tmpDir, `atomic-write-${randomUUID()}.tmp`);
-        try {
-            await fs.writeFile(tmpPath, content, encoding);
-            await fs.rename(tmpPath, fullPath);
-        } catch (error) {
-            await fs.unlink(tmpPath).catch(() => undefined);
-            throw error;
+    public async listFilesRecursively(root = ""): Promise<string[]> {
+        const result: string[] = [];
+        for (const name of await fs.readdir(await this.resolve(root))) {
+            const relative = root ? `${root}/${name}` : name;
+            const entry = await this.stat(relative);
+            assert(entry, `File changed during scan: ${relative}`);
+            if (entry.kind === "directory")
+                result.push(...(await this.listFilesRecursively(relative)));
+            else result.push(relative);
         }
+        return result.sort();
     }
-
-    private async deleteDirectoryTree(fullPath: string): Promise<void> {
-        const entry = await fs.lstat(fullPath).catch((error: unknown) => {
-            if (this.isMissing(error)) return undefined;
-            throw error;
-        });
-        if (!entry) return;
-        if (!entry.isDirectory()) {
-            throw new Error("Cannot delete a regular file as a directory");
-        }
-
-        for (const child of await fs.readdir(fullPath, {
-            withFileTypes: true
-        })) {
-            if (!child.isDirectory()) {
-                throw new Error(
-                    `Directory contains a non-directory entry: ${path.join(fullPath, child.name)}`
-                );
+    public async createDirectory(relative: string): Promise<void> {
+        await this.resolve(relative);
+        let current = this.root;
+        for (const component of relative.split("/").filter(Boolean)) {
+            const next = path.join(current, component);
+            try {
+                await fs.mkdir(next);
+            } catch (error) {
+                if (!hasCode(error, "EEXIST")) throw error;
             }
-            await this.deleteDirectoryTree(path.join(fullPath, child.name));
+            assert((await fs.lstat(next)).isDirectory());
+            current = next;
         }
-
-        await fs.rmdir(fullPath);
     }
-
-    private isMissing(error: unknown): boolean {
-        return (
-            typeof error === "object" &&
-            error !== null &&
-            "code" in error &&
-            error.code === "ENOENT"
+    public async write(
+        relative: string,
+        snapshot: FileSnapshot
+    ): Promise<void> {
+        const destination = await this.resolve(relative);
+        await this.createDirectory(
+            path.posix.dirname(relative) === "."
+                ? ""
+                : path.posix.dirname(relative)
         );
+        await fs.writeFile(destination, snapshot.content, {
+            flag: "wx",
+            mode: 0o600
+        });
     }
-
-    private async walkDirectory(
-        relativePath: string,
-        files: RelativePath[]
-    ): Promise<void> {
-        const fullPath = path.join(this.basePath, relativePath);
-        let entries: Dirent[] = [];
-
-        try {
-            entries = await fs.readdir(fullPath, { withFileTypes: true });
-        } catch (error) {
-            throw new Error(
-                `Failed to read directory ${fullPath}: ${error instanceof Error ? error.message : String(error)}`
-            );
+    public async rename(from: string, to: string): Promise<void> {
+        const snapshot = await this.readSnapshot(from);
+        assert(snapshot, `Missing source: ${from}`);
+        // Node's rename overwrites destinations on POSIX. Exclusive copy followed
+        // by unlink leaves ordinary discoverable files if interrupted.
+        await this.write(to, snapshot);
+        const current = await this.readSnapshot(from);
+        assert(
+            current &&
+                Buffer.from(current.content).equals(
+                    Buffer.from(snapshot.content)
+                ),
+            `Source changed during move: ${from}`
+        );
+        await this.deleteFile(from);
+    }
+    public async delete(relative: string): Promise<void> {
+        assert(relative, "Cannot prune root");
+        const absolute = await this.resolve(relative);
+        const entry = await this.info(absolute);
+        if (!entry) return;
+        assert(entry.isDirectory(), "Cannot delete regular file");
+        for (const child of await fs.readdir(absolute))
+            await this.delete(`${relative}/${child}`);
+        await fs.rmdir(absolute);
+    }
+    public async deleteFile(relative: string): Promise<void> {
+        const absolute = await this.resolve(relative);
+        const entry = await this.info(absolute);
+        if (!entry) return;
+        assert(entry.isFile() && entry.nlink === 1, "Cannot unlink non-file");
+        await fs.unlink(absolute).catch((error: unknown) => {
+            if (!hasCode(error, "ENOENT")) throw error;
+        });
+    }
+    private async resolve(relative: string): Promise<string> {
+        assert(
+            relative === "" ||
+                relative
+                    .split("/")
+                    .every(
+                        (p) =>
+                            p !== "" &&
+                            p !== "." &&
+                            p !== ".." &&
+                            !p.includes("\\") &&
+                            !p.includes("\0") &&
+                            (process.platform !== "win32" || !p.includes(":"))
+                    ),
+            "Unsafe path"
+        );
+        assert(
+            (await fs.lstat(this.root)).isDirectory(),
+            "Vault root must be a directory, not a symlink"
+        );
+        let current = this.root;
+        for (const component of relative.split("/").filter(Boolean)) {
+            current = path.join(current, component);
+            const entry = await this.info(current);
+            if (entry)
+                assert(
+                    entry.isDirectory() ||
+                        (entry.isFile() && entry.nlink === 1),
+                    "Symlink, hardlink or special file"
+                );
         }
-
-        for (const entry of entries) {
-            const entryName = entry.name;
-            const entryRelativePath = path.join(relativePath, entryName);
-
-            if (entry.isDirectory()) {
-                await this.walkDirectory(entryRelativePath, files);
-            } else if (entry.isFile()) {
-                // Always return forward slashes
-                files.push(toUnixPath(entryRelativePath));
-            }
+        return current;
+    }
+    private async info(absolute: string): Promise<Stats | undefined> {
+        try {
+            return await fs.lstat(absolute);
+        } catch (error) {
+            if (hasCode(error, "ENOENT", "ENOTDIR")) return undefined;
+            throw error;
         }
     }
 }

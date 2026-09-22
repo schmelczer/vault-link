@@ -28,7 +28,7 @@ import {
     type LocalChange
 } from "./sync-operations/local-changes";
 
-type StoredClient = Partial<{
+export type StoredClient = Partial<{
     settings: Partial<SyncSettings>;
     database: Partial<StoredDatabase>;
     localChanges: (
@@ -372,7 +372,7 @@ export class SyncClient {
     }
 
     public async checkConnection() {
-        const result = await this.serverConfig.checkConnection(true);
+        const result = await this.serverConfig.checkConnection();
         return {
             isSuccessful: result.isSuccessful,
             serverMessage: result.message,

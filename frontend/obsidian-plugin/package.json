@@ -6,7 +6,7 @@
     "scripts": {
         "dev": "webpack watch --mode development",
         "build": "webpack --mode production",
-        "test": "echo \"no tests defined\" && exit 0",
+        "test": "tsx --test 'src/**/*.test.ts'",
         "version": "node version-bump.mjs"
     },
     "keywords": [],

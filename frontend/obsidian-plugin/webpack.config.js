@@ -12,6 +12,11 @@ module.exports = (env, argv) => ({
         ignored: "**/node_modules"
     },
     externals: {
+        "node:assert/strict": "commonjs node:assert/strict",
+        "node:fs/promises": "commonjs node:fs/promises",
+        "node:fs": "commonjs node:fs",
+        "node:path": "commonjs node:path",
+        "node:crypto": "commonjs node:crypto",
         obsidian: "commonjs obsidian",
         electron: "commonjs electron",
         "@codemirror/autocomplete": "commonjs @codemirror/autocomplete",

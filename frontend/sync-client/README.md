@@ -9,7 +9,9 @@ resolving, including while offline. Shutdown waits for those saves. Content-upda
 notifications only wake reconciliation; scans read the latest bytes, including after
 restart. Notifications describe logical external changes: adapters suppress
 self-generated create/delete/move notifications, and report atomic editor saves
-as content updates. This distinguishes a deliberate delete/recreate from an edit.
+as content updates. This distinguishes a deliberate delete/recreate from an edit
+when the host supplies reliable logical events. Raw OS watchers instead send
+content-update hints for every event and let scans infer the current namespace.
 Use `waitUntilFinished()` to await the active attempt; errors leave
 pending requests saved and are reported to the caller. Transient failures retry;
 authentication and protocol errors wait for an explicit wake or settings change.
@@ -82,7 +84,9 @@ Their failures are reported, and remaining observers continue receiving updates.
 ## Required adapter contract
 
 `FileSystemOperations` and `PersistenceProvider` define the adapter operations.
-The Obsidian and CLI adapters still need to adopt the current core interface.
+The CLI and desktop Obsidian share a Node filesystem adapter and atomic full-record
+metadata persistence. Mobile Obsidian uses its host storage APIs. The E2E runner
+builds and tests both integrations, including actual CLI processes.
 The sync client does not coordinate separate processes accessing the same vault.
 
 The filesystem adapter must provide complete scans, coherent snapshots, recursive
@@ -92,8 +96,10 @@ file removal. Reject links, special files and paths escaping the vault. An unrea
 file or directory must fail the scan rather than look like a deletion. Optional
 editor cursor metadata is applied with file content.
 
-User-file writes have no power-loss durability requirement. There is no filesystem
-journal, hidden staging area, replay, backup archive, or flush protocol. Swaps and
+User-file writes have no power-loss durability requirement. The engine has no
+filesystem journal, recovery staging area, replay, backup archive, or flush protocol.
+Mobile storage needs a disposable scratch file to use its exclusive-copy primitive;
+that file is not used for recovery. Swaps and
 cycles temporarily move occupied files to visible conflict names; a fresh scan
 can discover them if application stops partway through. Partial writes and edits
 made before, during or after an interruption are treated as current disk content.

@@ -131,6 +131,7 @@ export class SyncService {
             this.history !== undefined
         ) {
             const previous = this.history.get();
+            if (checkpoint === previous) return;
             if (
                 previous === undefined ||
                 previous === "" ||

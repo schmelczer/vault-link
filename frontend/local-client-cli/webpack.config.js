@@ -7,6 +7,7 @@ module.exports = {
         healthcheck: "./src/healthcheck.ts"
     },
     target: "node",
+    externals: { bufferutil: "bufferutil", "utf-8-validate": "utf-8-validate" },
     mode: "production",
     optimization: {
         minimize: false

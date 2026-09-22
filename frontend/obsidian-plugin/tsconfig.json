@@ -4,6 +4,7 @@
         "module": "ESNext",
         "target": "ES2023",
         "strict": true,
+        "skipLibCheck": true,
         "moduleResolution": "bundler",
         "allowSyntheticDefaultImports": true,
         "lib": ["DOM", "ES2024"]

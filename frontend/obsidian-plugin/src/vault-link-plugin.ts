@@ -1,11 +1,16 @@
 import type {
-    MarkdownView,
     Editor,
     MarkdownFileInfo,
     TAbstractFile,
     WorkspaceLeaf
 } from "obsidian";
-import { Notice, Plugin, TFile } from "obsidian";
+import {
+    Notice,
+    Plugin,
+    TFile,
+    MarkdownView,
+    FileSystemAdapter
+} from "obsidian";
 import "../manifest.json";
 import { HistoryView } from "./views/history/history-view";
 import { StatusBar } from "./views/status-bar/status-bar";
@@ -14,11 +19,14 @@ import { StatusDescription } from "./views/status-description/status-description
 import {
     SyncClient,
     rateLimit,
-    DEFAULT_SETTINGS,
     Logger,
-    debugging
+    debugging,
+    type FileSystemOperations,
+    type PersistenceProvider,
+    type StoredClient
 } from "sync-client";
 import { ObsidianFileSystemOperations } from "./obsidian-file-system";
+import { MobileFileSystemOperations } from "./mobile-file-system";
 import { SyncSettingsTab } from "./views/settings/settings-tab";
 import { EditorStatusDisplayManager } from "./views/editor-status-display-manager/editor-status-display-manager";
 import { remoteCursorsTheme } from "./views/cursors/remote-cursor-theme";
@@ -38,7 +46,7 @@ export default class VaultLinkPlugin extends Plugin {
         () => Promise<unknown>
     >();
 
-    private readonly syncClient: SyncClient | undefined;
+    private syncClient: SyncClient | undefined;
     private settingsTab: SyncSettingsTab | undefined;
 
     public async onload(): Promise<void> {
@@ -53,14 +61,19 @@ export default class VaultLinkPlugin extends Plugin {
             // eslint-disable-next-line
             (globalThis as any).VAULT_LINK_RUNNING_INSTANCE = this;
 
-            const client = await this.createSyncClient();
+            this.register(() => {
+                // eslint-disable-next-line
+                (globalThis as any).VAULT_LINK_RUNNING_INSTANCE = null;
+            });
+            const client = (this.syncClient = await this.createSyncClient());
 
             this.registerObsidianExtensions(client);
 
             this.registerEditorEvents(client);
 
             this.register(async () => {
-                await client.waitUntilFinished();
+                this.syncClient = undefined;
+                this.rateLimitedUpdatesPerFile.clear();
                 await client.destroy();
             });
 
@@ -116,21 +129,55 @@ export default class VaultLinkPlugin extends Plugin {
     }
 
     private async createSyncClient(): Promise<SyncClient> {
-        DEFAULT_SETTINGS.ignorePatterns.push(
-            ".obsidian/**",
-            ".git/**",
-            ".trash/**",
-            "**/.DS_Store"
-        );
-
-        const client = await SyncClient.create({
-            fs: new ObsidianFileSystemOperations(
-                this.app.vault,
-                this.app.workspace
-            ),
-            persistence: {
+        const { vault, workspace } = this.app;
+        let disk: FileSystemOperations;
+        let persistence: PersistenceProvider<StoredClient>;
+        if (vault.adapter instanceof FileSystemAdapter) {
+            // Keep Node modules unevaluated on mobile.
+            const { NodeFileSystemOperations } =
+                require("../../local-client-cli/src/node-filesystem") as typeof import("../../local-client-cli/src/node-filesystem");
+            const { ClientPersistence } =
+                require("../../local-client-cli/src/client-persistence") as typeof import("../../local-client-cli/src/client-persistence");
+            const root = vault.adapter.getBasePath();
+            disk = new NodeFileSystemOperations(root);
+            persistence = new ClientPersistence(
+                `${root}/${this.manifest.dir ?? `${vault.configDir}/plugins/${this.manifest.id}`}/data.json`,
+                {}
+            );
+        } else {
+            disk = new MobileFileSystemOperations(vault.adapter);
+            persistence = {
                 load: this.loadData.bind(this),
                 save: this.saveData.bind(this)
+            };
+        }
+        const client = await SyncClient.create({
+            fs: new ObsidianFileSystemOperations(disk, () => {
+                const view = workspace.getActiveViewOfType(MarkdownView);
+                return view?.file
+                    ? { path: view.file.path, editor: view.editor }
+                    : undefined;
+            }),
+            persistence: {
+                load: async () => {
+                    const stored = await persistence.load();
+                    return {
+                        ...stored,
+                        settings: {
+                            ...stored?.settings,
+                            ignorePatterns: [
+                                ...new Set([
+                                    ...(stored?.settings?.ignorePatterns ?? []),
+                                    `${vault.configDir}/**`,
+                                    ".git/**",
+                                    ".trash/**",
+                                    "**/.DS_Store"
+                                ])
+                            ]
+                        }
+                    };
+                },
+                save: (stored) => persistence.save(stored)
             },
             ...(IS_DEBUG_BUILD
                 ? {
@@ -141,7 +188,7 @@ export default class VaultLinkPlugin extends Plugin {
         });
 
         if (IS_DEBUG_BUILD) {
-            debugging.logToConsole(client.logger);
+            debugging.logToConsole(client);
         }
 
         return client;
@@ -195,11 +242,6 @@ export default class VaultLinkPlugin extends Plugin {
         this.register(() => {
             editorStatusDisplayManager.dispose();
         });
-
-        this.register(() => {
-            // eslint-disable-next-line
-            (globalThis as any).VAULT_LINK_RUNNING_INSTANCE = null;
-        });
     }
 
     private addRibbonIcons(): void {
@@ -232,7 +274,7 @@ export default class VaultLinkPlugin extends Plugin {
             ),
             this.app.vault.on("create", (file: TAbstractFile) => {
                 if (file instanceof TFile) {
-                    client.syncLocallyCreatedFile(file.path);
+                    void this.rateLimitedUpdate(file.path, client);
                 }
             }),
             this.app.vault.on("modify", async (file: TAbstractFile) => {
@@ -241,17 +283,17 @@ export default class VaultLinkPlugin extends Plugin {
                 }
             }),
             this.app.vault.on("delete", (file: TAbstractFile) => {
-                client.syncLocallyDeletedFile(file.path);
+                void this.rateLimitedUpdate(file.path, client);
             }),
+            // Vault.rename is a logical move (including folders). Engine file
+            // moves use copy/unlink, so they cannot generate this event.
             this.app.vault.on(
                 "rename",
                 (file: TAbstractFile, oldPath: string) => {
-                    if (file instanceof TFile) {
-                        client.syncLocallyUpdatedFile({
-                            oldPath,
-                            relativePath: file.path
-                        });
-                    }
+                    void client.syncLocallyUpdatedFile({
+                        oldPath,
+                        relativePath: file.path
+                    });
                 }
             )
         ].forEach((event) => {
@@ -267,7 +309,8 @@ export default class VaultLinkPlugin extends Plugin {
             this.rateLimitedUpdatesPerFile.set(
                 path,
                 rateLimit(async () => {
-                    client.syncLocallyUpdatedFile({
+                    if (this.syncClient !== client) return;
+                    await client.syncLocallyUpdatedFile({
                         relativePath: path
                     });
                 }, MIN_WAIT_BETWEEN_UPDATES_IN_MS)

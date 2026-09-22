@@ -176,7 +176,7 @@ async function main() {
     };
     const frontend = join(root, "frontend");
 
-    // Build only packages in scope and always rebuild the protocol peers.
+    // Build production adapters as well as the protocol peers and test clients.
     if (
         !(await run(
             "build-server",
@@ -201,6 +201,10 @@ async function main() {
                 "deterministic-tests",
                 "--workspace",
                 "test-client",
+                "--workspace",
+                "local-client-cli",
+                "--workspace",
+                "vault-link-obsidian-plugin",
             ],
             frontend,
         ))
@@ -222,6 +226,7 @@ async function main() {
         ["run", "test", "--workspace", "sync-client"],
         frontend,
     );
+    await run("adapter-unit-tests", "npm", ["run", "test", "--workspace", "local-client-cli", "--workspace", "vault-link-obsidian-plugin"], frontend);
     await run("harness-self-tests", "npm", ["run", "test:harness"], frontend);
     await run("crash-and-protocol", "npm", ["run", "test:protocol"], frontend);
 

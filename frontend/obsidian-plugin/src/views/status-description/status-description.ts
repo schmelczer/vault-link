@@ -88,7 +88,7 @@ export class StatusDescription {
             text: ` and has indexed approximately `
         });
         container.createSpan({
-            text: `${this.syncClient.syncedDocumentCount}`,
+            text: `${this.syncClient.documentCount}`,
             cls: "number"
         });
         container.createSpan({

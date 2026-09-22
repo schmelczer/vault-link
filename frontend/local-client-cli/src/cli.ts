@@ -7,12 +7,12 @@ import {
     DEFAULT_SETTINGS,
     LogLevel,
     LogLine,
-    type SyncSettings,
-    type StoredDatabase
+    type SyncSettings
 } from "sync-client";
 import { parseArgs } from "./args";
 import { NodeFileSystemOperations, VAULTLINK_DIR } from "./node-filesystem";
 import { FileWatcher } from "./file-watcher";
+import { ClientPersistence } from "./client-persistence";
 import { formatLogLine } from "./logger-formatter";
 import packageJson from "../package.json";
 
@@ -114,32 +114,7 @@ async function main(): Promise<void> {
 
     const client = await SyncClient.create({
         fs: fileSystem,
-        persistence: {
-            load: async () => {
-                let database: Partial<StoredDatabase> | undefined = undefined;
-                try {
-                    const content = await fs.readFile(dataFile, "utf-8");
-                    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-                    database = JSON.parse(content) as Partial<StoredDatabase>;
-                } catch {
-                    emitBoot(
-                        LogLevel.WARNING,
-                        `Cannot read data file at ${dataFile}`
-                    );
-                }
-
-                return {
-                    settings,
-                    database
-                };
-            },
-            save: async ({ database: persistedDatabase }) => {
-                await fs.writeFile(
-                    dataFile,
-                    JSON.stringify(persistedDatabase, null, 2)
-                );
-            }
-        }
+        persistence: new ClientPersistence(dataFile, settings)
     });
 
     if (args.health !== undefined) {
@@ -212,7 +187,6 @@ async function main(): Promise<void> {
         client.logger.info(`${signal} received, shutting down gracefully`);
 
         fileWatcher.stop();
-        await client.waitUntilFinished();
         await client.destroy();
 
         if (totalSyncOps > 0) {

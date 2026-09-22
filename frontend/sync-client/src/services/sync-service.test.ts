@@ -144,3 +144,38 @@ test("pause waits for a checkpoint save already in progress", async () => {
     await assert.rejects(request, SyncResetError);
     assert.equal(checkpoint, "1:head");
 });
+
+test("history saves only new checkpoints, including a changed token at the same event ID", async () => {
+    let checkpoint: string | undefined;
+    let responseCheckpoint = "1:first";
+    const saved: (string | undefined)[] = [];
+    const service = new SyncService(
+        "device",
+        settings(),
+        async () =>
+            Response.json(
+                {},
+                { headers: { "X-Vault-Link-History": responseCheckpoint } }
+            ),
+        {
+            get: () => checkpoint,
+            save: async (value) => {
+                checkpoint = value;
+                saved.push(value);
+            }
+        }
+    );
+    service.resume();
+    for (const value of [
+        "1:first",
+        "1:first",
+        "2:next",
+        "1:first",
+        "2:replacement",
+        "2:replacement"
+    ]) {
+        responseCheckpoint = value;
+        await service.events(0);
+    }
+    assert.deepEqual(saved, ["1:first", "2:next", "2:replacement"]);
+});

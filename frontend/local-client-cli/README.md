@@ -205,9 +205,20 @@ docker build -f local-client-cli/Dockerfile -t vault-link-cli:test .
 
 1. Creates `.vaultlink` directory for sync metadata
 2. Performs initial sync of local files to server
-3. Watches filesystem for changes using Node's `fs.watch`
+3. Uses filesystem events to wake a fresh scan, including atomic editor saves
 4. Syncs changes bidirectionally in real-time
 5. Handles graceful shutdown on SIGINT/SIGTERM
+
+The complete client record (database, settings, queued logical notifications and
+server history checkpoint) is saved atomically in `.vaultlink/sync-data.json`.
+Existing database-only files migrate on the next save. Invalid or unreadable
+metadata is reported instead of silently starting with empty state.
+
+File moves use an exclusive copy followed by deletion of the source. An
+interruption may leave both files; the next scan reconciles the visible files.
+Raw watcher events do not distinguish user edits from sync writes. A rename
+preserves identity when the scan finds a unique matching nonempty content hash;
+a simultaneous rename and edit may instead appear as deletion and creation.
 
 ## License
 

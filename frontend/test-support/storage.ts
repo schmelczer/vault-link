@@ -2,14 +2,11 @@ import assert from "node:assert/strict";
 import type {
     FileSnapshot,
     FileSystemOperations,
-    StoredDatabase,
-    SyncSettings
+    StoredDatabase
 } from "sync-client";
 
-export type StoredClient = Partial<{
-    settings: Partial<SyncSettings>;
-    database: Partial<StoredDatabase>;
-}>;
+import type { StoredClient } from "sync-client";
+export type { StoredClient } from "sync-client";
 export type Boundary = (label: string) => void | Promise<void>;
 type Entry = FileSnapshot | null; // null is a directory; absence is not a directory.
 export interface DiskImage {

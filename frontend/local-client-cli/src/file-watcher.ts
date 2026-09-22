@@ -1,93 +1,54 @@
 import Watcher from "watcher";
-import * as path from "path";
-import type { SyncClient, RelativePath } from "sync-client";
+import * as path from "node:path";
+import type { SyncClient } from "sync-client";
 import { toUnixPath, matchesGlob } from "./path-utils";
 
+/** OS events include sync writes and editor temporary-file replacements. They
+ * wake reconciliation; only a fresh scan determines the current namespace. */
 export class FileWatcher {
     private watcher: Watcher | undefined;
-    private isRunning = false;
-    private readonly ignorePatterns: string[];
 
     public constructor(
         private readonly basePath: string,
         private readonly client: SyncClient,
-        ignorePatterns: string[] = []
-    ) {
-        this.ignorePatterns = ignorePatterns;
-    }
+        private readonly ignorePatterns: string[] = []
+    ) {}
 
     public start(): void {
-        if (this.isRunning) {
-            return;
-        }
-
-        this.isRunning = true;
-
+        if (this.watcher) return;
         this.watcher = new Watcher(this.basePath, {
             recursive: true,
-            renameDetection: true,
-            renameTimeout: 125,
+            renameDetection: false,
             ignoreInitial: true,
-            ignore: (filePath: string): boolean => this.shouldIgnore(filePath)
+            ignore: (filePath: string): boolean =>
+                this.ignorePatterns.some((pattern) =>
+                    matchesGlob(this.toRelativePath(filePath), pattern)
+                )
         });
-
-        this.watcher.on("add", (filePath: string) => {
-            this.handleCreate(this.toRelativePath(filePath));
+        this.watcher.on("all", (_event: string, filePath: string) => {
+            void this.client
+                .syncLocallyUpdatedFile({
+                    relativePath: this.toRelativePath(filePath)
+                })
+                .catch((error: unknown) => {
+                    this.client.logger.error(
+                        `File notification failed: ${error}`
+                    );
+                });
         });
-
-        this.watcher.on("change", (filePath: string) => {
-            this.handleChange(this.toRelativePath(filePath));
+        this.watcher.on("error", (error: Error) => {
+            this.client.logger.error(`File watcher failed: ${error.message}`);
         });
-
-        this.watcher.on("unlink", (filePath: string) => {
-            this.handleDelete(this.toRelativePath(filePath));
-        });
-
-        this.watcher.on("rename", (oldPath: string, newPath: string) => {
-            this.handleRename(
-                this.toRelativePath(oldPath),
-                this.toRelativePath(newPath)
-            );
-        });
-
         this.client.logger.info("File watcher started");
     }
 
     public stop(): void {
-        if (this.watcher !== undefined) {
-            this.watcher.close();
-            this.watcher = undefined;
-        }
-        this.isRunning = false;
+        this.watcher?.close();
+        this.watcher = undefined;
         this.client.logger.info("File watcher stopped");
     }
 
-    private shouldIgnore(filePath: string): boolean {
-        const rel = toUnixPath(path.relative(this.basePath, filePath));
-        return this.ignorePatterns.some((pattern) => matchesGlob(rel, pattern));
-    }
-
-    private handleCreate(relativePath: RelativePath): void {
-        this.client.syncLocallyCreatedFile(relativePath);
-    }
-
-    private handleChange(relativePath: RelativePath): void {
-        this.client.syncLocallyUpdatedFile({ relativePath });
-    }
-
-    private handleDelete(relativePath: RelativePath): void {
-        this.client.syncLocallyDeletedFile(relativePath);
-    }
-
-    private handleRename(oldPath: RelativePath, newPath: RelativePath): void {
-        this.client.logger.info(`File renamed: ${oldPath} -> ${newPath}`);
-        this.client.syncLocallyUpdatedFile({
-            oldPath,
-            relativePath: newPath
-        });
-    }
-
-    private toRelativePath(absolutePath: string): RelativePath {
+    private toRelativePath(absolutePath: string): string {
         return toUnixPath(path.relative(this.basePath, absolutePath));
     }
 }

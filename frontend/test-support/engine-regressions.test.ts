@@ -3,7 +3,7 @@ import { PermanentSyncError } from "../sync-client/src/errors/errors";
 import { test } from "node:test";
 import { Database, emptyState } from "../sync-client/src/persistence/database";
 import { Syncer } from "../sync-client/src/sync-operations/syncer";
-import { SyncClient } from "../sync-client/src/sync-client";
+import { SyncClient, type StoredClient } from "../sync-client/src/sync-client";
 import { toStoredSnapshot } from "../sync-client/src/sync-operations/content";
 import { allocatePortablePath } from "../sync-client/src/utils/portable-path";
 import { MemoryDisk, MemoryPersistence } from "./storage";
@@ -83,7 +83,7 @@ test("legacy content notifications preserve the acknowledged namespace prefix on
                 .hash
         };
     initial.lastAppliedLocalChangeId = "consumed-update";
-    const saved = {
+    const saved: StoredClient = {
         database: initial,
         settings: { remoteUri: "http://offline.test", vaultName: "test" },
         localChangesVaultKey: initial.vaultKey,
