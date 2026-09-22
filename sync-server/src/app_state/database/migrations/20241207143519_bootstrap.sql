@@ -1,7 +1,17 @@
 CREATE TABLE events (
+    -- Numeric position in the vault's history: orders events, serves as
+    -- vault_update_id/file_manifest_id, parent IDs, and page cursors
     event_id INTEGER PRIMARY KEY AUTOINCREMENT CHECK(event_id <= 9007199254740991), -- JavaScript’s Number.MAX_SAFE_INTEGER
+    -- Server-minted random identity of this event's incarnation, minted once
+    -- per INSERT. Unlike request_id it is never reproduced by a resubmitted
+    -- request, so the history checkpoint `event_id:event_token` fails whenever
+    -- a restored backup reuses a numeric ID or a client resubmits the same
+    -- request UUID against a different history
     event_token TEXT,
+    -- Client-chosen idempotency key, stable across retries so the server can
+    -- deduplicate a replayed request
     request_id TEXT NOT NULL UNIQUE,
+    -- Hash of the request payload that carried this event
     request_fingerprint BLOB NOT NULL
 );
 
