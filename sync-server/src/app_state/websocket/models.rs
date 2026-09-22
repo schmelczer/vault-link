@@ -1,16 +1,13 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::app_state::database::models::{DeviceId, DocumentId, EventBatch, VaultUpdateId};
+use crate::app_state::database::models::{DeviceId, DocumentId, VaultUpdateId};
 
 #[derive(TS, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct WebSocketHandshake {
     pub token: String,
     pub device_id: DeviceId,
-
-    #[ts(as = "Option<i32>")]
-    pub last_seen_vault_update_id: Option<VaultUpdateId>,
 }
 
 #[derive(TS, Deserialize, Clone, Debug)]
@@ -67,6 +64,6 @@ pub enum WebSocketClientMessage {
 #[serde(rename_all = "camelCase", tag = "type")]
 #[ts(export)]
 pub enum WebSocketServerMessage {
-    VaultEvents(EventBatch),
+    VaultChanged,
     CursorPositions(CursorPositionFromServer),
 }

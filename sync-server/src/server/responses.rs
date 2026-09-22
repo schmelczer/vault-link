@@ -2,7 +2,7 @@ use serde::{self, Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::app_state::database::models::{
-    DocumentVersion, DocumentVersionWithoutContent, FileManifest, VaultUpdateId,
+    DocumentVersionWithoutContent, FileManifest, VaultUpdateId,
 };
 
 /// Response to a ping request.
@@ -34,7 +34,7 @@ pub enum DocumentUpdateResponse {
     Accepted(DocumentVersionWithoutContent),
 
     /// Nothing was written. The client must incorporate this version before retrying.
-    StaleBase(DocumentVersion),
+    StaleBase(DocumentVersionWithoutContent),
 }
 
 #[derive(TS, Debug, Clone, Serialize, Deserialize)]
