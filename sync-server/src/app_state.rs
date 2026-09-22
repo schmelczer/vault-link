@@ -1,5 +1,6 @@
 pub mod cursors;
 pub mod database;
+pub mod weak_slots;
 pub mod websocket;
 
 use anyhow::Result;

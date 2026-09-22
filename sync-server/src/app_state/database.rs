@@ -23,6 +23,7 @@ mod queries;
 mod tests;
 
 use crate::{
+    app_state::weak_slots::get_or_create,
     config::database_config::DatabaseConfig,
     utils::normalize_vault_id::{normalize_string, validate_vault_id},
 };
@@ -147,28 +148,44 @@ impl Database {
     async fn get_connection_pool(&self, vault: &VaultId) -> Result<Pool<Sqlite>> {
         let vault = normalize_string(vault);
         validate_vault_id(&vault)?;
-        let mut pools = self.connection_pools.lock().await;
 
-        if !pools.contains_key(&vault) {
-            let file_name = Self::database_path(&self.config, &vault);
-            let pool = Self::open_database(&self.config, &file_name).await?;
-            pools.insert(
-                vault.clone(),
-                PoolWithTimestamp {
-                    pool,
-                    last_accessed: Instant::now(),
-                },
-            );
+        if let Some(pool) = self.existing_pool(&vault).await {
+            return Ok(pool);
         }
 
-        let pool_with_timestamp = pools
-            .get_mut(&vault)
-            .expect("Pool was just inserted or already exists");
+        let opening = get_or_create(self.opening_pools.lock(), vault.clone(), || {
+            Arc::new(Mutex::new(()))
+        })
+        .await;
 
-        // Update last accessed time
-        pool_with_timestamp.last_accessed = Instant::now();
+        let _opening = opening.lock().await;
 
-        Ok(pool_with_timestamp.pool.clone())
+        if let Some(pool) = self.existing_pool(&vault).await {
+            return Ok(pool);
+        }
+
+        let file_name = Self::database_path(&self.config, &vault);
+        let pool = Self::open_database(&self.config, &file_name).await?;
+
+        self.connection_pools.lock().await.insert(
+            vault,
+            PoolWithTimestamp {
+                pool: pool.clone(),
+                last_accessed: Instant::now(),
+            },
+        );
+        Ok(pool)
+    }
+
+    async fn existing_pool(&self, vault: &VaultId) -> Option<Pool<Sqlite>> {
+        self.connection_pools
+            .lock()
+            .await
+            .get_mut(vault)
+            .map(|entry| {
+                entry.last_accessed = Instant::now();
+                entry.pool.clone()
+            })
     }
 
     /// Attempting to write from this transaction might result in a
@@ -203,16 +220,25 @@ impl Database {
             .iter()
             .filter(|(_, pool_with_timestamp)| {
                 now.duration_since(pool_with_timestamp.last_accessed) > idle_timeout
+                    && pool_with_timestamp.pool.num_idle()
+                        == pool_with_timestamp.pool.size() as usize
             })
             .map(|(vault_id, _)| vault_id.clone())
             .collect();
 
-        // Close and remove idle pools
-        for vault_id in &vaults_to_remove {
-            if let Some(pool_with_timestamp) = pools.remove(vault_id) {
-                info!("Closing idle database connection pool for vault `{vault_id}`");
-                pool_with_timestamp.pool.close().await;
-            }
+        let closing: Vec<_> = vaults_to_remove
+            .into_iter()
+            .filter_map(|vault| pools.remove(&vault).map(|entry| (vault, entry.pool)))
+            .collect();
+
+        // Don't hold the pools mutex while closing the removed vaults
+        drop(pools);
+
+        // A checkout racing cleanup can delay close. It must never retain the
+        // mutex used to access every other vault in the process.
+        for (vault, pool) in closing {
+            info!("Closing idle database connection pool for vault `{vault}`");
+            pool.close().await;
         }
     }
 

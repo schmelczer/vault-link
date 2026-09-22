@@ -1,5 +1,11 @@
 use super::models::CursorPositionFromServer;
-use crate::{app_state::database::models::VaultId, config::server_config::ServerConfig};
+use crate::{
+    app_state::{
+        database::models::VaultId,
+        weak_slots::get_or_create,
+    },
+    config::server_config::ServerConfig,
+};
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::{Mutex, broadcast};
 
@@ -25,19 +31,13 @@ impl Broadcasts {
         }
     }
 
-    pub fn try_admit(&self, vault: &VaultId) -> Option<tokio::sync::OwnedSemaphorePermit> {
-        let mut limits = self.admission.lock().unwrap();
-
-        limits.retain(|_, limit| limit.strong_count() > 0);
-
-        let limit = limits
-            .get(vault)
-            .and_then(std::sync::Weak::upgrade)
-            .unwrap_or_else(|| {
-                let limit = Arc::new(tokio::sync::Semaphore::new(self.capacity));
-                limits.insert(vault.clone(), Arc::downgrade(&limit));
-                limit
-            });
+    pub async fn try_admit(&self, vault: &VaultId) -> Option<tokio::sync::OwnedSemaphorePermit> {
+        let limit = get_or_create(
+            async { self.admission.lock().unwrap() },
+            vault.clone(),
+            || Arc::new(tokio::sync::Semaphore::new(self.capacity)),
+        )
+        .await;
 
         limit.try_acquire_owned().ok()
     }
