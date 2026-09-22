@@ -8,6 +8,7 @@ use crate::{
             utils::{get_authenticated_handshake, send_update_over_websocket},
         },
     },
+    consts::WEBSOCKET_SEND_TIMEOUT,
     errors::{SyncServerError, client_error, server_error},
 };
 use axum::{
@@ -15,7 +16,8 @@ use axum::{
         Path, State,
         ws::{Message, WebSocket, WebSocketUpgrade},
     },
-    response::Response,
+    http::StatusCode,
+    response::{IntoResponse, Response},
 };
 use futures::StreamExt;
 use log::{debug, info};
@@ -32,7 +34,7 @@ pub async fn websocket_handler(
 ) -> Result<Response, SyncServerError> {
     debug!("Upgrading WebSocket connection for vault `{vault_id}`");
 
-    let Some(permit) = state.broadcasts.try_admit(&vault_id) else {
+    let Some(permit) = state.broadcasts.try_admit(&vault_id).await else {
         return Ok((
             StatusCode::TOO_MANY_REQUESTS,
             "Vault connection limit reached",
@@ -57,30 +59,28 @@ async fn websocket(
     let authenticated = get_authenticated_handshake(
         &state,
         &vault,
-        receiver.next().await.transpose().unwrap_or_default(),
+        tokio::time::timeout(WEBSOCKET_SEND_TIMEOUT, receiver.next())
+            .await
+            .map_err(|_| client_error(anyhow::anyhow!("WebSocket handshake deadline expired")))?
+            .transpose()
+            .unwrap_or_default(),
     )?;
 
     let device = authenticated.handshake.device_id;
-    let mut after = authenticated
-        .handshake
-        .last_seen_vault_update_id
-        .unwrap_or(0);
+    let session = state.cursors.register_connection(&vault, &device).await;
+    let mut last_checkpoint = None;
     let mut notifications = state.broadcasts.get_receiver(vault.clone()).await;
     let mut timer = tokio::time::interval(Duration::from_secs(2));
     timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
     info!("WebSocket connected to vault {vault}");
 
-    // Exactly one sender drains durable events in commit order. In-memory
-    // notifications are only wakeups, so lag and commit/notify crashes are safe.
     let result = async {
         loop {
-            let batch = state.database.events_after(&vault, after).await.map_err(server_error)?;
-
-            if !batch.events.is_empty() {
-                let head = batch.head_event_id;
-                send_update_over_websocket(&WebSocketServerMessage::VaultEvents(batch), &mut sender).await?;
-                after = head;
+            let checkpoint = state.database.history_checkpoint(&vault).await.map_err(server_error)?;
+            if last_checkpoint.as_ref() != Some(&checkpoint) {
+                send_update_over_websocket(&WebSocketServerMessage::VaultChanged, &mut sender).await?;
+                last_checkpoint = Some(checkpoint);
             }
 
             tokio::select! {
@@ -91,7 +91,7 @@ async fn websocket(
                         send_update_over_websocket(&WebSocketServerMessage::CursorPositions(positions), &mut sender).await?;
                     },
 
-                    Err(RecvError::Lagged(_)) => {}, // Drain the durable log on the next iteration.
+                    Err(RecvError::Lagged(_)) => {}, // Check the durable head on the next iteration.
                     Err(RecvError::Closed) => break,
                 },
 
@@ -101,7 +101,7 @@ async fn websocket(
                         match message {
                             WebSocketClientMessage::Handshake(_) => return Err(client_error(anyhow::anyhow!("Unexpected handshake"))),
                             WebSocketClientMessage::CursorPositions(positions) => {
-                                state.cursors.update_cursors(vault.clone(), authenticated.user.name.clone(), &device, positions.documents_with_cursors).await;
+                                state.cursors.update_cursors(vault.clone(), authenticated.user.name.clone(), &device, session, positions.documents_with_cursors).await;
                                 let clients = state.cursors.get_cursors(&vault).await.into_iter().filter(|c| c.device_id != device).collect();
                                 send_update_over_websocket(&WebSocketServerMessage::CursorPositions(CursorPositionFromServer { clients }), &mut sender).await?;
                             }
@@ -118,7 +118,7 @@ async fn websocket(
 
     state
         .cursors
-        .remove_cursors_of_device(&vault, &device)
+        .remove_cursors_of_device(&vault, &device, session)
         .await;
 
     result
