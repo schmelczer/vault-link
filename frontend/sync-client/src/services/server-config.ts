@@ -4,7 +4,6 @@ import {
     ServerVersionMismatchError
 } from "../errors/errors";
 import type { SyncService } from "./sync-service";
-import type { PingResponse } from "./types/PingResponse";
 
 export interface ServerConfigData {
     mergeableFileExtensions: string[];
@@ -13,18 +12,16 @@ export interface ServerConfigData {
 }
 
 export class ServerConfig {
-    private response: Promise<PingResponse> | undefined;
-    private config: ServerConfigData | undefined;
+    private config: Promise<ServerConfigData> | undefined;
 
-    public constructor(private readonly syncService: SyncService) {}
+    public constructor(private readonly syncService: SyncService) { }
 
     private static validateConfig(config: ServerConfigData): void {
         if (config.supportedApiVersion !== SUPPORTED_API_VERSION) {
             const shouldUpgradeClient =
                 config.supportedApiVersion > SUPPORTED_API_VERSION;
             throw new ServerVersionMismatchError(
-                `Unsupported API version: ${config.supportedApiVersion}. Consider upgrading the ${
-                    shouldUpgradeClient ? "client" : "sync-server"
+                `Unsupported API version: ${config.supportedApiVersion}. Consider upgrading the ${shouldUpgradeClient ? "client" : "sync-server"
                 } to ensure compatibility`
             );
         }
@@ -41,29 +38,18 @@ export class ServerConfig {
         await this.getConfig();
     }
 
-    public async checkConnection(forceUpdate = false): Promise<{
+    public async checkConnection(): Promise<{
         isSuccessful: boolean;
         message: string;
     }> {
         try {
-            let { response } = this;
-            if (!response || forceUpdate) {
-                response = this.response = this.syncService.ping();
-            }
+            const result = await this.syncService.ping();
 
-            const result: PingResponse = await response; // it must be defined, otherwise we would have thrown above
-            this.config = result;
-
-            if (result.isAuthenticated) {
-                return {
-                    isSuccessful: true,
-                    message: `Successfully connected to server (version: ${result.serverVersion}) and authenticated`
-                };
-            }
+            ServerConfig.validateConfig(result);
 
             return {
-                isSuccessful: false,
-                message: `Successfully connected to server (version: ${result.serverVersion}) but failed to authenticate`
+                isSuccessful: true,
+                message: `Successfully connected to server (version: ${result.serverVersion}) and authenticated`
             };
         } catch (e) {
             return {
@@ -75,22 +61,23 @@ export class ServerConfig {
 
     public async getConfig(): Promise<ServerConfigData> {
         if (!this.config) {
-            this.response ??= this.syncService.ping();
-            try {
-                this.config = await this.response;
-            } catch (error) {
-                this.response = undefined;
-                throw error;
-            }
+            const pending = this.syncService
+                .ping()
+                .then((config) => {
+                    ServerConfig.validateConfig(config);
+                    return config;
+                })
+                .catch((error: unknown) => {
+                    if (this.config === pending) this.config = undefined;
+                    throw error;
+                });
+
+            this.config = pending;
         }
-
-        ServerConfig.validateConfig(this.config);
-
         return this.config;
     }
 
     public reset(): void {
-        this.response = undefined;
         this.config = undefined;
     }
 }
