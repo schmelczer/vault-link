@@ -8,12 +8,14 @@ use serde::Deserialize;
 use super::VaultPath;
 use crate::{
     app_state::{AppState, database::models::EventBatch},
+    consts::DEFAULT_EVENTS_PAGE_SIZE,
     errors::{SyncServerError, client_error, server_error},
 };
 
 #[derive(Deserialize)]
 pub struct EventsQuery {
     pub after: i64,
+    pub page_size: Option<usize>,
 }
 
 #[axum::debug_handler]
@@ -33,7 +35,11 @@ pub async fn events(
 
     state
         .database
-        .events_after(&vault_id, query.after)
+        .events_after(
+            &vault_id,
+            query.after,
+            query.page_size.unwrap_or(DEFAULT_EVENTS_PAGE_SIZE),
+        )
         .await
         .map(Json)
         .map_err(server_error)

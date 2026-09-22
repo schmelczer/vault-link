@@ -7,6 +7,8 @@ use super::{
 };
 use anyhow::{Context as _, Result, ensure};
 
+use crate::consts::MAX_EVENTS_PAGE_BYTES;
+
 impl Database {
     pub async fn get_missing_document(
         tx: &mut Transaction<'_>,
@@ -172,7 +174,12 @@ impl Database {
         })
     }
 
-    pub async fn events_after(&self, vault: &VaultId, after: VaultUpdateId) -> Result<EventBatch> {
+    pub async fn events_after(
+        &self,
+        vault: &VaultId,
+        after: VaultUpdateId,
+        page_size: usize,
+    ) -> Result<EventBatch> {
         let mut tx = self.create_readonly_transaction(vault).await?;
         let head_event_id = Self::latest_event_id(&mut tx).await?;
 
@@ -182,23 +189,36 @@ impl Database {
         );
 
         let rows: Vec<(VaultUpdateId, String)> = sqlx::query_as(
-            "SELECT event_id, request_id FROM events WHERE event_id > ? ORDER BY event_id",
+            "SELECT event_id, request_id FROM events WHERE event_id > ? ORDER BY event_id LIMIT ?",
         )
         .bind(after)
+        .bind(i64::try_from(page_size)?)
         .fetch_all(&mut *tx)
         .await?;
 
         let mut events = Vec::with_capacity(rows.len());
+        let mut bytes = 0;
+        let mut end_event_id = after;
         for (event_id, request_id) in rows {
-            events.push(EventRecord {
+            let event = EventRecord {
                 event_id,
                 request_id: request_id.parse()?,
                 event: Self::event_by_id(&mut tx, event_id).await?,
-            });
+            };
+            let size = serde_json::to_vec(&event)?.len();
+            // One manifest is atomic and may exceed this budget. Always allow
+            // one event so even such a page advances; never accumulate history.
+            if !events.is_empty() && bytes + size > MAX_EVENTS_PAGE_BYTES {
+                break;
+            }
+            bytes += size;
+            end_event_id = event_id;
+            events.push(event);
         }
 
         Ok(EventBatch {
             head_event_id,
+            end_event_id: Some(end_event_id),
             events,
         })
     }

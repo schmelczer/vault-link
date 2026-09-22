@@ -21,4 +21,7 @@ pub const WEBSOCKET_SEND_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub const DEFAULT_MERGEABLE_FILE_EXTENSIONS: &[&str] = &["md", "txt"];
 
+pub const DEFAULT_EVENTS_PAGE_SIZE: usize = 64;
+pub const MAX_EVENTS_PAGE_BYTES: usize = 1024 * 1024;
+
 pub const SUPPORTED_API_VERSION: u32 = 4;
