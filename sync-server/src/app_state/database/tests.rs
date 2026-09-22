@@ -242,18 +242,18 @@ async fn manifest_existence_checks_are_independent_of_payload_decoding() {
         .await
         .unwrap();
     assert_eq!(
-        Database::missing_document(&mut tx, &[id]).await.unwrap(),
+        Database::get_missing_document(&mut tx, &[id]).await.unwrap(),
         None
     );
     let missing = uuid::Uuid::new_v4();
     assert_eq!(
-        Database::missing_document(&mut tx, &[id, missing])
+        Database::get_missing_document(&mut tx, &[id, missing])
             .await
             .unwrap(),
         Some(missing.to_string())
     );
     assert_eq!(
-        Database::missing_document(&mut tx, &[]).await.unwrap(),
+        Database::get_missing_document(&mut tx, &[]).await.unwrap(),
         None
     );
 }

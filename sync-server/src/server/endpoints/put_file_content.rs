@@ -78,33 +78,15 @@ pub async fn put_file_content(
         )));
     }
 
-    let content = match push.content {
-        PushContent::Snapshot(bytes) => STANDARD
-            .decode(bytes)
-            .map_err(|error| client_error(error.into()))?,
+    let (tx, content) = tokio::task::spawn_blocking(move || {
+        let content = decode_content(parent, push.content);
+        (tx, content)
+    })
+    .await
+    .map_err(|error| server_error(error.into()))?;
 
-        PushContent::Diff(diff) => {
-            if diff
-                .iter()
-                .any(|n| matches!(n, NumberOrText::Number(i64::MIN)))
-            {
-                return Err(client_error(anyhow!("Invalid diff length")));
-            }
-
-            let parent = parent
-                .as_ref()
-                .ok_or_else(|| client_error(anyhow!("Diff requires a parent")))?;
-
-            let text =
-                str::from_utf8(&parent.content).map_err(|error| client_error(error.into()))?;
-
-            EditedText::from_diff(text, diff, &*BuiltinTokenizer::Word)
-                .map_err(|error| client_error(error.into()))?
-                .apply()
-                .text()
-                .into_bytes()
-        }
-    };
+    let mut tx = tx;
+    let content = content.map_err(client_error)?;
 
     let version = StoredDocumentVersion {
         vault_update_id: Database::allocate_event(&mut tx, push.request_id, &fingerprint)
@@ -132,8 +114,32 @@ pub async fn put_file_content(
     Ok(Json(response))
 }
 
+fn decode_content(
+    parent: Option<StoredDocumentVersion>,
+    content: PushContent,
+) -> anyhow::Result<Vec<u8>> {
+    let bytes = match content {
+        PushContent::Snapshot(encoded) => STANDARD.decode(encoded)?,
+        PushContent::Diff(diff) => {
+            let parent = parent.ok_or_else(|| anyhow!("Diff requires a parent"))?;
+            let text = str::from_utf8(&parent.content)?;
+            anyhow::ensure!(
+                !diff
+                    .iter()
+                    .any(|item| matches!(item, NumberOrText::Number(i64::MIN))),
+                "Diff contains an out-of-range length"
+            );
+            let edited = EditedText::from_diff(text, diff, &*BuiltinTokenizer::Character)?;
+            edited.apply().text().into_bytes()
+        }
+    };
+
+    Ok(bytes)
+}
+
 #[cfg(test)]
 mod tests {
+    use reconcile_text::EditedText;
     use std::path::PathBuf;
 
     use super::*;
@@ -148,6 +154,7 @@ mod tests {
             Config, database_config::DatabaseConfig, server_config::ServerConfig,
             user_config::VaultAccess,
         },
+        consts::DEFAULT_EVENTS_PAGE_SIZE,
     };
 
     async fn send_document(
@@ -363,11 +370,8 @@ mod tests {
             outcomes => panic!("Expected one accepted push and one stale base: {outcomes:?}"),
         };
         let latest = vault.latest(document).await;
-        assert_eq!(winner.vault_update_id, rejected.metadata.vault_update_id);
-        assert_eq!(
-            STANDARD.decode(rejected.content_base64).unwrap(),
-            latest.content
-        );
+        assert_eq!(winner.vault_update_id, rejected.vault_update_id);
+        assert_eq!(rejected.content_size, latest.content.len());
         assert!(latest.content == b"left" || latest.content == b"right");
         let original = vault
             .state
@@ -446,7 +450,7 @@ mod tests {
         }
         let events = reopened
             .database
-            .events_after(&vault.vault, 0)
+            .events_after(&vault.vault, 0, DEFAULT_EVENTS_PAGE_SIZE)
             .await
             .unwrap();
         assert_eq!(events.head_event_id, latest.vault_update_id);
@@ -473,7 +477,7 @@ mod tests {
         let events = vault
             .state
             .database
-            .events_after(&vault.vault, 0)
+            .events_after(&vault.vault, 0, DEFAULT_EVENTS_PAGE_SIZE)
             .await
             .unwrap();
         assert_eq!(events.head_event_id, 1);
@@ -510,7 +514,7 @@ mod tests {
         let events = vault
             .state
             .database
-            .events_after(&vault.vault, 0)
+            .events_after(&vault.vault, 0, DEFAULT_EVENTS_PAGE_SIZE)
             .await
             .unwrap();
         assert_eq!(events.head_event_id, 0);
@@ -534,7 +538,7 @@ mod tests {
         let events = vault
             .state
             .database
-            .events_after(&vault.vault, 0)
+            .events_after(&vault.vault, 0, DEFAULT_EVENTS_PAGE_SIZE)
             .await
             .unwrap();
         assert_eq!(events.events.len(), 1);
@@ -549,8 +553,11 @@ mod tests {
         let desired = "Hi beautiful world 🌍";
         let base = accepted(vault.send(snapshot(document, None, original)).await);
         let mut update = snapshot(document, Some(base.vault_update_id), "");
-        update.content =
-            PushContent::Diff(EditedText::from_strings(original, &desired.into()).to_diff());
+        update.content = PushContent::Diff(
+            EditedText::from_strings(original, &desired.into())
+                .to_diff()
+                .unwrap(),
+        );
         let updated = accepted(vault.send(update).await);
         assert_eq!(vault.latest(document).await.content, desired.as_bytes());
 
@@ -577,7 +584,7 @@ mod tests {
         assert!(matches!(
             vault.send(foreign_base).await,
             DocumentUpdateResponse::StaleBase(version)
-                if version.metadata.vault_update_id == updated.vault_update_id
+                if version.vault_update_id == updated.vault_update_id
         ));
 
         let binary_document = uuid::Uuid::new_v4();
