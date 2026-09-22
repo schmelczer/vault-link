@@ -8,6 +8,20 @@ use super::{
 use anyhow::{Context as _, Result, ensure};
 
 impl Database {
+    pub async fn get_missing_document(
+        tx: &mut Transaction<'_>,
+        ids: &[DocumentId],
+    ) -> Result<Option<String>> {
+        Ok(sqlx::query_scalar(
+            "SELECT value FROM json_each(?) AS requested
+             WHERE NOT EXISTS (SELECT 1 FROM documents WHERE document_id = requested.value)
+             LIMIT 1",
+        )
+        .bind(serde_json::to_string(ids)?)
+        .fetch_optional(&mut **tx)
+        .await?)
+    }
+
     pub async fn get_request_event(
         tx: &mut Transaction<'_>,
         request_id: uuid::Uuid,
