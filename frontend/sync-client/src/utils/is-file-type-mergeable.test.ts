@@ -1,34 +1,34 @@
 import { describe, it } from "node:test";
 import assert from "node:assert";
-import { isFileTypeMergable } from "./is-file-type-mergable";
+import { isFileTypeMergeable } from "./is-file-type-mergeable";
 
-const mergableExtensions = ["md", "txt"];
-describe("isFileTypeMergable", () => {
+const mergeableExtensions = ["md", "txt"];
+describe("isFileTypeMergeable", () => {
     it("should return true for .md files", () => {
-        assert.strictEqual(isFileTypeMergable(".md", mergableExtensions), true);
+        assert.strictEqual(isFileTypeMergeable(".md", mergeableExtensions), true);
         assert.strictEqual(
-            isFileTypeMergable("hi.md", mergableExtensions),
+            isFileTypeMergeable("hi.md", mergeableExtensions),
             true
         );
         assert.strictEqual(
-            isFileTypeMergable("my/path/to/my/document.md", mergableExtensions),
+            isFileTypeMergeable("my/path/to/my/document.md", mergeableExtensions),
             true
         );
     });
 
     it("should return true for .txt files", () => {
         assert.strictEqual(
-            isFileTypeMergable(".txt", mergableExtensions),
+            isFileTypeMergeable(".txt", mergeableExtensions),
             true
         );
         assert.strictEqual(
-            isFileTypeMergable("hi.txt", mergableExtensions),
+            isFileTypeMergeable("hi.txt", mergeableExtensions),
             true
         );
         assert.strictEqual(
-            isFileTypeMergable(
+            isFileTypeMergeable(
                 "my/path/to/my/document.txt",
-                mergableExtensions
+                mergeableExtensions
             ),
             true
         );
@@ -36,37 +36,37 @@ describe("isFileTypeMergable", () => {
 
     it("should be case insensitive", () => {
         assert.strictEqual(
-            isFileTypeMergable("hi.MD", mergableExtensions),
+            isFileTypeMergeable("hi.MD", mergeableExtensions),
             true
         );
         assert.strictEqual(
-            isFileTypeMergable("my/path/to/my/DOCUMENT.MD", mergableExtensions),
+            isFileTypeMergeable("my/path/to/my/DOCUMENT.MD", mergeableExtensions),
             true
         );
         assert.strictEqual(
-            isFileTypeMergable("hi.TXT", mergableExtensions),
+            isFileTypeMergeable("hi.TXT", mergeableExtensions),
             true
         );
         assert.strictEqual(
-            isFileTypeMergable(
+            isFileTypeMergeable(
                 "my/path/to/my/DOCUMENT.TXT",
-                mergableExtensions
+                mergeableExtensions
             ),
             true
         );
     });
 
-    it("should return false for non-mergable file types", () => {
+    it("should return false for non-mergeable file types", () => {
         assert.strictEqual(
-            isFileTypeMergable(".json", mergableExtensions),
+            isFileTypeMergeable(".json", mergeableExtensions),
             false
         );
         assert.strictEqual(
-            isFileTypeMergable("HELLO.JSON", mergableExtensions),
+            isFileTypeMergeable("HELLO.JSON", mergeableExtensions),
             false
         );
         assert.strictEqual(
-            isFileTypeMergable("my/config.yml", mergableExtensions),
+            isFileTypeMergeable("my/config.yml", mergeableExtensions),
             false
         );
     });
@@ -82,6 +82,6 @@ for (const path of [
     "note."
 ]) {
     it(`does not merge an extensionless file: ${path}`, () => {
-        assert.equal(isFileTypeMergable(path, ["md", "txt"]), false);
+        assert.equal(isFileTypeMergeable(path, ["md", "txt"]), false);
     });
 }

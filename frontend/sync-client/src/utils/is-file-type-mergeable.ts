@@ -1,4 +1,4 @@
-export function isFileTypeMergable(
+export function isFileTypeMergeable(
     pathOrFileName: string,
     mergeableExtensions: string[]
 ): boolean {
