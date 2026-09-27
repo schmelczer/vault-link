@@ -1,60 +1,46 @@
-import { base64ToBytes, bytesToBase64 } from "byte-base64";
+import type { RelativePath } from "../persistence/database";
 import { reconcile } from "reconcile-text";
-import type { FileSnapshot } from "../file-operations/filesystem-operations";
-import type { StoredSnapshot } from "../persistence/database";
-import { hash } from "../utils/hash";
+import { toHashedSnapshot, type HashedSnapshot } from "../snapshot";
 import { isBinary } from "../utils/is-binary";
-import { isFileTypeMergable } from "../utils/is-file-type-mergable";
-
-export async function toStoredSnapshot(
-    snapshot: FileSnapshot
-): Promise<StoredSnapshot> {
-    return {
-        contentBase64: bytesToBase64(snapshot.content),
-        cursors: snapshot.cursors,
-        hash: await hash(snapshot.content)
-    };
-}
-
-export function fromStoredSnapshot(snapshot: StoredSnapshot): FileSnapshot {
-    return {
-        content: base64ToBytes(snapshot.contentBase64),
-        cursors: snapshot.cursors
-    };
-}
+import { isFileTypeMergeable } from "../utils/is-file-type-mergeable";
+import { decodeText } from "../utils/decode-text";
 
 export async function mergeContent(
-    path: string,
-    base: StoredSnapshot | undefined,
-    local: StoredSnapshot,
-    remote: StoredSnapshot,
+    path: RelativePath,
+    base: HashedSnapshot | undefined,
+    local: HashedSnapshot,
+    remote: HashedSnapshot,
     extensions: string[]
-): Promise<StoredSnapshot> {
-    if (local.contentBase64 === remote.contentBase64)
+): Promise<HashedSnapshot> {
+    if (local.hash === remote.hash) {
         return {
             ...remote,
             cursors: local.cursors
         };
+    }
 
-    if (!local.cursors && local.contentBase64 === base?.contentBase64)
+    if (!local.cursors && local.hash === base?.hash) {
         return remote;
+    }
 
-    if (remote.contentBase64 === base?.contentBase64) return local;
+    if (remote.hash === base?.hash) {
+        return local;
+    }
 
     const inputs = [
-        base?.contentBase64 ?? "",
-        local.contentBase64,
-        remote.contentBase64
-    ].map(base64ToBytes);
+        base?.content ?? new Uint8Array(),
+        local.content,
+        remote.content
+    ];
 
-    // Concurrent unmergeable edits keep the server's content. The filesystem
-    // journal retains displaced local bytes for recovery.
-    if (!isFileTypeMergable(path, extensions) || inputs.some(isBinary))
+    // Concurrent unmergeable edits keep the server's content.
+    if (!isFileTypeMergeable(path, extensions) || inputs.some(isBinary)) {
         return remote;
+    }
 
-    const [parentText, localText, remoteText] = inputs.map((bytes) =>
-        new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes)
-    );
+    const parentText = decodeText(base?.content ?? new Uint8Array());
+    const localText = decodeText(local.content);
+    const remoteText = decodeText(remote.content);
 
     const merged = reconcile(
         parentText,
@@ -62,7 +48,7 @@ export async function mergeContent(
         remoteText
     );
 
-    return toStoredSnapshot({
+    return toHashedSnapshot({
         content: new TextEncoder().encode(merged.text),
         cursors: local.cursors ? merged.cursors : undefined
     });
