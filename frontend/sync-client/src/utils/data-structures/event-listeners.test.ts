@@ -66,8 +66,10 @@ describe("EventListeners", () => {
         const listeners = new EventListeners<() => void>();
         // eslint-disable-next-line @typescript-eslint/no-empty-function
         const listener1 = (): void => {};
+
         // eslint-disable-next-line @typescript-eslint/no-empty-function
         const listener2 = (): void => {};
+
         // eslint-disable-next-line @typescript-eslint/no-empty-function
         const listener3 = (): void => {};
 
@@ -114,6 +116,7 @@ describe("EventListeners", () => {
         const listener1 = (): void => {
             count1++;
         };
+
         const listener2 = (): void => {
             count2++;
         };
@@ -154,6 +157,37 @@ describe("EventListeners", () => {
         assert.ok(results.includes("sync-test"));
         assert.ok(results.includes("async2-test"));
         assert.strictEqual(results.length, 3);
+    });
+
+    it("awaits every async listener even when another listener throws synchronously", async () => {
+        const listeners = new EventListeners<() => unknown>();
+        const release = Promise.withResolvers<undefined>();
+        const error = new Error("observer failed");
+        let completed = false;
+        let laterListenerCalled = false;
+        listeners.add(async () => {
+            await release.promise;
+            completed = true;
+        });
+        listeners.add(() => {
+            throw error;
+        });
+        listeners.add(() => {
+            laterListenerCalled = true;
+        });
+
+        let settled = false;
+        const result = assert
+            .rejects(listeners.triggerAsync(), error)
+            .then(() => {
+                settled = true;
+            });
+        await Promise.resolve();
+        assert(laterListenerCalled);
+        assert(!settled);
+        release.resolve(undefined);
+        await result;
+        assert(completed);
     });
 
     it("should not trigger cleared listeners", () => {

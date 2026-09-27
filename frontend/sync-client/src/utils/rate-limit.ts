@@ -1,63 +1,33 @@
-import { createPromise } from "./create-promise";
 import { sleep } from "./sleep";
 
-/**
- * Creates a rate-limited version of a given asynchronous function.
- * Ensures that the function is not called more frequently than specified by `minIntervalMs`.
- * If the function is called while a previous call is still within the rate limit window,
- * it will queue up the most recent arguments and execute them after the rate limit expires.
- * Only the most recent call is preserved in the queue.
- *
- * @template T - Type of the function to be rate limited
- * @param {T} fn - The asynchronous function to rate limit
- * @param {number | (() => number)} minIntervalMs - Minimum interval in milliseconds between calls,
- *        or a function that returns the minimum interval
- * @returns {(...args: Parameters<T>) => ReturnType<T> | Promise<undefined>} A decorated function that respects the rate limit.
- *         Returns the original function's return type when executed, or undefined if the call was superseded by a newer one.
- */
-export function rateLimit<
-    R,
-    T extends (
-        ...args: any // eslint-disable-line @typescript-eslint/no-explicit-any
-    ) => Promise<R>
->(
-    fn: T,
+/** Coalesce calls during each interval; the first waiter runs the latest arguments. */
+export function rateLimit<Args extends unknown[], R>(
+    fn: (...args: Args) => Promise<R>,
     minIntervalMs: number | (() => number)
-): (...args: Parameters<T>) => Promise<R | undefined> {
-    let newArgs: Parameters<T> | undefined = undefined;
-    let running: Promise<unknown> | undefined = undefined;
+): (...args: Args) => Promise<R | undefined> {
+    let pending: Args | undefined = undefined;
+    let cooldown: Promise<void> | undefined = undefined;
 
-    const decoratedFn = async (
-        ...args: Parameters<T>
-    ): Promise<R | undefined> => {
-        if (running !== undefined) {
-            newArgs = args;
-            await running;
+    return async (...args: Args): Promise<R | undefined> => {
+        if (cooldown) {
+            pending = args;
+            await cooldown;
 
-            // args might have changed while we were waiting
-            // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-            if (newArgs === undefined) {
-                // we weren't the first one to wake up, that means a newer
-                // invocation is running now, we can just bail
+            // Another waiter may already have consumed the latest arguments.
+            // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Other calls mutate pending while awaiting the cooldown.
+            if (pending === undefined) {
                 return;
             }
-            args = newArgs;
-            newArgs = undefined;
+
+            args = pending;
+            pending = undefined;
         }
 
-        const [promise, resolve] = createPromise();
-        running = promise;
-        sleep(
+        cooldown = sleep(
             typeof minIntervalMs === "function"
                 ? minIntervalMs()
                 : minIntervalMs
-        )
-            .then(resolve)
-            .catch(() => {
-                // sleep cannot fail
-            });
+        );
         return fn(...args);
     };
-
-    return decoratedFn;
 }

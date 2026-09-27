@@ -12,7 +12,7 @@ export class EventListeners<TListener extends (...args: any[]) => any> {
         private readonly onError: (error: unknown) => void = (error) => {
             console.error("Event observer failed", error);
         }
-    ) { }
+    ) {}
 
     public get count(): number {
         return this.listeners.length;
@@ -69,14 +69,9 @@ export class EventListeners<TListener extends (...args: any[]) => any> {
      */
     public async triggerAsync(...args: Parameters<TListener>): Promise<void> {
         await awaitAll(
-            this.listeners
-                .map((listener) => {
-                    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-                    return listener(...args);
-                })
-                .filter((result): result is Promise<unknown> => {
-                    return result instanceof Promise;
-                })
+            [...this.listeners].map(async (listener) => {
+                await listener(...args);
+            })
         );
     }
 

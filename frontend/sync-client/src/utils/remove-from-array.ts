@@ -13,5 +13,6 @@ export function removeFromArray<T>(array: T[], item: T): boolean {
         array.splice(index, 1);
         return true;
     }
+
     return false;
 }

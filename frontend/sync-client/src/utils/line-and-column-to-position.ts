@@ -15,17 +15,18 @@ export function lineAndColumnToPosition(
 ): number {
     const lines = text.replaceAll("\r", "").split("\n");
 
-    if (line >= lines.length) {
+    const selectedLine = lines[line];
+    if (selectedLine === undefined) {
         throw new Error(`Line number ${line} is out of range.`);
     }
 
-    if (column > lines[line].length) {
+    if (column > selectedLine.length) {
         throw new Error(`Column number ${column} is out of range.`);
     }
 
     let position = 0;
-    for (let i = 0; i < line; i++) {
-        position += lines[i].length + 1;
+    for (const precedingLine of lines.slice(0, line)) {
+        position += precedingLine.length + 1;
     }
 
     position += column;

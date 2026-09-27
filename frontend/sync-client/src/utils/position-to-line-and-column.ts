@@ -27,7 +27,7 @@ export function positionToLineAndColumn(
     const lines = textUpToPosition.split("\n");
 
     const line = lines.length - 1;
-    const column = lines[lines.length - 1].length;
+    const column = (lines.at(-1) ?? "").length;
 
     return { line, column };
 }

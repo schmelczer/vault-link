@@ -1,25 +1,19 @@
-type PromiseTuple<T extends readonly unknown[]> = readonly [
-    ...{ [K in keyof T]: Promise<T[K]> }
-];
-
 type ResolvedTuple<T extends readonly unknown[]> = {
-    [K in keyof T]: T[K];
+    -readonly [K in keyof T]: Awaited<T[K]>;
 };
 
-export const awaitAll = async <T extends readonly unknown[]>(
-    promises: PromiseTuple<T>
-): Promise<ResolvedTuple<T>> => {
+/** Await every operation before returning results or throwing the first error. */
+export async function awaitAll<T extends readonly unknown[] | []>(
+    promises: T
+): Promise<ResolvedTuple<T>> {
     // eslint-disable-next-line no-restricted-properties
     const result = await Promise.allSettled(promises);
-    for (const res of result) {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Array.map preserves tuple order and length.
+    return result.map((res) => {
         if (res.status === "rejected") {
             throw res.reason;
         }
-    }
 
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    return result.map(
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        (res) => (res as PromiseFulfilledResult<unknown>).value
-    ) as ResolvedTuple<T>;
-};
+        return res.value;
+    }) as ResolvedTuple<T>;
+}

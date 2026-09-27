@@ -13,6 +13,7 @@ export async function abortable<T>(
                     // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors -- Only reset errors and timeout errors reach this helper.
                     reject(signal.reason);
                 };
+
                 signal.addEventListener("abort", abort, { once: true });
             }),
             operation()

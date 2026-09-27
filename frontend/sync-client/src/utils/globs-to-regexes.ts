@@ -13,6 +13,7 @@ export function globsToRegexes(globs: string[], logger: Logger): RegExp[] {
                         `Failed to parse ${pattern}' as a glob pattern, skipping it`
                     );
                 }
+
                 return result;
             })
             // eslint-disable-next-line no-restricted-syntax -- Filtering out false values, not removing a specific item

@@ -5,7 +5,7 @@ export class FixedSizeDocumentCache {
     private currentSizeInBytes = 0;
     private readonly cache = new Map<VaultUpdateId, Uint8Array>();
 
-    public constructor(private maxSizeInBytes: number) { }
+    public constructor(private maxSizeInBytes: number) {}
 
     public get(updateId: VaultUpdateId): Uint8Array | undefined {
         const content = this.cache.get(updateId);
@@ -19,7 +19,9 @@ export class FixedSizeDocumentCache {
     }
 
     public put(updateId: VaultUpdateId, content: Uint8Array): void {
-        if (content.byteLength > this.maxSizeInBytes) return;
+        if (content.byteLength > this.maxSizeInBytes) {
+            return;
+        }
 
         this.currentSizeInBytes -= this.cache.get(updateId)?.byteLength ?? 0;
         this.cache.delete(updateId);
@@ -41,7 +43,10 @@ export class FixedSizeDocumentCache {
 
     private fitBelowMaxSize(): void {
         for (const [id, content] of this.cache) {
-            if (this.currentSizeInBytes <= this.maxSizeInBytes) break;
+            if (this.currentSizeInBytes <= this.maxSizeInBytes) {
+                break;
+            }
+
             this.cache.delete(id);
             this.currentSizeInBytes -= content.byteLength;
         }

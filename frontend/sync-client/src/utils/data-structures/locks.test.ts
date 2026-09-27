@@ -4,12 +4,12 @@ import { Lock } from "./locks";
 
 test("queued operations run in order and retain their results", async () => {
     const lock = new Lock();
-    const held = Promise.withResolvers<void>();
-    const started = Promise.withResolvers<void>();
+    const held = Promise.withResolvers<undefined>();
+    const started = Promise.withResolvers<undefined>();
     const calls: number[] = [];
     const first = lock.withLock(async () => {
         calls.push(1);
-        started.resolve();
+        started.resolve(undefined);
         await held.promise;
         calls.push(2);
         return "first";
@@ -24,7 +24,7 @@ test("queued operations run in order and retain their results", async () => {
     });
     await started.promise;
     assert.deepEqual(calls, [1]);
-    held.resolve();
+    held.resolve(undefined);
     assert.equal(await first, "first");
     assert.equal(await second, "second");
     assert.equal(await third, "third");
@@ -35,8 +35,11 @@ for (const asynchronous of [false, true]) {
     test(`a ${asynchronous ? "rejected promise" : "thrown error"} releases the lock`, async () => {
         const lock = new Lock();
         const error = new Error("failed operation");
-        const failed = lock.withLock(() => {
-            if (asynchronous) return Promise.reject(error);
+        const failed = lock.withLock(async () => {
+            if (asynchronous) {
+                return Promise.reject(error);
+            }
+
             throw error;
         });
         const next = lock.withLock(() => "continued");
