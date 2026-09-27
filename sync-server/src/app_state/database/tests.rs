@@ -103,8 +103,8 @@ async fn schema_initialization_preserves_existing_requests_and_content() {
     let vault = "initialization".to_owned();
     let version = insert_content(&database, &vault, uuid::Uuid::new_v4(), b"only copy").await;
     let pool = database.get_connection_pool(&vault).await.unwrap();
-    Database::initialize_schema(&pool).await.unwrap();
-    Database::initialize_schema(&pool).await.unwrap();
+    Database::run_migrations(&pool).await.unwrap();
+    Database::run_migrations(&pool).await.unwrap();
     let reopened = Database::try_new(&config).await.unwrap();
     assert_eq!(
         reopened

@@ -9,7 +9,7 @@ use anyhow::{Context as _, Result};
 use log::info;
 use models::VaultId;
 use sha2::{Digest, Sha256};
-use sqlx::{ConnectOptions, Executor, sqlite::SqliteConnectOptions};
+use sqlx::{ConnectOptions, sqlite::SqliteConnectOptions};
 use sqlx::{Pool, Sqlite, sqlite::SqlitePoolOptions};
 use tokio::sync::Mutex;
 use tokio::time::Instant;
