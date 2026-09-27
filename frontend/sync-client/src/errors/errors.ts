@@ -19,19 +19,9 @@ export class AuthenticationError extends Error {
     }
 }
 
-export class FileNotFoundError extends Error {
-    public constructor(
-        message: string,
-        public readonly filePath: string
-    ) {
-        super(message);
-        this.name = "FileNotFoundError";
-    }
-}
+export class PermanentSyncError extends Error {}
 
-export class PermanentSyncError extends Error { }
-
-export class LocalChangesDuringReconciliation extends Error { }
+export class LocalChangesDuringReconciliation extends Error {}
 
 /** The server rejected a checkpoint from a discarded/restored history. */
-export class ServerHistoryChangedError extends Error { }
+export class ServerHistoryChangedError extends Error {}
