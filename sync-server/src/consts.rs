@@ -27,3 +27,8 @@ pub const DEFAULT_EVENTS_PAGE_SIZE: usize = 64;
 pub const MAX_EVENTS_PAGE_BYTES: usize = 1024 * 1024;
 
 pub const SUPPORTED_API_VERSION: u32 = 4;
+
+pub const HISTORY_HEADER: axum::http::HeaderName =
+    axum::http::HeaderName::from_static("x-vault-link-history");
+pub const HISTORY_MISMATCH_HEADER: axum::http::HeaderName =
+    axum::http::HeaderName::from_static("x-vault-link-history-mismatch");

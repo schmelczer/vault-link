@@ -1,3 +1,4 @@
+use crate::consts::{HISTORY_HEADER, HISTORY_MISMATCH_HEADER};
 use std::collections::HashMap;
 
 use axum::{
@@ -27,7 +28,7 @@ pub async fn history_middleware(
 
     // A restore happens while the server is stopped. Validate before executing
     // any old request, including retries whose numeric parent IDs were reused.
-    if let Some(checkpoint) = req.headers().get("x-vault-link-history") {
+    if let Some(checkpoint) = req.headers().get(HISTORY_HEADER) {
         let checkpoint = checkpoint
             .to_str()
             .map_err(|error| client_error(error.into()))?;
@@ -38,10 +39,9 @@ pub async fn history_middleware(
             .map_err(server_error)?
         {
             let mut response = (StatusCode::CONFLICT, "Server history changed").into_response();
-            response.headers_mut().insert(
-                "x-vault-link-history-mismatch",
-                HeaderValue::from_static("1"),
-            );
+            response
+                .headers_mut()
+                .insert(HISTORY_MISMATCH_HEADER, HeaderValue::from_static("1"));
             return Ok(response);
         }
     }
@@ -54,7 +54,7 @@ pub async fn history_middleware(
             .await
             .map_err(server_error)?;
         response.headers_mut().insert(
-            "x-vault-link-history",
+            HISTORY_HEADER,
             HeaderValue::from_str(&checkpoint).map_err(|error| server_error(error.into()))?,
         );
     }

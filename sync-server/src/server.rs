@@ -1,3 +1,4 @@
+use crate::consts::{HISTORY_HEADER, HISTORY_MISMATCH_HEADER};
 pub mod auth;
 mod device_id_header;
 mod endpoints;
@@ -48,7 +49,10 @@ pub async fn create_server(config: Config) -> Result<()> {
     let app = Router::new()
         .nest("/", create_authenticated_routes(app_state.clone()))
         .route("/", get(endpoints::index::index))
-        .route("/vaults/:vault_id/ping", get(endpoints::ping::ping))
+        .route(
+            "/vaults/:vault_id/config",
+            get(endpoints::get_server_config::get_server_config),
+        )
         .route(
             "/vaults/:vault_id/ws",
             get(endpoints::websocket::websocket_handler),
@@ -65,12 +69,9 @@ pub async fn create_server(config: Config) -> Result<()> {
                     http::header::CONTENT_TYPE,
                     http::header::AUTHORIZATION,
                     DEVICE_ID_HEADER_NAME.clone(),
-                    http::header::HeaderName::from_static("x-vault-link-history"),
+                    HISTORY_HEADER,
                 ])
-                .expose_headers([
-                    http::header::HeaderName::from_static("x-vault-link-history"),
-                    http::header::HeaderName::from_static("x-vault-link-history-mismatch"),
-                ])
+                .expose_headers([HISTORY_HEADER, HISTORY_MISMATCH_HEADER])
                 .allow_methods([Method::GET, Method::PUT]),
         )
         .layer(
