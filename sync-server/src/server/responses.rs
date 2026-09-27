@@ -5,11 +5,11 @@ use crate::app_state::database::models::{
     DocumentVersionWithoutContent, FileManifest, VaultUpdateId,
 };
 
-/// Response to a ping request.
+/// Server configuration and authentication status.
 #[derive(TS, Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
-pub struct PingResponse {
+pub struct ServerConfigResponse {
     /// Semantic version of the server.
     pub server_version: String,
 
