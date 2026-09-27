@@ -4,7 +4,7 @@ import { Database, createEmptyDatabase } from "./database";
 
 test("current state keeps absent optional fields absent across save and reload", async () => {
     const initial = createEmptyDatabase("vault");
-    initial.local = { local: "local.md", remote: "remote.md" };
+    initial.actualFileManifest = { local: "local.md", remote: "remote.md" };
     initial.documents = {
         local: { observedHash: "local" },
         remote: { remote: { vaultUpdateId: 1, contentSize: 3 } },
@@ -29,7 +29,7 @@ test("current state keeps absent optional fields absent across save and reload",
 
 test("current reset state is restored after an uncertain save", async () => {
     const saved = createEmptyDatabase("vault");
-    saved.local = { note: "note.md" };
+    saved.actualFileManifest = { note: "note.md" };
     saved.documents.note = {
         base: { vaultUpdateId: null, hash: "clean" },
         observedHash: "clean"
@@ -43,6 +43,6 @@ test("current reset state is restored after an uncertain save", async () => {
         async () => structuredClone(saved)
     );
     await assert.rejects(db.save(), /interrupted/);
-    await db.recoverPersistence();
+    await db.reloadFromSave();
     assert.deepEqual(db.state, saved);
 });
