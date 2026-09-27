@@ -14,10 +14,10 @@ test("current state keeps absent optional fields absent across save and reload",
     const restart = (): Database =>
         new Database(
             saved,
+            "vault",
             async (next) => {
                 saved = structuredClone(next);
             },
-            "vault",
             async () => structuredClone(saved)
         );
     const db = restart();
@@ -36,10 +36,10 @@ test("current reset state is restored after an uncertain save", async () => {
     };
     const db = new Database(
         undefined,
+        "vault",
         async () => {
             throw new Error("interrupted");
         },
-        "vault",
         async () => structuredClone(saved)
     );
     await assert.rejects(db.save(), /interrupted/);

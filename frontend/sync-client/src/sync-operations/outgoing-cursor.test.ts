@@ -19,12 +19,12 @@ for (const change of ["version", "identity", "path", "delete"] as const) {
         const content = new TextEncoder().encode("same bytes");
         const digest = await hash(content);
         const state = createEmptyDatabase("test");
-        state.local.a = "a.md";
+        state.actualFileManifest.a = "a.md";
         state.documents.a = { base: { vaultUpdateId: 1, hash: digest } };
         const database = new Database(
             state,
-            async () => undefined,
             "test",
+            async () => undefined,
             async () => undefined
         );
         const sent: { documentsWithCursors: DocumentWithCursors[] }[] = [];
@@ -39,17 +39,17 @@ for (const change of ["version", "identity", "path", "delete"] as const) {
             read: async (): Promise<{ content: Uint8Array }> => {
                 const current = database.state;
                 assert.ok(current.documents.a?.base);
-                assert.ok(current.local.a !== undefined);
+                assert.ok(current.actualFileManifest.a !== undefined);
                 if (change === "delete") {
-                    delete current.local.a;
+                    delete current.actualFileManifest.a;
                 } else if (change === "version") {
                     current.documents.a.base.vaultUpdateId = 2;
                 } else if (change === "identity") {
-                    current.local.replacement = current.local.a;
+                    current.actualFileManifest.replacement = current.actualFileManifest.a;
                     current.documents.replacement = current.documents.a;
-                    delete current.local.a;
+                    delete current.actualFileManifest.a;
                 } else {
-                    current.local.a = "moved.md";
+                    current.actualFileManifest.a = "moved.md";
                 }
 
                 return { content };

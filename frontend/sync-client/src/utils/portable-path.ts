@@ -1,3 +1,4 @@
+import { ConflictingPathError } from "../errors/errors";
 import type { DocumentId, RelativePath } from "../persistence/database";
 
 export const INTERNAL_DIRECTORY = ".vault-link-sync";
@@ -78,7 +79,7 @@ export function validatePortablePaths(paths: Iterable<RelativePath>): void {
                 previous &&
                 (previous.spelling !== spelling || previous.file || file)
             ) {
-                throw new TypeError(`Conflicting path: ${path}`);
+                throw new ConflictingPathError(path);
             }
 
             const node = previous ?? { id: nodes.size + 1, spelling, file };

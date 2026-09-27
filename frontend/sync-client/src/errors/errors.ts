@@ -19,6 +19,13 @@ export class AuthenticationError extends Error {
     }
 }
 
+export class ConflictingPathError extends Error {
+    public constructor(path: string) {
+        super(`Conflicting path: ${path}`);
+        this.name = "ConflictingPathError";
+    }
+}
+
 export class PermanentSyncError extends Error {}
 
 export class LocalChangesDuringReconciliation extends Error {}

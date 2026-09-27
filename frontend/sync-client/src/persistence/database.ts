@@ -73,8 +73,8 @@ export class Database {
 
     public constructor(
         initial: StoredDatabase | undefined,
-        private readonly saveData: (data: StoredDatabase) => Promise<void>,
         vaultKey: string,
+        private readonly saveData: (data: StoredDatabase) => Promise<void>,
         private readonly loadData: () => Promise<StoredDatabase | undefined>
     ) {
         const state =

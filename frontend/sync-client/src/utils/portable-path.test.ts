@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { test } from "node:test";
+import { ConflictingPathError } from "../errors/errors";
 import {
     allocatePortablePath,
     validatePortablePaths,
@@ -87,7 +88,7 @@ test("shared directories remain distinct from aliases and file ancestors", () =>
     ]) {
         assert.throws(() => {
             validatePortablePaths(paths);
-        }, /Conflicting path/);
+        }, ConflictingPathError);
     }
 });
 
@@ -236,13 +237,13 @@ test("allocation resolves both ancestor and leaf collisions without changing sib
     );
 });
 
-test("manifest conflicts throw TypeError", () => {
+test("manifest conflicts throw ConflictingPathError", () => {
     assert.throws(
         () => {
             validatePortablePaths(["a.md", "A.md"]);
         },
         {
-            name: "TypeError",
+            name: "ConflictingPathError",
             message: "Conflicting path: A.md"
         }
     );
