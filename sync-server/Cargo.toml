@@ -1,6 +1,6 @@
 [package]
 name = "sync_server"
-rust-version = "1.89.0"
+rust-version = "1.94.0"
 authors = ["Andras Schmelczer <andras@schmelczer.dev>"]
 edition = "2024"
 license = "MIT"
@@ -34,7 +34,7 @@ sha2 = "0.10"
 unicode-normalization = "0.1"
 ts-rs =  { version = "10.1", features = ["uuid-impl", "chrono-impl", "no-serde-warnings"] }
 base64 = "0.22.1"
-reconcile-text = { version = "0.12.1", features = ["serde"] }
+reconcile-text = { version = "0.13.2", features = ["serde"] }
 
 [dev-dependencies]
 tempfile = "3"

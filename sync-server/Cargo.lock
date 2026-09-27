@@ -1582,9 +1582,9 @@ dependencies = [
 
 [[package]]
 name = "reconcile-text"
-version = "0.12.1"
+version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8eb67d18cd23948a32b940e137128552105970913d5747daa5860a58819a7453"
+checksum = "7283802ea19d95f818b9065c12ed24d4192400182409f50450c9b22682225b2b"
 dependencies = [
  "serde",
  "thiserror 2.0.20",
