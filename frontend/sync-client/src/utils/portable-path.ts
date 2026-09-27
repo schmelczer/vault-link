@@ -2,21 +2,25 @@ import type { DocumentId, RelativePath } from "../persistence/database";
 
 export const INTERNAL_DIRECTORY = ".vault-link-sync";
 const MAX_COMPONENT_BYTES = 255;
+const MAX_CONFLICT_ID_BYTES = 64;
+const MAX_EXTENSION_BYTES = 64;
 
-
+// Windows reserved device names, including extensions and superscript digits:
+// https://learn.microsoft.com/en-us/windows/win32/fileio/naming-a-file#naming-conventions
 const reservedDeviceName =
     /^(CON|PRN|AUX|NUL|CONIN\$|CONOUT\$|COM[1-9¹²³]|LPT[1-9¹²³])$/u;
 
+const encoder = new TextEncoder();
+const getByteLength = (value: string): number => encoder.encode(value).length;
 
+// NFC -> uppercase -> NFC matches the server's locale-independent alias rules.
+const getPathKey = (path: RelativePath): string =>
+    path.normalize("NFC").toUpperCase().normalize("NFC");
 
 export const arePathAliases = (
     left: RelativePath,
     right: RelativePath
 ): boolean => getPathKey(left) === getPathKey(right);
-
-// NFC -> uppercase -> NFC matches the server's locale-independent alias rules.
-const getPathKey = (path: RelativePath): string =>
-    path.normalize("NFC").toUpperCase().normalize("NFC");
 
 export function findPathWithSameSpelling(
     paths: Iterable<RelativePath>,
@@ -74,7 +78,7 @@ export function validatePortablePaths(paths: Iterable<RelativePath>): void {
                 previous &&
                 (previous.spelling !== spelling || previous.file || file)
             ) {
-                throw new Error(`Conflicting path: ${path}`);
+                throw new TypeError(`Conflicting path: ${path}`);
             }
 
             const node = previous ?? { id: nodes.size + 1, spelling, file };
@@ -84,9 +88,7 @@ export function validatePortablePaths(paths: Iterable<RelativePath>): void {
     }
 }
 
-
-
-/** First aliased component, or the file occupying a shared path prefix. */
+// First aliased component, or the file occupying a shared path prefix.
 function findConflictIndex(
     left: readonly string[],
     right: readonly string[]
@@ -105,13 +107,67 @@ function findConflictIndex(
     return shared - 1;
 }
 
-/** Deterministic allocation also handles a file blocking an ancestor directory. */
+function sanitizeFileName(part: string): string {
+    let result = part
+        .normalize("NFC")
+        .replace(/[<>:"\\|?*\p{Cc}]/gu, "_")
+        .replace(/[. ]+$/u, "_");
+    if (!result || result === "." || result === "..") {
+        result = "_";
+    }
+
+    if (
+        reservedDeviceName.test(
+            (result.split(".")[0] ?? "").replace(/ +$/u, "").toUpperCase()
+        )
+    ) {
+        result = "_" + result;
+    }
+
+    return result;
+}
+
+function truncateToByteLength(value: string, limit: number): string {
+    let result = "";
+    let bytes = 0;
+    for (const character of value) {
+        const characterBytes = getByteLength(character);
+        if (bytes + characterBytes > limit) {
+            break;
+        }
+
+        result += character;
+        bytes += characterBytes;
+    }
+
+    return result;
+}
+
+function fitName(name: string, suffix: string, file: boolean): string {
+    const dot = file ? name.lastIndexOf(".") : -1;
+    const extension =
+        dot > 0
+            ? truncateToByteLength(name.slice(dot), MAX_EXTENSION_BYTES)
+            : "";
+    const stem = dot > 0 ? name.slice(0, dot) : name;
+
+    // Reserve the suffix and extension first; only the original stem is shortened.
+    const stemBudget = MAX_COMPONENT_BYTES - getByteLength(suffix + extension);
+    return sanitizeFileName(
+        truncateToByteLength(stem, stemBudget) + suffix + extension
+    );
+}
+
+// Deterministic allocation also handles a file blocking an ancestor directory.
 export function allocatePortablePath(
     wanted: RelativePath,
     id: DocumentId,
     occupied: readonly RelativePath[]
 ): RelativePath {
-    id = sanitizeFileName(truncateToByteLength(id, 64));
+    id = truncateToByteLength(
+        sanitizeFileName(id.replaceAll("/", "_")),
+        MAX_CONFLICT_ID_BYTES
+    );
 
     const originals = wanted.split("/");
     const parts = originals.map((part, index) => {
@@ -161,55 +217,3 @@ export function allocatePortablePath(
 
     throw new Error(`Unable to allocate a portable path: ${wanted}`);
 }
-
-function sanitizeFileName(part: string): string {
-    let result = part
-        .normalize("NFC")
-        .replace(/[<>:"\\|?*\p{Cc}]/gu, "_")
-        .replace(/[. ]+$/u, "_");
-    if (!result || result === "." || result === "..") {
-        result = "_";
-    }
-
-    if (
-        reservedDeviceName.test(
-            (result.split(".")[0] ?? "").replace(/ +$/u, "").toUpperCase()
-        )
-    ) {
-        result = "_" + result;
-    }
-
-    return result;
-}
-
-function fitName(name: string, suffix: string, file: boolean): string {
-    const dot = file ? name.lastIndexOf(".") : -1;
-    const extension = dot > 0 ? truncateToByteLength(name.slice(dot), 64) : "";
-    const stem = dot > 0 ? name.slice(0, dot) : name;
-
-    return sanitizeFileName(
-        truncateToByteLength(
-            stem,
-            MAX_COMPONENT_BYTES - getByteLength(suffix + extension)
-        ) +
-        suffix +
-        extension
-    );
-}
-
-function truncateToByteLength(value: string, limit: number): string {
-    let result = "";
-    for (const character of value) {
-        if (getByteLength(result + character) > limit) {
-            break;
-        }
-
-        result += character;
-    }
-
-    return result;
-}
-
-
-const getByteLength = (value: string): number =>
-    new TextEncoder().encode(value).length;

@@ -1,6 +1,6 @@
 import { sleep } from "./sleep";
 
-/** Coalesce calls during each interval; the first waiter runs the latest arguments. */
+// Coalesce calls during each interval; the first waiter runs the latest arguments.
 export function rateLimit<Args extends unknown[], R>(
     fn: (...args: Args) => Promise<R>,
     minIntervalMs: number | (() => number)

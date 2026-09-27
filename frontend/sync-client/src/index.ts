@@ -27,7 +27,7 @@ export type {
     StoredDatabase,
     VaultUpdateId
 } from "./persistence/database";
-export type { FileSystemOperations } from "./file-operations/filesystem-operations";
+export { FileKind, type FileSystemOperations } from "./file-operations/filesystem-operations";
 export type { FileSnapshot } from "./snapshot";
 export type { MetadataPersistenceProvider as PersistenceProvider } from "./persistence/metadata-persistence-provider";
 export type { CursorSpan } from "./services/types/CursorSpan";
@@ -63,3 +63,6 @@ export type { PushFileManifest } from "./services/types/PushFileManifest";
 export type { PutFileContent } from "./services/types/PutFileContent";
 export type { VaultSnapshot } from "./services/types/VaultSnapshot";
 export type { FileManifestEntries } from "./types/file-manifest-entries";
+
+export { LocalChangeType } from "./sync-operations/local-changes";
+export { SyncEventType } from "./services/protocol-types";

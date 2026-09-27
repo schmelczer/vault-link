@@ -10,7 +10,7 @@ export interface HashedSnapshot extends FileSnapshot {
     hash: string;
 }
 
-export async function hashSnapshot(
+export async function toHashedSnapshot(
     snapshot: FileSnapshot
 ): Promise<HashedSnapshot> {
     // Own the bytes so later adapter mutations cannot invalidate the hash

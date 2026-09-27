@@ -1,3 +1,4 @@
+import { PushContentType } from "../services/protocol-types";
 import { ContentSync, selectContentHead } from "./content-sync";
 /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 import assert from "node:assert";
@@ -13,7 +14,7 @@ import type { SyncHistory } from "../tracing/sync-history";
 import { EventListeners } from "../utils/data-structures/event-listeners";
 import { Syncer } from "./syncer";
 import { FixedSizeDocumentCache } from "../utils/data-structures/fix-sized-cache";
-import { hashSnapshot } from "../snapshot";
+import { toHashedSnapshot } from "../snapshot";
 import { undiff } from "reconcile-text";
 
 describe("Syncer per-file state and event delivery", () => {
@@ -148,11 +149,11 @@ describe("Syncer diff uploads", () => {
         const payload = await content.createUploadPayload(
             "note.md",
             7,
-            await hashSnapshot({ content: encoder.encode(changed) })
+            await toHashedSnapshot({ content: encoder.encode(changed) })
         );
 
         assert.equal(payload.type, "Diff");
-        if (payload.type === "Diff") {
+        if (payload.type === PushContentType.Diff) {
             assert.equal(
                 undiff(new TextDecoder().decode(parent), payload.value),
                 changed
@@ -169,7 +170,7 @@ describe("Syncer diff uploads", () => {
         const payload = await content.createUploadPayload(
             "note.md",
             7,
-            await hashSnapshot({ content: encoder.encode("changed") })
+            await toHashedSnapshot({ content: encoder.encode("changed") })
         );
 
         assert.equal(payload.type, "Snapshot");

@@ -1,6 +1,6 @@
 import type { VaultUpdateId } from "../../persistence/database";
 
-/** Map insertion order tracks the least recently used document first. */
+// Map insertion order tracks the least recently used document first.
 export class FixedSizeDocumentCache {
     private currentSizeInBytes = 0;
     private readonly cache = new Map<VaultUpdateId, Uint8Array>();

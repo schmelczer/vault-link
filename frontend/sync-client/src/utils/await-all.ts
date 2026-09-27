@@ -2,7 +2,7 @@ type ResolvedTuple<T extends readonly unknown[]> = {
     -readonly [K in keyof T]: Awaited<T[K]>;
 };
 
-/** Await every operation before returning results or throwing the first error. */
+// Await every operation before returning results or throwing the first error.
 export async function awaitAll<T extends readonly unknown[] | []>(
     promises: T
 ): Promise<ResolvedTuple<T>> {

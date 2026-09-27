@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { hashSnapshot, type HashedSnapshot } from "../snapshot";
+import { toHashedSnapshot, type HashedSnapshot } from "../snapshot";
 import { mergeContent } from "./content";
 
 const extensions = ["md"];
 const createSnapshot = async (text: string): Promise<HashedSnapshot> =>
-    hashSnapshot({ content: new TextEncoder().encode(text) });
+    toHashedSnapshot({ content: new TextEncoder().encode(text) });
 
 describe("content reconciliation without file timestamps", () => {
     it("hashes snapshots without changing bytes or editor selections", async () => {
@@ -13,7 +13,7 @@ describe("content reconciliation without file timestamps", () => {
             content: new Uint8Array([0, 255, 13, 10]),
             cursors: []
         };
-        const snapshot = await hashSnapshot(original);
+        const snapshot = await toHashedSnapshot(original);
         assert.deepEqual(snapshot.content, original.content);
         assert.deepEqual(snapshot.cursors, original.cursors);
         original.content.fill(1);

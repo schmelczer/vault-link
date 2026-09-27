@@ -57,6 +57,7 @@ module.exports = [
         },
         resolve: {
             fallback: {
+                path: require.resolve("path-browserify"),
                 ws: false // Exclude `ws` from the browser bundle
             }
         }
