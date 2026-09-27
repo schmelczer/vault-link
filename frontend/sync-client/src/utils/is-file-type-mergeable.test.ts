@@ -5,13 +5,19 @@ import { isFileTypeMergeable } from "./is-file-type-mergeable";
 const mergeableExtensions = ["md", "txt"];
 describe("isFileTypeMergeable", () => {
     it("should return true for .md files", () => {
-        assert.strictEqual(isFileTypeMergeable(".md", mergeableExtensions), true);
+        assert.strictEqual(
+            isFileTypeMergeable(".md", mergeableExtensions),
+            true
+        );
         assert.strictEqual(
             isFileTypeMergeable("hi.md", mergeableExtensions),
             true
         );
         assert.strictEqual(
-            isFileTypeMergeable("my/path/to/my/document.md", mergeableExtensions),
+            isFileTypeMergeable(
+                "my/path/to/my/document.md",
+                mergeableExtensions
+            ),
             true
         );
     });
@@ -40,7 +46,10 @@ describe("isFileTypeMergeable", () => {
             true
         );
         assert.strictEqual(
-            isFileTypeMergeable("my/path/to/my/DOCUMENT.MD", mergeableExtensions),
+            isFileTypeMergeable(
+                "my/path/to/my/DOCUMENT.MD",
+                mergeableExtensions
+            ),
             true
         );
         assert.strictEqual(

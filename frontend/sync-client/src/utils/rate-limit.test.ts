@@ -37,7 +37,7 @@ describe("rateLimit", () => {
         await promise2;
 
         assert.strictEqual(mockFn.mock.callCount(), 2);
-        assert.deepStrictEqual(mockFn.mock.calls[1].arguments, [2]);
+        assert.deepStrictEqual(mockFn.mock.calls[1]?.arguments, [2]);
     });
 
     it("should use the most recent arguments if multiple calls are made within interval", async () => {
@@ -58,7 +58,7 @@ describe("rateLimit", () => {
         assert.strictEqual(await promise3, undefined);
 
         assert.strictEqual(mockFn.mock.callCount(), 2);
-        assert.deepStrictEqual(mockFn.mock.calls[0].arguments, ["first"]);
-        assert.deepStrictEqual(mockFn.mock.calls[1].arguments, ["third"]);
+        assert.deepStrictEqual(mockFn.mock.calls[0]?.arguments, ["first"]);
+        assert.deepStrictEqual(mockFn.mock.calls[1]?.arguments, ["third"]);
     });
 });

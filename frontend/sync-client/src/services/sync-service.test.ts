@@ -5,7 +5,7 @@ import { Logger } from "../tracing/logger";
 import { SyncResetError } from "../errors/errors";
 import { SyncService } from "./sync-service";
 
-const settings = () =>
+const settings = (): Settings =>
     new Settings(
         new Logger(),
         {
@@ -13,15 +13,26 @@ const settings = () =>
             vaultName: "test",
             requestTimeoutMs: 1000
         },
-        async () => { }
+        async () => undefined
     );
 
-test("paused sync sends no requests, while connection checks still work", async () => {
+test("paused sync sends no requests, while connection checks still work", async (): Promise<void> => {
     let requests = 0;
-    const service = new SyncService("device", settings(), async () => {
-        requests++;
-        return Response.json({ headEventId: 0, events: [] });
-    }, { get: () => undefined, save: async () => { } });
+    const service = new SyncService(
+        "device",
+        settings(),
+        async () => {
+            requests++;
+            return Response.json(
+                { headEventId: 0, endEventId: 0, events: [] },
+                { headers: { "X-Vault-Link-History": "0:empty" } }
+            );
+        },
+        {
+            get: (): undefined => undefined,
+            save: async (): Promise<void> => undefined
+        }
+    );
     await assert.rejects(service.getEvents(0), SyncResetError);
     assert.equal(requests, 0);
     await service.ping();
@@ -31,7 +42,7 @@ test("paused sync sends no requests, while connection checks still work", async 
     assert.equal(requests, 2);
 });
 
-test("pause aborts requests and fences late responses from an injected fetch", async () => {
+test("pause aborts requests and fences late responses from an injected fetch", async (): Promise<void> => {
     const response = Promise.withResolvers<Response>();
     const signals: AbortSignal[] = [];
     const saved: (string | undefined)[] = [];
@@ -39,14 +50,18 @@ test("pause aborts requests and fences late responses from an injected fetch", a
         "device",
         settings(),
         async (_, init) => {
-            signals.push(init!.signal!);
+            assert.ok(init?.signal);
+            signals.push(init.signal);
             return signals.length === 1
                 ? response.promise
-                : Response.json({ headEventId: 0, events: [] });
+                : Response.json(
+                      { headEventId: 0, endEventId: 0, events: [] },
+                      { headers: { "X-Vault-Link-History": "0:empty" } }
+                  );
         },
         {
-            get: () => undefined,
-            save: async (value) => {
+            get: (): undefined => undefined,
+            save: async (value): Promise<void> => {
                 saved.push(value);
             }
         }
@@ -55,10 +70,10 @@ test("pause aborts requests and fences late responses from an injected fetch", a
     const first = service.getEvents(0);
     service.pause();
     await assert.rejects(first, SyncResetError);
-    assert.equal(signals[0].aborted, true);
+    assert.equal(signals[0]?.aborted, true);
     service.resume();
     await service.getEvents(0);
-    assert.equal(signals[1].aborted, false);
+    assert.equal(signals[1]?.aborted, false);
     response.resolve(
         Response.json(
             {},
@@ -66,53 +81,57 @@ test("pause aborts requests and fences late responses from an injected fetch", a
         )
     );
     await new Promise((resolve) => setImmediate(resolve));
-    assert.deepEqual(saved, []);
+    assert.deepEqual(saved, ["0:empty"]);
 });
 
 for (const binary of [false, true]) {
-    test(`pause interrupts a stalled ${binary ? "binary" : "JSON"} response body`, async () => {
-        const headersSaved = Promise.withResolvers<void>();
-        let body!: ReadableStreamDefaultController<Uint8Array>;
+    test(`pause interrupts a stalled ${binary ? "binary" : "JSON"} response body`, async (): Promise<void> => {
+        const headersSaved = Promise.withResolvers<undefined>();
+        const bodyReady =
+            Promise.withResolvers<
+                ReadableStreamDefaultController<Uint8Array>
+            >();
         const service = new SyncService(
             "device",
             settings(),
             async () =>
                 new Response(
-                    new ReadableStream({
-                        start(controller) {
-                            body = controller;
+                    new ReadableStream<Uint8Array>({
+                        start(controller): void {
+                            bodyReady.resolve(controller);
                         }
                     }),
                     { headers: { "X-Vault-Link-History": "1:head" } }
                 ),
             {
-                get: () => undefined,
-                save: async () => {
-                    headersSaved.resolve();
+                get: (): undefined => undefined,
+                save: async (): Promise<void> => {
+                    headersSaved.resolve(undefined);
                 }
             }
         );
         service.resume();
         const request = binary
             ? service.getDocumentVersionContent({
-                documentId: "a",
-                vaultUpdateId: 1
-            })
+                  documentId: "a",
+                  vaultUpdateId: 1
+              })
             : service.getEvents(0);
         await headersSaved.promise;
         await new Promise((resolve) => setImmediate(resolve));
         service.pause();
         await assert.rejects(request, SyncResetError);
+        const body = await bodyReady.promise;
         body.enqueue(new TextEncoder().encode("{}"));
         body.close();
     });
 }
 
-test("pause waits for a checkpoint save already in progress", async () => {
-    const saving = Promise.withResolvers<void>();
-    const release = Promise.withResolvers<void>();
+test("pause waits for a checkpoint save already in progress", async (): Promise<void> => {
+    const saving = Promise.withResolvers<undefined>();
+    const release = Promise.withResolvers<undefined>();
     let settled = false;
-    let checkpoint: string | undefined;
+    let checkpoint: string | undefined = undefined;
     const service = new SyncService(
         "device",
         settings(),
@@ -124,9 +143,9 @@ test("pause waits for a checkpoint save already in progress", async () => {
                 }
             ),
         {
-            get: () => checkpoint,
-            save: async (value) => {
-                saving.resolve();
+            get: (): string | undefined => checkpoint,
+            save: async (value): Promise<void> => {
+                saving.resolve(undefined);
                 await release.promise;
                 checkpoint = value;
             }
@@ -140,13 +159,13 @@ test("pause waits for a checkpoint save already in progress", async () => {
     service.pause();
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(settled, false);
-    release.resolve();
+    release.resolve(undefined);
     await assert.rejects(request, SyncResetError);
     assert.equal(checkpoint, "1:head");
 });
 
-test("history saves only new checkpoints, including a changed token at the same event ID", async () => {
-    let checkpoint: string | undefined;
+test("history saves only new checkpoints, including a changed token at the same event ID", async (): Promise<void> => {
+    let checkpoint: string | undefined = undefined;
     let responseCheckpoint = "1:first";
     const saved: (string | undefined)[] = [];
     const service = new SyncService(
@@ -158,8 +177,8 @@ test("history saves only new checkpoints, including a changed token at the same 
                 { headers: { "X-Vault-Link-History": responseCheckpoint } }
             ),
         {
-            get: () => checkpoint,
-            save: async (value) => {
+            get: (): string | undefined => checkpoint,
+            save: async (value): Promise<void> => {
                 checkpoint = value;
                 saved.push(value);
             }
@@ -177,5 +196,36 @@ test("history saves only new checkpoints, including a changed token at the same 
         responseCheckpoint = value;
         await service.getEvents(0);
     }
+
     assert.deepEqual(saved, ["1:first", "2:next", "2:replacement"]);
 });
+
+for (const checkpoint of [undefined, ""]) {
+    test(`successful sync responses reject ${checkpoint === undefined ? "missing" : "empty"} history checkpoints`, async () => {
+        const service = new SyncService(
+            "device",
+            settings(),
+            async () =>
+                Response.json(
+                    { headEventId: 0, endEventId: 0, events: [] },
+                    {
+                        headers:
+                            checkpoint === undefined
+                                ? {}
+                                : { "X-Vault-Link-History": checkpoint }
+                    }
+                ),
+            {
+                get: (): undefined => undefined,
+                save: async (): Promise<void> => {
+                    assert.fail("must not save a missing checkpoint");
+                }
+            }
+        );
+        service.resume();
+        await assert.rejects(
+            service.getEvents(0),
+            /Missing server history checkpoint/
+        );
+    });
+}

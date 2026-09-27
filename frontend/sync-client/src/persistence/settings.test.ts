@@ -9,7 +9,7 @@ describe("Settings logging", () => {
         const settings = new Settings(
             logger,
             { token: "loaded-secret" },
-            async () => {}
+            async () => undefined
         );
         await settings.setSettings({ token: "updated-secret" });
 
@@ -43,7 +43,7 @@ it("owns settings arrays instead of sharing them with callers and listeners", as
     const settings = new Settings(
         new Logger(),
         { ignorePatterns: original },
-        async () => {}
+        async () => undefined
     );
     original.push("external mutation");
     assert.deepEqual(settings.getSettings().ignorePatterns, ["original"]);
@@ -67,7 +67,9 @@ it("file eligibility follows successfully saved settings", async () => {
             maxFileSizeMB: 1
         },
         async () => {
-            if (fail) throw new Error("save failed");
+            if (fail) {
+                throw new Error("save failed");
+            }
         }
     );
     assert(settings.isIgnored("private/note.md"));

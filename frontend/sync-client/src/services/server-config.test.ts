@@ -1,3 +1,4 @@
+import { awaitAll } from "../utils/await-all";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ServerConfig } from "./server-config";
@@ -12,28 +13,31 @@ const config = {
     mergeableFileExtensions: ["md"],
     serverVersion: "test"
 };
-const make = (fetch: typeof globalThis.fetch) =>
+const make = (fetch: typeof globalThis.fetch): ServerConfig =>
     new ServerConfig(
         new SyncService(
             "device",
             new Settings(
                 new Logger(),
                 { remoteUri: "http://test" },
-                async () => {}
+                async () => undefined
             ),
             fetch,
-            { get: () => undefined, save: async () => {} }
+            { get: () => undefined, save: async () => undefined }
         )
     );
 
 test("configuration shares one validated request and retries failures", async () => {
     let calls = 0;
     const server = make(async () => {
-        if (++calls === 1) throw new Error("offline");
+        if (++calls === 1) {
+            throw new Error("offline");
+        }
+
         return Response.json(config);
     });
     await assert.rejects(server.getConfig(), /offline/);
-    const [a, b] = await Promise.all([server.getConfig(), server.getConfig()]);
+    const [a, b] = await awaitAll([server.getConfig(), server.getConfig()]);
     assert.equal(a, b);
     assert.equal(calls, 2);
     await server.getConfig();
@@ -74,6 +78,7 @@ for (const fail of [false, true]) {
             );
             await old;
         }
+
         assert.equal(await server.getConfig(), current);
         assert.equal(calls, 2);
     });

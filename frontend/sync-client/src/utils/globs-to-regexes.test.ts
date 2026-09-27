@@ -7,6 +7,7 @@ describe("globsToRegexes", () => {
     it("basicExample", async () => {
         const [regex] = globsToRegexes([".git/**"], new Logger());
 
+        assert.ok(regex);
         assert.ok(regex.test(".git/objects/object"));
         assert.ok(regex.test(".git/objects/.object"));
     });

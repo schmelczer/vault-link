@@ -54,3 +54,22 @@ void test("awaitAll works with async functions", async () => {
     assert.strictEqual(results[0], "async");
     assert.strictEqual(results[1], 123);
 });
+
+void test("awaitAll drains unfinished work before reporting a rejection", async () => {
+    const pending = Promise.withResolvers<undefined>();
+    const error = new Error("failed first");
+    let finished = false;
+    const checked = assert
+        .rejects(awaitAll([Promise.reject(error), pending.promise]), error)
+        .then(() => {
+            finished = true;
+        });
+    try {
+        await new Promise((resolve) => setImmediate(resolve));
+        assert.equal(finished, false);
+    } finally {
+        pending.resolve(undefined);
+    }
+
+    await checked;
+});
