@@ -21,12 +21,15 @@ export {
 export { Logger, LogLevel, LogLine } from "./tracing/logger";
 export { type SyncSettings, DEFAULT_SETTINGS } from "./persistence/settings";
 export { rateLimit } from "./utils/rate-limit";
-export type { RelativePath, StoredDatabase } from "./persistence/database";
 export type {
-    FileSystemOperations,
-    FileSnapshot
-} from "./file-operations/filesystem-operations";
-export type { PersistenceProvider } from "./persistence/persistence";
+    DocumentId,
+    RelativePath,
+    StoredDatabase,
+    VaultUpdateId
+} from "./persistence/database";
+export type { FileSystemOperations } from "./file-operations/filesystem-operations";
+export type { FileSnapshot } from "./snapshot";
+export type { MetadataPersistenceProvider as PersistenceProvider } from "./persistence/metadata-persistence-provider";
 export type { CursorSpan } from "./services/types/CursorSpan";
 export type { ClientCursors } from "./services/types/ClientCursors";
 export type { NetworkConnectionStatus } from "./types/network-connection-status";
@@ -36,7 +39,7 @@ export type {
 } from "./errors/errors";
 export type { MaybeOutdatedClientCursors } from "./types/maybe-outdated-client-cursors";
 export { DocumentSyncStatus } from "./types/document-sync-status";
-export { SyncClient } from "./sync-client";
+export { SyncClient, type StoredClient } from "./sync-client";
 export type { TextWithCursors, CursorPosition } from "reconcile-text";
 
 export const debugging = {

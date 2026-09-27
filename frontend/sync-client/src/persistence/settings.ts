@@ -1,3 +1,4 @@
+import type { RelativePath } from "./database";
 import type { Logger } from "../tracing/logger";
 import { globsToRegexes } from "../utils/globs-to-regexes";
 import { isInternalPath } from "../utils/portable-path";
@@ -68,7 +69,7 @@ export class Settings {
         );
     }
 
-    public isIgnored(path: string): boolean {
+    public isIgnored(path: RelativePath): boolean {
         return (
             isInternalPath(path) ||
             this.ignorePatterns.some((pattern) => pattern.test(path))
@@ -111,17 +112,20 @@ export class Settings {
             await this.saveData(next);
             this.settings = next;
 
-            if (update.ignorePatterns !== undefined)
+            if (update.ignorePatterns !== undefined) {
                 this.ignorePatterns = globsToRegexes(
                     next.ignorePatterns,
                     this.logger
                 );
+            }
 
             return [this.getSettings(), oldSettings] as const;
         });
 
         // Listeners can themselves update settings. Never await them while
         // holding a lock needed by the operation they invoke.
-        if (notify) await this.onSettingsChanged.triggerAsync(...change);
+        if (notify) {
+            await this.onSettingsChanged.triggerAsync(...change);
+        }
     }
 }

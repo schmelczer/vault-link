@@ -5,4 +5,4 @@ export type EventBatch = { headEventId: number,
 /**
  * Last event in this page; `head_event_id` is the vault's current head.
  */
-endEventId?: number, events: Array<EventRecord>, };
+endEventId: number, events: Array<EventRecord>, };

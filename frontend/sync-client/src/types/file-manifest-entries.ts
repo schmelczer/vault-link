@@ -1,3 +1,3 @@
-import type { FileManifest } from "../services/types/FileManifest";
+import type { DocumentId, RelativePath } from "../persistence/database";
 
-export type FileManifestEntries = FileManifest["entries"];
+export type FileManifestEntries = Record<DocumentId, RelativePath>;

@@ -18,7 +18,7 @@ isAuthenticated: boolean,
  */
 mergeableFileExtensions: Array<string>, 
 /**
- * API version ensuring backwards & forwards compatibility between the client
+ * API version that must match exactly between the client
  * and server.
  */
 supportedApiVersion: number, };
