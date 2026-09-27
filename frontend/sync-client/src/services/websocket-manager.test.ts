@@ -1,3 +1,4 @@
+import { WebSocketMessageType } from "./protocol-types";
 /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert";
@@ -139,13 +140,13 @@ describe("WebSocketManager", () => {
             .webSocket;
 
         mockWs.simulateMessage({
-            type: "vaultChanged"
+            type: WebSocketMessageType.VaultChanged
         });
         mockWs.simulateMessage({
-            type: "vaultChanged"
+            type: WebSocketMessageType.VaultChanged
         });
         mockWs.simulateMessage({
-            type: "vaultChanged"
+            type: WebSocketMessageType.VaultChanged
         });
 
         await new Promise((resolve) => setTimeout(resolve, 100));
@@ -175,7 +176,7 @@ describe("WebSocketManager", () => {
             .webSocket;
 
         mockWs.simulateMessage({
-            type: "cursorPositions",
+            type: WebSocketMessageType.CursorPositions,
             clients: [{ deviceId: "other-device", cursors: [] }]
         });
 
@@ -317,7 +318,7 @@ describe("WebSocketManager", () => {
         const mockWs = (manager as unknown as { webSocket: MockWebSocket })
             .webSocket;
         mockWs.simulateMessage({
-            type: "vaultChanged"
+            type: WebSocketMessageType.VaultChanged
         });
 
         await new Promise((resolve) => setTimeout(resolve, 10));
@@ -479,11 +480,11 @@ for (const closeBehavior of ["throws", "stays open"]) {
         assert.equal(manager.isWebSocketConnected, false);
         assert.equal(connected, false);
         socket.simulateMessage({
-            type: "vaultChanged"
+            type: WebSocketMessageType.VaultChanged
         });
         delayedMessage?.(
             new MockMessageEvent("message", {
-                data: JSON.stringify({ type: "vaultChanged" })
+                data: JSON.stringify({ type: WebSocketMessageType.VaultChanged })
             })
         );
         await manager.waitUntilFinished();
@@ -514,12 +515,12 @@ it("stop retires the socket immediately but drains messages already being handle
     const socket = (manager as unknown as { webSocket: MockWebSocket })
         .webSocket;
     assert.deepEqual(JSON.parse(socket.sentMessages[0] ?? ""), {
-        type: "handshake",
+        type: WebSocketMessageType.Handshake,
         token: "test-token",
         deviceId: "device"
     });
     manager.onRemoteVaultUpdateReceived.add(async () => release.promise);
-    socket.simulateMessage({ type: "vaultChanged" });
+    socket.simulateMessage({ type: WebSocketMessageType.VaultChanged });
     let finished = false;
     const stopping = manager.stop().then(() => {
         finished = true;
@@ -654,9 +655,9 @@ it("does not reconnect while messages keep arriving before the deadline", async 
         assert.equal(attempts, 1);
 
         context.mock.timers.tick(10_000);
-        socket.simulateMessage({ type: "vaultChanged" });
+        socket.simulateMessage({ type: WebSocketMessageType.VaultChanged });
         context.mock.timers.tick(10_000);
-        socket.simulateMessage({ type: "cursorPositions", clients: [] });
+        socket.simulateMessage({ type: WebSocketMessageType.CursorPositions, clients: [] });
         context.mock.timers.tick(WEBSOCKET_RECEIVE_TIMEOUT_MS - 20_000);
         assert.equal(manager.isWebSocketConnected, true);
         assert.equal(disconnected, 0);

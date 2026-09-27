@@ -39,7 +39,7 @@ jobs:
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: "1.92.0"
+          toolchain: "1.94.0"
           components: clippy, rustfmt
 
       - name: Expand scheduled fuzz campaigns
