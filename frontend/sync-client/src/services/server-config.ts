@@ -4,24 +4,20 @@ import {
     ServerVersionMismatchError
 } from "../errors/errors";
 import type { SyncService } from "./sync-service";
-
-export interface ServerConfigData {
-    mergeableFileExtensions: string[];
-    supportedApiVersion: number;
-    isAuthenticated: boolean;
-}
+import type { PingResponse } from "./types/PingResponse";
 
 export class ServerConfig {
-    private config: Promise<ServerConfigData> | undefined;
+    private config?: Promise<PingResponse>;
 
-    public constructor(private readonly syncService: SyncService) { }
+    public constructor(private readonly syncService: SyncService) {}
 
-    private static validateConfig(config: ServerConfigData): void {
+    private static validateConfig(config: PingResponse): void {
         if (config.supportedApiVersion !== SUPPORTED_API_VERSION) {
             const shouldUpgradeClient =
                 config.supportedApiVersion > SUPPORTED_API_VERSION;
             throw new ServerVersionMismatchError(
-                `Unsupported API version: ${config.supportedApiVersion}. Consider upgrading the ${shouldUpgradeClient ? "client" : "sync-server"
+                `Unsupported API version: ${config.supportedApiVersion}. Consider upgrading the ${
+                    shouldUpgradeClient ? "client" : "sync-server"
                 } to ensure compatibility`
             );
         }
@@ -31,11 +27,6 @@ export class ServerConfig {
                 "Failed to authenticate with the sync-server"
             );
         }
-    }
-
-    // warm the cache
-    public async initialize(): Promise<void> {
-        await this.getConfig();
     }
 
     public async checkConnection(): Promise<{
@@ -59,7 +50,7 @@ export class ServerConfig {
         }
     }
 
-    public async getConfig(): Promise<ServerConfigData> {
+    public async getConfig(): Promise<PingResponse> {
         if (!this.config) {
             const pending = this.syncService
                 .ping()
@@ -68,12 +59,16 @@ export class ServerConfig {
                     return config;
                 })
                 .catch((error: unknown) => {
-                    if (this.config === pending) this.config = undefined;
+                    if (this.config === pending) {
+                        this.config = undefined;
+                    }
+
                     throw error;
                 });
 
             this.config = pending;
         }
+
         return this.config;
     }
 

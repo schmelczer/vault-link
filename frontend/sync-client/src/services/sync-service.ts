@@ -1,6 +1,6 @@
+import type { DocumentId, VaultUpdateId } from "../persistence/database";
 import type { Settings } from "../persistence/settings";
 import { abortable } from "../utils/abortable";
-import { VaultHistoryStatus } from "../types/vault-history-status";
 import type { DocumentUpdateResponse } from "./types/DocumentUpdateResponse";
 import type { DocumentVersionWithoutContent } from "./types/DocumentVersionWithoutContent";
 import type { EventBatch } from "./types/EventBatch";
@@ -17,24 +17,20 @@ import {
 } from "../errors/errors";
 
 export class SyncService {
+    private readonly fetchImplementation: typeof fetch;
     private session = new AbortController();
 
     public constructor(
         private readonly deviceId: string,
         private readonly settings: Settings,
-        private readonly fetchImplementation: typeof fetch = globalThis.fetch,
+        fetchImplementation: typeof fetch | undefined,
         private readonly history: {
             get: () => string | undefined;
             save: (checkpoint: string | undefined) => Promise<void>;
         }
     ) {
+        this.fetchImplementation = fetchImplementation ?? globalThis.fetch;
         this.pause();
-    }
-
-    public get vaultHistoryStatus(): VaultHistoryStatus {
-        return this.history.get() !== undefined
-            ? VaultHistoryStatus.STORED
-            : VaultHistoryStatus.MISSING;
     }
 
     public pause(): void {
@@ -50,31 +46,33 @@ export class SyncService {
     }
 
     public async ping(): Promise<PingResponse> {
-        return this.request("/ping", undefined, true);
+        return this.request("/ping", { ignoreAborts: true });
     }
 
     public async getVaultSnapshot(): Promise<VaultSnapshot> {
         return this.request("/vault-snapshot");
     }
 
-    public async getEvents(after: number): Promise<EventBatch> {
+    public async getEvents(after: VaultUpdateId): Promise<EventBatch> {
         return this.request(`/events-since?after=${after}`);
     }
 
     public async pushFileManifest(
         request: PushFileManifest
     ): Promise<FileManifestUpdateResponse> {
-        return this.request("/file-manifest", request);
+        return this.request("/file-manifest", { body: request });
     }
 
     public async putFileContent(
-        id: string,
+        id: DocumentId,
         request: PutFileContent
     ): Promise<DocumentUpdateResponse> {
-        return this.request(`/documents/${id}`, request);
+        return this.request(`/documents/${id}`, { body: request });
     }
 
-    public async getDocumentMetadata(id: string): Promise<DocumentVersionWithoutContent> {
+    public async getDocumentMetadata(
+        id: DocumentId
+    ): Promise<DocumentVersionWithoutContent> {
         return this.request(`/documents/${id}/metadata`);
     }
 
@@ -82,78 +80,71 @@ export class SyncService {
         documentId,
         vaultUpdateId
     }: {
-        documentId: string;
-        vaultUpdateId: number;
+        documentId: DocumentId;
+        vaultUpdateId: VaultUpdateId;
     }): Promise<Uint8Array> {
         return this.request(
             `/documents/${documentId}/versions/${vaultUpdateId}/content`,
-            undefined,
-            false,
-            async (response) => new Uint8Array(await response.arrayBuffer())
+            {
+                decode: async (response) =>
+                    new Uint8Array(await response.arrayBuffer())
+            }
         );
-    }
-
-    private getHistoryHeaders(): Record<string, string> {
-        const checkpoint = this.history.get();
-        return checkpoint !== undefined && checkpoint !== ""
-            ? { "X-Vault-Link-History": checkpoint }
-            : {};
     }
 
     private async recordHistory(response: Response): Promise<void> {
         const checkpoint = response.headers.get("x-vault-link-history");
-        if (
-            checkpoint !== null &&
-            checkpoint !== ""
-        ) {
-            const previous = this.history.get();
-            if (checkpoint === previous) return;
-            if (
-                previous === undefined ||
-                previous === "" ||
-                Number(checkpoint.split(":")[0]) >=
-                Number(previous.split(":")[0])
-            )
-                await this.history.save(checkpoint);
+        if (checkpoint === null || checkpoint === "") {
+            throw new PermanentSyncError("Missing server history checkpoint HTTP header");
         }
-    }
 
-    private checkHistory(response: Response): void {
-        if (response.headers.get("x-vault-link-history-mismatch") === "1")
-            throw new ServerHistoryChangedError(
-                "Server history changed; recovering local work"
-            );
-    }
+        const previous = this.history.get();
+        if (checkpoint === previous) {
+            return;
+        }
 
-    private getUrl(path: string): string {
-        const { remoteUri, vaultName } = this.settings.getSettings();
-        return `${remoteUri.replace(/\/$/u, "")}/vaults/${encodeURIComponent(vaultName)}${path}`;
+        if (
+            previous === undefined ||
+            Number(checkpoint.split(":")[0]) >= Number(previous.split(":")[0])
+        ) {
+            await this.history.save(checkpoint);
+        }
     }
 
     private async request<T>(
         path: string,
-        body?: unknown,
-        raw = false,
-        decode: (response: Response) => Promise<T> = async (response) =>
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Endpoint methods supply the generated protocol response type.
-            response.json() as Promise<T>
+        {
+            body,
+            ignoreAborts = false,
+            decode = async (response): Promise<T> =>
+                // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Endpoint methods supply the generated protocol response type.
+                response.json() as Promise<T>
+        }: {
+            body?: unknown;
+            ignoreAborts?: boolean;
+            decode?: (response: Response) => Promise<T>;
+        } = {}
     ): Promise<T> {
-        const timeout = AbortSignal.timeout(
-            this.settings.getSettings().requestTimeoutMs
-        );
+        const { remoteUri, vaultName, token, requestTimeoutMs } =
+            this.settings.getSettings();
+        const url = `${remoteUri.replace(/\/$/u, "")}/vaults/${encodeURIComponent(vaultName)}${path}`;
+        const checkpoint = ignoreAborts ? undefined : this.history.get();
 
-        const signal = raw
+        const timeout = AbortSignal.timeout(requestTimeoutMs);
+        const signal = ignoreAborts
             ? timeout
             : AbortSignal.any([timeout, this.session.signal]);
 
         const response = await abortable(signal, async () =>
-            this.fetchImplementation(this.getUrl(path), {
+            this.fetchImplementation(url, {
                 method: body === undefined ? "GET" : "PUT",
                 body: body === undefined ? undefined : JSON.stringify(body),
                 signal,
                 headers: {
-                    ...(raw ? {} : this.getHistoryHeaders()),
-                    Authorization: `Bearer ${this.settings.getSettings().token}`,
+                    ...(checkpoint === undefined
+                        ? {}
+                        : { "X-Vault-Link-History": checkpoint }),
+                    Authorization: `Bearer ${token}`,
                     "Device-Id": this.deviceId,
                     "Content-Type": "application/json"
                 }
@@ -161,7 +152,11 @@ export class SyncService {
         );
 
         signal.throwIfAborted();
-        this.checkHistory(response);
+        if (response.headers.get("x-vault-link-history-mismatch") === "1") {
+            throw new ServerHistoryChangedError(
+                "Server history changed; recovering local work"
+            );
+        }
 
         if (!response.ok) {
             this.throwForErrorResponse(
@@ -171,7 +166,9 @@ export class SyncService {
         }
 
         // Finish metadata saves even if the transport is paused meanwhile.
-        if (!raw) await this.recordHistory(response);
+        if (!ignoreAborts) {
+            await this.recordHistory(response);
+        }
 
         return abortable(signal, async () => decode(response));
     }
