@@ -1,18 +1,30 @@
-import type { RelativePath } from "../persistence/database";
-
 import type { TextWithCursors } from "reconcile-text";
+import type { RelativePath } from "../persistence/database";
+import type { FileSnapshot } from "../snapshot";
 
+/** Filesystem operations act on the current user-owned namespace.
+ * Paths are vault-relative. Never follow symlinks (including ancestor symlinks).
+ * Only independent regular files are supported; reject hardlinks/special files.
+ */
 export interface FileSystemOperations {
-    // List all files under root that should be synced. If root is undefined, return every file.
-    listFilesRecursively: (
-        root: RelativePath | undefined
-    ) => Promise<RelativePath[]>;
+    listFilesRecursively: (root?: RelativePath) => Promise<RelativePath[]>;
 
-    // Read the content of a file.
-    read: (path: RelativePath) => Promise<Uint8Array>;
+    /** Return undefined on missing file */
+    read: (path: RelativePath) => Promise<FileSnapshot | undefined>;
 
-    // Create or overwrite a file with the given content.
-    write: (path: RelativePath, content: Uint8Array) => Promise<void>;
+    /** File size in in bytes. */
+    stat: (
+        path: RelativePath
+    ) => Promise<{ kind: "file" | "directory"; size: number } | undefined>;
+
+    /** Includes directories. */
+    exists: (path: RelativePath) => Promise<boolean>;
+
+    /** Recursive, idempotent directory creation. */
+    createDirectory: (path: RelativePath) => Promise<void>;
+
+    /** Create or overwrite a file, applying optional editor cursor metadata. */
+    write: (path: RelativePath, snapshot: FileSnapshot) => Promise<void>;
 
     // Atomically update the content of a text file.
     atomicUpdateText: (
@@ -20,18 +32,12 @@ export interface FileSystemOperations {
         updater: (current: TextWithCursors) => TextWithCursors
     ) => Promise<string>;
 
-    // Get the size of a file in bytes.
-    getFileSize: (path: RelativePath) => Promise<number>;
+    /** Move a file without replacing an existing destination. */
+    rename: (from: RelativePath, to: RelativePath) => Promise<void>;
 
-    // Check if a file exists.
-    exists: (path: RelativePath) => Promise<boolean>;
+    /** Idempotently unlink one regular file. */
+    deleteFile: (path: RelativePath) => Promise<void>;
 
-    // Create a directory at the specified path. All parent directories must already exist.
-    createDirectory: (path: RelativePath) => Promise<void>;
-
-    // Delete a file. It is expected that the path points to an existing file.
-    delete: (path: RelativePath) => Promise<void>;
-
-    // Rename a file. It is expected that the oldPath points to an existing file and the newPath does not exist.
-    rename: (oldPath: RelativePath, newPath: RelativePath) => Promise<void>;
+    /** Prune directories using rmdir only. Reject files and nonempty directories. */
+    deleteDirectory: (path: RelativePath) => Promise<void>;
 }
