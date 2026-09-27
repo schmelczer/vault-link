@@ -19,7 +19,7 @@ pub async fn vault_snapshot(
 
     state
         .database
-        .vault_snapshot(&vault_id)
+        .get_vault_snapshot(&vault_id)
         .await
         .map(Json)
         .map_err(server_error)

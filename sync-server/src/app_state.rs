@@ -24,7 +24,7 @@ impl AppState {
         let database = Database::try_new(&config.database).await?;
         let cursors: Cursors = Cursors::new(&config.database, &broadcasts);
 
-        Cursors::start_background_task(cursors.clone());
+        Cursors::start_cursor_expiration_task(cursors.clone());
 
         Ok(Self {
             config,

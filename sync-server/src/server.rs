@@ -46,7 +46,7 @@ pub async fn create_server(config: Config) -> Result<()> {
     let server_config = app_state.config.server.clone();
 
     let app = Router::new()
-        .nest("/", get_authed_routes(app_state.clone()))
+        .nest("/", create_authenticated_routes(app_state.clone()))
         .route("/", get(endpoints::index::index))
         .route("/vaults/:vault_id/ping", get(endpoints::ping::ping))
         .route(
@@ -100,7 +100,7 @@ pub async fn create_server(config: Config) -> Result<()> {
     start_server(app, &server_config).await
 }
 
-fn get_authed_routes(app_state: AppState) -> Router<AppState> {
+fn create_authenticated_routes(app_state: AppState) -> Router<AppState> {
     Router::new()
         .route(
             "/vaults/:vault_id/file-manifest",

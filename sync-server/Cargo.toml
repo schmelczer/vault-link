@@ -21,7 +21,7 @@ tower-http = { version = "0.6.1", features = ["cors", "trace", "limit", "timeout
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.20", features = ["fmt", "env-filter"]}
 humantime-serde = "1.1.1"
-sqlx = { version = "0.8.6", features = ["sqlite", "runtime-tokio", "uuid", "chrono"] }
+sqlx = { version = "0.8.6", default-features = false, features = ["sqlite", "runtime-tokio", "uuid", "chrono", "macros"] }
 chrono = { version = "0.4.41", features = ["serde"] }
 rand = "0.9.0"
 regex = "1.12.2"

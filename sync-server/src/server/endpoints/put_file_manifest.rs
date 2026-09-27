@@ -4,9 +4,11 @@ use axum::{
     extract::{Path, State},
 };
 use log::debug;
-use sha2::{Digest, Sha256};
 
-use super::{VaultPath, utils::find_already_processed_event};
+use super::{
+    VaultPath,
+    utils::{commit_and_notify, find_already_processed_event, fingerprint_request},
+};
 use crate::{
     app_state::{
         AppState,
@@ -15,7 +17,7 @@ use crate::{
             models::{FileManifest, VaultEvent},
         },
     },
-    errors::{SyncServerError, client_error, server_error},
+    errors::{SyncServerError, client_error},
     server::{requests::PushFileManifest, responses::FileManifestUpdateResponse},
 };
 
@@ -28,16 +30,9 @@ pub async fn put_file_manifest(
     debug!("Pushing file manifest for vault `{vault_id}`");
 
     // BTreeMap canonicalizes file manifest entries for request fingerprinting.
-    let fingerprint = Sha256::digest(
-        serde_json::to_vec(&("file_manifest", &push))
-            .map_err(|error| server_error(error.into()))?,
-    );
+    let fingerprint = fingerprint_request(&("file_manifest", &push))?;
 
-    let mut tx = state
-        .database
-        .create_write_transaction(&vault_id)
-        .await
-        .map_err(server_error)?;
+    let mut tx = state.database.create_write_transaction(&vault_id).await?;
 
     if let Some(event) =
         find_already_processed_event(&mut tx, push.request_id, &fingerprint).await?
@@ -54,9 +49,7 @@ pub async fn put_file_manifest(
         };
     }
 
-    let latest = Database::current_file_manifest(&mut tx)
-        .await
-        .map_err(server_error)?;
+    let latest = Database::get_current_file_manifest(&mut tx).await?;
 
     if latest.file_manifest_id != push.parent_file_manifest_id {
         return Ok(Json(FileManifestUpdateResponse::StaleBase(latest)));
@@ -64,8 +57,7 @@ pub async fn put_file_manifest(
 
     if let Some(id) =
         Database::get_missing_document(&mut tx, &push.entries.keys().copied().collect::<Vec<_>>())
-            .await
-            .map_err(server_error)?
+            .await?
     {
         return Err(client_error(anyhow!(
             "File manifest references missing content: {id}"
@@ -73,25 +65,17 @@ pub async fn put_file_manifest(
     }
 
     let file_manifest = FileManifest {
-        file_manifest_id: Database::allocate_event(&mut tx, push.request_id, &fingerprint)
-            .await
-            .map_err(server_error)?,
+        file_manifest_id: Database::allocate_event(&mut tx, push.request_id, &fingerprint).await?,
         entries: push.entries,
     };
 
-    Database::insert_file_manifest(&mut tx, &file_manifest)
-        .await
-        .map_err(server_error)?;
+    Database::insert_file_manifest(&mut tx, &file_manifest).await?;
 
     let response = FileManifestUpdateResponse::Accepted {
         file_manifest_id: file_manifest.file_manifest_id,
     };
 
-    tx.commit()
-        .await
-        .map_err(|error| server_error(error.into()))?;
-
-    state.broadcasts.notify_about_vault_update(vault_id).await;
+    commit_and_notify(tx, &state, vault_id).await?;
 
     Ok(Json(response))
 }

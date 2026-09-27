@@ -14,7 +14,7 @@ use crate::{
             models::{DocumentId, DocumentVersionWithoutContent},
         },
     },
-    errors::{SyncServerError, not_found_error, server_error},
+    errors::{SyncServerError, not_found_error},
 };
 
 #[axum::debug_handler]
@@ -27,12 +27,10 @@ pub async fn fetch_latest_document_metadata(
     let mut tx = state
         .database
         .create_readonly_transaction(&vault_id)
-        .await
-        .map_err(server_error)?;
+        .await?;
 
     let metadata = Database::get_latest_document_metadata(&mut tx, &document_id)
-        .await
-        .map_err(server_error)?
+        .await?
         .ok_or_else(|| not_found_error(anyhow!("Document does not exist")))?;
 
     Ok(Json(metadata))

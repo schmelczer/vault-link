@@ -39,7 +39,7 @@ impl Broadcasts {
         limit.try_acquire_owned().ok()
     }
 
-    async fn sender(&self, vault: VaultId) -> broadcast::Sender<Notification> {
+    async fn get_or_create_sender(&self, vault: VaultId) -> broadcast::Sender<Notification> {
         self.senders
             .lock()
             .await
@@ -49,12 +49,12 @@ impl Broadcasts {
     }
 
     pub async fn get_receiver(&self, vault: VaultId) -> broadcast::Receiver<Notification> {
-        self.sender(vault).await.subscribe()
+        self.get_or_create_sender(vault).await.subscribe()
     }
 
     pub async fn send(&self, vault: VaultId, notification: Notification) {
         // No listeners (or lagging listeners) is normal; they replay the log.
-        let _ = self.sender(vault).await.send(notification);
+        let _ = self.get_or_create_sender(vault).await.send(notification);
     }
 
     pub async fn notify_about_vault_update(&self, vault: VaultId) {

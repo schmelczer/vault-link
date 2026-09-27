@@ -1,7 +1,7 @@
 use crate::{
     app_state::{
         AppState,
-        database::models::VaultId,
+        database::models::{DeviceId, VaultId},
         websocket::{
             broadcasts::Notification,
             models::{CursorPositionFromServer, WebSocketClientMessage, WebSocketServerMessage},
@@ -9,7 +9,7 @@ use crate::{
         },
     },
     consts::WEBSOCKET_HANDSHAKE_TIMEOUT,
-    errors::{SyncServerError, client_error, server_error},
+    errors::{SyncServerError, client_error},
 };
 use axum::{
     extract::{
@@ -19,7 +19,10 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use futures::StreamExt;
+use futures::{
+    StreamExt,
+    stream::{SplitSink, SplitStream},
+};
 use log::{debug, info};
 use std::time::Duration;
 use tokio::sync::broadcast::error::RecvError;
@@ -44,13 +47,13 @@ pub async fn websocket_handler(
 
     Ok(ws.on_upgrade(move |socket| async move {
         let _permit = permit;
-        if let Err(error) = websocket(state, socket, vault_id).await {
+        if let Err(error) = serve_connection(state, socket, vault_id).await {
             debug!("WebSocket disconnected: {error}");
         }
     }))
 }
 
-async fn websocket(
+async fn serve_connection(
     state: AppState,
     socket: WebSocket,
     vault: VaultId,
@@ -68,53 +71,16 @@ async fn websocket(
 
     let device = authenticated.handshake.device_id;
     let session = state.cursors.register_connection(&vault, &device).await;
-    let mut last_checkpoint = None;
-    let mut notifications = state.broadcasts.get_receiver(vault.clone()).await;
-    let mut timer = tokio::time::interval(Duration::from_secs(2));
-    timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-
     info!("WebSocket connected to vault {vault}");
 
-    let result = async {
-        loop {
-            let checkpoint = state.database.history_checkpoint(&vault).await.map_err(server_error)?;
-            if last_checkpoint.as_ref() != Some(&checkpoint) {
-                send_update_over_websocket(&WebSocketServerMessage::VaultChanged, &mut sender).await?;
-                last_checkpoint = Some(checkpoint);
-            }
-
-            tokio::select! {
-                _ = timer.tick() => {},
-                notification = notifications.recv() => match notification {
-                    Ok(update) => if let Notification::Cursors(mut positions) = update {
-                        positions.clients.retain(|c| c.device_id != device);
-                        send_update_over_websocket(&WebSocketServerMessage::CursorPositions(positions), &mut sender).await?;
-                    },
-
-                    Err(RecvError::Lagged(_)) => {}, // Check the durable head on the next iteration.
-                    Err(RecvError::Closed) => break,
-                },
-
-                incoming = receiver.next() => match incoming {
-                    Some(Ok(Message::Text(text))) => {
-                        let message: WebSocketClientMessage = serde_json::from_str(&text).map_err(|error| client_error(error.into()))?;
-                        match message {
-                            WebSocketClientMessage::Handshake(_) => return Err(client_error(anyhow::anyhow!("Unexpected handshake"))),
-                            WebSocketClientMessage::CursorPositions(positions) => {
-                                state.cursors.update_cursors(vault.clone(), authenticated.user.name.clone(), &device, session, positions.documents_with_cursors).await;
-                                let clients = state.cursors.get_cursors(&vault).await.into_iter().filter(|c| c.device_id != device).collect();
-                                send_update_over_websocket(&WebSocketServerMessage::CursorPositions(CursorPositionFromServer { clients }), &mut sender).await?;
-                            }
-                        }
-                    },
-                    Some(Ok(Message::Ping(_) | Message::Pong(_))) => {},
-                    _ => break,
-                }
-            }
-        }
-
-        Ok(())
-    }.await;
+    let connection = AuthenticatedConnection {
+        state: &state,
+        vault: &vault,
+        device: &device,
+        user_name: &authenticated.user.name,
+        session,
+    };
+    let result = connection.forward_updates(&mut sender, &mut receiver).await;
 
     state
         .cursors
@@ -122,4 +88,102 @@ async fn websocket(
         .await;
 
     result
+}
+
+/// A session owns cursor presence until it disconnects or a newer session replaces it.
+struct AuthenticatedConnection<'a> {
+    state: &'a AppState,
+    vault: &'a VaultId,
+    device: &'a DeviceId,
+    user_name: &'a str,
+    session: uuid::Uuid,
+}
+
+impl AuthenticatedConnection<'_> {
+    async fn forward_updates(
+        &self,
+        sender: &mut SplitSink<WebSocket, Message>,
+        receiver: &mut SplitStream<WebSocket>,
+    ) -> Result<(), SyncServerError> {
+        let mut last_checkpoint = None;
+        let mut notifications = self.state.broadcasts.get_receiver(self.vault.clone()).await;
+        let mut timer = tokio::time::interval(Duration::from_secs(2));
+        timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+        loop {
+            let checkpoint = self
+                .state
+                .database
+                .get_history_checkpoint(self.vault)
+                .await?;
+            if last_checkpoint.as_ref() != Some(&checkpoint) {
+                send_update_over_websocket(&WebSocketServerMessage::VaultChanged, sender).await?;
+                last_checkpoint = Some(checkpoint);
+            }
+
+            tokio::select! {
+                _ = timer.tick() => {},
+                notification = notifications.recv() => {
+                    match notification {
+                        Ok(Notification::Cursors(positions)) => {
+                            self.send_other_clients_cursors(positions, sender).await?;
+                        }
+                        // Recheck the durable head after either a notification or lag.
+                        Ok(Notification::VaultUpdate) | Err(RecvError::Lagged(_)) => {},
+                        Err(RecvError::Closed) => break,
+                    }
+                }
+                incoming = receiver.next() => {
+                    match incoming {
+                        Some(Ok(Message::Text(text))) => {
+                            self.handle_client_message(&text, sender).await?;
+                        }
+                        Some(Ok(Message::Ping(_) | Message::Pong(_))) => {},
+                        _ => break,
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn send_other_clients_cursors(
+        &self,
+        mut positions: CursorPositionFromServer,
+        sender: &mut SplitSink<WebSocket, Message>,
+    ) -> Result<(), SyncServerError> {
+        positions
+            .clients
+            .retain(|client| client.device_id != *self.device);
+        send_update_over_websocket(&WebSocketServerMessage::CursorPositions(positions), sender)
+            .await
+    }
+
+    async fn handle_client_message(
+        &self,
+        text: &str,
+        sender: &mut SplitSink<WebSocket, Message>,
+    ) -> Result<(), SyncServerError> {
+        let message: WebSocketClientMessage =
+            serde_json::from_str(text).map_err(|error| client_error(error.into()))?;
+        let WebSocketClientMessage::CursorPositions(positions) = message else {
+            return Err(client_error(anyhow::anyhow!("Unexpected handshake")));
+        };
+
+        self.state
+            .cursors
+            .update_cursors(
+                self.vault.clone(),
+                self.user_name.to_owned(),
+                self.device,
+                self.session,
+                positions.documents_with_cursors,
+            )
+            .await;
+
+        let clients = self.state.cursors.get_cursors(self.vault).await;
+        self.send_other_clients_cursors(CursorPositionFromServer { clients }, sender)
+            .await
+    }
 }

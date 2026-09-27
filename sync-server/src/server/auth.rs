@@ -32,14 +32,18 @@ pub async fn auth_middleware(
             .ok_or_else(|| unauthenticated_error(anyhow::anyhow!("Missing vault_id")))?,
     );
 
-    let user = auth(&state, token, &vault_id)?;
+    let user = authenticate_user(&state, token, &vault_id)?;
 
     req.extensions_mut().insert(user);
 
     Ok(next.run(req).await)
 }
 
-pub fn auth(state: &AppState, token: &str, vault_id: &VaultId) -> Result<User, SyncServerError> {
+pub fn authenticate_user(
+    state: &AppState,
+    token: &str,
+    vault_id: &VaultId,
+) -> Result<User, SyncServerError> {
     validate_vault_id(vault_id).map_err(client_error)?;
     let user = state
         .config

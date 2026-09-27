@@ -7,7 +7,7 @@ pub const INTERNAL_DIRECTORY: &str = ".vault-link-sync";
 
 // Use the same locale-independent Unicode upper-case mapping in the client.
 // NFC -> uppercase -> NFC also catches ß/SS and final/ordinary sigma aliases.
-pub fn path_key(path: &str) -> String {
+pub fn get_path_key(path: &str) -> String {
     path.nfc()
         .collect::<String>()
         .to_uppercase()
@@ -15,8 +15,19 @@ pub fn path_key(path: &str) -> String {
         .collect()
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PathKind {
+    File,
+    Directory,
+}
+
+struct PathNode {
+    spelling: String,
+    kind: PathKind,
+}
+
 pub fn validate_file_manifest(entries: &FileManifestEntries) -> Result<()> {
-    let mut nodes: BTreeMap<String, (String, bool)> = BTreeMap::new();
+    let mut nodes: BTreeMap<String, PathNode> = BTreeMap::new();
 
     for path in entries.values() {
         ensure!(!path.is_empty(), "Path must not be empty");
@@ -29,59 +40,35 @@ pub fn validate_file_manifest(entries: &FileManifestEntries) -> Result<()> {
         let parts: Vec<_> = path.split('/').collect();
 
         ensure!(
-            path_key(parts[0]) != path_key(INTERNAL_DIRECTORY),
+            get_path_key(parts[0]) != get_path_key(INTERNAL_DIRECTORY),
             "Reserved sync directory"
         );
 
         for (index, part) in parts.iter().enumerate() {
-            ensure!(
-                !part.is_empty() && *part != "." && *part != "..",
-                "Invalid path component"
-            );
-
-            ensure!(!part.ends_with(['.', ' ']), "Trailing dot or space in path");
-
-            ensure!(
-                !part
-                    .chars()
-                    .any(|c| c.is_control() || c == '\\' || "<>:\"|?*".contains(c)),
-                "Non-portable filename"
-            );
-
-            let stem = part
-                .split('.')
-                .next()
-                .unwrap_or_default()
-                .trim_end_matches(' ')
-                .to_uppercase();
-
-            ensure!(
-                !matches!(
-                    stem.as_str(),
-                    "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$"
-                ),
-                "Reserved filename"
-            );
-
-            if stem.starts_with("COM") || stem.starts_with("LPT") {
-                ensure!(
-                    !matches!(
-                        &stem[3..],
-                        "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³"
-                    ),
-                    "Reserved filename"
-                );
-            }
+            validate_component(part)?;
 
             let prefix = parts[..=index].join("/");
-            let is_file = index == parts.len() - 1;
+            let kind = if index == parts.len() - 1 {
+                PathKind::File
+            } else {
+                PathKind::Directory
+            };
 
-            if let Some((spelling, previous_is_file)) = nodes.get(&path_key(&prefix)) {
-                if *spelling != prefix || *previous_is_file || is_file {
+            if let Some(previous) = nodes.get(&get_path_key(&prefix)) {
+                if previous.spelling != prefix
+                    || previous.kind == PathKind::File
+                    || kind == PathKind::File
+                {
                     bail!("Conflicting path: {path}");
                 }
             } else {
-                nodes.insert(path_key(&prefix), (prefix, is_file));
+                nodes.insert(
+                    get_path_key(&prefix),
+                    PathNode {
+                        spelling: prefix,
+                        kind,
+                    },
+                );
             }
         }
     }
@@ -89,9 +76,53 @@ pub fn validate_file_manifest(entries: &FileManifestEntries) -> Result<()> {
     Ok(())
 }
 
+/// Validate one filename independently of the manifest's path relationships.
+fn validate_component(part: &str) -> Result<()> {
+    ensure!(
+        !part.is_empty() && part != "." && part != "..",
+        "Invalid path component"
+    );
+
+    ensure!(!part.ends_with(['.', ' ']), "Trailing dot or space in path");
+
+    ensure!(
+        !part
+            .chars()
+            .any(|c| c.is_control() || c == '\\' || "<>:\"|?*".contains(c)),
+        "Non-portable filename"
+    );
+
+    let stem = part
+        .split('.')
+        .next()
+        .unwrap_or_default()
+        .trim_end_matches(' ')
+        .to_uppercase();
+
+    ensure!(
+        !matches!(
+            stem.as_str(),
+            "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$"
+        ),
+        "Reserved filename"
+    );
+
+    if stem.starts_with("COM") || stem.starts_with("LPT") {
+        ensure!(
+            !matches!(
+                &stem[3..],
+                "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³"
+            ),
+            "Reserved filename"
+        );
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{FileManifestEntries, path_key, validate_file_manifest};
+    use super::{FileManifestEntries, get_path_key, validate_file_manifest};
     use uuid::Uuid;
 
     fn manifest(paths: &[&str]) -> FileManifestEntries {
@@ -110,7 +141,7 @@ mod tests {
             ("Straße.md", "STRASSE.MD"),
             ("σς.md", "ΣΣ.MD"),
         ] {
-            assert_eq!(path_key(path), expected, "path: {path:?}");
+            assert_eq!(get_path_key(path), expected, "path: {path:?}");
         }
     }
 

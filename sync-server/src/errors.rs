@@ -31,6 +31,26 @@ pub enum SyncServerError {
     PermissionDeniedError(#[source] anyhow::Error),
 }
 
+// Infrastructure failures are server errors. Request validation and missing
+// resources opt into their HTTP status explicitly at the point of validation.
+impl From<anyhow::Error> for SyncServerError {
+    fn from(error: anyhow::Error) -> Self {
+        server_error(error)
+    }
+}
+
+impl From<sqlx::Error> for SyncServerError {
+    fn from(error: sqlx::Error) -> Self {
+        server_error(error.into())
+    }
+}
+
+impl From<tokio::task::JoinError> for SyncServerError {
+    fn from(error: tokio::task::JoinError) -> Self {
+        server_error(error.into())
+    }
+}
+
 impl SyncServerError {
     pub fn serialize(&self) -> SerializedError {
         match self {

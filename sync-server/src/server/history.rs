@@ -50,7 +50,7 @@ pub async fn history_middleware(
     if response.status().is_success() {
         let checkpoint = state
             .database
-            .history_checkpoint(&vault_id)
+            .get_history_checkpoint(&vault_id)
             .await
             .map_err(server_error)?;
         response.headers_mut().insert(

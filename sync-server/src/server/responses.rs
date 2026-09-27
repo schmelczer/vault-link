@@ -20,7 +20,7 @@ pub struct PingResponse {
     /// List of file extensions that are allowed to be merged.
     pub mergeable_file_extensions: Vec<String>,
 
-    /// API version ensuring backwards & forwards compatibility between the client
+    /// API version that must match exactly between the client
     /// and server.
     pub supported_api_version: u32,
 }

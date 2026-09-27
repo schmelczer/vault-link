@@ -9,8 +9,6 @@ use anyhow::{Context as _, Result, ensure};
 
 use crate::consts::MAX_EVENTS_PAGE_BYTES;
 
-const EMPTY_HISTORY_CHECKPOINT: &str = "0:empty";
-
 impl Database {
     pub async fn get_missing_document(
         tx: &mut Transaction<'_>,
@@ -36,9 +34,10 @@ impl Database {
                 .fetch_optional(&mut **tx)
                 .await?;
         match row {
-            Some((fingerprint, event_id)) => {
-                Ok(Some((fingerprint, Self::event_by_id(tx, event_id).await?)))
-            }
+            Some((fingerprint, event_id)) => Ok(Some((
+                fingerprint,
+                Self::get_event_by_id(tx, event_id).await?,
+            ))),
             None => Ok(None),
         }
     }
@@ -96,7 +95,7 @@ impl Database {
         })
     }
 
-    pub async fn current_file_manifest(tx: &mut Transaction<'_>) -> Result<FileManifest> {
+    pub async fn get_current_file_manifest(tx: &mut Transaction<'_>) -> Result<FileManifest> {
         let Some(file_manifest_id) = sqlx::query_scalar::<_, VaultUpdateId>(
             "SELECT file_manifest_id FROM file_manifests ORDER BY file_manifest_id DESC LIMIT 1",
         )
@@ -106,12 +105,12 @@ impl Database {
             return Ok(FileManifest::default());
         };
 
-        Self::file_manifest_by_id(tx, file_manifest_id)
+        Self::get_file_manifest_by_id(tx, file_manifest_id)
             .await?
             .context("Latest file manifest is missing")
     }
 
-    async fn file_manifest_by_id(
+    async fn get_file_manifest_by_id(
         tx: &mut Transaction<'_>,
         file_manifest_id: VaultUpdateId,
     ) -> Result<Option<FileManifest>> {
@@ -140,7 +139,10 @@ impl Database {
         }))
     }
 
-    async fn event_by_id(tx: &mut Transaction<'_>, event_id: VaultUpdateId) -> Result<VaultEvent> {
+    async fn get_event_by_id(
+        tx: &mut Transaction<'_>,
+        event_id: VaultUpdateId,
+    ) -> Result<VaultEvent> {
         let document = sqlx::query_as::<_, DocumentVersionWithoutContent>(
             "SELECT vault_update_id, document_id, updated_date, user_id, device_id,
                     length(content) AS content_size
@@ -152,13 +154,13 @@ impl Database {
         if let Some(document) = document {
             return Ok(VaultEvent::Content { document });
         }
-        let file_manifest = Self::file_manifest_by_id(tx, event_id)
+        let file_manifest = Self::get_file_manifest_by_id(tx, event_id)
             .await?
             .context("Event has no normalized content or file manifest")?;
         Ok(VaultEvent::FileManifest { file_manifest })
     }
 
-    pub async fn latest_event_id(tx: &mut Transaction<'_>) -> Result<VaultUpdateId> {
+    pub async fn get_latest_event_id(tx: &mut Transaction<'_>) -> Result<VaultUpdateId> {
         Ok(
             sqlx::query_scalar("SELECT COALESCE(MAX(event_id), 0) FROM events")
                 .fetch_one(&mut **tx)
@@ -166,10 +168,10 @@ impl Database {
         )
     }
 
-    pub async fn vault_snapshot(&self, vault: &VaultId) -> Result<VaultSnapshot> {
+    pub async fn get_vault_snapshot(&self, vault: &VaultId) -> Result<VaultSnapshot> {
         let mut tx = self.create_readonly_transaction(vault).await?;
-        let head_event_id = Self::latest_event_id(&mut tx).await?;
-        let file_manifest = Self::current_file_manifest(&mut tx).await?;
+        let head_event_id = Self::get_latest_event_id(&mut tx).await?;
+        let file_manifest = Self::get_current_file_manifest(&mut tx).await?;
 
         let documents = sqlx::query_as::<_, DocumentVersionWithoutContent>(
             "SELECT d.vault_update_id, d.document_id, d.updated_date, d.user_id, d.device_id,
@@ -189,14 +191,14 @@ impl Database {
         })
     }
 
-    pub async fn events_after(
+    pub async fn get_events_after(
         &self,
         vault: &VaultId,
         after: VaultUpdateId,
         page_size: usize,
     ) -> Result<EventBatch> {
         let mut tx = self.create_readonly_transaction(vault).await?;
-        let head_event_id = Self::latest_event_id(&mut tx).await?;
+        let head_event_id = Self::get_latest_event_id(&mut tx).await?;
 
         ensure!(
             (0..=head_event_id).contains(&after),
@@ -218,7 +220,7 @@ impl Database {
             let event = EventRecord {
                 event_id,
                 request_id: request_id.parse()?,
-                event: Self::event_by_id(&mut tx, event_id).await?,
+                event: Self::get_event_by_id(&mut tx, event_id).await?,
             };
             let size = serde_json::to_vec(&event)?.len();
             // One manifest is atomic and may exceed this budget. Always allow
@@ -233,50 +235,8 @@ impl Database {
 
         Ok(EventBatch {
             head_event_id,
-            end_event_id: Some(end_event_id),
+            end_event_id,
             events,
         })
-    }
-}
-
-impl Database {
-    pub async fn history_checkpoint(&self, vault: &VaultId) -> Result<String> {
-        let mut tx = self.create_readonly_transaction(vault).await?;
-
-        let row: Option<(i64, String)> = sqlx::query_as(
-            "SELECT event_id, event_token FROM events ORDER BY event_id DESC LIMIT 1",
-        )
-        .fetch_optional(&mut *tx)
-        .await?;
-
-        Ok(row.map_or_else(
-            || EMPTY_HISTORY_CHECKPOINT.to_owned(),
-            |(id, token)| format!("{id}:{token}"),
-        ))
-    }
-
-    pub async fn contains_checkpoint(&self, vault: &VaultId, checkpoint: &str) -> Result<bool> {
-        if checkpoint == EMPTY_HISTORY_CHECKPOINT {
-            return Ok(true);
-        }
-
-        let Some((id, token)) = checkpoint.split_once(':') else {
-            return Ok(false);
-        };
-
-        let Ok(id) = id.parse::<i64>() else {
-            return Ok(false);
-        };
-
-        let mut tx = self.create_readonly_transaction(vault).await?;
-        let exists: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM events WHERE event_id = ? AND event_token = ?)",
-        )
-        .bind(id)
-        .bind(token)
-        .fetch_one(&mut *tx)
-        .await?;
-
-        Ok(exists)
     }
 }

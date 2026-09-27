@@ -35,7 +35,7 @@ pub async fn events(
 
     state
         .database
-        .events_after(
+        .get_events_after(
             &vault_id,
             query.after,
             query.page_size.unwrap_or(DEFAULT_EVENTS_PAGE_SIZE),

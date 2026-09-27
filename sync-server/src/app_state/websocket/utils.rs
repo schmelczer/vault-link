@@ -8,7 +8,7 @@ use crate::{
     app_state::{AppState, database::models::VaultId},
     config::user_config::User,
     errors::{SyncServerError, server_error, unauthenticated_error},
-    server::auth::auth,
+    server::auth::authenticate_user,
 };
 
 pub struct AuthenticatedWebSocketHandshake {
@@ -28,7 +28,7 @@ pub fn get_authenticated_handshake(
 
         match message {
             WebSocketClientMessage::Handshake(handshake) => {
-                let user = auth(state, handshake.token.trim(), vault_id)?;
+                let user = authenticate_user(state, handshake.token.trim(), vault_id)?;
                 Ok(AuthenticatedWebSocketHandshake { handshake, user })
             }
             WebSocketClientMessage::CursorPositions(_) => Err(unauthenticated_error(

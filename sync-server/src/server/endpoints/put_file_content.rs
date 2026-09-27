@@ -1,4 +1,7 @@
-use super::{VaultPath, utils::find_already_processed_event};
+use super::{
+    VaultPath,
+    utils::{commit_and_notify, find_already_processed_event, fingerprint_request},
+};
 use crate::{
     app_state::{
         AppState,
@@ -24,7 +27,6 @@ use axum_extra::TypedHeader;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use log::debug;
 use reconcile_text::{BuiltinTokenizer, EditedText, NumberOrText};
-use sha2::{Digest, Sha256};
 
 #[axum::debug_handler]
 pub async fn put_file_content(
@@ -36,16 +38,9 @@ pub async fn put_file_content(
 ) -> Result<Json<DocumentUpdateResponse>, SyncServerError> {
     debug!("Pushing document `{document_id}` in vault `{vault_id}`");
 
-    let fingerprint = Sha256::digest(
-        serde_json::to_vec(&("content", document_id, &push))
-            .map_err(|error| server_error(error.into()))?,
-    );
+    let fingerprint = fingerprint_request(&("content", document_id, &push))?;
 
-    let mut tx = state
-        .database
-        .create_write_transaction(&vault_id)
-        .await
-        .map_err(server_error)?;
+    let mut tx = state.database.create_write_transaction(&vault_id).await?;
 
     if let Some(event) =
         find_already_processed_event(&mut tx, push.request_id, &fingerprint).await?
@@ -63,8 +58,7 @@ pub async fn put_file_content(
     let parent = state
         .database
         .get_latest_document_version(&vault_id, &document_id, Some(&mut tx))
-        .await
-        .map_err(server_error)?;
+        .await?;
 
     if let Some(parent) = &parent {
         if Some(parent.vault_update_id) != push.parent_version_id {
@@ -82,16 +76,13 @@ pub async fn put_file_content(
         let content = decode_content(parent, push.content);
         (tx, content)
     })
-    .await
-    .map_err(|error| server_error(error.into()))?;
+    .await?;
 
     let mut tx = tx;
     let content = content.map_err(client_error)?;
 
     let version = StoredDocumentVersion {
-        vault_update_id: Database::allocate_event(&mut tx, push.request_id, &fingerprint)
-            .await
-            .map_err(server_error)?,
+        vault_update_id: Database::allocate_event(&mut tx, push.request_id, &fingerprint).await?,
         document_id,
         content,
         updated_date: chrono::Utc::now(),
@@ -99,17 +90,11 @@ pub async fn put_file_content(
         device_id: device.0,
     };
 
-    Database::insert_document_version(&mut tx, &version)
-        .await
-        .map_err(server_error)?;
+    Database::insert_document_version(&mut tx, &version).await?;
 
     let response = DocumentUpdateResponse::Accepted((&version).into());
 
-    tx.commit()
-        .await
-        .map_err(|error| server_error(error.into()))?;
-
-    state.broadcasts.notify_about_vault_update(vault_id).await;
+    commit_and_notify(tx, &state, vault_id).await?;
 
     Ok(Json(response))
 }
@@ -388,7 +373,9 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(
-            Database::latest_event_id(&mut transaction).await.unwrap(),
+            Database::get_latest_event_id(&mut transaction)
+                .await
+                .unwrap(),
             2
         );
     }
@@ -450,7 +437,7 @@ mod tests {
         }
         let events = reopened
             .database
-            .events_after(&vault.vault, 0, DEFAULT_EVENTS_PAGE_SIZE)
+            .get_events_after(&vault.vault, 0, DEFAULT_EVENTS_PAGE_SIZE)
             .await
             .unwrap();
         assert_eq!(events.head_event_id, latest.vault_update_id);
@@ -477,7 +464,7 @@ mod tests {
         let events = vault
             .state
             .database
-            .events_after(&vault.vault, 0, DEFAULT_EVENTS_PAGE_SIZE)
+            .get_events_after(&vault.vault, 0, DEFAULT_EVENTS_PAGE_SIZE)
             .await
             .unwrap();
         assert_eq!(events.head_event_id, 1);
@@ -514,7 +501,7 @@ mod tests {
         let events = vault
             .state
             .database
-            .events_after(&vault.vault, 0, DEFAULT_EVENTS_PAGE_SIZE)
+            .get_events_after(&vault.vault, 0, DEFAULT_EVENTS_PAGE_SIZE)
             .await
             .unwrap();
         assert_eq!(events.head_event_id, 0);
@@ -538,7 +525,7 @@ mod tests {
         let events = vault
             .state
             .database
-            .events_after(&vault.vault, 0, DEFAULT_EVENTS_PAGE_SIZE)
+            .get_events_after(&vault.vault, 0, DEFAULT_EVENTS_PAGE_SIZE)
             .await
             .unwrap();
         assert_eq!(events.events.len(), 1);

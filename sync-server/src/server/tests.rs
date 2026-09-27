@@ -17,7 +17,7 @@ async fn app(directory: &tempfile::TempDir) -> Router {
     })).unwrap();
     config.database.databases_directory_path = directory.path().join("databases");
     let state = AppState::try_new(config).await.unwrap();
-    get_authed_routes(state.clone()).with_state(state)
+    create_authenticated_routes(state.clone()).with_state(state)
 }
 
 async fn request(app: Router, path: &str, token: &str, body: Option<Value>) -> (StatusCode, Value) {

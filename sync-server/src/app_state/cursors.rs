@@ -95,7 +95,7 @@ impl Cursors {
             .unwrap_or_default()
     }
 
-    pub fn start_background_task(self) {
+    pub fn start_cursor_expiration_task(self) {
         tokio::spawn(async move {
             loop {
                 self.remove_expired_cursors().await;

@@ -125,9 +125,8 @@ pub struct EventBatch {
     pub head_event_id: VaultUpdateId,
 
     /// Last event in this page; `head_event_id` is the vault's current head.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional, as = "Option<f64>")]
-    pub end_event_id: Option<VaultUpdateId>,
+    #[ts(as = "f64")]
+    pub end_event_id: VaultUpdateId,
 
     pub events: Vec<EventRecord>,
 }

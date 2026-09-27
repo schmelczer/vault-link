@@ -23,10 +23,9 @@ pub async fn get_file_manifest(
     let mut transaction = state
         .database
         .create_readonly_transaction(&vault_id)
-        .await
-        .map_err(server_error)?;
+        .await?;
 
-    Database::current_file_manifest(&mut transaction)
+    Database::get_current_file_manifest(&mut transaction)
         .await
         .map(Json)
         .map_err(server_error)

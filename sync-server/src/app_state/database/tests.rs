@@ -87,7 +87,7 @@ async fn rejects_invalid_vault_names_at_the_database_boundary() {
         "a\0b",
     ] {
         assert!(
-            database.vault_snapshot(&name.to_owned()).await.is_err(),
+            database.get_vault_snapshot(&name.to_owned()).await.is_err(),
             "accepted {name:?}"
         );
     }
@@ -96,15 +96,15 @@ async fn rejects_invalid_vault_names_at_the_database_boundary() {
 }
 
 #[tokio::test]
-async fn migrations_can_be_reapplied_without_losing_requests_or_content() {
+async fn schema_initialization_preserves_existing_requests_and_content() {
     let directory = tempfile::tempdir().unwrap();
     let config = config(&directory);
     let database = Database::try_new(&config).await.unwrap();
-    let vault = "migrations".to_owned();
+    let vault = "initialization".to_owned();
     let version = insert_content(&database, &vault, uuid::Uuid::new_v4(), b"only copy").await;
     let pool = database.get_connection_pool(&vault).await.unwrap();
-    Database::run_migrations(&pool).await.unwrap();
-    Database::run_migrations(&pool).await.unwrap();
+    Database::initialize_schema(&pool).await.unwrap();
+    Database::initialize_schema(&pool).await.unwrap();
     let reopened = Database::try_new(&config).await.unwrap();
     assert_eq!(
         reopened
@@ -117,7 +117,7 @@ async fn migrations_can_be_reapplied_without_losing_requests_or_content() {
     );
     assert_eq!(
         reopened
-            .events_after(&vault, 0, DEFAULT_EVENTS_PAGE_SIZE)
+            .get_events_after(&vault, 0, DEFAULT_EVENTS_PAGE_SIZE)
             .await
             .unwrap()
             .events
@@ -155,7 +155,7 @@ async fn snapshot_returns_latest_referenced_metadata_and_byte_lengths() {
         .unwrap();
     tx.commit().await.unwrap();
 
-    let snapshot = database.vault_snapshot(&vault).await.unwrap();
+    let snapshot = database.get_vault_snapshot(&vault).await.unwrap();
     assert_eq!(snapshot.head_event_id, manifest.file_manifest_id);
     assert_eq!(snapshot.file_manifest.entries, manifest.entries);
     assert_eq!(snapshot.documents.len(), 2);
@@ -179,7 +179,7 @@ async fn replay_pages_are_bounded_and_cover_every_event_in_order() {
     let mut after = 0;
     while after < 150 {
         let batch = database
-            .events_after(&vault, after, DEFAULT_EVENTS_PAGE_SIZE)
+            .get_events_after(&vault, after, DEFAULT_EVENTS_PAGE_SIZE)
             .await
             .unwrap();
         assert!(batch.events.len() <= 64, "catchup must bound each page");
@@ -192,7 +192,7 @@ async fn replay_pages_are_bounded_and_cover_every_event_in_order() {
     }
     assert!(
         database
-            .events_after(&vault, after, DEFAULT_EVENTS_PAGE_SIZE)
+            .get_events_after(&vault, after, DEFAULT_EVENTS_PAGE_SIZE)
             .await
             .unwrap()
             .events
@@ -204,7 +204,10 @@ async fn replay_pages_are_bounded_and_cover_every_event_in_order() {
 async fn idle_cleanup_does_not_wait_for_an_active_vault() {
     let directory = tempfile::tempdir().unwrap();
     let database = Database::try_new(&config(&directory)).await.unwrap();
-    database.vault_snapshot(&"other".to_owned()).await.unwrap();
+    database
+        .get_vault_snapshot(&"other".to_owned())
+        .await
+        .unwrap();
     let vault = "slow".to_owned();
     let transaction = database.create_write_transaction(&vault).await.unwrap();
     database
@@ -219,7 +222,7 @@ async fn idle_cleanup_does_not_wait_for_an_active_vault() {
         .expect("cleanup must leave an active pool alone");
     let other = tokio::time::timeout(
         Duration::from_millis(200),
-        database.vault_snapshot(&"other".to_owned()),
+        database.get_vault_snapshot(&"other".to_owned()),
     )
     .await
     .expect("other vaults must remain accessible")
@@ -299,16 +302,13 @@ async fn replay_byte_budget_prevents_accumulating_large_historical_manifests() {
     }
     tx.commit().await.unwrap();
     let batch = database
-        .events_after(&vault, 0, DEFAULT_EVENTS_PAGE_SIZE)
+        .get_events_after(&vault, 0, DEFAULT_EVENTS_PAGE_SIZE)
         .await
         .unwrap();
     assert!(!batch.events.is_empty());
     assert!(batch.events.len() < 8);
     assert!(serde_json::to_vec(&batch).unwrap().len() < MAX_EVENTS_PAGE_BYTES + 1024);
-    assert_eq!(
-        batch.end_event_id,
-        batch.events.last().map(|event| event.event_id)
-    );
+    assert_eq!(batch.end_event_id, batch.events.last().unwrap().event_id);
 }
 
 #[tokio::test]
@@ -316,11 +316,14 @@ async fn opening_a_locked_vault_does_not_block_unrelated_vaults() {
     let directory = tempfile::tempdir().unwrap();
     let config = config(&directory);
     let database = Database::try_new(&config).await.unwrap();
-    database.vault_snapshot(&"other".to_owned()).await.unwrap();
+    database
+        .get_vault_snapshot(&"other".to_owned())
+        .await
+        .unwrap();
     let vault = "locked-opening".to_owned();
-    // A second process holds the writer lock while this process lazily checks
-    // migrations. Even already-open, unrelated vaults must remain available.
-    let external = Database::open_database(&config, &Database::database_path(&config, &vault))
+    // A second process holds the writer lock while this process initializes
+    // the schema. Even already-open, unrelated vaults must remain available.
+    let external = Database::open_database(&config, &Database::get_database_path(&config, &vault))
         .await
         .unwrap();
     let transaction = external.begin_with("BEGIN IMMEDIATE").await.unwrap();
@@ -330,7 +333,7 @@ async fn opening_a_locked_vault_does_not_block_unrelated_vaults() {
     let opening_is_blocked = !opening.is_finished();
     let other = tokio::time::timeout(
         Duration::from_millis(300),
-        database.vault_snapshot(&"other".to_owned()),
+        database.get_vault_snapshot(&"other".to_owned()),
     )
     .await;
     transaction.rollback().await.unwrap();
@@ -346,7 +349,7 @@ async fn opening_a_locked_vault_does_not_block_unrelated_vaults() {
     );
     assert_eq!(
         other
-            .expect("a blocked migration must not lock every vault")
+            .expect("a blocked database open must not lock every vault")
             .unwrap()
             .head_event_id,
         0
@@ -360,7 +363,7 @@ async fn concurrent_vault_opens_share_a_pool_and_cancelled_opens_can_retry() {
     config.max_connections_per_vault = 1;
     let database = Database::try_new(&config).await.unwrap();
     let vault = "cancelled-opening".to_owned();
-    let external = Database::open_database(&config, &Database::database_path(&config, &vault))
+    let external = Database::open_database(&config, &Database::get_database_path(&config, &vault))
         .await
         .unwrap();
     let transaction = external.begin_with("BEGIN IMMEDIATE").await.unwrap();
@@ -401,7 +404,7 @@ async fn concurrent_vault_opens_share_a_pool_and_cancelled_opens_can_retry() {
 async fn one_corrupt_vault_does_not_prevent_startup_or_healthy_vault_access() {
     let directory = tempfile::tempdir().unwrap();
     let config = config(&directory);
-    let bad = Database::database_path(&config, "broken");
+    let bad = Database::get_database_path(&config, "broken");
     tokio::fs::create_dir_all(bad.parent().unwrap())
         .await
         .unwrap();
@@ -409,7 +412,12 @@ async fn one_corrupt_vault_does_not_prevent_startup_or_healthy_vault_access() {
         .await
         .unwrap();
     let database = Database::try_new(&config).await.unwrap();
-    assert!(database.vault_snapshot(&"broken".to_owned()).await.is_err());
+    assert!(
+        database
+            .get_vault_snapshot(&"broken".to_owned())
+            .await
+            .is_err()
+    );
     let saved = insert_content(&database, "healthy", uuid::Uuid::new_v4(), b"safe").await;
     assert_eq!(saved.content, b"safe");
     assert_eq!(

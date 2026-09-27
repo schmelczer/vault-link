@@ -9,13 +9,14 @@ use anyhow::{Context as _, Result};
 use log::info;
 use models::VaultId;
 use sha2::{Digest, Sha256};
-use sqlx::{ConnectOptions, sqlite::SqliteConnectOptions};
+use sqlx::{ConnectOptions, Executor, sqlite::SqliteConnectOptions};
 use sqlx::{Pool, Sqlite, sqlite::SqlitePoolOptions};
 use tokio::sync::Mutex;
 use tokio::time::Instant;
 
 pub mod models;
 
+mod history;
 mod mutations;
 mod queries;
 
@@ -83,7 +84,7 @@ impl Database {
         Ok(database)
     }
 
-    fn database_path(config: &DatabaseConfig, vault: &str) -> PathBuf {
+    fn get_database_path(config: &DatabaseConfig, vault: &str) -> PathBuf {
         // Hash the normalized vault name into a fixed-length ASCII filename so
         // filesystem case/Unicode aliasing (e.g. composed vs. decomposed é on
         // macOS) cannot make separately authorized vaults share a database.
@@ -149,7 +150,7 @@ impl Database {
         let vault = normalize_string(vault);
         validate_vault_id(&vault)?;
 
-        if let Some(pool) = self.existing_pool(&vault).await {
+        if let Some(pool) = self.find_cached_pool(&vault).await {
             return Ok(pool);
         }
 
@@ -160,11 +161,11 @@ impl Database {
 
         let _opening = opening.lock().await;
 
-        if let Some(pool) = self.existing_pool(&vault).await {
+        if let Some(pool) = self.find_cached_pool(&vault).await {
             return Ok(pool);
         }
 
-        let file_name = Self::database_path(&self.config, &vault);
+        let file_name = Self::get_database_path(&self.config, &vault);
         let pool = Self::open_database(&self.config, &file_name).await?;
 
         self.connection_pools.lock().await.insert(
@@ -177,7 +178,7 @@ impl Database {
         Ok(pool)
     }
 
-    async fn existing_pool(&self, vault: &VaultId) -> Option<Pool<Sqlite>> {
+    async fn find_cached_pool(&self, vault: &VaultId) -> Option<Pool<Sqlite>> {
         self.connection_pools
             .lock()
             .await
