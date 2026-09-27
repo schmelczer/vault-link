@@ -1,4 +1,4 @@
-FROM rust:1.91-slim-trixie AS builder
+FROM rust:1.94-slim-trixie AS builder
 
 WORKDIR /usr/src/backend
 
@@ -33,7 +33,7 @@ EXPOSE 3000/tcp
 WORKDIR /data
 
 HEALTHCHECK --interval=30s --timeout=5s \
-    CMD curl -f http://localhost:3000/vaults/fake/ping || exit 1
+    CMD curl -f http://localhost:3000/vaults/fake/config || exit 1
 
 ENTRYPOINT ["/bin/bash", "-c"]
 CMD ["/app/sync_server"]
