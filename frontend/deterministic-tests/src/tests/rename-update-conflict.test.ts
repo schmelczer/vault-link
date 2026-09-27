@@ -35,7 +35,8 @@ export const renameUpdateConflictTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertFileNotExists("A.md").assertContains("B.md", "updated");
+                s.assertFileCount(1);
+                s.assertContent("B.md", "updated by client 1");
             }
         }
     ]

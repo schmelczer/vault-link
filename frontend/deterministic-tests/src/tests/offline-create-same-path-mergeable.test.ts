@@ -28,13 +28,13 @@ export const offlineCreateSamePathMergeableTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertFileCount(1)
-                    .assertFileExists("notes.md")
-                    .assertContains(
-                        "notes.md",
-                        "alpha wrote this line",
-                        "beta wrote this different line"
-                    );
+                s.assertFileCount(1).assertContentOneOf(
+                    "notes.md",
+                    "alpha wrote this linebeta wrote this different line",
+                    "beta wrote this different linealpha wrote this line",
+                    "alpha wrote this line beta wrote this different line",
+                    "beta wrote this different line alpha wrote this line"
+                );
             }
         }
     ]

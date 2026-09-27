@@ -3,20 +3,19 @@ import type { TestDefinition } from "../test-definition";
 
 export const interruptedDeleteRetryTest: TestDefinition = {
     description:
-        "Client 0 deletes a file, then the server is paused. " +
-        "After the server resumes, both clients should have zero files.",
+        "Lose an accepted deletion manifest response and require an identical retry, with both clients empty.",
     clients: 2,
     steps: [
         { type: "create", client: 0, path: "doc.md", content: "to be deleted" },
         { type: "enable-sync", client: 0 },
         { type: "enable-sync", client: 1 },
         { type: "barrier" },
+        { type: "drop-response", client: 0, kind: "manifest", point: "after" },
 
         { type: "delete", client: 0, path: "doc.md" },
 
-        { type: "pause-server" },
+        { type: "wait-for-response-drop", client: 0 },
 
-        { type: "resume-server" },
         { type: "barrier" },
 
         {

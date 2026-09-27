@@ -15,7 +15,8 @@ export const deleteRenameConflictTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertFileExists("A.md").assertFileExists("B.md");
+                s.assertContent("A.md", "content-a");
+                s.assertContent("B.md", "content-b");
             }
         },
 
@@ -32,11 +33,8 @@ export const deleteRenameConflictTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
+                s.assertFileCount(1);
                 s.assertContent("B.md", "content-b");
-                s.assertFileNotExists("A.md");
-                s.ifFileExists("C.md", (inner) =>
-                    inner.assertContent("C.md", "content-a")
-                );
             }
         }
     ]

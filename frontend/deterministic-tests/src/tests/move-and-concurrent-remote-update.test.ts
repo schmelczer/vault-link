@@ -34,9 +34,8 @@ export const moveAndConcurrentRemoteUpdateTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertFileCount(1)
-                    .assertFileNotExists("A.md")
-                    .assertContains("B.md", "updated by client 1");
+                s.assertFileCount(1);
+                s.assertContent("B.md", "updated by client 1");
             }
         }
     ]

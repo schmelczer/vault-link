@@ -33,10 +33,8 @@ export const renameToPendingPathFallbackTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertFileNotExists("B.md").assertContains(
-                    "A.md",
-                    "tracked B content"
-                );
+                s.assertFileCount(1);
+                s.assertContent("A.md", "tracked B content");
             }
         }
     ]

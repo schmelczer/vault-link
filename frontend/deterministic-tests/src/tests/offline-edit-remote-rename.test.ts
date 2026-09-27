@@ -40,9 +40,8 @@ export const offlineEditRemoteRenameTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertFileNotExists("A.md")
-                    .assertFileCount(1)
-                    .assertContains("B.md", "edited by client 0");
+                s.assertFileCount(1);
+                s.assertContent("B.md", "edited by client 0");
             }
         }
     ]

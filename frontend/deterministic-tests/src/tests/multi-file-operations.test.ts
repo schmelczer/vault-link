@@ -33,12 +33,9 @@ export const multiFileOperationsTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertContains("B.md", "updated")
-                    .assertFileExists("C.md")
-                    .assertFileNotExists("A.md");
-                s.ifFileExists("D.md", (inner) =>
-                    inner.assertContent("D.md", "content-a")
-                );
+                s.assertFileCount(2);
+                s.assertContent("B.md", "updated by client 1");
+                s.assertContent("C.md", "content-c");
             }
         }
     ]

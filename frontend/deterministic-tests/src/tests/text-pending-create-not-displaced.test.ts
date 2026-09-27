@@ -27,9 +27,11 @@ export const textPendingCreateNotDisplacedTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertFileCount(1)
-                    .assertFileExists("data.txt")
-                    .assertAnyFileContains("client-0", "client-1");
+                s.assertFileCount(1).assertContentOneOf(
+                    "data.txt",
+                    "text data from client-0 client-1",
+                    "text data from client-1 client-0"
+                );
             }
         }
     ]

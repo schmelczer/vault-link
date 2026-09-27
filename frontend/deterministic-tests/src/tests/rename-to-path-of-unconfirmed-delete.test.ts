@@ -34,10 +34,8 @@ export const renameToPathOfUnconfirmedDeleteTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertFileNotExists("B.md").assertContains(
-                    "A.md",
-                    "content B"
-                );
+                s.assertFileCount(1);
+                s.assertContent("A.md", "content B");
             }
         }
     ]

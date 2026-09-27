@@ -32,9 +32,8 @@ export const mcThreeClientRenameOfflineUpdateTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertFileCount(1)
-                    .assertFileNotExists("A.md")
-                    .assertContains("B.md", "updated-by-client-2");
+                s.assertFileCount(1);
+                s.assertContent("B.md", "updated-by-client-2");
             }
         }
     ]

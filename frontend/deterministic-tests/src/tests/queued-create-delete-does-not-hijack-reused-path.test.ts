@@ -12,14 +12,14 @@ export const queuedCreateDeleteDoesNotHijackReusedPathTest: TestDefinition = {
         { type: "enable-sync", client: 1 },
         { type: "barrier" },
 
-        { type: "pause-server" },
+        { type: "hold-request", client: 1, kind: "create", point: "before" },
         {
             type: "create",
             client: 1,
             path: "blocker.bin",
             content: "BINARY:blocker"
         },
-        { type: "sleep", ms: 100 },
+        { type: "wait-for-request", client: 1 },
         {
             type: "create",
             client: 1,
@@ -39,7 +39,7 @@ export const queuedCreateDeleteDoesNotHijackReusedPathTest: TestDefinition = {
             oldPath: "source.bin",
             newPath: "target.bin"
         },
-        { type: "resume-server" },
+        { type: "release-request", client: 1 },
         { type: "barrier" },
 
         {

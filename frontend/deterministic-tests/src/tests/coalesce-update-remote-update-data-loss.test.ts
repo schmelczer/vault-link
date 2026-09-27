@@ -45,14 +45,12 @@ export const coalesceUpdateRemoteUpdateDataLossTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (state: AssertableState): void => {
-                state
-                    .assertFileCount(1)
-                    .assertContains(
-                        "doc.md",
-                        "client 0 addition",
-                        "client 1 addition"
-                    );
+            verify: (s: AssertableState): void => {
+                s.assertFileCount(1);
+                s.assertContent(
+                    "doc.md",
+                    "client 1 addition\nline 1\nline 2\nline 3\nclient 0 addition"
+                );
             }
         }
     ]

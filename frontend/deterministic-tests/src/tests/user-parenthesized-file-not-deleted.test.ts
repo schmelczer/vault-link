@@ -41,10 +41,13 @@ export const userParenthesizedFileNotDeletedTest: TestDefinition = {
             verify: (state: AssertableState): void => {
                 state
                     .assertFileCount(3)
-                    .assertFileExists("Chapter.bin")
+                    .assertContent("Chapter.bin", "chapter one")
                     .assertFileExists("Chapter (1).bin")
                     .assertContent("Chapter (1).bin", "chapter one notes")
-                    .assertContent(state.conflictPath("Chapter.bin"), "chapter one notes");
+                    .assertContent(
+                        state.conflictPath("Chapter.bin"),
+                        "chapter one notes"
+                    );
             }
         }
     ]

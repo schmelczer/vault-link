@@ -25,14 +25,10 @@ export const concurrentRenameSameTargetTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (state: AssertableState): void => {
-                state
-                    .assertFileCount(2)
-                    .assertFileNotExists("A.md")
-                    .assertFileNotExists("B.md")
-                    .assertFileExists("C.md")
-                    .assertFileExists(state.conflictPath("C.md"))
-                    .assertAnyFileContains("content-a", "content-b");
+            verify: (s: AssertableState): void => {
+                s.assertFileCount(2)
+                    .assertContent("C.md", "content-a")
+                    .assertContent(s.conflictPath("C.md"), "content-b");
             }
         }
     ]

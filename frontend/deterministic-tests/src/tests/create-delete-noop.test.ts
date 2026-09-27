@@ -20,7 +20,7 @@ export const createDeleteNoopTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertFileNotExists("temp.md");
+                s.assertFileCount(0).assertFileNotExists("temp.md");
             }
         }
     ]

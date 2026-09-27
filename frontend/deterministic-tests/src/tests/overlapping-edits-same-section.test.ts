@@ -41,12 +41,10 @@ export const overlappingEditsSameSectionTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertFileCount(1).assertContains(
+                s.assertFileCount(1);
+                s.assertContent(
                     "doc.md",
-                    "# Title",
-                    "alpha addition",
-                    "beta addition",
-                    "footer"
+                    "# Title\nalpha addition\n\nbeta addition\nfooter"
                 );
             }
         }

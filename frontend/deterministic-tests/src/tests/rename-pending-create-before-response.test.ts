@@ -3,13 +3,13 @@ import type { TestDefinition } from "../test-definition";
 
 export const renamePendingCreateBeforeResponseTest: TestDefinition = {
     description:
-        "Client 0 creates a file while the server is paused, then renames it before the create completes. After the server resumes, both clients should converge with the file at the renamed path.",
+        "Client 0 creates a file while its create request is held, then renames it before the create completes. After releasing the request, both clients should converge with the file at the renamed path.",
     clients: 2,
     steps: [
         { type: "enable-sync", client: 0 },
         { type: "enable-sync", client: 1 },
 
-        { type: "pause-server" },
+        { type: "hold-request", client: 0, kind: "create", point: "before" },
 
         {
             type: "create",
@@ -17,6 +17,7 @@ export const renamePendingCreateBeforeResponseTest: TestDefinition = {
             path: "doc.md",
             content: "original-content"
         },
+        { type: "wait-for-request", client: 0 },
 
         {
             type: "rename",
@@ -25,7 +26,7 @@ export const renamePendingCreateBeforeResponseTest: TestDefinition = {
             newPath: "renamed.md"
         },
 
-        { type: "resume-server" },
+        { type: "release-request", client: 0 },
 
         { type: "barrier" },
 

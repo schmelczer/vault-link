@@ -17,8 +17,14 @@ export const createMergePreservesRenamedUpdateTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (state: AssertableState): void => {
-                state.assertContains("doc.md", "alpha", "beta");
+            verify: (s: AssertableState): void => {
+                s.assertFileCount(1).assertContentOneOf(
+                    "doc.md",
+                    "alphabeta",
+                    "betaalpha",
+                    "alpha beta",
+                    "beta alpha"
+                );
             }
         },
 

@@ -41,10 +41,8 @@ export const offlineRenameRemoteCreateOldPathTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertFileCount(1).assertContains(
-                    "Y.md",
-                    "updated-by-client-1"
-                );
+                s.assertFileCount(1);
+                s.assertContent("Y.md", "updated-by-client-1");
             }
         }
     ]

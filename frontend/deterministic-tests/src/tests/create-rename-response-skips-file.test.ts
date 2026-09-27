@@ -29,7 +29,8 @@ export const createRenameResponseSkipsFileTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertFileCount(1).assertAnyFileContains("the-content");
+                s.assertFileCount(1);
+                s.assertContent("renamed.md", "the-content");
             }
         }
     ]

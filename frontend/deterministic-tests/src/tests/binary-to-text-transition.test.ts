@@ -38,11 +38,7 @@ export const binaryToTextTransitionTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertFileCount(1).assertContainsAny(
-                    "data.bin",
-                    "version A",
-                    "version B"
-                );
+                s.assertFileCount(1).assertContent("data.bin", "version A");
             }
         },
 
@@ -90,7 +86,10 @@ export const binaryToTextTransitionTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertFileCount(1).assertContains("data.md", "alpha", "beta");
+                s.assertFileCount(1).assertContent(
+                    "data.md",
+                    "alpha\nmiddle line\nbeta"
+                );
             }
         }
     ]

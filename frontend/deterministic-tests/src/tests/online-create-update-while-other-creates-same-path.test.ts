@@ -11,7 +11,7 @@ export const onlineCreateUpdateWhileOtherCreatesSamePathTest: TestDefinition = {
         { type: "enable-sync", client: 0 },
         { type: "enable-sync", client: 1 },
 
-        { type: "pause-websocket", client: 1 },
+        { type: "pause-observation", client: 1 },
         {
             type: "create",
             client: 0,
@@ -30,18 +30,21 @@ export const onlineCreateUpdateWhileOtherCreatesSamePathTest: TestDefinition = {
             path: "data.bin",
             content: "BINARY:other-content"
         },
-        { type: "resume-websocket", client: 1 },
+        { type: "wait-for-observation", client: 1 },
+        { type: "sync", client: 0 },
+        { type: "resume-observation", client: 1 },
 
         { type: "barrier" },
 
         {
             type: "assert-consistent",
-            verify: (state: AssertableState): void => {
-                state
-                    .assertFileCount(2)
-                    .assertNoFileContains("content-v1")
-                    .assertAnyFileContains("content-v2")
-                    .assertAnyFileContains("other-content");
+            verify: (s: AssertableState): void => {
+                s.assertFileCount(2)
+                    .assertContent("data.bin", "BINARY:content-v2")
+                    .assertContent(
+                        s.conflictPath("data.bin"),
+                        "BINARY:other-content"
+                    );
             }
         }
     ]

@@ -17,10 +17,14 @@ export const createMergeDeleteTest: TestDefinition = {
 
         {
             type: "assert-consistent",
-            verify: (state: AssertableState): void => {
-                state
-                    .assertFileCount(1)
-                    .assertContains("A.md", "from-zero", "from-one");
+            verify: (s: AssertableState): void => {
+                s.assertFileCount(1).assertContentOneOf(
+                    "A.md",
+                    "from-zerofrom-one",
+                    "from-onefrom-zero",
+                    "from-zero from-one",
+                    "from-one from-zero"
+                );
             }
         },
 

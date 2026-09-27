@@ -18,7 +18,8 @@ export const mcCrossCreateRenameSameTargetTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertFileExists("X.md").assertFileExists("Y.md");
+                s.assertContent("X.md", "content-x");
+                s.assertContent("Y.md", "content-y");
             }
         },
 
@@ -36,10 +37,8 @@ export const mcCrossCreateRenameSameTargetTest: TestDefinition = {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
                 s.assertFileCount(2)
-                    .assertFileNotExists("X.md")
-                    .assertFileNotExists("Y.md")
-                    .assertFileExists("Z.md")
-                    .assertAnyFileContains("content-x", "content-y");
+                    .assertContent("Z.md", "content-x")
+                    .assertContent(s.conflictPath("Z.md"), "content-y");
             }
         }
     ]

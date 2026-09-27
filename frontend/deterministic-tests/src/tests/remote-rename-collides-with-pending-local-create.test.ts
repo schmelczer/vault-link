@@ -30,7 +30,7 @@ export const remoteRenameCollidesWithPendingLocalCreateTest: TestDefinition = {
         // Pause client 0's WS so the upcoming remote rename buffers and
         // we can stage a colliding local create before the rename
         // drains on client 0.
-        { type: "pause-websocket", client: 0 },
+        { type: "pause-observation", client: 0 },
 
         // Client 1 renames the doc. Server commits, broadcasts to
         // client 0 (buffered).
@@ -51,7 +51,8 @@ export const remoteRenameCollidesWithPendingLocalCreateTest: TestDefinition = {
         // Resume client 0's WS. The buffered RemoteChange drains.
         // The reconciler must converge without ever leaving a
         // conflict-uuid stash on disk.
-        { type: "resume-websocket", client: 0 },
+        { type: "wait-for-observation", client: 0 },
+        { type: "resume-observation", client: 0 },
 
         { type: "barrier" },
 
@@ -68,6 +69,7 @@ export const remoteRenameCollidesWithPendingLocalCreateTest: TestDefinition = {
                 }
                 state.assertFileExists("target.md");
                 state.assertContent("target.md", "v1\n");
+                state.assertContent(state.conflictPath("target.md"), "extra\n");
                 // The local create gets server-deconflicted to a
                 // sibling path (e.g. `target (1).md`).
             }

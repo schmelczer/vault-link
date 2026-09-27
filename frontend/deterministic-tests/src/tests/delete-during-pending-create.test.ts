@@ -3,15 +3,15 @@ import type { TestDefinition } from "../test-definition";
 
 export const deleteDuringPendingCreateTest: TestDefinition = {
     description:
-        "Client 0 creates a file while the server is paused, then deletes it before the server resumes. " +
-        "After resume, the file should end up deleted on both clients.",
+        "Client 0 creates a file while its create request is held, then deletes it before releasing the request. " +
+        "After release, the file should end up deleted on both clients.",
     clients: 2,
     steps: [
         { type: "enable-sync", client: 0 },
         { type: "enable-sync", client: 1 },
         { type: "barrier" },
 
-        { type: "pause-server" },
+        { type: "hold-request", client: 0, kind: "create", point: "before" },
 
         {
             type: "create",
@@ -19,10 +19,11 @@ export const deleteDuringPendingCreateTest: TestDefinition = {
             path: "ephemeral.md",
             content: "this will be deleted"
         },
+        { type: "wait-for-request", client: 0 },
 
         { type: "delete", client: 0, path: "ephemeral.md" },
 
-        { type: "resume-server" },
+        { type: "release-request", client: 0 },
         { type: "barrier" },
 
         {

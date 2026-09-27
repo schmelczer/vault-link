@@ -18,7 +18,7 @@ export const deleteByOtherClientThenRecreateTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertFileNotExists("A.md");
+                s.assertFileCount(0).assertFileNotExists("A.md");
             }
         },
 

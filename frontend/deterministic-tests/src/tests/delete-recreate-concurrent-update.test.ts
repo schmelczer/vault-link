@@ -35,7 +35,8 @@ export const deleteRecreateConcurrentUpdateTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertFileExists("A.md").assertContains("A.md", "recreated");
+                s.assertFileCount(1);
+                s.assertContent("A.md", "recreated by client 0");
             }
         }
     ]

@@ -16,7 +16,7 @@ export const renameOverwritesPendingCreateThenDeleteTest: TestDefinition = {
         },
         { type: "barrier" },
 
-        { type: "pause-server" },
+        { type: "hold-request", client: 0, kind: "create", point: "before" },
 
         {
             type: "create",
@@ -24,6 +24,7 @@ export const renameOverwritesPendingCreateThenDeleteTest: TestDefinition = {
             path: "pending.bin",
             content: "BINARY:pending"
         },
+        { type: "wait-for-request", client: 0 },
         {
             type: "rename",
             client: 0,
@@ -38,7 +39,7 @@ export const renameOverwritesPendingCreateThenDeleteTest: TestDefinition = {
         },
         { type: "delete", client: 0, path: "final.bin" },
 
-        { type: "resume-server" },
+        { type: "release-request", client: 0 },
         { type: "barrier" },
 
         {

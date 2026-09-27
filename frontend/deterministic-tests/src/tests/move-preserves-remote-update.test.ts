@@ -35,13 +35,10 @@ export const movePreservesRemoteUpdateTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertFileCount(1);
-                const [content] = Array.from(s.files.values());
-                if (!content.includes("client 1 edit")) {
-                    throw new Error(
-                        `Expected merged content to include "client 1 edit", got: "${content}"`
-                    );
-                }
+                s.assertFileCount(1).assertContent(
+                    "renamed.md",
+                    "line 1\nclient 1 edit\nline 2"
+                );
             }
         }
     ]

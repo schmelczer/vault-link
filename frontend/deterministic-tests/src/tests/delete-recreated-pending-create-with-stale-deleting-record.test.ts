@@ -4,10 +4,9 @@ import type { TestDefinition } from "../test-definition";
 export const deleteRecreatedPendingCreateWithStaleDeletingRecordTest: TestDefinition =
     {
         description:
-            "A local delete for a recreated pending create must target the " +
-            "new pending create, not an older same-path record whose server " +
-            "delete has been acked but whose WebSocket delete receipt is " +
-            "still paused.",
+            "Delete two successive generations while each create request is " +
+            "held before send. Retrying and acknowledging the old generation " +
+            "must not resurrect either file, even with delayed WebSocket hints.",
         clients: 2,
         steps: [
             { type: "enable-sync", client: 0 },
@@ -15,28 +14,38 @@ export const deleteRecreatedPendingCreateWithStaleDeletingRecordTest: TestDefini
             { type: "barrier" },
 
             { type: "pause-websocket", client: 0 },
-            { type: "pause-server" },
+            {
+                type: "hold-request",
+                client: 0,
+                kind: "create",
+                point: "before"
+            },
             {
                 type: "create",
                 client: 0,
                 path: "binary-14.bin",
                 content: "BINARY:first"
             },
-            { type: "sleep", ms: 100 },
+            { type: "wait-for-request", client: 0 },
             { type: "delete", client: 0, path: "binary-14.bin" },
-            { type: "resume-server" },
+            { type: "release-request", client: 0 },
             { type: "sync", client: 0 },
 
-            { type: "pause-server" },
+            {
+                type: "hold-request",
+                client: 0,
+                kind: "create",
+                point: "before"
+            },
             {
                 type: "create",
                 client: 0,
                 path: "binary-14.bin",
                 content: "BINARY:second"
             },
-            { type: "sleep", ms: 100 },
+            { type: "wait-for-request", client: 0 },
             { type: "delete", client: 0, path: "binary-14.bin" },
-            { type: "resume-server" },
+            { type: "release-request", client: 0 },
             { type: "sync", client: 0 },
 
             { type: "resume-websocket", client: 0 },

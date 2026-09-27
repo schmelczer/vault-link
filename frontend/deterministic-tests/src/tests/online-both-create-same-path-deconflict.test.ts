@@ -12,22 +12,24 @@ export const onlineBothCreateSamePathDeconflictTest: TestDefinition = {
         { type: "enable-sync", client: 1 },
         { type: "barrier" },
 
-        { type: "pause-websocket", client: 1 },
+        { type: "pause-observation", client: 1 },
         { type: "create", client: 0, path: "A.md", content: " from-client-0 " },
         { type: "update", client: 0, path: "A.md", content: " updated-by-0 " },
         { type: "sync" },
 
         { type: "create", client: 1, path: "A.md", content: " from-client-1 " },
-        { type: "resume-websocket", client: 1 },
+        { type: "wait-for-observation", client: 1 },
+        { type: "sync", client: 0 },
+        { type: "resume-observation", client: 1 },
 
         { type: "barrier" },
 
         {
             type: "assert-consistent",
-            verify: (state: AssertableState): void => {
-                state
-                    .assertFileCount(2)
-                    .assertAnyFileContains("updated-by-0", "from-client-1 ");
+            verify: (s: AssertableState): void => {
+                s.assertFileCount(2)
+                    .assertContent("A.md", " updated-by-0 ")
+                    .assertContent(s.conflictPath("A.md"), " from-client-1 ");
             }
         }
     ]

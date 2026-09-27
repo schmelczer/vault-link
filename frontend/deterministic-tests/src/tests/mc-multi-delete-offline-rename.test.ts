@@ -35,14 +35,10 @@ export const mcMultiDeleteOfflineRenameTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertFileExists("file-1.md")
-                    .assertFileExists("file-3.md")
-                    .assertFileExists("file-5.md")
-                    .assertFileNotExists("file-2.md")
-                    .assertFileNotExists("file-4.md");
-                s.ifFileExists("renamed.md", (inner) =>
-                    inner.assertContent("renamed.md", "content-2")
-                );
+                s.assertFileCount(3);
+                s.assertContent("file-1.md", "content-1");
+                s.assertContent("file-3.md", "content-3");
+                s.assertContent("file-5.md", "content-5");
             }
         }
     ]

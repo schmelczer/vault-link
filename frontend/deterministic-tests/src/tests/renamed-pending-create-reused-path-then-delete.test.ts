@@ -13,14 +13,14 @@ export const renamedPendingCreateReusedPathThenDeleteTest: TestDefinition = {
         { type: "enable-sync", client: 1 },
         { type: "barrier" },
 
-        { type: "pause-server" },
+        { type: "hold-request", client: 1, kind: "create", point: "before" },
         {
             type: "create",
             client: 1,
             path: "blocker.md",
             content: "blocker\n"
         },
-        { type: "sleep", ms: 100 },
+        { type: "wait-for-request", client: 1 },
 
         {
             type: "create",
@@ -41,14 +41,8 @@ export const renamedPendingCreateReusedPathThenDeleteTest: TestDefinition = {
             content: "new\n"
         },
 
-        {
-            type: "resume-server-until-history-then-pause",
-            client: 1,
-            syncType: "CREATE",
-            path: "file-33.md"
-        },
         { type: "delete", client: 1, path: "file-33.md" },
-        { type: "resume-server" },
+        { type: "release-request", client: 1 },
         { type: "barrier" },
 
         {

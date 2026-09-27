@@ -32,10 +32,9 @@ export const serverPauseBothClientsCreateTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertContains("alpha.md", "from client 0").assertContains(
-                    "beta.md",
-                    "from client 1"
-                );
+                s.assertFileCount(2);
+                s.assertContent("alpha.md", "from client 0");
+                s.assertContent("beta.md", "from client 1");
             }
         }
     ]

@@ -42,7 +42,11 @@ export const concurrentEditExactSamePositionTest: TestDefinition = {
             verify: (state: AssertableState): void => {
                 state
                     .assertFileCount(1)
-                    .assertContains("doc.md", "slow", "fast", "brown fox");
+                    .assertContentOneOf(
+                        "doc.md",
+                        "the fast slow brown fox",
+                        "the slow fast brown fox"
+                    );
             }
         }
     ]

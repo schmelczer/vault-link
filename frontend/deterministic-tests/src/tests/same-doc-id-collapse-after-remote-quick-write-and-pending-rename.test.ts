@@ -13,10 +13,6 @@ export const sameDocIdCollapseAfterRemoteQuickWriteAndPendingRenameTest: TestDef
         steps: [
             { type: "enable-sync", client: 0 },
 
-            // Create a deleted latest version before client 1 joins.
-            // Catch-up will advance MinCovered with a non-contiguous id,
-            // keeping client 1's create lastSeen low enough to exercise
-            // the server's same-doc merge path from the e2e failure.
             {
                 type: "create",
                 client: 0,
@@ -37,7 +33,12 @@ export const sameDocIdCollapseAfterRemoteQuickWriteAndPendingRenameTest: TestDef
             { type: "enable-sync", client: 1 },
             { type: "sync", client: 1 },
 
-            { type: "pause-websocket", client: 1 },
+            {
+                type: "hold-request",
+                client: 1,
+                kind: "read-content",
+                point: "after"
+            },
 
             {
                 type: "create",
@@ -47,12 +48,7 @@ export const sameDocIdCollapseAfterRemoteQuickWriteAndPendingRenameTest: TestDef
             },
             { type: "sync", client: 0 },
 
-            // Let client 1's buffered RemoteCreate enter the quick-write
-            // path, but hold the content fetch until the local create has
-            // appeared and moved away from doc.md.
-            { type: "pause-server" },
-            { type: "resume-websocket", client: 1 },
-            { type: "sleep", ms: 100 },
+            { type: "wait-for-request", client: 1 },
 
             {
                 type: "create",
@@ -67,7 +63,7 @@ export const sameDocIdCollapseAfterRemoteQuickWriteAndPendingRenameTest: TestDef
                 newPath: "renamed.md"
             },
 
-            { type: "resume-server" },
+            { type: "release-request", client: 1 },
             { type: "barrier" },
 
             {

@@ -21,14 +21,14 @@ export const renamePendingCreateOntoPendingDeletePathTest: TestDefinition = {
         },
         { type: "barrier" },
 
-        { type: "pause-server" },
+        { type: "hold-request", client: 1, kind: "create", point: "before" },
         {
             type: "create",
             client: 1,
             path: "blocker.md",
             content: "blocker\n"
         },
-        { type: "sleep", ms: 100 },
+        { type: "wait-for-request", client: 1 },
         {
             type: "create",
             client: 1,
@@ -42,7 +42,7 @@ export const renamePendingCreateOntoPendingDeletePathTest: TestDefinition = {
             oldPath: "file-23.md",
             newPath: "file-17.md"
         },
-        { type: "resume-server" },
+        { type: "release-request", client: 1 },
         { type: "barrier" },
 
         {

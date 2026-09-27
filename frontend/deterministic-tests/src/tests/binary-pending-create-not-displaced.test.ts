@@ -34,10 +34,9 @@ export const binaryPendingCreateNotDisplacedTest: TestDefinition = {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
                 s.assertFileCount(2)
-                    .assertFileExists("data.bin")
-                    .assertFileExists(s.conflictPath("data.bin"))
-                    .assertAnyFileContains(
-                        "binary data from client 0",
+                    .assertContent("data.bin", "binary data from client 0")
+                    .assertContent(
+                        s.conflictPath("data.bin"),
                         "binary data from client 1"
                     );
             }

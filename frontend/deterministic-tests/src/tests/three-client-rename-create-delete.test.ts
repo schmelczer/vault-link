@@ -46,9 +46,9 @@ export const threeClientRenameCreateDeleteTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertFileNotExists("X.md").assertAnyFileContains(
-                    "new from C"
-                );
+                s.assertFileCount(2)
+                    .assertContent("Y.md", "original from A")
+                    .assertContent(s.conflictPath("Y.md"), "new from C");
             }
         }
     ]

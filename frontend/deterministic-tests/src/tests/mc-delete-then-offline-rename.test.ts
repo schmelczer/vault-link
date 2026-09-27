@@ -27,12 +27,8 @@ export const mcDeleteThenOfflineRenameTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertContent("C.md", "unrelated").assertFileNotExists(
-                    "A.md"
-                );
-                s.ifFileExists("B.md", (inner) =>
-                    inner.assertContent("B.md", "original")
-                );
+                s.assertFileCount(1);
+                s.assertContent("C.md", "unrelated");
             }
         }
     ]

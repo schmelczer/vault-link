@@ -24,7 +24,7 @@ export const resetClearsRecentlyDeletedResurrectionTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertFileNotExists("ghost.md");
+                s.assertFileCount(0).assertFileNotExists("ghost.md");
             }
         },
 

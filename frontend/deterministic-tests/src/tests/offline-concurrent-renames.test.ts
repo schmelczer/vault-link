@@ -44,15 +44,8 @@ export const offlineConcurrentRenamesTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertFileNotExists("A.md")
-                    .assertFileCount(1)
-                    .assertAnyFileContains("shared-content");
-                s.ifFileExists("B.md", (inner) =>
-                    inner.assertContent("B.md", "shared-content")
-                );
-                s.ifFileExists("C.md", (inner) =>
-                    inner.assertContent("C.md", "shared-content")
-                );
+                s.assertFileCount(1);
+                s.assertContent("B.md", "shared-content");
             }
         }
     ]

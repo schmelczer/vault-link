@@ -42,7 +42,8 @@ export const rapidUpdatesAfterMergeTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertFileCount(1).assertContains("doc.md", "update 3");
+                s.assertFileCount(1);
+                s.assertContent("doc.md", "update 3");
             }
         }
     ]

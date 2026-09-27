@@ -3,14 +3,14 @@ import type { TestDefinition } from "../test-definition";
 
 export const updateDuringCreateProcessingTest: TestDefinition = {
     description:
-        "Client 0 creates a file while the server is paused, then immediately updates it. After the server resumes, both clients should converge with the updated content.",
+        "Client 0 creates a file while its create request is held, then immediately updates it. After releasing the request, both clients should converge with the updated content.",
     clients: 2,
     steps: [
         { type: "enable-sync", client: 0 },
         { type: "enable-sync", client: 1 },
         { type: "barrier" },
 
-        { type: "pause-server" },
+        { type: "hold-request", client: 0, kind: "create", point: "before" },
 
         {
             type: "create",
@@ -18,6 +18,7 @@ export const updateDuringCreateProcessingTest: TestDefinition = {
             path: "file.md",
             content: "initial"
         },
+        { type: "wait-for-request", client: 0 },
 
         {
             type: "update",
@@ -26,7 +27,7 @@ export const updateDuringCreateProcessingTest: TestDefinition = {
             content: "updated during create"
         },
 
-        { type: "resume-server" },
+        { type: "release-request", client: 0 },
         { type: "barrier" },
 
         {

@@ -16,7 +16,9 @@ export const rapidEditDeleteOnlineConvergenceTest: TestDefinition = {
         { type: "enable-sync", client: 1 },
         { type: "barrier" },
 
+        { type: "hold-request", client: 0, kind: "content", point: "before" },
         { type: "update", client: 0, path: "A.md", content: "A edit 1" },
+        { type: "wait-for-request", client: 0 },
         { type: "update", client: 0, path: "B.md", content: "B edit 1" },
         { type: "update", client: 0, path: "C.md", content: "C edit 1" },
         { type: "delete", client: 1, path: "A.md" },
@@ -26,22 +28,15 @@ export const rapidEditDeleteOnlineConvergenceTest: TestDefinition = {
         { type: "update", client: 0, path: "B.md", content: "B edit 2" },
         { type: "update", client: 0, path: "C.md", content: "C edit 2" },
 
+        { type: "sync", client: 1 },
+        { type: "release-request", client: 0 },
         { type: "barrier" },
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                for (const [path, content] of s.files) {
-                    for (const clientFiles of s.clientFiles) {
-                        if (
-                            clientFiles.has(path) &&
-                            clientFiles.get(path) !== content
-                        ) {
-                            throw new Error(
-                                `Content mismatch for ${path}: "${clientFiles.get(path)}" vs "${content}"`
-                            );
-                        }
-                    }
-                }
+                s.assertFileCount(2)
+                    .assertContent("B.md", "B edit 2")
+                    .assertContent("D.md", "content D");
             }
         }
     ]

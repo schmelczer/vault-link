@@ -30,10 +30,12 @@ export const localEditLostDuringCreateMergeTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertFileCount(1).assertContains(
+                s.assertFileCount(1).assertContentOneOf(
                     "doc.md",
-                    "from-client-1",
-                    "local-edit-during-create"
+                    "from-client-1local-edit-during-create",
+                    "local-edit-during-createfrom-client-1",
+                    "from-client-1 local-edit-during-create",
+                    "local-edit-during-create from-client-1"
                 );
             }
         }

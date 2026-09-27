@@ -25,10 +25,12 @@ export const queueResetLosesCoalescedLocalEditTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertFileCount(1).assertContains(
+                s.assertFileCount(1).assertContentOneOf(
                     "doc.md",
-                    "alpha",
-                    "charlie"
+                    "alpha bravocharlie delta",
+                    "charlie deltaalpha bravo",
+                    "alpha bravo charlie delta",
+                    "charlie delta alpha bravo"
                 );
             }
         }

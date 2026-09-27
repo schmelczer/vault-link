@@ -39,10 +39,9 @@ export const serverPauseBothEditSameFileTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertFileCount(1).assertContains(
+                s.assertFileCount(1).assertContent(
                     "shared.md",
-                    "edited by client 0",
-                    "edited by client 1"
+                    "line 1: edited by client 0\nline 2: original\nline 3: edited by client 1"
                 );
             }
         },
@@ -58,7 +57,7 @@ export const serverPauseBothEditSameFileTest: TestDefinition = {
         {
             type: "assert-consistent",
             verify: (s: AssertableState): void => {
-                s.assertFileCount(1).assertContains(
+                s.assertFileCount(1).assertContent(
                     "shared.md",
                     "post-merge edit from client 0"
                 );
