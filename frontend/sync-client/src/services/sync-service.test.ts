@@ -1,3 +1,4 @@
+import { HISTORY_HEADER } from "../consts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Settings } from "../persistence/settings";
@@ -25,7 +26,7 @@ test("paused sync sends no requests, while connection checks still work", async 
             requests++;
             return Response.json(
                 { headEventId: 0, endEventId: 0, events: [] },
-                { headers: { "X-Vault-Link-History": "0:empty" } }
+                { headers: { [HISTORY_HEADER]: "0:empty" } }
             );
         },
         {
@@ -35,7 +36,7 @@ test("paused sync sends no requests, while connection checks still work", async 
     );
     await assert.rejects(service.getEvents(0), SyncResetError);
     assert.equal(requests, 0);
-    await service.ping();
+    await service.getServerConfig();
     assert.equal(requests, 1);
     service.resume();
     assert.equal((await service.getEvents(0)).headEventId, 0);
@@ -56,7 +57,7 @@ test("pause aborts requests and fences late responses from an injected fetch", a
                 ? response.promise
                 : Response.json(
                       { headEventId: 0, endEventId: 0, events: [] },
-                      { headers: { "X-Vault-Link-History": "0:empty" } }
+                      { headers: { [HISTORY_HEADER]: "0:empty" } }
                   );
         },
         {
@@ -75,10 +76,7 @@ test("pause aborts requests and fences late responses from an injected fetch", a
     await service.getEvents(0);
     assert.equal(signals[1]?.aborted, false);
     response.resolve(
-        Response.json(
-            {},
-            { headers: { "X-Vault-Link-History": "99:abandoned" } }
-        )
+        Response.json({}, { headers: { [HISTORY_HEADER]: "99:abandoned" } })
     );
     await new Promise((resolve) => setImmediate(resolve));
     assert.deepEqual(saved, ["0:empty"]);
@@ -101,7 +99,7 @@ for (const binary of [false, true]) {
                             bodyReady.resolve(controller);
                         }
                     }),
-                    { headers: { "X-Vault-Link-History": "1:head" } }
+                    { headers: { [HISTORY_HEADER]: "1:head" } }
                 ),
             {
                 get: (): undefined => undefined,
@@ -139,7 +137,7 @@ test("pause waits for a checkpoint save already in progress", async (): Promise<
             Response.json(
                 {},
                 {
-                    headers: { "X-Vault-Link-History": "1:head" }
+                    headers: { [HISTORY_HEADER]: "1:head" }
                 }
             ),
         {
@@ -174,7 +172,7 @@ test("history saves only new checkpoints, including a changed token at the same 
         async () =>
             Response.json(
                 {},
-                { headers: { "X-Vault-Link-History": responseCheckpoint } }
+                { headers: { [HISTORY_HEADER]: responseCheckpoint } }
             ),
         {
             get: (): string | undefined => checkpoint,
@@ -212,7 +210,7 @@ for (const checkpoint of [undefined, ""]) {
                         headers:
                             checkpoint === undefined
                                 ? {}
-                                : { "X-Vault-Link-History": checkpoint }
+                                : { [HISTORY_HEADER]: checkpoint }
                     }
                 ),
             {
@@ -229,3 +227,30 @@ for (const checkpoint of [undefined, ""]) {
         );
     });
 }
+
+test("server configuration uses GET /config even when synchronization is paused", async () => {
+    const config = {
+        supportedApiVersion: 4,
+        serverVersion: "test",
+        isAuthenticated: true,
+        mergeableFileExtensions: ["md"]
+    };
+    const service = new SyncService(
+        "device",
+        settings(),
+        async (input, init) => {
+            assert.equal(input, "http://test/vaults/test/config");
+            assert.equal(init?.method, "GET");
+            assert.equal(init.body, undefined);
+            assert.equal(new Headers(init.headers).has(HISTORY_HEADER), false);
+            return Response.json(config);
+        },
+        {
+            get: (): string => "10:old-history",
+            save: async (): Promise<void> => {
+                assert.fail("Config must not update the sync checkpoint");
+            }
+        }
+    );
+    assert.deepEqual(await service.getServerConfig(), config);
+});

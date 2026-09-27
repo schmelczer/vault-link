@@ -4,14 +4,14 @@ import {
     ServerVersionMismatchError
 } from "../errors/errors";
 import type { SyncService } from "./sync-service";
-import type { PingResponse } from "./types/PingResponse";
+import type { ServerConfigResponse } from "./types/ServerConfigResponse";
 
 export class ServerConfig {
-    private config?: Promise<PingResponse>;
+    private config?: Promise<ServerConfigResponse>;
 
     public constructor(private readonly syncService: SyncService) {}
 
-    private static validateConfig(config: PingResponse): void {
+    private static validateConfig(config: ServerConfigResponse): void {
         if (config.supportedApiVersion !== SUPPORTED_API_VERSION) {
             const shouldUpgradeClient =
                 config.supportedApiVersion > SUPPORTED_API_VERSION;
@@ -34,7 +34,7 @@ export class ServerConfig {
         message: string;
     }> {
         try {
-            const result = await this.syncService.ping();
+            const result = await this.syncService.getServerConfig();
 
             ServerConfig.validateConfig(result);
 
@@ -50,10 +50,10 @@ export class ServerConfig {
         }
     }
 
-    public async getConfig(): Promise<PingResponse> {
+    public async getConfig(): Promise<ServerConfigResponse> {
         if (!this.config) {
             const pending = this.syncService
-                .ping()
+                .getServerConfig()
                 .then((config) => {
                     ServerConfig.validateConfig(config);
                     return config;

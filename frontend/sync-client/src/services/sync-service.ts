@@ -1,3 +1,4 @@
+import { HISTORY_HEADER, HISTORY_MISMATCH_HEADER } from "../consts";
 import type { DocumentId, VaultUpdateId } from "../persistence/database";
 import type { Settings } from "../persistence/settings";
 import { abortable } from "../utils/abortable";
@@ -8,7 +9,7 @@ import type { FileManifestUpdateResponse } from "./types/FileManifestUpdateRespo
 import type { PutFileContent } from "./types/PutFileContent";
 import type { PushFileManifest } from "./types/PushFileManifest";
 import type { VaultSnapshot } from "./types/VaultSnapshot";
-import type { PingResponse } from "./types/PingResponse";
+import type { ServerConfigResponse } from "./types/ServerConfigResponse";
 import {
     AuthenticationError,
     PermanentSyncError,
@@ -45,8 +46,8 @@ export class SyncService {
         await this.history.save(undefined);
     }
 
-    public async ping(): Promise<PingResponse> {
-        return this.request("/ping", { ignoreAborts: true });
+    public async getServerConfig(): Promise<ServerConfigResponse> {
+        return this.request("/config", { ignoreAborts: true });
     }
 
     public async getVaultSnapshot(): Promise<VaultSnapshot> {
@@ -93,9 +94,11 @@ export class SyncService {
     }
 
     private async recordHistory(response: Response): Promise<void> {
-        const checkpoint = response.headers.get("x-vault-link-history");
+        const checkpoint = response.headers.get(HISTORY_HEADER);
         if (checkpoint === null || checkpoint === "") {
-            throw new PermanentSyncError("Missing server history checkpoint HTTP header");
+            throw new PermanentSyncError(
+                "Missing server history checkpoint HTTP header"
+            );
         }
 
         const previous = this.history.get();
@@ -143,7 +146,7 @@ export class SyncService {
                 headers: {
                     ...(checkpoint === undefined
                         ? {}
-                        : { "X-Vault-Link-History": checkpoint }),
+                        : { [HISTORY_HEADER]: checkpoint }),
                     Authorization: `Bearer ${token}`,
                     "Device-Id": this.deviceId,
                     "Content-Type": "application/json"
@@ -152,7 +155,7 @@ export class SyncService {
         );
 
         signal.throwIfAborted();
-        if (response.headers.get("x-vault-link-history-mismatch") === "1") {
+        if (response.headers.get(HISTORY_MISMATCH_HEADER) === "1") {
             throw new ServerHistoryChangedError(
                 "Server history changed; recovering local work"
             );
