@@ -9,22 +9,22 @@ use axum_extra::{
 use log::debug;
 
 use super::VaultPath;
-use crate::server::{auth::authenticate_user, responses::PingResponse};
+use crate::server::{auth::authenticate_user, responses::ServerConfigResponse};
 use crate::{app_state::AppState, consts::SUPPORTED_API_VERSION, errors::SyncServerError};
 
 #[axum::debug_handler]
-pub async fn ping(
+pub async fn get_server_config(
     maybe_auth_header: Option<TypedHeader<Authorization<Bearer>>>,
     Path(VaultPath(vault_id)): Path<VaultPath>,
     State(state): State<AppState>,
-) -> Result<Json<PingResponse>, SyncServerError> {
-    debug!("Pinging vault `{vault_id}`");
+) -> Result<Json<ServerConfigResponse>, SyncServerError> {
+    debug!("Fetching configuration for vault `{vault_id}`");
 
     let is_authenticated = maybe_auth_header.is_some_and(|auth_header| {
         authenticate_user(&state, auth_header.token(), &vault_id).is_ok()
     });
 
-    Ok(Json(PingResponse {
+    Ok(Json(ServerConfigResponse {
         server_version: env!("CARGO_PKG_VERSION").to_owned(),
         is_authenticated,
         mergeable_file_extensions: state.config.server.mergeable_file_extensions.clone(),
