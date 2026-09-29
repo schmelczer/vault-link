@@ -1,9 +1,12 @@
+import { randomInt } from "node:crypto";
 import { spawn } from "node:child_process";
 import {
     createWriteStream,
     mkdirSync,
     mkdtempSync,
     writeFileSync,
+    readdirSync,
+    readFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -12,10 +15,13 @@ import { fileURLToPath } from "node:url";
 export function parseOptions(env = process.env) {
     const workers = positive(env.E2E_WORKERS ?? "1", "E2E_WORKERS");
 
-    const seed = Number(env.E2E_SEED ?? "1");
+    if (workers > 32) throw new Error("E2E_WORKERS must be at most 32");
+    const seedValue =
+        env.E2E_SEED ?? String(randomInt(0, 0x100000000 - workers + 1));
+    const seed = Number(seedValue);
 
     if (
-        !/^\d+$/.test(env.E2E_SEED ?? "1") ||
+        !/^\d+$/.test(seedValue) ||
         !Number.isInteger(seed) ||
         seed < 0 ||
         seed + workers - 1 > 0xffffffff
@@ -125,7 +131,7 @@ function positive(value, label) {
     )
         throw new Error(`${label} must be a positive integer`);
     return result;
-};
+}
 
 async function main() {
     const options = parseOptions();
@@ -187,17 +193,7 @@ async function main() {
         throw new Error("Server build failed");
     }
 
-    if (
-        !(await run(
-            "build-clients",
-            "npm",
-            [
-                "run",
-                "build",
-            ],
-            frontend,
-        ))
-    ) {
+    if (!(await run("build-clients", "npm", ["run", "build"], frontend))) {
         throw new Error(
             "Client build failed (run npm ci in frontend if dependencies are missing)",
         );
@@ -215,7 +211,21 @@ async function main() {
         ["run", "test", "--workspace", "sync-client"],
         frontend,
     );
-    await run("adapter-unit-tests", "npm", ["run", "test"], frontend);
+    await run(
+        "adapter-unit-tests",
+        "npm",
+        [
+            "run",
+            "test",
+            "--workspace",
+            "vault-link-obsidian-plugin",
+            "--workspace",
+            "local-client-cli",
+            "--workspace",
+            "test-client",
+        ],
+        frontend,
+    );
     await run("harness-self-tests", "npm", ["run", "test:harness"], frontend);
     await run("crash-and-protocol", "npm", ["run", "test:protocol"], frontend);
 
@@ -224,6 +234,21 @@ async function main() {
         "--concurrency",
         String(options.workers),
     ]);
+
+    // Concrete regression traces are stable even when the generator evolves.
+    const corpus = join(frontend, "test-client/corpus");
+    for (const file of readdirSync(corpus)
+        .filter((file) => file.endsWith(".json"))
+        .sort()) {
+        const name = `corpus-${file.replace(/\.json$/, "")}`;
+        await run(name, process.execPath, [
+            join(frontend, "test-client/dist/cli.js"),
+            "--replay",
+            join(corpus, file),
+            "--artifacts",
+            join(artifacts, name),
+        ]);
+    }
 
     // Execute all suites even if one reports a regression; failure is never
     // inferred from log text and successful workers cannot mask failed ones.
@@ -236,9 +261,28 @@ async function main() {
                 "--iterations",
                 String(options.iterations),
                 "--artifacts",
-                artifacts,
+                join(artifacts, `fuzz-${options.seed + i}`),
             ]),
         ),
+    );
+    const coverage = {};
+    for (const entry of readdirSync(artifacts, { withFileTypes: true }).filter(
+        (entry) => entry.isDirectory(),
+    )) {
+        const directory = join(artifacts, entry.name);
+        for (const file of readdirSync(directory).filter((file) =>
+            /^result-.*\.json$/.test(file),
+        )) {
+            const result = JSON.parse(
+                readFileSync(join(directory, file), "utf8"),
+            );
+            for (const [key, count] of Object.entries(result.coverage ?? {}))
+                coverage[key] = (coverage[key] ?? 0) + count;
+        }
+    }
+    writeFileSync(
+        join(artifacts, "coverage.json"),
+        JSON.stringify(coverage, null, 2),
     );
     if (interrupted || results.some((result) => !result.success)) {
         throw new Error(

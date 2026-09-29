@@ -149,3 +149,32 @@ test("E2E includes both peers' unit suites and the permanent audit regressions",
         ),
     );
 });
+
+test("campaigns support replayable explicit seeds and fresh default seeds", () => {
+    const explicit = parseOptions({ E2E_SEED: "42", E2E_WORKERS: "8" });
+    assert.equal(explicit.seed, 42);
+    const fresh = parseOptions({ E2E_WORKERS: "8" });
+    assert(
+        Number.isInteger(fresh.seed) &&
+            fresh.seed >= 0 &&
+            fresh.seed + 7 <= 0xffffffff,
+    );
+    assert.throws(() => parseOptions({ E2E_WORKERS: "33" }), /at most 32/);
+    assert.throws(
+        () => parseOptions({ E2E_WORKERS: "2", E2E_SEED: "4294967295" }),
+        /uint32/,
+    );
+    const runner = readFileSync(
+        new URL("./e2e-runner.mjs", import.meta.url),
+        "utf8",
+    );
+    assert.match(runner, /test-client\/corpus/);
+    assert.match(runner, /coverage\.json/);
+    const workflow = readFileSync(
+        new URL("../.forgejo/workflows/e2e.yml", import.meta.url),
+        "utf8",
+    );
+    const scheduledIterations = /E2E_ITERATIONS=(\d+)/.exec(workflow);
+    assert(scheduledIterations, "Scheduled campaigns must configure an iteration count");
+    assert(Number(scheduledIterations[1]) > parseOptions({}).iterations);
+});
