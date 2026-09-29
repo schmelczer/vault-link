@@ -33,7 +33,7 @@ test("a small deeply nested manifest fits within a bounded validation heap", () 
     assert.equal(result.status, 0, result.stderr || String(result.error));
 });
 
-test("conflict allocation renames the first obstructed component deterministically", () => {
+test("conflict allocation renames the first colliding component deterministically", () => {
     const cases: { wanted: string; occupied: string[]; expected: string }[] = [
         {
             wanted: "Notes/a.md",

@@ -29,7 +29,10 @@ export type {
 } from "./persistence/database";
 export { FileKind, type FileSystemOperations } from "./file-operations/filesystem-operations";
 export type { FileSnapshot } from "./snapshot";
-export type { MetadataPersistenceProvider as PersistenceProvider } from "./persistence/metadata-persistence-provider";
+export type {
+    MetadataPersistenceProvider as PersistenceProvider,
+    StoredClient
+} from "./persistence/metadata-persistence-provider";
 export type { CursorSpan } from "./services/types/CursorSpan";
 export type { ClientCursors } from "./services/types/ClientCursors";
 export type { NetworkConnectionStatus } from "./types/network-connection-status";
@@ -39,7 +42,7 @@ export type {
 } from "./errors/errors";
 export type { MaybeOutdatedClientCursors } from "./types/maybe-outdated-client-cursors";
 export { DocumentSyncStatus } from "./types/document-sync-status";
-export { SyncClient, type StoredClient } from "./sync-client";
+export { SyncClient } from "./sync-client";
 export type { TextWithCursors, CursorPosition } from "reconcile-text";
 
 export const debugging = {

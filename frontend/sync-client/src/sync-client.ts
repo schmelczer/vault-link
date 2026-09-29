@@ -52,7 +52,7 @@ export class SyncClient {
             (path: RelativePath) => unknown
         >,
         private readonly contentCache: FixedSizeDocumentCache,
-        private readonly persistence: MetadataPersistenceProvider<StoredClient>
+        private readonly persistence: MetadataPersistenceProvider
     ) {
         syncer.onServerHistoryChanged.add(() => {
             cursorTracker.reset();
@@ -109,7 +109,7 @@ export class SyncClient {
         webSocket
     }: {
         fs: FileSystemOperations;
-        persistence: MetadataPersistenceProvider<StoredClient>;
+        persistence: MetadataPersistenceProvider;
         fetch?: typeof globalThis.fetch;
         webSocket?: typeof globalThis.WebSocket;
     }): Promise<SyncClient> {
