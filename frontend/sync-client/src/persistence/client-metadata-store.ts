@@ -1,6 +1,8 @@
-import type { StoredClient } from "../sync-client";
 import type { StoredDatabase } from "./database";
-import type { MetadataPersistenceProvider } from "./metadata-persistence-provider";
+import type {
+    MetadataPersistenceProvider,
+    StoredClient
+} from "./metadata-persistence-provider";
 import { Lock } from "../utils/data-structures/locks";
 
 // Serialize partial updates to the shared settings, database and notification store
@@ -10,11 +12,11 @@ export class ClientMetadataStore {
 
     private constructor(
         public stored: StoredClient,
-        private readonly persistence: MetadataPersistenceProvider<StoredClient>
+        private readonly persistence: MetadataPersistenceProvider
     ) { }
 
     public static async load(
-        persistence: MetadataPersistenceProvider<StoredClient>
+        persistence: MetadataPersistenceProvider
     ): Promise<ClientMetadataStore> {
         return new ClientMetadataStore(
             (await persistence.load()) ?? {},
