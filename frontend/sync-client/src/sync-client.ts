@@ -1,62 +1,78 @@
-import type { PersistenceProvider } from "./persistence/persistence";
-import type { HistoryEntry, HistoryStats } from "./tracing/sync-history";
-import { SyncHistory } from "./tracing/sync-history";
-import { Logger, LogLevel, LogLine } from "./tracing/logger";
-import type { RelativePath, StoredDatabase } from "./persistence/database";
-import { Database } from "./persistence/database";
+import type { NetworkConnectionStatus } from "./types/network-connection-status";
+import { ClientMetadataStore } from "./persistence/client-metadata-store";
 import * as Sentry from "@sentry/browser";
-import type { SyncSettings } from "./persistence/settings";
-import { DEFAULT_SETTINGS, Settings } from "./persistence/settings";
-import { SyncService } from "./services/sync-service";
-import { Syncer } from "./sync-operations/syncer";
+import { setUpTelemetry } from "./utils/set-up-telemetry";
+import type {
+    MetadataPersistenceProvider,
+    StoredClient
+} from "./persistence/metadata-persistence-provider";
+import { Database, type RelativePath } from "./persistence/database";
+import {
+    Settings,
+    DEFAULT_SETTINGS,
+    type SyncSettings
+} from "./persistence/settings";
 import type { FileSystemOperations } from "./file-operations/filesystem-operations";
 import { FileOperations } from "./file-operations/file-operations";
-import { FetchController } from "./services/fetch-controller";
-import { UnrestrictedSyncer } from "./sync-operations/unrestricted-syncer";
-import { rateLimit } from "./utils/rate-limit";
-import type { NetworkConnectionStatus } from "./types/network-connection-status";
-import { DocumentSyncStatus } from "./types/document-sync-status";
-import { WebSocketManager } from "./services/websocket-manager";
-import { createClientId } from "./utils/create-client-id";
-import { CursorTracker } from "./sync-operations/cursor-tracker";
-import type { CursorSpan } from "./services/types/CursorSpan";
-import type { MaybeOutdatedClientCursors } from "./types/maybe-outdated-client-cursors";
-import { FileChangeNotifier } from "./sync-operations/file-change-notifier";
-import { FixedSizeDocumentCache } from "./utils/data-structures/fix-sized-cache";
-import { setUpTelemetry } from "./utils/set-up-telemetry";
-import { DIFF_CACHE_SIZE_MB } from "./consts";
+import { Logger, LogLevel } from "./tracing/logger";
+import { SyncHistory } from "./tracing/sync-history";
+import { SyncService } from "./services/sync-service";
 import { ServerConfig } from "./services/server-config";
-import type { EventListeners } from "./utils/data-structures/event-listeners";
+import { WebSocketManager } from "./services/websocket-manager";
+import { Syncer } from "./sync-operations/syncer";
+import { CursorTracker } from "./sync-operations/cursor-tracker";
+import { EventListeners } from "./utils/data-structures/event-listeners";
+import { createClientId } from "./utils/create-client-id";
+import { ClientPhase } from "./types/client-phase";
+import { DocumentSyncStatus } from "./types/document-sync-status";
+import type { CursorSpan } from "./services/types/CursorSpan";
+import { isInternalPath } from "./utils/portable-path";
+import { FixedSizeDocumentCache } from "./utils/data-structures/fix-sized-cache";
+import { Lock } from "./utils/data-structures/locks";
+import { getUnappliedChanges } from "./sync-operations/local-changes";
 
 export class SyncClient {
-    private hasStartedOfflineSync = false;
-    private hasFinishedOfflineSync = false;
-    private hasStarted = false;
-    private hasBeenDestroyed = false;
+    private readonly lifecycle = new Lock();
+    private destroying?: Promise<void>;
+    private phase = ClientPhase.Created;
     private unloadTelemetry?: () => void;
-    private isDestroying = false;
-    private readonly eventUnsubscribers: (() => void)[] = [];
+    private readonly unsubscribeLog: () => void;
 
     private constructor(
+        public readonly logger: Logger,
         private readonly history: SyncHistory,
-        private readonly settings: Settings,
+        private readonly settingsStore: Settings,
         private readonly database: Database,
         private readonly syncer: Syncer,
         private readonly webSocketManager: WebSocketManager,
-        public readonly logger: Logger,
-        private readonly fetchController: FetchController,
-        private readonly cursorTracker: CursorTracker,
-        private readonly fileChangeNotifier: FileChangeNotifier,
-        private readonly contentCache: FixedSizeDocumentCache,
-        private readonly fileOperations: FileOperations,
+        private readonly service: SyncService,
         private readonly serverConfig: ServerConfig,
-        private readonly persistence: PersistenceProvider<
-            Partial<{
-                settings: Partial<SyncSettings>;
-                database: Partial<StoredDatabase>;
-            }>
-        >
-    ) {}
+        private readonly cursorTracker: CursorTracker,
+        private readonly fileChanges: EventListeners<
+            (path: RelativePath) => unknown
+        >,
+        private readonly contentCache: FixedSizeDocumentCache,
+        private readonly persistence: MetadataPersistenceProvider<StoredClient>
+    ) {
+        syncer.onServerHistoryChanged.add(() => {
+            cursorTracker.reset();
+        });
+
+        syncer.onReadyForEvents.add(() => {
+            if (
+                this.phase === ClientPhase.Started &&
+                settingsStore.getSettings().isSyncEnabled
+            ) {
+                webSocketManager.start();
+            }
+        });
+
+        this.unsubscribeLog = logger.onLogEmitted.add((log) => {
+            if (log.level === LogLevel.ERROR && Sentry.isInitialized()) {
+                Sentry.captureMessage(log.message);
+            }
+        });
+    }
 
     public get documentCount(): number {
         return this.database.length;
@@ -66,38 +82,23 @@ export class SyncClient {
         return this.webSocketManager.isWebSocketConnected;
     }
 
-    public get onSyncHistoryUpdated(): EventListeners<
-        (stats: HistoryStats) => unknown
-    > {
-        this.checkIfDestroyed("onSyncHistoryUpdated getter");
+    public get onSyncHistoryUpdated(): SyncHistory["onHistoryUpdated"] {
         return this.history.onHistoryUpdated;
     }
 
-    public get onSettingsChanged(): EventListeners<
-        (newSettings: SyncSettings, oldSettings: SyncSettings) => unknown
-    > {
-        this.checkIfDestroyed("onSettingsChanged getter");
-        return this.settings.onSettingsChanged;
+    public get onSettingsChanged(): Settings["onSettingsChanged"] {
+        return this.settingsStore.onSettingsChanged;
     }
 
-    public get onRemainingOperationsCountChanged(): EventListeners<
-        (remainingOperationsCount: number) => unknown
-    > {
-        this.checkIfDestroyed("onRemainingOperationsCountChanged getter");
+    public get onRemainingOperationsCountChanged(): Syncer["onRemainingOperationsCountChanged"] {
         return this.syncer.onRemainingOperationsCountChanged;
     }
 
-    public get onWebSocketStatusChanged(): EventListeners<
-        (isConnected: boolean) => unknown
-    > {
-        this.checkIfDestroyed("onWebSocketStatusChanged getter");
+    public get onWebSocketStatusChanged(): WebSocketManager["onWebSocketStatusChanged"] {
         return this.webSocketManager.onWebSocketStatusChanged;
     }
 
-    public get onRemoteCursorsUpdated(): EventListeners<
-        (cursors: MaybeOutdatedClientCursors[]) => unknown
-    > {
-        this.checkIfDestroyed("onRemoteCursorsUpdated getter");
+    public get onRemoteCursorsUpdated(): CursorTracker["onRemoteCursorsUpdated"] {
         return this.cursorTracker.onRemoteCursorsUpdated;
     }
 
@@ -105,439 +106,393 @@ export class SyncClient {
         fs,
         persistence,
         fetch,
-        webSocket,
-        nativeLineEndings = "\n"
+        webSocket
     }: {
         fs: FileSystemOperations;
-        persistence: PersistenceProvider<
-            Partial<{
-                settings: Partial<SyncSettings>;
-                database: Partial<StoredDatabase>;
-            }>
-        >;
+        persistence: MetadataPersistenceProvider<StoredClient>;
         fetch?: typeof globalThis.fetch;
         webSocket?: typeof globalThis.WebSocket;
-        nativeLineEndings?: string;
     }): Promise<SyncClient> {
         const logger = new Logger();
+        const metadata = await ClientMetadataStore.load(persistence);
+        const { stored } = metadata;
 
-        const deviceId = createClientId();
+        const save = async (update: StoredClient): Promise<void> =>
+            metadata.save(update);
 
-        logger.info(`Creating SyncClient with client id ${deviceId}`);
-
-        const history = new SyncHistory(logger);
-
-        let state = (await persistence.load()) ?? {
-            settings: undefined,
-            database: undefined
-        };
-
-        const settings = new Settings(
-            logger,
-            state.settings,
-            async (data): Promise<void> => {
-                state = { ...state, settings: data };
-                // we're not rate-limiting settings saves as (1) we need to initialise the settings to know the rate limit
-                // and (2) settings changes are infrequent enough that rate-limiting is not necessary
-                await persistence.save(state);
-            }
-        );
-
-        const rateLimitedSave = rateLimit(
-            persistence.save,
-            () => settings.getSettings().minimumSaveIntervalMs
+        const settings = new Settings(logger, stored.settings, async (data) =>
+            save({ settings: data })
         );
 
         const database = new Database(
-            logger,
-            state.database,
-            async (data): Promise<void> => {
-                state = { ...state, database: data };
-                await rateLimitedSave(state);
-            }
+            stored.database,
+            SyncClient.getVaultKey(settings.getSettings()),
+            async (data) => save({ database: data }),
+            async () => metadata.reloadDatabase()
         );
 
-        const fetchController = new FetchController(
-            settings.getSettings().isSyncEnabled,
-            logger
+        const localChanges = getUnappliedChanges(
+            database.state,
+            stored.localChanges ?? []
         );
 
-        const syncService = new SyncService(
-            deviceId,
-            fetchController,
-            settings,
-            logger,
-            fetch
-        );
+        if (
+            localChanges.length &&
+            stored.localChangesVaultKey !==
+            SyncClient.getVaultKey(settings.getSettings())
+        ) {
+            throw new Error(
+                "Offline notifications belong to another vault; use a separate state store"
+            );
+        }
 
-        const serverConfig = new ServerConfig(syncService);
+        const deviceId = createClientId();
+        const service = new SyncService(deviceId, settings, fetch, {
+            get: (): string | undefined =>
+                metadata.stored.historyCheckpoint?.vaultKey ===
+                    SyncClient.getVaultKey(settings.getSettings())
+                    ? metadata.stored.historyCheckpoint.checkpoint
+                    : undefined,
+            save: async (checkpoint): Promise<void> =>
+                save({
+                    historyCheckpoint: {
+                        vaultKey: SyncClient.getVaultKey(
+                            settings.getSettings()
+                        ),
+                        checkpoint
+                    }
+                })
+        });
 
-        const fileOperations = new FileOperations(
-            logger,
-            database,
+        const serverConfig = new ServerConfig(service);
+
+        const notifier = new EventListeners<(path: RelativePath) => unknown>();
+
+        const files = new FileOperations(
             fs,
-            serverConfig,
-            nativeLineEndings
-        );
-
-        const contentCache = new FixedSizeDocumentCache(
-            1024 * 1024 * DIFF_CACHE_SIZE_MB
-        );
-        const unrestrictedSyncer = new UnrestrictedSyncer(
-            logger,
             database,
-            settings,
-            syncService,
-            fileOperations,
-            history,
-            contentCache,
-            serverConfig
+            serverConfig,
+            (paths) => {
+                for (const path of paths) {
+                    notifier.trigger(path);
+                }
+            },
+            {
+                entries: localChanges,
+                // Invoked after all components have been constructed.
+                // eslint-disable-next-line @typescript-eslint/no-use-before-define
+                flush: async (): Promise<void> => syncer.flushLocalChanges()
+            },
+            (path, size) =>
+                settings.isIgnored(path) || settings.isOversized(size)
         );
 
-        const webSocketManager = new WebSocketManager(
+        const websocket = new WebSocketManager(
             deviceId,
             logger,
             settings,
             webSocket
         );
 
-        const syncer = new Syncer(
-            deviceId,
+        const history = new SyncHistory(logger);
+
+        const contentCache = new FixedSizeDocumentCache(
+            settings.getSettings().diffCacheSizeMB * 1024 * 1024
+        );
+
+        const syncer: Syncer = new Syncer(
             logger,
             database,
             settings,
-            syncService,
-            webSocketManager,
-            fileOperations,
-            unrestrictedSyncer
+            service,
+            websocket,
+            files,
+            serverConfig,
+            history,
+            contentCache,
+            {
+                entries: localChanges,
+                save: async (entries) =>
+                    save({
+                        localChanges: entries,
+                        localChangesVaultKey: SyncClient.getVaultKey(
+                            settings.getSettings()
+                        )
+                    })
+            }
         );
 
-        const fileChangeNotifier = new FileChangeNotifier();
-        const cursorTracker = new CursorTracker(
-            database,
-            webSocketManager,
-            fileOperations,
-            fileChangeNotifier
-        );
-        const client = new SyncClient(
+        const cursors = new CursorTracker(database, websocket, fs, notifier);
+
+        return new SyncClient(
+            logger,
             history,
             settings,
             database,
             syncer,
-            webSocketManager,
-            logger,
-            fetchController,
-            cursorTracker,
-            fileChangeNotifier,
-            contentCache,
-            fileOperations,
+            websocket,
+            service,
             serverConfig,
+            cursors,
+            notifier,
+            contentCache,
             persistence
         );
-
-        logger.info("SyncClient created successfully");
-
-        return client;
     }
 
-    public async start(): Promise<void> {
-        this.checkIfDestroyed("start");
-
-        if (this.hasStarted) {
-            throw new Error("SyncClient has already been started");
-        }
-        this.hasStarted = true;
-
-        if (
-            !this.unloadTelemetry &&
-            this.settings.getSettings().enableTelemetry
-        ) {
-            this.unloadTelemetry = setUpTelemetry();
-        }
-
-        this.eventUnsubscribers.push(
-            this.settings.onSettingsChanged.add((newSettings, oldSettings) => {
-                if (oldSettings.isSyncEnabled != newSettings.isSyncEnabled) {
-                    this.fetchController.canFetch = newSettings.isSyncEnabled;
-                }
-            })
-        );
-
-        this.eventUnsubscribers.push(
-            this.logger.onLogEmitted.add((log): void => {
-                if (log.level === LogLevel.ERROR && Sentry.isInitialized()) {
-                    Sentry.captureMessage(log.message);
-                }
-            })
-        );
-
-        this.eventUnsubscribers.push(
-            this.settings.onSettingsChanged.add(
-                this.onSettingsChange.bind(this)
-            )
-        );
-
-        if (this.settings.getSettings().isSyncEnabled) {
-            this.logger.info("Starting SyncClient");
-            await this.startSyncing();
-            this.logger.info("SyncClient has successfully started");
-        }
+    private static getVaultKey(settings: SyncSettings): string {
+        return JSON.stringify([
+            settings.remoteUri.replace(/\/$/u, ""),
+            settings.vaultName
+        ]);
     }
 
-    /**
-    * Reload settings from disk overriding current in-memory settings.
-    * Missing values will be filled in from DEFAULT_SETTINGS rather than
-    * retaining current in-memory settings.
-    */
-    public async reloadSettings(): Promise<void> {
-        this.checkIfDestroyed("reloadSettings");
-
-        const state = (await this.persistence.load()) ?? {
-            settings: undefined
-        };
-
-        const settings = {
-            ...DEFAULT_SETTINGS,
-            ...(state.settings ?? {})
-        };
-
-        await this.setSettings(settings);
-    }
-
-    public async checkConnection(): Promise<NetworkConnectionStatus> {
-        this.checkIfDestroyed("checkConnection");
-
-        const server = await this.serverConfig.checkConnection(true);
-        return {
-            isSuccessful: server.isSuccessful,
-            serverMessage: server.message,
-            isWebSocketConnected: this.webSocketManager.isWebSocketConnected
-        };
-    }
-
-    public getHistoryEntries(): readonly HistoryEntry[] {
+    public get historyEntries(): SyncHistory["entries"] {
         return this.history.entries;
     }
 
-    /**
-    * Wait for the in-flight operations to finish, reset all tracking,
-    * and the local database but retain the settings.
-    * The SyncClient can be used again after calling this method.
-    */
+    public get settings(): SyncSettings {
+        return this.settingsStore.getSettings();
+    }
+
+    public async start(): Promise<void> {
+        await this.lifecycle.withLock(async () => {
+            this.assertNotDestroyed();
+            if (this.phase === ClientPhase.Started) {
+                throw new Error("SyncClient has already been started");
+            }
+
+            await this.syncer.reloadLocalState();
+
+            await this.database.bindVault(
+                SyncClient.getVaultKey(this.settingsStore.getSettings())
+            );
+
+            // destroy() can interrupt the metadata work above before acquiring
+            // the lifecycle lock. Its terminal state must not be overwritten.
+            if (this.phase === ClientPhase.Destroyed) {
+                return;
+            }
+
+            this.phase = ClientPhase.Started;
+            this.configureTelemetry();
+            await this.resume();
+        });
+    }
+
+    // Restart transports; never discard pending requests.
     public async reset(): Promise<void> {
-        this.checkIfDestroyed("reset");
+        await this.lifecycle.withLock(async () => {
+            this.assertNotDestroyed();
+            await this.pause();
+            this.serverConfig.reset();
+            this.cursorTracker.reset();
+            await this.syncer.retryRejectedRequests();
+            await this.resume();
+        });
+    }
 
-        this.logger.info(
-            "Stopping SyncClient to apply changed connection settings"
+    public async setSettings(change: Partial<SyncSettings>): Promise<void> {
+        const update = structuredClone(change);
+
+        const notification = await this.lifecycle.withLock(async () => {
+            this.assertNotDestroyed();
+            const old = this.settingsStore.getSettings();
+            const next = { ...old, ...update };
+            if (
+                SyncClient.getVaultKey(next) !== SyncClient.getVaultKey(old) &&
+                (this.phase === ClientPhase.Started ||
+                    this.database.state.lastSeenUpdateId !== undefined ||
+                    this.database.state.pending ||
+                    this.syncer.hasLocalChanges ||
+                    Object.keys(this.database.state.actualFileManifest).length)
+            ) {
+                throw new Error(
+                    "Changing vaults requires a separate state store and client; existing sync state must not be reset"
+                );
+            }
+
+            try {
+                if (this.phase === ClientPhase.Started) {
+                    await this.pause();
+                }
+
+                await this.database.reloadFromSave();
+                await this.settingsStore.setSettings(update, false);
+                await this.syncer.retryRejectedRequests();
+                this.contentCache.resize(next.diffCacheSizeMB * 1024 * 1024);
+                await this.database.bindVault(SyncClient.getVaultKey(next));
+            } catch (error) {
+                this.serverConfig.reset();
+                this.contentCache.resize(
+                    this.settingsStore.getSettings().diffCacheSizeMB *
+                    1024 *
+                    1024
+                );
+                this.configureTelemetry();
+                await this.resume().catch((resumeError: unknown) => {
+                    this.logger.error(
+                        `Settings recovery could not resume sync: ${String(resumeError)}`
+                    );
+                });
+                throw error;
+            }
+
+            this.serverConfig.reset();
+            this.configureTelemetry();
+            await this.resume();
+            return [this.settingsStore.getSettings(), old] as const;
+        });
+        await this.settingsStore.onSettingsChanged.triggerAsync(
+            ...notification
         );
-        await this.pause();
-
-        // clear all local state
-        this.logger.info("Resetting SyncClient's local state");
-        this.database.reset();
-        await this.database.save(); // ensure the new database reads as empty
-        this.resetInMemoryState();
-        this.hasStartedOfflineSync = false;
-        this.hasFinishedOfflineSync = false;
-        this.serverConfig.reset();
-
-        await this.startSyncing();
     }
 
-    public getSettings(): SyncSettings {
-        return this.settings.getSettings();
-    }
-
-    public async setSetting<T extends keyof SyncSettings>(
-        key: T,
-        value: SyncSettings[T]
+    public async setSetting<K extends keyof SyncSettings>(
+        key: K,
+        value: SyncSettings[K]
     ): Promise<void> {
-        this.checkIfDestroyed("setSetting");
-
-        await this.settings.setSetting(key, value);
+        await this.setSettings({ [key]: value });
     }
 
-    public async setSettings(value: Partial<SyncSettings>): Promise<void> {
-        this.checkIfDestroyed("setSettings");
-
-        await this.settings.setSettings(value);
+    public async reloadSettings(): Promise<void> {
+        const stored = await this.persistence.load();
+        await this.setSettings({ ...DEFAULT_SETTINGS, ...stored?.settings });
     }
 
-    public async syncLocallyCreatedFile(
-        relativePath: RelativePath
-    ): Promise<void> {
-        this.checkIfDestroyed("syncLocallyCreatedFile");
-
-        this.fileChangeNotifier.notifyOfFileChange(relativePath);
-        return this.syncer.syncLocallyCreatedFile(relativePath);
+    public async checkConnection(): Promise<NetworkConnectionStatus> {
+        const result = await this.serverConfig.checkConnection();
+        return {
+            isSuccessful: result.isSuccessful,
+            serverMessage: result.message,
+            isWebSocketConnected: this.isWebSocketConnected
+        };
     }
 
-    public async syncLocallyDeletedFile(
-        relativePath: RelativePath
-    ): Promise<void> {
-        this.checkIfDestroyed("syncLocallyDeletedFile");
+    // Notifications enqueue work. Use waitUntilFinished() to await convergence.
+    public async syncLocallyCreatedFile(path: RelativePath): Promise<void> {
+        this.assertNotDestroyed();
+        if (isInternalPath(path)) {
+            return;
+        }
 
-        this.fileChangeNotifier.notifyOfFileChange(relativePath);
-        return this.syncer.syncLocallyDeletedFile(relativePath);
+        this.fileChanges.trigger(path);
+        await this.syncer.syncLocallyCreatedFile(path);
     }
 
-    public async syncLocallyUpdatedFile({
-        oldPath,
-        relativePath
-    }: {
+    public async syncLocallyDeletedFile(path: RelativePath): Promise<void> {
+        this.assertNotDestroyed();
+        if (isInternalPath(path)) {
+            return;
+        }
+
+        this.fileChanges.trigger(path);
+        await this.syncer.syncLocallyDeletedFile(path);
+    }
+
+    public async syncLocallyUpdatedFile(change: {
         oldPath?: RelativePath;
         relativePath: RelativePath;
     }): Promise<void> {
-        this.checkIfDestroyed("syncLocallyUpdatedFile");
-
-        this.fileChangeNotifier.notifyOfFileChange(relativePath);
-        return this.syncer.syncLocallyUpdatedFile({
-            oldPath,
-            relativePath
-        });
-    }
-
-    public getDocumentSyncingStatus(
-        relativePath: RelativePath
-    ): DocumentSyncStatus {
-        this.checkIfDestroyed("getDocumentSyncingStatus");
-
-        if (!this.settings.getSettings().isSyncEnabled) {
-            return DocumentSyncStatus.SYNCING_IS_DISABLED;
+        this.assertNotDestroyed();
+        if (
+            isInternalPath(change.relativePath) ||
+            (change.oldPath !== undefined &&
+                change.oldPath !== "" &&
+                isInternalPath(change.oldPath))
+        ) {
+            return;
         }
 
-        if (!this.syncer.isFirstSyncComplete || !this.hasFinishedOfflineSync) {
-            return DocumentSyncStatus.SYNCING;
-        }
-
-        const document =
-            this.database.getLatestDocumentByRelativePath(relativePath);
-        if (document === undefined) {
-            return DocumentSyncStatus.SYNCING;
-        }
-        return document.updates.length > 0
-            ? DocumentSyncStatus.SYNCING
-            : DocumentSyncStatus.UP_TO_DATE;
+        this.fileChanges.trigger(change.relativePath);
+        await this.syncer.syncLocallyUpdatedFile(change);
     }
 
     public async updateLocalCursors(
-        documentToCursors: Record<RelativePath, CursorSpan[]>
+        cursors: Record<RelativePath, CursorSpan[]>
     ): Promise<void> {
-        this.checkIfDestroyed("updateLocalCursors");
+        this.assertNotDestroyed();
+        await this.cursorTracker.sendLocalCursorsToServer(cursors);
+    }
 
-        await this.cursorTracker.sendLocalCursorsToServer(documentToCursors);
+    public getDocumentSyncingStatus(path: RelativePath): DocumentSyncStatus {
+        this.assertNotDestroyed();
+        if (!this.settingsStore.getSettings().isSyncEnabled) {
+            return DocumentSyncStatus.SYNCING_IS_DISABLED;
+        }
+
+        return this.syncer.isDocumentUpToDate(path)
+            ? DocumentSyncStatus.UP_TO_DATE
+            : DocumentSyncStatus.SYNCING;
     }
 
     public async waitUntilFinished(): Promise<void> {
-        this.checkIfDestroyed("waitUntilIdle");
+        this.assertNotDestroyed();
         await this.syncer.waitUntilFinished();
-        await this.webSocketManager.waitUntilFinished();
-        await this.database.save(); // flush all changes to disk
     }
 
-    /**
-    * Completely destroy the SyncClient, cancelling all in-progress operations.
-    * After calling this method, the SyncClient cannot be used again.
-    */
     public async destroy(): Promise<void> {
-        this.checkIfDestroyed("destroy");
+        if (this.destroying) {
+            return this.destroying;
+        }
 
-        // Prevent concurrent destroy calls
-        if (this.isDestroying) {
-            this.logger.warn(
-                "destroy() called while already destroying, ignoring"
-            );
+        this.phase = ClientPhase.Destroyed;
+        // Interrupt a start/reset awaiting network progress before waiting for
+        // its lifecycle operation to finish.
+        this.service.pause();
+        const stopped = this.syncer.stop();
+        this.destroying = this.lifecycle.withLock(async () => {
+            try {
+                await this.webSocketManager.stop();
+                await stopped;
+                await this.syncer.flushLocalChanges();
+            } finally {
+                this.cursorTracker.reset();
+                this.unsubscribeLog();
+                this.unloadTelemetry?.();
+            }
+        });
+        return this.destroying;
+    }
+
+    private assertNotDestroyed(): void {
+        if (this.phase === ClientPhase.Destroyed) {
+            throw new Error("SyncClient has been destroyed");
+        }
+    }
+
+    private async resume(): Promise<void> {
+        if (
+            this.phase !== ClientPhase.Started ||
+            !this.settingsStore.getSettings().isSyncEnabled
+        ) {
             return;
         }
-        this.isDestroying = true;
 
-        // cancel everything that's in progress
-        await this.pause();
-
-        this.hasBeenDestroyed = true;
-
-        this.resetInMemoryState();
-
-        // Clean up event listeners to prevent memory leaks
-        this.eventUnsubscribers.forEach((unsubscribe) => {
-            unsubscribe();
-        });
-        this.eventUnsubscribers.length = 0;
-
-        this.logger.info("SyncClient has been successfully disposed");
-
-        this.unloadTelemetry?.();
-    }
-
-    private async startSyncing(): Promise<void> {
-        this.checkIfDestroyed("startSyncing");
-        this.fetchController.finishReset();
-
-        await this.serverConfig.initialize();
-        this.webSocketManager.start();
-
-        if (!this.hasStartedOfflineSync) {
-            this.hasStartedOfflineSync = true;
-            await this.syncer.scheduleSyncForOfflineChanges();
-        }
-
-        this.hasFinishedOfflineSync = true;
+        await this.database.bindVault(
+            SyncClient.getVaultKey(this.settingsStore.getSettings())
+        );
+        this.service.resume();
+        this.syncer.start();
+        await this.syncer.waitUntilFinished();
     }
 
     private async pause(): Promise<void> {
-        this.fetchController.startReset();
+        const stopped = this.syncer.stop();
+        this.service.pause();
         await this.webSocketManager.stop();
-        await this.waitUntilFinished();
+        await stopped;
     }
 
-    private resetInMemoryState(): void {
-        this.history.reset();
-        this.contentCache.reset();
-        // don't reset the logger
-        this.cursorTracker.reset();
-        this.syncer.reset();
-        this.fileOperations.reset();
-    }
-
-    private async onSettingsChange(
-        newSettings: SyncSettings,
-        oldSettings: SyncSettings
-    ): Promise<void> {
-        this.checkIfDestroyed("onSettingsChange");
-
+    private configureTelemetry(): void {
         if (
-            newSettings.vaultName !== oldSettings.vaultName ||
-            newSettings.remoteUri !== oldSettings.remoteUri
+            this.settingsStore.getSettings().enableTelemetry &&
+            typeof window !== "undefined"
         ) {
-            await this.reset();
-        }
-
-        if (newSettings.isSyncEnabled !== oldSettings.isSyncEnabled) {
-            if (newSettings.isSyncEnabled) {
-                await this.startSyncing();
-            } else {
-                await this.pause();
-            }
-        }
-
-        if (newSettings.diffCacheSizeMB !== oldSettings.diffCacheSizeMB) {
-            this.contentCache.resize(newSettings.diffCacheSizeMB * 1024 * 1024);
-        }
-
-        if (newSettings.enableTelemetry !== oldSettings.enableTelemetry) {
-            if (newSettings.enableTelemetry) {
-                this.unloadTelemetry = setUpTelemetry();
-            } else {
-                this.unloadTelemetry?.();
-            }
-        }
-    }
-
-    private checkIfDestroyed(origin: string): void {
-        if (this.hasBeenDestroyed) {
-            throw new Error(
-                `SyncClient has been destroyed and can no longer be used; called from ${origin}`
-            );
+            this.unloadTelemetry ??= setUpTelemetry();
+        } else {
+            this.unloadTelemetry?.();
+            this.unloadTelemetry = undefined;
         }
     }
 }
