@@ -1,7 +1,7 @@
 import { FileKind } from "./filesystem-operations";
 import { v4 as uuid } from "uuid";
 import type { FileSystemOperations } from "./filesystem-operations";
-import type { FileApplication } from "./file-application";
+import type { FileChangeSession } from "./file-change-session";
 import { posix } from "path";
 import type {
     DocumentId,
@@ -10,7 +10,7 @@ import type {
 } from "../persistence/database";
 import { allocatePortablePath, isInternalPath } from "../utils/portable-path";
 
-interface PathObstruction {
+interface PathCollision {
     path: RelativePath;
     kind: FileKind;
 }
@@ -20,48 +20,53 @@ interface Occupant {
     path: RelativePath;
 }
 
-// Resolve occupied rename destinations without discarding another file.
-export class FilePaths {
+/**
+ * A collision-free target manifest can still collide with files on disk: rename swaps
+ * and cycles leave old paths occupied, and files or directories can block a new
+ * destination. FileRenamer renames local files while dealing with temporary conflicts.
+ */
+export class FileRenamer {
     public constructor(
         private readonly fs: FileSystemOperations,
         private readonly isProtectedFile: (
             path: RelativePath,
             size: number
         ) => boolean
-    ) {}
+    ) { }
 
     public async prepareDestination(
-        application: FileApplication,
+        session: FileChangeSession,
         id: DocumentId,
         path: RelativePath
     ): Promise<RelativePath> {
-        const { current, next } = application;
-        for (;;) {
-            const obstruction = await this.findObstruction(path);
-            if (!obstruction) {
+        const { current, planned } = session;
+        for (; ;) {
+            const collision = await this.findCollision(path);
+            if (!collision) {
                 break;
             }
 
             const occupants = await this.findMovableOccupants(
-                obstruction,
+                collision,
                 current,
-                next
+                planned
             );
 
             if (occupants === undefined) {
-                path = await this.allocateConflictPath(next, id, path);
+                // path must be occupied by an ignored file which we can't move
+                path = await this.allocateConflictPath(planned, id, path);
                 continue;
             }
 
-            await this.relocateOccupants(occupants, application);
+            await this.relocateOccupants(occupants, session);
 
-            if (obstruction.kind === FileKind.Directory) {
-                application.beginFileChanges();
-                await this.fs.deleteDirectory(obstruction.path);
+            if (collision.kind === FileKind.Directory) {
+                session.beforeFileMutation();
+                await this.fs.deleteDirectory(collision.path);
             }
         }
 
-        application.assertPlanCurrent();
+        session.abortIfStale();
         await this.createParentDirectories(path);
 
         return path;
@@ -85,9 +90,9 @@ export class FilePaths {
         }
     }
 
-    private async findObstruction(
+    private async findCollision(
         path: RelativePath
-    ): Promise<PathObstruction | undefined> {
+    ): Promise<PathCollision | undefined> {
         const parts = path.split("/");
         for (let i = 0; i < parts.length; i++) {
             const prefix = parts.slice(0, i + 1).join("/");
@@ -103,29 +108,29 @@ export class FilePaths {
     }
 
     private async findMovableOccupants(
-        obstruction: PathObstruction,
+        collision: PathCollision,
         current: StoredDatabase,
-        next: StoredDatabase
+        planned: StoredDatabase
     ): Promise<Occupant[] | undefined> {
         const children =
-            obstruction.kind === FileKind.File
-                ? [obstruction.path]
-                : await this.fs.listFilesRecursively(obstruction.path);
+            collision.kind === FileKind.File
+                ? [collision.path]
+                : await this.fs.listFilesRecursively(collision.path);
 
         const occupants = [];
         for (const child of children) {
-            const occupant = Object.keys(current.local).find(
+            const occupant = Object.keys(current.actualFileManifest).find(
                 (key) =>
                     current.documents[key]?.observedHash !== undefined &&
-                    current.local[key] === child
+                    current.actualFileManifest[key] === child
             );
             const info = await this.fs.stat(child);
 
             if (
                 !info || // doesn't exist anymore
                 this.isProtectedFile(child, info.size) ||
-                (obstruction.kind === FileKind.Directory &&
-                    (occupant === undefined || next.local[occupant] === child))
+                (collision.kind === FileKind.Directory &&
+                    (occupant === undefined || planned.actualFileManifest[occupant] === child))
             ) {
                 return undefined;
             }
@@ -137,11 +142,11 @@ export class FilePaths {
     }
 
     private async allocateConflictPath(
-        next: StoredDatabase,
+        planned: StoredDatabase,
         id: DocumentId,
         path: RelativePath
     ): Promise<RelativePath> {
-        const occupied = Object.entries(next.local).flatMap(
+        const occupied = Object.entries(planned.actualFileManifest).flatMap(
             ([other, occupiedPath]) => (other === id ? [] : [occupiedPath])
         );
 
@@ -154,26 +159,26 @@ export class FilePaths {
 
     private async relocateOccupants(
         occupants: Occupant[],
-        application: FileApplication
+        session: FileChangeSession
     ): Promise<void> {
-        const { current, next } = application;
+        const { current, planned } = session;
         for (const occupant of occupants) {
             const displaced = await this.allocateConflictPath(
-                next,
+                planned,
                 occupant.id,
                 posix.basename(occupant.path)
             );
 
-            application.beginFileChanges();
-            current.local[occupant.id] = displaced;
+            session.beforeFileMutation();
+            current.actualFileManifest[occupant.id] = displaced;
             await this.fs.rename(occupant.path, displaced);
 
             if (!current.documents[occupant.id]) {
                 current.documents[occupant.id] = { observedHash: "" };
-                next.documents[occupant.id] = { observedHash: "" };
-                next.local[occupant.id] = displaced;
-            } else if (next.local[occupant.id] === occupant.path) {
-                next.local[occupant.id] = displaced;
+                planned.documents[occupant.id] = { observedHash: "" };
+                planned.actualFileManifest[occupant.id] = displaced;
+            } else if (planned.actualFileManifest[occupant.id] === occupant.path) {
+                planned.actualFileManifest[occupant.id] = displaced;
             }
         }
     }
