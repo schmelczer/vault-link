@@ -53,7 +53,7 @@ export class ServerConfig {
     public async getConfig(): Promise<ServerConfigResponse> {
         if (!this.config) {
             const pending = this.syncService
-                .getServerConfig()
+                .getServerConfig(false)
                 .then((config) => {
                     ServerConfig.validateConfig(config);
                     return config;

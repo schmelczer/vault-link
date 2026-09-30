@@ -12,7 +12,7 @@ export interface ContentHead {
 }
 
 export interface DocumentState {
-    // A null version retains only the clean hash after a server history reset.
+    // A null version retains an old-history hash until a scan can classify edits.
     base?: { vaultUpdateId: VaultUpdateId | null; hash: string };
 
     // Last observed disk hash; an empty string means a notification awaits scanning.

@@ -13,19 +13,23 @@ const config = {
     mergeableFileExtensions: ["md"],
     serverVersion: "test"
 };
-const make = (fetch: typeof globalThis.fetch): ServerConfig =>
-    new ServerConfig(
-        new SyncService(
-            "device",
-            new Settings(
-                new Logger(),
-                { remoteUri: "http://test" },
-                async () => undefined
-            ),
-            fetch,
-            { get: () => undefined, save: async () => undefined }
-        )
+const make = (fetch: typeof globalThis.fetch): ServerConfig => {
+    const service = new SyncService(
+        "device",
+        new Settings(
+            new Logger(),
+            { remoteUri: "http://test" },
+            async () => undefined
+        ),
+        fetch,
+        {
+            get: (): undefined => undefined,
+            save: async (): Promise<void> => undefined
+        }
     );
+    service.resume();
+    return new ServerConfig(service);
+};
 
 test("configuration shares one validated request and retries failures", async () => {
     let calls = 0;

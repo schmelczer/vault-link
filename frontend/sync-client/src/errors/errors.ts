@@ -28,6 +28,11 @@ export class ConflictingPathError extends Error {
 
 export class PermanentSyncError extends Error {}
 
+/**
+ * Retry reconciliation against fresh local state. Raised for stale identity plans
+ * and local files that change during history recovery. Syncer schedules another
+ * pass without reporting this as a sync failure.
+ */
 export class LocalChangesDuringReconciliation extends Error {}
 
 // The server rejected a checkpoint from a discarded/restored history.

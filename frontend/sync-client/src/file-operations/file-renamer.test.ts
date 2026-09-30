@@ -4,7 +4,6 @@ import { test } from "node:test";
 import { MemoryDisk } from "../../../test-support/storage";
 import { Database, createEmptyDatabase } from "../persistence/database";
 import type { ServerConfig } from "../services/server-config";
-import { LocalChangeCheckpoint } from "../sync-operations/local-change-checkpoint";
 import { hash } from "../utils/hash";
 import { FileOperations } from "./file-operations";
 
@@ -27,7 +26,6 @@ test("a path swap uses a conflict path only as a temporary destination", async (
         async () => undefined
     );
     const files = new FileOperations(disk, database, {} as ServerConfig);
-    const checkpoint = new LocalChangeCheckpoint({ generation: 0 });
     const renames: string[] = [];
     disk.boundary = (label): void => {
         if (label.startsWith("visible:rename:")) {
@@ -37,7 +35,7 @@ test("a path swap uses a conflict path only as a temporary destination", async (
 
     const next = structuredClone(database.state);
     next.actualFileManifest = { a: "b.md", b: "a.md" };
-    await files.applyChanges(next, checkpoint);
+    await files.applyChanges(next, () => undefined);
 
     assert.deepEqual(renames, [
         "b.md->b (conflict b).md", // Free B without losing its contents.

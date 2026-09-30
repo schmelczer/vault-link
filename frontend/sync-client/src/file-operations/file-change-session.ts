@@ -52,7 +52,7 @@ export class FileChangeSession {
             return;
         }
 
-        this.options.checkpoint.assertUnchanged();
+        this.options.assertUnchanged();
     }
 
     public beforeFileMutation(): void {
@@ -64,7 +64,9 @@ export class FileChangeSession {
         const { localChanges, isProtectedPath } = this.options;
         await localChanges.flush();
 
-        this.abortIfStale();
+        if (!this.mutationsStarted) {
+            this.options.assertUnchanged();
+        }
 
         for (const change of getUnappliedChanges(
             this.planned,

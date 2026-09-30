@@ -46,8 +46,13 @@ export class SyncService {
         await this.history.save(undefined);
     }
 
-    public async getServerConfig(): Promise<ServerConfigResponse> {
-        return this.request("/config", { ignoreAborts: true });
+    public async getServerConfig(
+        ignoreAborts = true
+    ): Promise<ServerConfigResponse> {
+        return this.request("/config", {
+            ignoreAborts,
+            recordCheckpoint: false
+        });
     }
 
     public async getVaultSnapshot(): Promise<VaultSnapshot> {
@@ -119,12 +124,14 @@ export class SyncService {
         {
             body,
             ignoreAborts = false,
+            recordCheckpoint = true,
             decode = async (response): Promise<T> =>
                 // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Endpoint methods supply the generated protocol response type.
                 response.json() as Promise<T>
         }: {
             body?: unknown;
             ignoreAborts?: boolean;
+            recordCheckpoint?: boolean;
             decode?: (response: Response) => Promise<T>;
         } = {}
     ): Promise<T> {
@@ -169,7 +176,7 @@ export class SyncService {
         }
 
         // Finish metadata saves even if the transport is paused meanwhile.
-        if (!ignoreAborts) {
+        if (!ignoreAborts && recordCheckpoint) {
             await this.recordHistory(response);
         }
 
