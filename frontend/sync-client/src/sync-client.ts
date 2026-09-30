@@ -102,6 +102,14 @@ export class SyncClient {
         return this.cursorTracker.onRemoteCursorsUpdated;
     }
 
+    public get historyEntries(): SyncHistory["entries"] {
+        return this.history.entries;
+    }
+
+    public get settings(): SyncSettings {
+        return this.settingsStore.getSettings();
+    }
+
     public static async create({
         fs,
         persistence,
@@ -245,14 +253,6 @@ export class SyncClient {
             settings.remoteUri.replace(/\/$/u, ""),
             settings.vaultName
         ]);
-    }
-
-    public get historyEntries(): SyncHistory["entries"] {
-        return this.history.entries;
-    }
-
-    public get settings(): SyncSettings {
-        return this.settingsStore.getSettings();
     }
 
     public async start(): Promise<void> {
