@@ -11,7 +11,7 @@
         "test": "npm run build && node dist/cli.js"
     },
     "devDependencies": {
-        "commander": "^14.0.2",
+        "commander": "^15.0.0",
         "@types/node": "^25.0.2",
         "sync-client": "file:../sync-client",
         "ts-loader": "^9.5.4",
