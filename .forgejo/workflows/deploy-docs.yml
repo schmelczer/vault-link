@@ -15,7 +15,8 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ${{ (github.actor == 'renovate-bot' || github.event.pull_request.user.login == 'renovate-bot' || startsWith(github.ref, 'refs/heads/renovate/') || startsWith(github.head_ref,
+      'renovate/')) && 'renovate-ubuntu' || 'ubuntu-latest' }}
 
     steps:
       - name: Checkout
@@ -23,6 +24,7 @@ jobs:
         with:
           fetch-depth: 0
 
+          persist-credentials: false
       - name: Setup Node.js environment
         uses: https://github.com/actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
@@ -36,4 +38,5 @@ jobs:
         with:
           name: docs
           path: docs/.vitepress/dist
-    if: ${{ github.actor != 'renovate-bot' && !startsWith(github.ref, 'refs/heads/renovate/') && !startsWith(github.head_ref, 'renovate/') }}
+    if: ${{ contains(fromJSON('["andras","ruby336688","renovate-bot"]'), github.actor) && (!github.event.pull_request || contains(fromJSON('["andras","ruby336688","renovate-bot"]'),
+      github.event.pull_request.user.login)) }}
