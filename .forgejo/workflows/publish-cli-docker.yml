@@ -9,43 +9,21 @@ on:
 
 jobs:
   publish-docker:
-    runs-on: ubuntu-docker
+    runs-on: docker
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: https://github.com/actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           fetch-depth: 0
 
-      - name: Extract registry hostname
-        id: registry
-        run: echo "host=$(echo '${{ github.server_url }}' | sed 's|https\?://||')" >> "$GITHUB_OUTPUT"
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log into container registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ steps.registry.outputs.host }}
-          username: ${{ github.repository_owner }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract Docker metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ steps.registry.outputs.host }}/${{ github.repository }}-cli
-
-      - name: Build and push Docker image
-        id: build-and-push
-        uses: docker/build-push-action@v5
+      - name: Build and publish in rootless sandbox
+        uses: https://git.schmelczer.dev/andras/ci-actions/docker-publish@a415e2a50992af99b7b6dd3f02cca372d87b11f6
         with:
           context: frontend
-          file: frontend/local-client-cli/Dockerfile
+          push: ${{ github.event_name != 'pull_request' && (true) }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          dockerfile: frontend/local-client-cli/Dockerfile
           platforms: linux/amd64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=${{ steps.registry.outputs.host }}/${{ github.repository }}-cli:buildcache
-          cache-to: type=registry,ref=${{ steps.registry.outputs.host }}/${{ github.repository }}-cli:buildcache,mode=max
+          image-suffix: -cli
+    if: ${{ github.actor != 'renovate-bot' && !startsWith(github.ref, 'refs/heads/renovate/') && !startsWith(github.head_ref, 'renovate/') }}
