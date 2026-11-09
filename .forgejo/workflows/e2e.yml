@@ -71,5 +71,5 @@ jobs:
       - name: Cleanup
         if: always()
         run: scripts/clean-up.sh
-    if: ${{ contains(fromJSON('["andras","ruby336688","renovate-bot"]'), github.actor) && (!github.event.pull_request || contains(fromJSON('["andras","ruby336688","renovate-bot"]'),
+    if: ${{ (github.event_name == 'schedule' || contains(fromJSON('["andras","ruby336688","renovate-bot"]'), github.actor)) && (!github.event.pull_request || contains(fromJSON('["andras","ruby336688","renovate-bot"]'),
       github.event.pull_request.user.login)) }}
