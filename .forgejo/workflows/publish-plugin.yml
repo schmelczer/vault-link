@@ -40,7 +40,7 @@ jobs:
       - name: Get publishing token
         id: publishing
         if: ${{ github.ref == 'refs/heads/main' || github.ref_type == 'tag' }}
-        uses: https://git.schmelczer.dev/andras/ci-actions/forgejo-token@df65a1b2608eb58c5b8347a3afb71265e0fce794
+        uses: https://git.schmelczer.dev/andras/ci-actions/forgejo-token@ce7eb1f7448f819fac334a7aa43c159d378f577f
         with:
           audience: ${{ vars.PUBLISH_AUDIENCE }}
       - name: Create release
