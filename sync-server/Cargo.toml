@@ -15,7 +15,7 @@ uuid = { version = "1.16.0", features = ["v4", "serde"] }
 log = { version = "0.4.28" }
 anyhow =  { version = "1.0.100", features = ["backtrace"] }
 axum = { version = "0.7.4", features = ["ws", "macros", "tracing", "multipart"]}
-axum-extra = { version = "0.9.6", features = ["typed-header"] }
+axum-extra = { version = "0.12.2", features = ["typed-header"] }
 axum_typed_multipart = "0.11.0"
 tower-http = { version = "0.6.1", features = ["cors", "trace", "limit", "timeout"] }
 tracing = "0.1.41"
