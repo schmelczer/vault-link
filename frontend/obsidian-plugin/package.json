@@ -23,7 +23,7 @@
         "reconcile-text": "^0.11.0",
         "resolve-url-loader": "^5.0.0",
         "sass": "^1.96.0",
-        "sass-loader": "^16.0.6",
+        "sass-loader": "^17.0.0",
         "sync-client": "file:../sync-client",
         "terser-webpack-plugin": "^5.3.16",
         "ts-loader": "^9.5.4",
