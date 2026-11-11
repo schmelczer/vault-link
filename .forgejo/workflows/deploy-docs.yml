@@ -3,20 +3,18 @@ name: Deploy Documentation
 on:
   push:
     branches:
-      - main
+      - "**"
     paths:
-      - "docs/**"
-      - ".forgejo/workflows/deploy-docs.yml"
+      - docs/**
+      - .forgejo/workflows/deploy-docs.yml
   workflow_dispatch:
-
 concurrency:
   group: pages
   cancel-in-progress: false
 
 jobs:
   build:
-    runs-on: ${{ (github.actor == 'renovate-bot' || github.event.pull_request.user.login == 'renovate-bot' || startsWith(github.ref, 'refs/heads/renovate/') || startsWith(github.head_ref,
-      'renovate/')) && 'renovate-ubuntu' || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
@@ -38,5 +36,3 @@ jobs:
         with:
           name: docs
           path: docs/.vitepress/dist
-    if: ${{ contains(fromJSON('["andras","ruby336688","renovate-bot"]'), github.actor) && (!github.event.pull_request || contains(fromJSON('["andras","ruby336688","renovate-bot"]'),
-      github.event.pull_request.user.login)) }}
