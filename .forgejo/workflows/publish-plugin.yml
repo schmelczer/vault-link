@@ -37,11 +37,18 @@ jobs:
           apt install -y gcc-aarch64-linux-gnu musl-tools gcc-mingw-w64-x86-64 jq
       - name: Build Linux and Windows binaries
         run: ./scripts/build-sync-server-binaries.sh
+      - name: Get publishing token
+        id: publishing
+        if: ${{ github.ref == 'refs/heads/main' || github.ref_type == 'tag' }}
+        uses: https://git.schmelczer.dev/andras/ci-actions/forgejo-token@df65a1b2608eb58c5b8347a3afb71265e0fce794
+        with:
+          audience: ${{ vars.PUBLISH_AUDIENCE }}
       - name: Create release
         env:
           GITHUB_TOKEN: ${{ (secrets.GITHUB_TOKEN || '') }}
           SERVER_URL: ${{ github.server_url }}
           REPO: ${{ github.repository }}
+          TOKEN: ${{ steps.publishing.outputs.token }}
         run: |
           tag="${GITHUB_REF#refs/tags/}"
 
@@ -67,3 +74,4 @@ jobs:
           done
         if: ${{ (github.ref == 'refs/heads/main' || github.ref_type == 'tag') }}
     if: ${{ (github.ref == 'refs/heads/main' || github.ref_type == 'tag') }}
+    enable-openid-connect: true
